@@ -224,7 +224,7 @@ ls -la /Library/Audio/Plug-Ins/HAL/AES67Driver.driver
 
 ## Why No "Reduced Security" Required?
 
-Unlike commercial AES67 drivers (e.g., Ravenna/Merging VAD), **this driver does NOT require you to disable macOS security features**. You won't need to:
+Unlike some commercial AES67 drivers, **this driver does NOT require you to disable macOS security features**. You won't need to:
 - Boot into Recovery Mode
 - Disable System Integrity Protection (SIP)
 - Enable "Reduced Security"
@@ -232,7 +232,7 @@ Unlike commercial AES67 drivers (e.g., Ravenna/Merging VAD), **this driver does 
 
 ### The Architecture Difference
 
-**Commercial KEXT-Based Drivers** (Ravenna, etc.):
+**Traditional KEXT-Based Drivers**:
 ```
 Kernel Extension (KEXT) Architecture:
 ├── Runs in kernel space with full hardware access
@@ -242,7 +242,7 @@ Kernel Extension (KEXT) Architecture:
 └── Deprecated by Apple since macOS 11
 ```
 
-Installation requires:
+Some drivers require installation steps like:
 1. Boot into Recovery Mode (hold power button)
 2. Select Options → Utilities → Startup Security Utility
 3. Choose "Reduced Security"
