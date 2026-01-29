@@ -54,7 +54,7 @@ public:
     // Status
     //
 
-    Statistics getStatistics() const;
+    StatisticsSnapshot getStatistics() const;
     void resetStatistics();
 
     //
@@ -91,9 +91,8 @@ private:
     std::thread transmitThread_;
     std::atomic<bool> running_{false};
 
-    // Statistics
+    // Statistics (atomic operations, no mutex needed for individual updates)
     Statistics stats_;
-    mutable std::mutex statsMutex_;
 
     // RTP state
     uint16_t sequenceNumber_{0};

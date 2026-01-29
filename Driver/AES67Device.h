@@ -132,8 +132,9 @@ private:
     void InitializeIOHandler();
 
     // Calculate optimal ring buffer size based on sample rate
-    // Returns size for desired latency (default: 2ms safety margin)
-    static size_t CalculateRingBufferSize(Float64 sampleRate, double latencyMs = 2.0);
+    // Returns size for desired latency (default: 3ms for network jitter tolerance)
+    // Result is rounded up to power of 2 for efficient modulo operations
+    static size_t CalculateRingBufferSize(Float64 sampleRate, double latencyMs = 3.0);
 
     // Ring buffers for audio data
     // Network threads write to input buffers, read from output buffers
@@ -162,8 +163,8 @@ private:
     std::atomic<uint64_t> inputUnderruns_{0};
     std::atomic<uint64_t> outputUnderruns_{0};
 
-    // Constants
-    static constexpr size_t kDefaultRingBufferSize = 480;  // Samples (1ms @ 384kHz)
+    // Resize ring buffers to accommodate new sample rate
+    void ResizeRingBuffers(Float64 sampleRate);
 };
 
 } // namespace AES67

@@ -1,353 +1,322 @@
-//
-// SAPListener.cpp
-// AES67 macOS Driver - Build #16
-// SAP (Session Announcement Protocol) listener implementation
-// RFC 2974 - Session Announcement Protocol
-//
-
 #include "SAPListener.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <thread>
 #include <iostream>
+#include <vector>
+#include <algorithm>
 
 namespace AES67 {
 
-//
-// Constructor
-//
-SAPListener::SAPListener()
-    : lastCleanup_(std::chrono::steady_clock::now())
-{
+// PIMPL idiom to hide platform-specific implementation details
+class SAPListener::Impl {
+public:
+    Impl() : running_(false), sockFd_(-1) {
+    }
+    
+    ~Impl() {
+        stop();
+    }
+    
+    bool initialize() {
+        // Create UDP socket
+        sockFd_ = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sockFd_ < 0) {
+            std::cerr << "Failed to create SAP socket" << std::endl;
+            return false;
+        }
+        
+        // Enable SO_REUSEADDR to allow reusing the port
+        int opt = 1;
+        if (setsockopt(sockFd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+            std::cerr << "Failed to set socket options" << std::endl;
+            close(sockFd_);
+            return false;
+        }
+        
+        // Bind to SAP multicast address
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(9875);  // SAP port
+        addr.sin_addr.s_addr = inet_addr("224.2.127.254");  // SAP multicast address
+        
+        if (bind(sockFd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            std::cerr << "Failed to bind SAP socket" << std::endl;
+            close(sockFd_);
+            return false;
+        }
+        
+        // Join multicast group
+        struct ip_mreq mreq;
+        mreq.imr_multiaddr.s_addr = inet_addr("224.2.127.254");
+        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+        
+        if (setsockopt(sockFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+            std::cerr << "Failed to join SAP multicast group" << std::endl;
+            close(sockFd_);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    bool start() {
+        if (running_) {
+            return false;
+        }
+        
+        running_ = true;
+        listenThread_ = std::thread(&Impl::listenLoop, this);
+        
+        return true;
+    }
+    
+    void stop() {
+        if (!running_) {
+            return;
+        }
+        
+        running_ = false;
+        
+        if (listenThread_.joinable()) {
+            listenThread_.join();
+        }
+        
+        if (sockFd_ >= 0) {
+            close(sockFd_);
+            sockFd_ = -1;
+        }
+    }
+    
+    void registerAnnouncementCallback(const SAPAnnouncementCallback& callback) {
+        std::lock_guard<std::mutex> lock(callbacksMutex_);
+        callbacks_.push_back(callback);
+    }
+    
+    std::vector<SAPAnnouncement> getDiscoveredStreams() const {
+        std::lock_guard<std::mutex> lock(discoveredStreamsMutex_);
+        return discoveredStreams_;
+    }
+    
+private:
+    void listenLoop() {
+        char buffer[2048];
+        
+        while (running_) {
+            struct sockaddr_in srcAddr;
+            socklen_t addrLen = sizeof(srcAddr);
+            
+            ssize_t bytesRead = recvfrom(sockFd_, buffer, sizeof(buffer)-1, 0,
+                                        (struct sockaddr*)&srcAddr, &addrLen);
+            
+            if (bytesRead > 0) {
+                buffer[bytesRead] = '\0';
+                
+                // Parse the SAP announcement
+                SAPAnnouncement announcement = parseSAPAnnouncement(buffer, bytesRead, 
+                                                                   inet_ntoa(srcAddr.sin_addr));
+                
+                if (!announcement.sessionDescription.empty()) {
+                    // Store the announcement
+                    {
+                        std::lock_guard<std::mutex> lock(discoveredStreamsMutex_);
+                        
+                        // Check if we already have this announcement to avoid duplicates
+                        bool found = false;
+                        for (const auto& existing : discoveredStreams_) {
+                            if (existing.sessionName == announcement.sessionName && 
+                                existing.sourceAddress == announcement.sourceAddress) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!found) {
+                            discoveredStreams_.push_back(announcement);
+                            
+                            // Keep only the most recent announcements (e.g., last 50)
+                            if (discoveredStreams_.size() > 50) {
+                                discoveredStreams_.erase(discoveredStreams_.begin());
+                            }
+                        }
+                    }
+                    
+                    // Notify all registered callbacks
+                    {
+                        std::lock_guard<std::mutex> lock(callbacksMutex_);
+                        for (const auto& callback : callbacks_) {
+                            callback(announcement);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    SAPAnnouncement parseSAPAnnouncement(const char* data, size_t length, 
+                                       const std::string& sourceAddress) {
+        SAPAnnouncement announcement;
+        announcement.sourceAddress = sourceAddress;
+        
+        // SAP header is 4 bytes:
+        // Bits 0-7: Version (3 bits), Type (1 bit), Encrypted (1 bit), Compressed (1 bit), Auth Length (2 bits)
+        // Bits 8-31: Message ID Hash
+        // Bits 32-47: Length
+        // Bits 48-63: Source Address Type
+        
+        if (length < 4) {
+            return announcement; // Not enough data for SAP header
+        }
+        
+        // Check if this is a SAP announcement (type bit should be 0 for announcement)
+        uint8_t sapHeader = static_cast<uint8_t>(data[0]);
+        uint8_t typeBit = (sapHeader >> 3) & 0x01;
+        
+        if (typeBit != 0) {
+            return announcement; // Not an announcement (might be deletion)
+        }
+        
+        // The payload typically starts after 4 bytes (or 8 if extended header is present)
+        // For simplicity, we'll assume basic header (4 bytes)
+        size_t payloadStart = 4;
+        if (length <= payloadStart) {
+            return announcement; // No payload
+        }
+        
+        // The payload should be an SDP description
+        std::string sdpContent(data + payloadStart, length - payloadStart);
+        announcement.sessionDescription = sdpContent;
+        
+        // Parse basic SDP information
+        parseSDPInfo(sdpContent, announcement);
+        
+        return announcement;
+    }
+    
+    void parseSDPInfo(const std::string& sdp, SAPAnnouncement& announcement) {
+        // Parse the SDP content to extract stream information
+        size_t lastPos = 0;
+        size_t pos = 0;
+
+        while ((pos = sdp.find('\n', lastPos)) != std::string::npos) {
+            std::string line = sdp.substr(lastPos, pos - lastPos);
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back(); // Remove carriage return if present
+            }
+
+            // Parse session name
+            if (line.length() >= 2 && line.substr(0, 2) == "s=") {
+                announcement.sessionName = line.substr(2);
+            }
+            // Parse connection information
+            else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
+                // Format: c=IN IP4 <address>
+                size_t addrStart = line.rfind(' ');
+                if (addrStart != std::string::npos) {
+                    announcement.multicastAddress = line.substr(addrStart + 1);
+                }
+            }
+            // Parse media information
+            else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
+                // Format: m=audio <port> RTP/AVP <payload_type>
+                size_t portStart = line.find(' ', 2);
+                if (portStart != std::string::npos) {
+                    portStart++; // Skip the space
+                    size_t portEnd = line.find(' ', portStart);
+                    if (portEnd != std::string::npos) {
+                        std::string portStr = line.substr(portStart, portEnd - portStart);
+                        try {
+                            announcement.port = std::stoi(portStr);
+                        } catch (...) {
+                            announcement.port = 0;
+                        }
+                    }
+                }
+            }
+            // Parse RTP attribute (a=rtpmap)
+            else if (line.length() >= 9 && line.substr(0, 9) == "a=rtpmap:") {
+                // Format: a=rtpmap:<payload_type> <encoding_name>/<clock_rate>[/<channels>]
+                // This can be used for additional stream information if needed
+            }
+
+            lastPos = pos + 1;
+        }
+
+        // Handle the final line without newline
+        if (lastPos < sdp.length()) {
+            std::string line = sdp.substr(lastPos);
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+
+            // Parse session name
+            if (line.length() >= 2 && line.substr(0, 2) == "s=") {
+                announcement.sessionName = line.substr(2);
+            }
+            // Parse connection information
+            else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
+                size_t addrStart = line.rfind(' ');
+                if (addrStart != std::string::npos) {
+                    announcement.multicastAddress = line.substr(addrStart + 1);
+                }
+            }
+            // Parse media information
+            else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
+                size_t portStart = line.find(' ', 2);
+                if (portStart != std::string::npos) {
+                    portStart++; // Skip the space
+                    size_t portEnd = line.find(' ', portStart);
+                    if (portEnd != std::string::npos) {
+                        std::string portStr = line.substr(portStart, portEnd - portStart);
+                        try {
+                            announcement.port = std::stoi(portStr);
+                        } catch (...) {
+                            announcement.port = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    std::atomic<bool> running_;
+    int sockFd_;
+    std::thread listenThread_;
+    
+    mutable std::mutex callbacksMutex_;
+    std::vector<SAPAnnouncementCallback> callbacks_;
+    
+    mutable std::mutex discoveredStreamsMutex_;
+    std::vector<SAPAnnouncement> discoveredStreams_;
+};
+
+SAPListener::SAPListener() : pimpl_(std::make_unique<Impl>()) {
 }
 
-//
-// Destructor
-//
-SAPListener::~SAPListener() {
-    stop();
+SAPListener::~SAPListener() = default;
+
+bool SAPListener::initialize() {
+    return pimpl_->initialize();
 }
 
-//
-// Start listening for SAP announcements
-//
 bool SAPListener::start() {
-    if (running_.load()) {
-        return true;  // Already running
-    }
-
-    // Create UDP socket
-    socket_ = socket(AF_INET, SOCK_DGRAM, 0);
-    if (socket_ < 0) {
-        std::cerr << "SAPListener: Failed to create socket" << std::endl;
-        return false;
-    }
-
-    // Allow address reuse
-    int reuse = 1;
-    if (setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        std::cerr << "SAPListener: Failed to set SO_REUSEADDR" << std::endl;
-        close(socket_);
-        socket_ = -1;
-        return false;
-    }
-
-#ifdef SO_REUSEPORT
-    if (setsockopt(socket_, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
-        std::cerr << "SAPListener: Warning - Failed to set SO_REUSEPORT" << std::endl;
-    }
-#endif
-
-    // Bind to port
-    sockaddr_in bindAddr{};
-    bindAddr.sin_family = AF_INET;
-    bindAddr.sin_addr.s_addr = INADDR_ANY;
-    bindAddr.sin_port = htons(port_);
-
-    if (bind(socket_, (sockaddr*)&bindAddr, sizeof(bindAddr)) < 0) {
-        std::cerr << "SAPListener: Failed to bind to port " << port_ << std::endl;
-        close(socket_);
-        socket_ = -1;
-        return false;
-    }
-
-    // Join multicast group
-    ip_mreq mreq{};
-    mreq.imr_multiaddr.s_addr = inet_addr(multicastAddress_.c_str());
-    mreq.imr_interface.s_addr = INADDR_ANY;
-
-    if (setsockopt(socket_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-        std::cerr << "SAPListener: Failed to join multicast group " << multicastAddress_ << std::endl;
-        close(socket_);
-        socket_ = -1;
-        return false;
-    }
-
-    // Start listen thread
-    running_.store(true);
-    listenThread_ = std::thread(&SAPListener::listenLoop, this);
-
-    std::cout << "SAPListener: Started on " << multicastAddress_ << ":" << port_ << std::endl;
-    return true;
+    return pimpl_->start();
 }
 
-//
-// Stop listening
-//
 void SAPListener::stop() {
-    if (!running_.load()) {
-        return;
-    }
-
-    running_.store(false);
-
-    // Close socket to unblock recv
-    if (socket_ >= 0) {
-        shutdown(socket_, SHUT_RDWR);
-        close(socket_);
-        socket_ = -1;
-    }
-
-    // Wait for thread to finish
-    if (listenThread_.joinable()) {
-        listenThread_.join();
-    }
-
-    std::cout << "SAPListener: Stopped" << std::endl;
+    pimpl_->stop();
 }
 
-//
-// Set multicast address and port
-//
-void SAPListener::setMulticastAddress(const std::string& address, uint16_t port) {
-    if (running_.load()) {
-        std::cerr << "SAPListener: Cannot change address while running" << std::endl;
-        return;
-    }
-    multicastAddress_ = address;
-    port_ = port;
+void SAPListener::registerAnnouncementCallback(const SAPAnnouncementCallback& callback) {
+    pimpl_->registerAnnouncementCallback(callback);
 }
 
-//
-// Get all discovered streams
-//
-std::vector<SDPSession> SAPListener::getDiscoveredStreams() const {
-    std::lock_guard<std::mutex> lock(announcementsMutex_);
-    std::vector<SDPSession> streams;
-    streams.reserve(announcements_.size());
-
-    for (const auto& [hash, announcement] : announcements_) {
-        if (!announcement.isDelete) {
-            streams.push_back(announcement.sdp);
-        }
-    }
-
-    return streams;
-}
-
-//
-// Get announcement count
-//
-size_t SAPListener::getAnnouncementCount() const {
-    std::lock_guard<std::mutex> lock(announcementsMutex_);
-    return announcements_.size();
-}
-
-//
-// Clear all discovered streams
-//
-void SAPListener::clearDiscoveredStreams() {
-    std::lock_guard<std::mutex> lock(announcementsMutex_);
-    announcements_.clear();
-}
-
-//
-// Listen loop (runs in separate thread)
-//
-void SAPListener::listenLoop() {
-    uint8_t buffer[65536];
-
-    while (running_.load()) {
-        // Receive packet
-        sockaddr_in senderAddr{};
-        socklen_t senderAddrLen = sizeof(senderAddr);
-
-        ssize_t bytesReceived = recvfrom(socket_, buffer, sizeof(buffer), 0,
-                                        (sockaddr*)&senderAddr, &senderAddrLen);
-
-        if (bytesReceived < 0) {
-            if (running_.load()) {
-                std::cerr << "SAPListener: recvfrom error" << std::endl;
-            }
-            break;
-        }
-
-        if (bytesReceived > 0) {
-            // Get source IP
-            char sourceIP[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &senderAddr.sin_addr, sourceIP, sizeof(sourceIP));
-
-            // Process packet
-            processSAPPacket(buffer, bytesReceived, sourceIP);
-        }
-
-        // Periodic cleanup
-        auto now = std::chrono::steady_clock::now();
-        if (now - lastCleanup_ > cleanupInterval_) {
-            cleanupOldAnnouncements();
-            lastCleanup_ = now;
-        }
-    }
-}
-
-//
-// Process received SAP packet
-//
-void SAPListener::processSAPPacket(const uint8_t* data, size_t length, const std::string& sourceIP) {
-    if (length < 4) {
-        return;  // Too short
-    }
-
-    // Parse SAP header
-    bool isDelete = false;
-    uint32_t messageHash = 0;
-    size_t sdpOffset = 0;
-
-    if (!parseSAPHeader(data, length, isDelete, messageHash, sdpOffset)) {
-        return;
-    }
-
-    if (sdpOffset >= length) {
-        return;  // No SDP payload
-    }
-
-    // Extract SDP text
-    std::string sdpText(reinterpret_cast<const char*>(data + sdpOffset),
-                       length - sdpOffset);
-
-    // Handle deletion
-    if (isDelete) {
-        std::lock_guard<std::mutex> lock(announcementsMutex_);
-        auto it = announcements_.find(messageHash);
-        if (it != announcements_.end()) {
-            announcements_.erase(it);
-            if (deletionCallback_) {
-                deletionCallback_(messageHash);
-            }
-        }
-        return;
-    }
-
-    // Parse SDP
-    auto sdpSession = SDPParser::parseString(sdpText);
-    if (!sdpSession) {
-        return;  // Invalid SDP
-    }
-
-    // Create announcement
-    SAPAnnouncement announcement;
-    announcement.messageHash = messageHash;
-    announcement.origin = sourceIP;
-    announcement.sdp = *sdpSession;
-    announcement.lastSeen = std::chrono::steady_clock::now();
-    announcement.isDelete = false;
-
-    // Update cache and notify
-    updateAnnouncement(announcement);
-
-    if (discoveryCallback_) {
-        discoveryCallback_(*sdpSession);
-    }
-}
-
-//
-// Parse SAP header (RFC 2974)
-//
-bool SAPListener::parseSAPHeader(const uint8_t* data, size_t length,
-                                 bool& isDelete, uint32_t& messageHash, size_t& sdpOffset) {
-    if (length < 4) {
-        return false;
-    }
-
-    // Byte 0: Version (3 bits), A (1), R (1), T (1), E (1), C (1)
-    uint8_t byte0 = data[0];
-    uint8_t version = (byte0 >> 5) & 0x07;
-    bool addressType = (byte0 & 0x10) != 0;  // 0=IPv4, 1=IPv6
-    // bool reserved = (byte0 & 0x08) != 0;
-    isDelete = (byte0 & 0x04) != 0;          // Message type (T bit)
-    bool encrypted = (byte0 & 0x02) != 0;
-    bool compressed = (byte0 & 0x01) != 0;
-
-    // We only support SAP version 1, unencrypted, uncompressed, IPv4
-    if (version != 1 || encrypted || compressed) {
-        return false;
-    }
-
-    // Byte 1: Authentication length (in 32-bit words)
-    uint8_t authLen = data[1];
-
-    // Bytes 2-3: Message ID hash
-    messageHash = (data[2] << 8) | data[3];
-
-    // Calculate offset based on address type
-    size_t offset = 4;
-
-    // Originating source address
-    if (addressType) {
-        offset += 16;  // IPv6
-    } else {
-        offset += 4;   // IPv4
-    }
-
-    // Skip authentication data
-    offset += authLen * 4;
-
-    if (offset >= length) {
-        return false;
-    }
-
-    // Skip payload type (optional MIME type, null-terminated)
-    // In AES67, this is typically "application/sdp"
-    while (offset < length && data[offset] != 0) {
-        offset++;
-    }
-    offset++;  // Skip null terminator
-
-    sdpOffset = offset;
-    return true;
-}
-
-//
-// Update announcement cache
-//
-void SAPListener::updateAnnouncement(const SAPAnnouncement& announcement) {
-    std::lock_guard<std::mutex> lock(announcementsMutex_);
-    announcements_[announcement.messageHash] = announcement;
-}
-
-//
-// Remove old announcements (timeout after 10 minutes without update)
-//
-void SAPListener::cleanupOldAnnouncements() {
-    std::lock_guard<std::mutex> lock(announcementsMutex_);
-    auto now = std::chrono::steady_clock::now();
-    auto timeout = std::chrono::minutes(10);
-
-    for (auto it = announcements_.begin(); it != announcements_.end(); ) {
-        if (now - it->second.lastSeen > timeout) {
-            uint32_t hash = it->first;
-            it = announcements_.erase(it);
-
-            // Notify deletion
-            if (deletionCallback_) {
-                deletionCallback_(hash);
-            }
-        } else {
-            ++it;
-        }
-    }
+std::vector<SAPAnnouncement> SAPListener::getDiscoveredStreams() const {
+    return pimpl_->getDiscoveredStreams();
 }
 
 } // namespace AES67

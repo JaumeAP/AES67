@@ -11,6 +11,7 @@
 #include "../../Driver/SDPParser.h"
 #include "../StreamChannelMapper.h"
 #include "SimpleRTP.h"
+#include "LockFreeCircularJitterBuffer.h"
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -64,8 +65,8 @@ public:
     // Status
     //
 
-    // Get statistics
-    Statistics getStatistics() const;
+    // Get statistics (returns a non-atomic snapshot)
+    StatisticsSnapshot getStatistics() const;
 
     // Reset statistics
     void resetStatistics();
@@ -90,8 +91,11 @@ public:
     const ChannelMapping& getMapping() const { return mapping_; }
 
 private:
-    // Network thread function
+    // Network thread function (producer - adds packets to jitter buffer)
     void receiveLoop();
+
+    // Consumer thread function (reads from jitter buffer and writes to ring buffers)
+    void consumeLoop();
 
     // Packet processing
     void processPacket(const RTP::RTPPacket& packet);
@@ -115,15 +119,21 @@ private:
     // RTP socket
     RTP::RTPSocket rtpSocket_;
 
+    // Jitter buffer for packet reordering
+    LockFreeCircularJitterBuffer jitterBuffer_;
+
     // Threading
     std::thread receiveThread_;
+    std::thread consumeThread_;
     std::atomic<bool> running_{false};
 
-    // Statistics
+    // Expected sequence number for consumer
+    std::atomic<uint32_t> expectedSequenceNumber_{0};
+
+    // Statistics (atomic operations, no mutex needed for individual updates)
     Statistics stats_;
-    mutable std::mutex statsMutex_;
-    uint16_t lastSequenceNumber_{0};
-    uint32_t lastTimestamp_{0};
+    std::atomic<uint16_t> lastSequenceNumber_{0};
+    std::atomic<uint32_t> lastTimestamp_{0};
 
     // Connection state
     std::atomic<bool> connected_{false};
@@ -134,6 +144,9 @@ private:
 
     // Receive buffer for network packets (max MTU 1500 bytes)
     uint8_t receiveBuffer_[2048];
+
+    // Jitter buffer read buffer
+    uint8_t jitterReadBuffer_[1500];
 };
 
 } // namespace AES67

@@ -97,14 +97,23 @@ void RTPTransmitter::stop() {
     rtpSocket_.close();
 }
 
-Statistics RTPTransmitter::getStatistics() const {
-    std::lock_guard<std::mutex> lock(statsMutex_);
-    return stats_;
+StatisticsSnapshot RTPTransmitter::getStatistics() const {
+    // Return a consistent snapshot of atomic statistics
+    return stats_.snapshot();
 }
 
 void RTPTransmitter::resetStatistics() {
-    std::lock_guard<std::mutex> lock(statsMutex_);
-    std::memset(&stats_, 0, sizeof(stats_));
+    // Reset all atomic counters
+    stats_.packetsReceived.store(0, std::memory_order_relaxed);
+    stats_.packetsLost.store(0, std::memory_order_relaxed);
+    stats_.malformedPackets.store(0, std::memory_order_relaxed);
+    stats_.outOfOrderPackets.store(0, std::memory_order_relaxed);
+    stats_.underruns.store(0, std::memory_order_relaxed);
+    stats_.overruns.store(0, std::memory_order_relaxed);
+    stats_.jitterNs.store(0, std::memory_order_relaxed);
+    stats_.latencyNs.store(0, std::memory_order_relaxed);
+    stats_.bytesReceived.store(0, std::memory_order_relaxed);
+    stats_.bytesSent.store(0, std::memory_order_relaxed);
 }
 
 bool RTPTransmitter::updateMapping(const ChannelMapping& newMapping) {
@@ -142,8 +151,7 @@ void RTPTransmitter::transmitLoop() {
         // Read audio from device channels
         if (!readDeviceChannels(audioBuffer_.data(), samplesPerPacket)) {
             // No audio available or error
-            std::lock_guard<std::mutex> lock(statsMutex_);
-            stats_.overruns++;
+            stats_.overruns.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
@@ -168,10 +176,7 @@ void RTPTransmitter::transmitLoop() {
         timestamp_ += samplesPerPacket;
 
         // Update statistics
-        {
-            std::lock_guard<std::mutex> lock(statsMutex_);
-            stats_.bytesSent += payloadSize;
-        }
+        stats_.bytesSent.fetch_add(payloadSize, std::memory_order_relaxed);
     }
 }
 
@@ -271,8 +276,7 @@ void RTPTransmitter::sendPacket(const uint8_t* payload, size_t payloadSize, uint
 
     if (bytesSent < 0) {
         // Send failed
-        std::lock_guard<std::mutex> lock(statsMutex_);
-        stats_.malformedPackets++; // Reuse this field for send errors
+        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed); // Reuse this field for send errors
     }
 }
 

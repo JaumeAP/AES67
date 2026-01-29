@@ -127,7 +127,12 @@ public:
     // Close socket
     void close();
 
+    // Socket status checks
     bool isOpen() const { return sockfd_ >= 0; }
+    bool isValid() const;
+
+    // Get socket file descriptor for select/poll
+    int getFd() const { return sockfd_; }
 
 private:
     int sockfd_;

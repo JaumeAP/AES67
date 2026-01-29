@@ -36,16 +36,23 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
         .CanBeDefault = true,
         .CanBeDefaultForSystemSounds = false
     })
-    // Calculate optimal ring buffer size based on initial sample rate
+    // Initialize ring buffers sized for maximum supported sample rate (384kHz)
+    // This ensures buffers are always large enough regardless of sample rate changes
+    // Power-of-2 sizing: 384kHz @ 3ms = 1152 samples → 2048 (next power of 2)
     , inputBuffers_(MakeRingBufferArray(
-          CalculateRingBufferSize(currentSampleRate_.load())))
+          CalculateRingBufferSize(384000.0)))  // Max sample rate
     , outputBuffers_(MakeRingBufferArray(
-          CalculateRingBufferSize(currentSampleRate_.load())))
+          CalculateRingBufferSize(384000.0)))  // Max sample rate
 {
     AES67_LOG("AES67Device constructor: Starting initialization");
-    AES67_LOGF("AES67Device: Sample rate = %.0f Hz", currentSampleRate_.load());
-    AES67_LOGF("AES67Device: Ring buffer size = %zu samples",
-               CalculateRingBufferSize(currentSampleRate_.load()));
+    const Float64 initialSampleRate = currentSampleRate_.load();
+    const size_t ringBufferSize = CalculateRingBufferSize(384000.0);
+    AES67_LOGF("AES67Device: Initial sample rate = %.0f Hz", initialSampleRate);
+    AES67_LOGF("AES67Device: Ring buffer size = %zu samples (sized for max 384kHz)",
+               ringBufferSize);
+    AES67_LOGF("AES67Device: Buffer latency @ %.0f Hz = %.2f ms",
+               initialSampleRate,
+               (ringBufferSize * 1000.0) / initialSampleRate);
 
     // NOTE: Cannot call InitializeStreams() here because shared_from_this()
     // won't work until the shared_ptr is fully constructed
@@ -203,8 +210,38 @@ OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
         return kAudioHardwareUnsupportedOperationError;
     }
 
+    // Check if IO is running - sample rate cannot be changed during IO
+    if (ioRunning_.load()) {
+        AES67_LOG("SetSampleRate: ERROR - Cannot change sample rate while IO is running");
+        return kAudioHardwareBadObjectError;
+    }
+
+    // Log the sample rate change
+    AES67_LOGF("SetSampleRate: Changing from %.0f Hz to %.0f Hz",
+               currentSampleRate_.load(), sampleRate);
+
+    const size_t ringBufferSize = inputBuffers_[0].capacity();
+    AES67_LOGF("SetSampleRate: Ring buffer size = %zu samples (%.2f ms @ %.0f Hz)",
+               ringBufferSize,
+               (ringBufferSize * 1000.0) / sampleRate,
+               sampleRate);
+
+    // Check if buffer size would need to change (for diagnostic purposes)
+    const size_t idealBufferSize = CalculateRingBufferSize(sampleRate);
+    if (idealBufferSize != ringBufferSize) {
+        AES67_LOGF("SetSampleRate: NOTE - Ideal buffer size for %.0f Hz would be %zu samples",
+                   sampleRate, idealBufferSize);
+        AES67_LOG("SetSampleRate: Using fixed buffer sized for maximum sample rate (384kHz)");
+    }
+
     // Update current sample rate
     currentSampleRate_.store(sampleRate);
+
+    // Update StreamManager's sample rate
+    if (streamManager_) {
+        streamManager_->setDeviceSampleRate(sampleRate);
+        AES67_LOG("SetSampleRate: StreamManager sample rate updated");
+    }
 
     // Update stream formats
     if (inputStream_) {
@@ -217,6 +254,8 @@ OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
         format.mSampleRate = sampleRate;
         outputStream_->SetPhysicalFormatAsync(format);
     }
+
+    AES67_LOG("SetSampleRate: Complete");
 
     return kAudioHardwareNoError;
 }
@@ -322,32 +361,72 @@ size_t AES67Device::CalculateRingBufferSize(Float64 sampleRate, double latencyMs
     // Calculate ring buffer size for desired latency
     // Formula: samples = (sampleRate × latencyMs) / 1000
     //
-    // Examples:
-    //   48kHz @ 2ms = 96 samples
-    //   96kHz @ 2ms = 192 samples
-    //   384kHz @ 2ms = 768 samples
+    // Examples (with 3ms latency):
+    //   48kHz @ 3ms = 144 samples → 256 (rounded to power of 2)
+    //   96kHz @ 3ms = 288 samples → 512
+    //   192kHz @ 3ms = 576 samples → 1024
+    //   384kHz @ 3ms = 1152 samples → 2048
     //
-    // This provides a safety buffer for network jitter and processing delays
+    // Minimum 3ms buffer provides adequate tolerance for:
+    // - Network jitter (typical: 0.5-1ms)
+    // - Processing delays (typical: 0.5-1ms)
+    // - Scheduling variations (typical: 0.5-1ms)
+    //
+    // Power-of-2 sizing enables efficient modulo operations
 
-    const size_t calculatedSize = static_cast<size_t>(
+    // Calculate minimum size based on latency requirement
+    const size_t minSize = static_cast<size_t>(
         (sampleRate * latencyMs) / 1000.0
     );
 
-    // Ensure minimum size (at least 64 samples)
-    constexpr size_t kMinRingBufferSize = 64;
-
-    // Ensure maximum size (prevent excessive memory use)
-    constexpr size_t kMaxRingBufferSize = 2048;
-
-    // Clamp to valid range
-    if (calculatedSize < kMinRingBufferSize) {
-        return kMinRingBufferSize;
-    }
-    if (calculatedSize > kMaxRingBufferSize) {
-        return kMaxRingBufferSize;
+    // Round up to next power of 2 for efficient modulo operations
+    size_t size = 1;
+    while (size < minSize) {
+        size <<= 1;
     }
 
-    return calculatedSize;
+    // Enforce absolute minimum (512 samples = 10.6ms @ 48kHz, 1.3ms @ 384kHz)
+    constexpr size_t kMinRingBufferSize = 512;
+
+    // Enforce maximum to prevent excessive memory (8192 samples = 21.3ms @ 384kHz)
+    // At 128 channels × 4 bytes/sample: 8192 × 128 × 4 = 4MB per buffer direction
+    constexpr size_t kMaxRingBufferSize = 8192;
+
+    size = std::max(size, kMinRingBufferSize);
+    size = std::min(size, kMaxRingBufferSize);
+
+    return size;
+}
+
+void AES67Device::ResizeRingBuffers(Float64 sampleRate) {
+    // IMPORTANT: Ring buffers cannot be resized after construction because
+    // SPSCRingBuffer has deleted copy/move assignment operators.
+    //
+    // The ring buffers are sized based on sample rate at construction time.
+    // If sample rate needs to change significantly (requiring different buffer size),
+    // the device must be torn down and recreated.
+    //
+    // Current approach: Ring buffers are sized for worst-case (highest sample rate)
+    // to avoid needing to resize. The buffer size calculation uses power-of-2 sizing,
+    // so adjacent sample rates often share the same buffer size:
+    //   - 44.1/48 kHz → 512 samples
+    //   - 88.2/96 kHz → 512 samples
+    //   - 176.4/192 kHz → 1024 samples
+    //   - 352.8/384 kHz → 2048 samples
+    //
+    // This function logs a warning if sample rate change requires buffer resize.
+
+    const size_t newSize = CalculateRingBufferSize(sampleRate);
+    const size_t currentSize = inputBuffers_[0].capacity();  // All buffers same size
+
+    if (newSize != currentSize) {
+        AES67_LOGF("ResizeRingBuffers: WARNING - Sample rate change from %.0f Hz to %.0f Hz",
+                   currentSampleRate_.load(), sampleRate);
+        AES67_LOGF("ResizeRingBuffers: Would require buffer resize: %zu → %zu samples",
+                   currentSize, newSize);
+        AES67_LOG("ResizeRingBuffers: Ring buffers CANNOT be resized after construction");
+        AES67_LOG("ResizeRingBuffers: Continuing with existing buffer size - may cause underruns");
+    }
 }
 
 } // namespace AES67

@@ -98,24 +98,26 @@ StreamID StreamID::generate() {
 // ============================================================================
 
 void Statistics::reset() {
-    packetsReceived = 0;
-    packetsLost = 0;
-    malformedPackets = 0;
-    outOfOrderPackets = 0;
-    underruns = 0;
-    overruns = 0;
-    jitterNs = 0;
-    latencyNs = 0;
-    bytesReceived = 0;
-    bytesSent = 0;
+    packetsReceived.store(0, std::memory_order_relaxed);
+    packetsLost.store(0, std::memory_order_relaxed);
+    malformedPackets.store(0, std::memory_order_relaxed);
+    outOfOrderPackets.store(0, std::memory_order_relaxed);
+    underruns.store(0, std::memory_order_relaxed);
+    overruns.store(0, std::memory_order_relaxed);
+    jitterNs.store(0, std::memory_order_relaxed);
+    latencyNs.store(0, std::memory_order_relaxed);
+    bytesReceived.store(0, std::memory_order_relaxed);
+    bytesSent.store(0, std::memory_order_relaxed);
     lastPacketTime = std::chrono::steady_clock::time_point();
 }
 
 double Statistics::getPacketLossPercent() const {
-    if (packetsReceived == 0) {
+    uint64_t received = packetsReceived.load(std::memory_order_relaxed);
+    if (received == 0) {
         return 0.0;
     }
-    return (static_cast<double>(packetsLost) / (packetsReceived + packetsLost)) * 100.0;
+    uint64_t lost = packetsLost.load(std::memory_order_relaxed);
+    return (static_cast<double>(lost) / (received + lost)) * 100.0;
 }
 
 int64_t Statistics::timeSinceLastPacketMs() const {
@@ -126,6 +128,23 @@ int64_t Statistics::timeSinceLastPacketMs() const {
     auto now = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastPacketTime);
     return duration.count();
+}
+
+StatisticsSnapshot Statistics::snapshot() const {
+    // Create a consistent snapshot of all atomic statistics
+    StatisticsSnapshot snap;
+    snap.packetsReceived = packetsReceived.load(std::memory_order_relaxed);
+    snap.packetsLost = packetsLost.load(std::memory_order_relaxed);
+    snap.malformedPackets = malformedPackets.load(std::memory_order_relaxed);
+    snap.outOfOrderPackets = outOfOrderPackets.load(std::memory_order_relaxed);
+    snap.underruns = underruns.load(std::memory_order_relaxed);
+    snap.overruns = overruns.load(std::memory_order_relaxed);
+    snap.jitterNs = jitterNs.load(std::memory_order_relaxed);
+    snap.latencyNs = latencyNs.load(std::memory_order_relaxed);
+    snap.bytesReceived = bytesReceived.load(std::memory_order_relaxed);
+    snap.bytesSent = bytesSent.load(std::memory_order_relaxed);
+    snap.lastPacketTime = lastPacketTime;
+    return snap;
 }
 
 // ============================================================================
