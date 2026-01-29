@@ -110,7 +110,7 @@ struct StreamListView: View {
             }
         }
         .listStyle(.sidebar)
-        .onDrop(of: [.plainText, .fileURL], delegate: SDPDropDelegate(
+        .onDrop(of: [.plainText, .fileURL], delegate: StreamListSDPDropDelegate(
             onDrop: { providers in
                 _ = handleSDPDrops(providers: providers)
                 return true
@@ -497,8 +497,8 @@ struct StreamListView: View {
     }
 }
 
-// Define the drop delegate to handle SDP file drops
-struct SDPDropDelegate: DropDelegate {
+// Define the drop delegate to handle SDP file drops (local to StreamListView)
+fileprivate struct StreamListSDPDropDelegate: DropDelegate {
     let onDrop: ([NSItemProvider]) -> Bool
 
     func performDrop(info: DropInfo) -> Bool {

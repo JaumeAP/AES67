@@ -19,6 +19,48 @@ struct PendingStreamInfo {
     let encoding: String
 }
 
+// MARK: - PTP Diagnostics
+
+/// Swift representation of PTP diagnostic information
+/// Mirrors the C++ PTPDiagnostics struct in NetworkEngine/PTP/PTPDiagnostics.h
+struct PTPDiagnostics {
+    // Connection status
+    var isConnected: Bool = false
+    var isLocked: Bool = false
+    var masterClockID: String? = nil
+    var clockClass: Int = 248
+    var clockAccuracy: Int = 254
+    var offsetNs: Int64 = 0
+
+    // Network diagnostics
+    var firewallBlockingPTP: Bool = false
+    var firewallBlockingRTP: Bool = false
+    var lastMessageReceived: Int = -1
+    var lastMessageTime: Date = Date()
+
+    // Quality metrics
+    var currentOffset: Double = 0.0
+    var meanOffset: Double = 0.0
+    var offsetStdDev: Double = 0.0
+    var frequencyOffset: Double = 0.0
+
+    // Timing quality
+    var syncMessagesReceived: Int = 0
+    var followUpMessagesReceived: Int = 0
+    var delayReqMessagesSent: Int = 0
+    var delayRespMessagesReceived: Int = 0
+    var announceMessagesReceived: Int = 0
+
+    // Error counters
+    var stateTransitions: Int = 0
+    var ignoredAnnounce: Int = 0
+    var domainMismatchErrors: Int = 0
+
+    // PTP domain info
+    var currentDomain: Int = 0
+    var preferredDomain: Int = 0
+}
+
 class DriverManager: ObservableObject {
     @Published var streams: [StreamInfo] = []
     @Published var isDriverLoaded: Bool = false

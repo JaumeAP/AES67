@@ -112,6 +112,75 @@ struct Statistics {
     std::atomic<uint64_t> bytesReceived{0};
     std::atomic<uint64_t> bytesSent{0};
 
+    // Default constructor
+    Statistics() = default;
+
+    // Move constructor (atomics need explicit handling)
+    Statistics(Statistics&& other) noexcept
+        : packetsReceived(other.packetsReceived.load(std::memory_order_relaxed))
+        , packetsLost(other.packetsLost.load(std::memory_order_relaxed))
+        , malformedPackets(other.malformedPackets.load(std::memory_order_relaxed))
+        , outOfOrderPackets(other.outOfOrderPackets.load(std::memory_order_relaxed))
+        , underruns(other.underruns.load(std::memory_order_relaxed))
+        , overruns(other.overruns.load(std::memory_order_relaxed))
+        , lastPacketTime(other.lastPacketTime)
+        , jitterNs(other.jitterNs.load(std::memory_order_relaxed))
+        , latencyNs(other.latencyNs.load(std::memory_order_relaxed))
+        , bytesReceived(other.bytesReceived.load(std::memory_order_relaxed))
+        , bytesSent(other.bytesSent.load(std::memory_order_relaxed))
+    {}
+
+    // Move assignment
+    Statistics& operator=(Statistics&& other) noexcept {
+        if (this != &other) {
+            packetsReceived.store(other.packetsReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            packetsLost.store(other.packetsLost.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            malformedPackets.store(other.malformedPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            outOfOrderPackets.store(other.outOfOrderPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            underruns.store(other.underruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            overruns.store(other.overruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            lastPacketTime = other.lastPacketTime;
+            jitterNs.store(other.jitterNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            latencyNs.store(other.latencyNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            bytesReceived.store(other.bytesReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            bytesSent.store(other.bytesSent.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        return *this;
+    }
+
+    // Copy constructor (creates a snapshot of current values)
+    Statistics(const Statistics& other)
+        : packetsReceived(other.packetsReceived.load(std::memory_order_relaxed))
+        , packetsLost(other.packetsLost.load(std::memory_order_relaxed))
+        , malformedPackets(other.malformedPackets.load(std::memory_order_relaxed))
+        , outOfOrderPackets(other.outOfOrderPackets.load(std::memory_order_relaxed))
+        , underruns(other.underruns.load(std::memory_order_relaxed))
+        , overruns(other.overruns.load(std::memory_order_relaxed))
+        , lastPacketTime(other.lastPacketTime)
+        , jitterNs(other.jitterNs.load(std::memory_order_relaxed))
+        , latencyNs(other.latencyNs.load(std::memory_order_relaxed))
+        , bytesReceived(other.bytesReceived.load(std::memory_order_relaxed))
+        , bytesSent(other.bytesSent.load(std::memory_order_relaxed))
+    {}
+
+    // Copy assignment
+    Statistics& operator=(const Statistics& other) {
+        if (this != &other) {
+            packetsReceived.store(other.packetsReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            packetsLost.store(other.packetsLost.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            malformedPackets.store(other.malformedPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            outOfOrderPackets.store(other.outOfOrderPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            underruns.store(other.underruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            overruns.store(other.overruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            lastPacketTime = other.lastPacketTime;
+            jitterNs.store(other.jitterNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            latencyNs.store(other.latencyNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            bytesReceived.store(other.bytesReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            bytesSent.store(other.bytesSent.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        return *this;
+    }
+
     // Reset all counters
     void reset();
 

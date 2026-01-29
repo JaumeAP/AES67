@@ -7,7 +7,8 @@ cd "$(dirname "$0")"
 
 echo "Building AES67 Manager..."
 
-# Compile Swift files
+# Compile Swift files - include all Views and Models
+# Note: SDPProcessor.swift disabled - needs compatibility fixes
 swiftc -o AES67Manager \
   -target arm64-apple-macos13.0 \
   -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
@@ -15,7 +16,10 @@ swiftc -o AES67Manager \
   -framework Foundation \
   -framework AppKit \
   -framework CoreAudio \
-  AES67ManagerApp.swift \
+  -framework UniformTypeIdentifiers \
+  Models/StreamInfo.swift \
+  Models/DriverManager.swift \
+  Models/MenuBarManager.swift \
   Views/ContentView.swift \
   Views/StreamListView.swift \
   Views/StreamDetailView.swift \
@@ -23,9 +27,10 @@ swiftc -o AES67Manager \
   Views/SettingsView.swift \
   Views/ChannelMappingView.swift \
   Views/ChannelMapDiagnosticView.swift \
-  Models/StreamInfo.swift \
-  Models/DriverManager.swift \
-  Models/MenuBarManager.swift
+  Views/QuickStartView.swift \
+  Views/PTPDiagnosticView.swift \
+  Views/AudioStatusView.swift \
+  AES67ManagerApp.swift
 
 # Create app bundle structure
 echo "Creating app bundle..."

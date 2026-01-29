@@ -76,7 +76,7 @@ struct QuickStartView: View {
                 .environmentObject(driverManager)
                 .tag(4)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            // Note: .page() tab view style not available on macOS - using default
             .animation(.easeInOut, value: currentStep)
         }
         .frame(width: 550, height: 480)

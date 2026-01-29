@@ -57,12 +57,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 endif()
 
-# Find Boost for lockfree containers
-find_package(Boost REQUIRED COMPONENTS system thread)
+# Find Boost for lockfree containers (header-only in modern Boost)
+find_package(Boost 1.70 REQUIRED)
 if(Boost_FOUND)
-    message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
+    message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS} (version ${Boost_VERSION})")
 else()
-    message(FATAL_ERROR "Boost library not found. Please install Boost.")
+    message(FATAL_ERROR "Boost library not found. Please install Boost: brew install boost")
 endif()
 
 # ============================================================================
@@ -105,50 +105,15 @@ else()
     message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
 endif()
 
-# Add ptpd source files directly to the project
-set(PTPD_SOURCES
-    NetworkEngine/PTP/vendor/ptpd/src/ptpd.c
-    NetworkEngine/PTP/vendor/ptpd/src/protocol.c
-    NetworkEngine/PTP/vendor/ptpd/src/display.c
-    NetworkEngine/PTP/vendor/ptpd/src/management.c
-    NetworkEngine/PTP/vendor/ptpd/src/ptp_timers.c
-    NetworkEngine/PTP/vendor/ptpd/src/timingdomain.c
-    NetworkEngine/PTP/vendor/ptpd/src/signaling.c
-    NetworkEngine/PTP/vendor/ptpd/src/arith.c
-    NetworkEngine/PTP/vendor/ptpd/src/bmc.c
-    # Platform-specific implementations
-    NetworkEngine/PTP/vendor/ptpd/src/dep/sys.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/msg.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/net.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/eventtimer.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/configdefaults.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/daemonconfig.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/startup.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/statistics.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/alarms.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/outlierfilter.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/servo.c
-    NetworkEngine/PTP/vendor/ptpd/src/dep/snmp.c
-)
-
-# Create a custom target for ptpd to ensure proper compilation flags
-add_library(ptpd_obj OBJECT ${PTPD_SOURCES})
-target_include_directories(ptpd_obj PRIVATE
-    NetworkEngine/PTP/vendor/ptpd/src
-    NetworkEngine/PTP/vendor/ptpd/src/def
-    NetworkEngine/PTP/vendor/ptpd/src/dep
-)
-target_compile_definitions(ptpd_obj PRIVATE
-    # Define flags to customize ptpd behavior for embedding in coreaudiod
-    PTPD_STANDALONE=0  # Indicate that we're embedding ptpd
-    PTPD_NO_DAEMON=1   # Don't fork or become a daemon
-    PTPD_THREADED=1    # Enable threaded operation
-    PTPD_NO_COMMAND=1  # Don't include command-line interface
-    # Define platform-specific flags if needed
-    _GNU_SOURCE
-    # Disable features that might interfere with coreaudiod process
-    DISABLE_LOGGING=1  # Minimize logging in audio process
-)
+# NOTE: ptpd vendored code disabled - using stub PTP implementation
+# The ptpd integration requires additional work to properly compile on macOS
+# For now, PTPDInterface.cpp provides a stub that simulates PTP lock
+# TODO: Fix ptpd header dependencies and re-enable full PTP support
+#
+# set(PTPD_SOURCES
+#     NetworkEngine/PTP/vendor/ptpd/src/ptpd.c
+#     ... (ptpd sources disabled)
+# )
 
 # ============================================================================
 # Shared Library
@@ -227,8 +192,7 @@ if(APPLE)
 
     target_link_libraries(AES67Driver PRIVATE
         ${ASPL_LIBRARY}
-        ptpd_obj  # Link with our embedded ptpd library
-        ${Boost_LIBRARIES}
+        # ptpd_obj disabled - using stub PTP implementation
         "-framework CoreAudio"
         "-framework CoreFoundation"
         "-framework AudioToolbox"
@@ -359,7 +323,7 @@ if(APPLE)
 endif()
 message(STATUS "  RTP: SimpleRTP (minimal implementation)")
 message(STATUS "  libASPL: ${ASPL_INCLUDE_DIR}")
-message(STATUS "  ptpd: Embedded (from source)")
+message(STATUS "  ptpd: Stub (PTP sync disabled - TODO: fix vendored ptpd)")
 message(STATUS "  Tests: ${BUILD_TESTS}")
 message(STATUS "  Examples: ${BUILD_EXAMPLES}")
 message(STATUS "")
