@@ -5,6 +5,7 @@
 //
 
 #include "StreamManager.h"
+#include "NetworkUtils.h"
 #include "../Driver/DebugLog.h"
 #include <algorithm>
 #include <fstream>
@@ -526,6 +527,25 @@ bool StreamManager::validateNetworkConfig(const SDPSession& sdp, std::string* er
             *errorOut = "Invalid port: 0";
         }
         return false;
+    }
+
+    // Check multicast routing configuration
+    // Get primary ethernet interface for the check
+    std::string primaryIface = NetworkUtils::getPrimaryEthernetInterface();
+
+    if (!NetworkUtils::hasMulticastRoute(primaryIface)) {
+        if (errorOut) {
+            std::string iface = primaryIface.empty() ? "en0" : primaryIface;
+            *errorOut = "WARNING: Multicast routing not configured. Audio may not flow.\n"
+                       "To fix, run: " + NetworkUtils::getMulticastRouteCommand(iface) + "\n"
+                       "Stream will be added but may not receive traffic.";
+        }
+        // Log warning but don't block stream addition
+        AES67_LOG("WARNING: Multicast routing not configured - audio may not flow");
+        if (!primaryIface.empty()) {
+            AES67_LOGF("Run: %s", NetworkUtils::getMulticastRouteCommand(primaryIface).c_str());
+        }
+        // Return true to allow stream addition with warning
     }
 
     return true;

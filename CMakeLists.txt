@@ -57,36 +57,97 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 endif()
 
+# Find Boost for lockfree containers
+find_package(Boost REQUIRED COMPONENTS system thread)
+if(Boost_FOUND)
+    message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
+else()
+    message(FATAL_ERROR "Boost library not found. Please install Boost.")
+endif()
+
 # ============================================================================
 # Dependencies
 # ============================================================================
 
-# Find libASPL (header-only library)
-find_path(ASPL_INCLUDE_DIR aspl/Plugin.hpp
-    PATHS
-        /usr/local/include
-        /opt/homebrew/include
-        ${CMAKE_SOURCE_DIR}/external/libASPL/include
-)
+# Check if ASPL submodule exists
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/aspl/Plugin.hpp")
+    set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
+    message(STATUS "Using ASPL from submodule: ${ASPL_INCLUDE_DIR}")
 
-# Also find libASPL static library
-find_library(ASPL_LIBRARY ASPL
-    PATHS
-        /usr/local/lib
-        /opt/homebrew/lib
-)
+    # Add ASPL as a subdirectory if it has its own CMakeLists.txt
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/CMakeLists.txt")
+        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL" ASPL)
+        set(ASPL_LIBRARY ASPL::ASPL)
+    else()
+        # If ASPL doesn't have CMakeLists.txt, treat as header-only
+        set(ASPL_LIBRARY "")
+    endif()
+else()
+    # Find libASPL (header-only library) in system locations
+    find_path(ASPL_INCLUDE_DIR aspl/Plugin.hpp
+        PATHS
+            /usr/local/include
+            /opt/homebrew/include
+            ${CMAKE_SOURCE_DIR}/external/libASPL/include
+    )
 
-if(NOT ASPL_INCLUDE_DIR)
-    message(FATAL_ERROR "libASPL not found. Please install from https://github.com/gavv/libASPL")
+    # Also find libASPL static library
+    find_library(ASPL_LIBRARY ASPL
+        PATHS
+            /usr/local/lib
+            /opt/homebrew/lib
+    )
+
+    if(NOT ASPL_INCLUDE_DIR)
+        message(FATAL_ERROR "libASPL not found. Please install from https://github.com/gavv/libASPL or add as submodule in external/libASPL/")
+    endif()
+
+    message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
 endif()
 
-message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
+# Add ptpd source files directly to the project
+set(PTPD_SOURCES
+    NetworkEngine/PTP/vendor/ptpd/src/ptpd.c
+    NetworkEngine/PTP/vendor/ptpd/src/protocol.c
+    NetworkEngine/PTP/vendor/ptpd/src/display.c
+    NetworkEngine/PTP/vendor/ptpd/src/management.c
+    NetworkEngine/PTP/vendor/ptpd/src/ptp_timers.c
+    NetworkEngine/PTP/vendor/ptpd/src/timingdomain.c
+    NetworkEngine/PTP/vendor/ptpd/src/signaling.c
+    NetworkEngine/PTP/vendor/ptpd/src/arith.c
+    NetworkEngine/PTP/vendor/ptpd/src/bmc.c
+    # Platform-specific implementations
+    NetworkEngine/PTP/vendor/ptpd/src/dep/sys.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/msg.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/net.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/eventtimer.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/configdefaults.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/daemonconfig.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/startup.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/statistics.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/alarms.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/outlierfilter.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/servo.c
+    NetworkEngine/PTP/vendor/ptpd/src/dep/snmp.c
+)
 
-# ptpd (we'll link against it when building on macOS)
-find_library(PTPD_LIBRARY ptpd
-    PATHS
-        /usr/local/lib
-        /opt/homebrew/lib
+# Create a custom target for ptpd to ensure proper compilation flags
+add_library(ptpd_obj OBJECT ${PTPD_SOURCES})
+target_include_directories(ptpd_obj PRIVATE
+    NetworkEngine/PTP/vendor/ptpd/src
+    NetworkEngine/PTP/vendor/ptpd/src/def
+    NetworkEngine/PTP/vendor/ptpd/src/dep
+)
+target_compile_definitions(ptpd_obj PRIVATE
+    # Define flags to customize ptpd behavior for embedding in coreaudiod
+    PTPD_STANDALONE=0  # Indicate that we're embedding ptpd
+    PTPD_NO_DAEMON=1   # Don't fork or become a daemon
+    PTPD_THREADED=1    # Enable threaded operation
+    PTPD_NO_COMMAND=1  # Don't include command-line interface
+    # Define platform-specific flags if needed
+    _GNU_SOURCE
+    # Disable features that might interfere with coreaudiod process
+    DISABLE_LOGGING=1  # Minimize logging in audio process
 )
 
 # ============================================================================
@@ -97,6 +158,9 @@ find_library(PTPD_LIBRARY ptpd
 set(SHARED_SOURCES
     Shared/Types.cpp
     Shared/Config.cpp
+    Shared/NonBlockingLogger.cpp
+    Shared/ResourceCleanupManager.cpp
+    Shared/ErrorRecoveryManager.cpp
 )
 
 # Driver source files
@@ -104,6 +168,7 @@ set(DRIVER_SOURCES
     Driver/SDPParser.cpp
     Driver/AES67Device.cpp
     Driver/AES67IOHandler.cpp
+    Driver/AudioThreadPriority.cpp
 )
 
 # Network Engine source files
@@ -114,7 +179,20 @@ set(NETWORK_SOURCES
     NetworkEngine/RTP/SimpleRTP.cpp
     NetworkEngine/RTP/RTPReceiver.cpp
     NetworkEngine/RTP/RTPTransmitter.cpp
+    NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
+    NetworkEngine/RTP/LockFreePacketPool.cpp
+    NetworkEngine/RTP/BufferStatusMonitor.cpp
     NetworkEngine/PTP/PTPClock.cpp
+    NetworkEngine/PTP/PTPDInterface.cpp
+    NetworkEngine/PTP/CustomSys.cpp
+    NetworkEngine/PTP/PhaseLockedLoop.cpp
+    NetworkEngine/Resampling/Resampler.cpp
+    NetworkEngine/Resampling/ClockAdjustmentController.cpp
+    NetworkEngine/Resampling/SmoothedPIController.cpp
+    NetworkEngine/Resampling/SampleRateAdapter.cpp
+    NetworkEngine/NetworkUtils.cpp
+    NetworkEngine/NetworkErrorHandler.cpp
+    NetworkEngine/NetworkInterfaceDetection.cpp
     NetworkEngine/DoPDecoder.cpp
     NetworkEngine/Discovery/SAPListener.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
@@ -143,16 +221,18 @@ if(APPLE)
         ${ASPL_INCLUDE_DIR}
     )
 
+    target_include_directories(AES67Driver PRIVATE
+        ${Boost_INCLUDE_DIRS}
+    )
+
     target_link_libraries(AES67Driver PRIVATE
         ${ASPL_LIBRARY}
+        ptpd_obj  # Link with our embedded ptpd library
+        ${Boost_LIBRARIES}
         "-framework CoreAudio"
         "-framework CoreFoundation"
         "-framework AudioToolbox"
     )
-
-    if(PTPD_LIBRARY)
-        target_link_libraries(AES67Driver PRIVATE ${PTPD_LIBRARY})
-    endif()
 
     # Bundle properties
     set_target_properties(AES67Driver PROPERTIES
@@ -279,11 +359,7 @@ if(APPLE)
 endif()
 message(STATUS "  RTP: SimpleRTP (minimal implementation)")
 message(STATUS "  libASPL: ${ASPL_INCLUDE_DIR}")
-if(PTPD_LIBRARY)
-    message(STATUS "  ptpd: ${PTPD_LIBRARY}")
-else()
-    message(WARNING "  ptpd: NOT FOUND (PTP support will be limited)")
-endif()
+message(STATUS "  ptpd: Embedded (from source)")
 message(STATUS "  Tests: ${BUILD_TESTS}")
 message(STATUS "  Examples: ${BUILD_EXAMPLES}")
 message(STATUS "")

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <algorithm>
 #include <cmath>
 
@@ -71,6 +72,15 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // Set non-blocking mode
     int flags = fcntl(sockfd_, F_GETFL, 0);
     fcntl(sockfd_, F_SETFL, flags | O_NONBLOCK);
+
+    // Add receive timeout (100ms) to prevent indefinite blocking
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000; // 100ms
+    if (setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        // Log warning but continue - non-critical
+        // Timeout is a safeguard; non-blocking mode is primary mechanism
+    }
 
     // Increase receive buffer size (4 MB for high channel counts)
     int rcvbuf = 4 * 1024 * 1024;
@@ -159,8 +169,23 @@ ssize_t RTPSocket::receive(RTPPacket& packet, uint8_t* buffer, size_t bufferSize
 
     // Receive into buffer
     ssize_t bytesReceived = recvfrom(sockfd_, buffer, bufferSize, 0, nullptr, nullptr);
+
+    // Handle receive errors and conditions
+    if (bytesReceived < 0) {
+        // EAGAIN/EWOULDBLOCK means no data available (not an error in non-blocking mode)
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return 0; // No data available, caller should retry
+        }
+
+        // Actual error occurred (connection lost, socket closed, etc.)
+        // Possible errors: EBADF, ECONNREFUSED, EFAULT, EINTR, EINVAL, ENOMEM, ENOTCONN, ENOTSOCK
+        return -1;
+    }
+
+    // Check for valid RTP packet size
     if (bytesReceived < (ssize_t)sizeof(RTPHeader)) {
-        return -1; // Too small to be valid RTP packet
+        // Packet too small to contain RTP header
+        return -1;
     }
 
     // Parse header
@@ -187,6 +212,22 @@ void RTPSocket::close() {
         ::close(sockfd_);
         sockfd_ = -1;
     }
+}
+
+bool RTPSocket::isValid() const {
+    if (sockfd_ < 0) {
+        return false;
+    }
+
+    // Use getsockopt with SO_ERROR to check if socket is in error state
+    int error = 0;
+    socklen_t len = sizeof(error);
+    if (getsockopt(sockfd_, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+        return false; // getsockopt itself failed
+    }
+
+    // If error is non-zero, socket is in error state
+    return error == 0;
 }
 
 //

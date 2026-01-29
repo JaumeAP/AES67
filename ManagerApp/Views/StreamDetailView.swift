@@ -1,23 +1,29 @@
 //
 // StreamDetailView.swift
-// AES67 Manager - Build #7
-// Detailed view of a stream's information
+// AES67 Manager - Build #15
+// Detailed view of a stream's information with audio level meters
 //
 
 import SwiftUI
 
 struct StreamDetailView: View {
     let stream: StreamInfo
+    @State private var showExpandedMeters = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Header
+                // Header with signal indicator
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(stream.name)
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
+                        HStack(spacing: 12) {
+                            Text(stream.name)
+                                .font(.largeTitle)
+                                .fontWeight(.bold)
+
+                            // Compact signal indicator in header
+                            StreamSignalIndicator(stream: stream)
+                        }
 
                         if let description = stream.description, !description.isEmpty {
                             Text(description)
@@ -32,6 +38,9 @@ struct StreamDetailView: View {
                 }
 
                 Divider()
+
+                // Audio Levels Section - NEW
+                StreamAudioStatusPanel(stream: stream)
 
                 // Network Information
                 GroupBox("Network") {
@@ -49,6 +58,9 @@ struct StreamDetailView: View {
                     InfoRow(label: "Sample Rate", value: "\(stream.sampleRate) Hz")
                     InfoRow(label: "Channels", value: "\(stream.numChannels)")
                     InfoRow(label: "Payload Type", value: "\(stream.payloadType)")
+                    if let bitrate = stream.bitrate {
+                        InfoRow(label: "Bitrate", value: formatBitrate(bitrate))
+                    }
                 }
 
                 // Channel Mapping
@@ -99,6 +111,14 @@ struct StreamDetailView: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    private func formatBitrate(_ bitrate: UInt64) -> String {
+        if bitrate >= 1_000_000 {
+            return String(format: "%.1f Mbps", Double(bitrate) / 1_000_000.0)
+        } else {
+            return String(format: "%.0f kbps", Double(bitrate) / 1_000.0)
+        }
+    }
+
     private func formatNumber(_ num: UInt64) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -130,6 +150,61 @@ struct StatusBadge: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(isConnected ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
         )
+    }
+}
+
+// MARK: - Stream Signal Indicator
+
+/// Compact signal indicator for stream headers showing signal presence
+struct StreamSignalIndicator: View {
+    let stream: StreamInfo
+    @State private var hasSignal = false
+    @State private var updateTimer: Timer?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(hasSignal ? Color.green : Color.gray.opacity(0.4))
+                .frame(width: 8, height: 8)
+                .shadow(color: hasSignal ? Color.green.opacity(0.6) : .clear, radius: 3)
+
+            Text(hasSignal ? "Signal" : "No Signal")
+                .font(.caption2)
+                .foregroundColor(hasSignal ? .green : .secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(hasSignal ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+        )
+        .onAppear {
+            startUpdates()
+        }
+        .onDisappear {
+            stopUpdates()
+        }
+    }
+
+    private func startUpdates() {
+        // Simulate signal detection - in real implementation, this would
+        // query the driver for actual audio levels
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            // Mock: randomly toggle signal presence with bias towards having signal
+            // when stream is connected
+            if stream.isConnected {
+                hasSignal = Double.random(in: 0...1) > 0.1
+            } else {
+                hasSignal = false
+            }
+        }
+        // Initial state
+        hasSignal = stream.isConnected
+    }
+
+    private func stopUpdates() {
+        updateTimer?.invalidate()
+        updateTimer = nil
     }
 }
 

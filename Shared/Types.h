@@ -10,6 +10,7 @@
 #include <string>
 #include <array>
 #include <chrono>
+#include <atomic>
 #include <uuid/uuid.h>
 
 namespace AES67 {
@@ -64,25 +65,52 @@ enum class SampleRate : uint32_t {
 // Statistics
 // ============================================================================
 
-struct Statistics {
-    // Packet statistics
+// Non-atomic snapshot structure for reading statistics
+struct StatisticsSnapshot {
     uint64_t packetsReceived{0};
     uint64_t packetsLost{0};
     uint64_t malformedPackets{0};
     uint64_t outOfOrderPackets{0};
-
-    // Audio statistics
     uint64_t underruns{0};
     uint64_t overruns{0};
-
-    // Timing
     std::chrono::steady_clock::time_point lastPacketTime;
     int64_t jitterNs{0};
     int64_t latencyNs{0};
-
-    // Byte counters
     uint64_t bytesReceived{0};
     uint64_t bytesSent{0};
+
+    double getPacketLossPercent() const {
+        if (packetsReceived == 0) return 0.0;
+        return (static_cast<double>(packetsLost) / (packetsReceived + packetsLost)) * 100.0;
+    }
+
+    int64_t timeSinceLastPacketMs() const {
+        if (lastPacketTime.time_since_epoch().count() == 0) return -1;
+        auto now = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastPacketTime);
+        return duration.count();
+    }
+};
+
+struct Statistics {
+    // Packet statistics (atomic for lock-free updates)
+    std::atomic<uint64_t> packetsReceived{0};
+    std::atomic<uint64_t> packetsLost{0};
+    std::atomic<uint64_t> malformedPackets{0};
+    std::atomic<uint64_t> outOfOrderPackets{0};
+
+    // Audio statistics (atomic for lock-free updates)
+    std::atomic<uint64_t> underruns{0};
+    std::atomic<uint64_t> overruns{0};
+
+    // Timing (non-atomic, requires synchronization if updated from multiple threads)
+    std::chrono::steady_clock::time_point lastPacketTime;
+    std::atomic<int64_t> jitterNs{0};
+    std::atomic<int64_t> latencyNs{0};
+
+    // Byte counters (atomic for lock-free updates)
+    std::atomic<uint64_t> bytesReceived{0};
+    std::atomic<uint64_t> bytesSent{0};
 
     // Reset all counters
     void reset();
@@ -92,6 +120,9 @@ struct Statistics {
 
     // Time since last packet (milliseconds)
     int64_t timeSinceLastPacketMs() const;
+
+    // Create a non-atomic snapshot copy (for consistent reads across multiple fields)
+    StatisticsSnapshot snapshot() const;
 };
 
 // ============================================================================
@@ -171,8 +202,9 @@ struct DeviceConfig {
     bool ptpEnabled{true};
     bool sapDiscoveryEnabled{true};
 
-    // Ring buffer settings
-    size_t ringBufferSize{480};  // Samples (enough for 1ms @ 384kHz)
+    // Ring buffer settings (deprecated - calculated dynamically based on sample rate)
+    // See AES67Device::CalculateRingBufferSize() for actual sizing logic
+    size_t ringBufferSize{512};  // Minimum size (power of 2)
 
     // Device identification
     std::string deviceName{"AES67 Device"};

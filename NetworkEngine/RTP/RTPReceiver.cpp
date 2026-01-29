@@ -9,6 +9,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <chrono>
+#include <sys/select.h>
 
 namespace AES67 {
 
@@ -53,9 +54,16 @@ bool RTPReceiver::start() {
         return false;
     }
 
-    // Start receive thread
+    // Reset jitter buffer
+    jitterBuffer_.reset();
+    expectedSequenceNumber_.store(0, std::memory_order_relaxed);
+
+    // Start receive thread (producer - adds packets to jitter buffer)
     running_ = true;
     receiveThread_ = std::thread(&RTPReceiver::receiveLoop, this);
+
+    // Start consume thread (consumer - reads from jitter buffer and writes to ring buffers)
+    consumeThread_ = std::thread(&RTPReceiver::consumeLoop, this);
 
     return true;
 }
@@ -71,20 +79,37 @@ void RTPReceiver::stop() {
         receiveThread_.join();
     }
 
+    if (consumeThread_.joinable()) {
+        consumeThread_.join();
+    }
+
     rtpSocket_.close();
     connected_ = false;
 }
 
-Statistics RTPReceiver::getStatistics() const {
-    std::lock_guard<std::mutex> lock(statsMutex_);
-    return stats_;
+StatisticsSnapshot RTPReceiver::getStatistics() const {
+    // Return a consistent snapshot of atomic statistics
+    return stats_.snapshot();
 }
 
 void RTPReceiver::resetStatistics() {
-    std::lock_guard<std::mutex> lock(statsMutex_);
-    std::memset(&stats_, 0, sizeof(stats_));
-    lastSequenceNumber_ = 0;
-    lastTimestamp_ = 0;
+    // Reset all atomic counters
+    stats_.packetsReceived.store(0, std::memory_order_relaxed);
+    stats_.packetsLost.store(0, std::memory_order_relaxed);
+    stats_.malformedPackets.store(0, std::memory_order_relaxed);
+    stats_.outOfOrderPackets.store(0, std::memory_order_relaxed);
+    stats_.underruns.store(0, std::memory_order_relaxed);
+    stats_.overruns.store(0, std::memory_order_relaxed);
+    stats_.jitterNs.store(0, std::memory_order_relaxed);
+    stats_.latencyNs.store(0, std::memory_order_relaxed);
+    stats_.bytesReceived.store(0, std::memory_order_relaxed);
+    stats_.bytesSent.store(0, std::memory_order_relaxed);
+    lastSequenceNumber_.store(0, std::memory_order_relaxed);
+    lastTimestamp_.store(0, std::memory_order_relaxed);
+    expectedSequenceNumber_.store(0, std::memory_order_relaxed);
+
+    // Reset jitter buffer
+    jitterBuffer_.reset();
 }
 
 bool RTPReceiver::isConnected() const {
@@ -136,29 +161,142 @@ bool RTPReceiver::updateMapping(const ChannelMapping& newMapping) {
 }
 
 void RTPReceiver::receiveLoop() {
-    // Packet polling interval (500 μs = 0.5 ms)
-    // Fast enough for 48kHz @ 48 samples/packet (1ms intervals)
-    constexpr int kPollingIntervalUs = 500;
+    fd_set readfds;
+    struct timeval tv;
 
     RTP::RTPPacket packet;
 
     while (running_) {
-        // Try to receive packet
-        ssize_t bytesReceived = rtpSocket_.receive(packet, receiveBuffer_, sizeof(receiveBuffer_));
+        // Set up select with 1ms timeout (responsive but not spinning)
+        FD_ZERO(&readfds);
+        int sockfd = rtpSocket_.getFd();
+        if (sockfd < 0) {
+            // Socket not valid, wait and retry
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        FD_SET(sockfd, &readfds);
 
-        if (bytesReceived > 0) {
-            processPacket(packet);
+        tv.tv_sec = 0;
+        tv.tv_usec = 1000;  // 1ms timeout
+
+        int ret = select(sockfd + 1, &readfds, nullptr, nullptr, &tv);
+
+        if (ret > 0 && FD_ISSET(sockfd, &readfds)) {
+            // Data available - receive it
+            ssize_t bytesReceived = rtpSocket_.receive(packet, receiveBuffer_, sizeof(receiveBuffer_));
+            if (bytesReceived > 0) {
+                processPacket(packet);
+            }
+            // bytesReceived == 0 means no data (EAGAIN) - handled by select timeout
+            // bytesReceived < 0 means error - will be caught by getFd() < 0 check or next iteration
+        }
+        // ret == 0 means timeout - just loop again
+        // ret < 0 means select error - loop again and check socket validity
+    }
+}
+
+void RTPReceiver::consumeLoop() {
+    // This thread pulls packets from the jitter buffer in sequence order
+    // and writes them to the ring buffers after decoding
+
+    // Calculate packet interval based on sample rate and frame count
+    // For AES67, typical packet time is 1ms (48 samples at 48kHz)
+    // Use a conservative interval to avoid spinning too much
+    const auto packetInterval = std::chrono::microseconds(500); // 500us (2x faster than 1ms packets)
+
+    size_t outputLength = 0;
+    uint64_t presentationTime = 0;
+
+    while (running_) {
+        // Get the expected next packet from the jitter buffer
+        uint32_t expectedSeq = expectedSequenceNumber_.load(std::memory_order_relaxed);
+
+        bool gotPacket = jitterBuffer_.getNextPacket(
+            jitterReadBuffer_,
+            sizeof(jitterReadBuffer_),
+            outputLength,
+            presentationTime,
+            expectedSeq
+        );
+
+        if (gotPacket) {
+            // Successfully got the next packet in sequence
+            // Increment expected sequence number (handle 16-bit wraparound)
+            expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
+
+            // Decode based on encoding type
+            if (sdp_.encoding == "L16") {
+                decodeL16(jitterReadBuffer_, outputLength);
+            } else if (sdp_.encoding == "L24") {
+                decodeL24(jitterReadBuffer_, outputLength);
+            }
+
+            // Note: decodeL16/L24 already call mapChannelsToDevice internally
         } else {
-            // No packet available, wait briefly
-            std::this_thread::sleep_for(std::chrono::microseconds(kPollingIntervalUs));
+            // Packet not yet available - this could be:
+            // 1. Jitter buffer underrun (packet hasn't arrived yet)
+            // 2. Packet was dropped or lost
+            // 3. Out-of-order packet in buffer but not the one we want
+
+            // Check if there are any packets in the buffer
+            size_t bufferedCount = jitterBuffer_.getBufferedPacketCount();
+
+            if (bufferedCount > 0) {
+                // There are packets, but not the one we want
+                // This indicates out-of-order delivery or packet loss
+
+                // Try waiting a bit for the expected packet to arrive
+                // If it doesn't arrive within a reasonable time, skip it
+                static constexpr int kMaxRetries = 3;
+                int retries = 0;
+
+                while (retries < kMaxRetries && running_) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+
+                    gotPacket = jitterBuffer_.getNextPacket(
+                        jitterReadBuffer_,
+                        sizeof(jitterReadBuffer_),
+                        outputLength,
+                        presentationTime,
+                        expectedSeq
+                    );
+
+                    if (gotPacket) {
+                        // Got it on retry
+                        expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
+
+                        if (sdp_.encoding == "L16") {
+                            decodeL16(jitterReadBuffer_, outputLength);
+                        } else if (sdp_.encoding == "L24") {
+                            decodeL24(jitterReadBuffer_, outputLength);
+                        }
+                        break;
+                    }
+
+                    retries++;
+                }
+
+                if (!gotPacket) {
+                    // Packet loss - skip to next sequence number
+                    expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
+                    stats_.packetsLost.fetch_add(1, std::memory_order_relaxed);
+                    // Only count as underrun if we actually had packets but not the right one
+                    stats_.outOfOrderPackets.fetch_add(1, std::memory_order_relaxed);
+                }
+            } else {
+                // No packets in buffer at all - underrun
+                // Sleep a bit to allow packets to arrive
+                std::this_thread::sleep_for(packetInterval);
+                stats_.underruns.fetch_add(1, std::memory_order_relaxed);
+            }
         }
     }
 }
 
 void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
     if (!validatePacket(packet)) {
-        std::lock_guard<std::mutex> lock(statsMutex_);
-        stats_.malformedPackets++;
+        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -171,25 +309,35 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
     size_t payloadSize = packet.payloadSize;
 
     if (!payload || payloadSize == 0) {
-        std::lock_guard<std::mutex> lock(statsMutex_);
-        stats_.malformedPackets++;
+        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
     // Update connection state
     if (!connected_) {
         connected_ = true;
+        // Initialize expected sequence number from first packet
+        expectedSequenceNumber_.store(sequenceNumber, std::memory_order_relaxed);
     }
     lastPacketTime_ = std::chrono::steady_clock::now();
 
     // Update statistics
     updateStats(sequenceNumber, payloadSize);
 
-    // Decode based on encoding type
-    if (sdp_.encoding == "L16") {
-        decodeL16(payload, payloadSize);
-    } else if (sdp_.encoding == "L24") {
-        decodeL24(payload, payloadSize);
+    // Calculate presentation time from RTP timestamp
+    // For AES67, timestamp is in sample units at the stream's sample rate
+    // Convert to nanoseconds: (timestamp / sampleRate) * 1e9
+    uint64_t presentationTime = 0;
+    if (sdp_.sampleRate > 0) {
+        // Use 64-bit arithmetic to prevent overflow
+        presentationTime = (static_cast<uint64_t>(timestamp) * 1000000000ULL) / sdp_.sampleRate;
+    }
+
+    // Add packet to jitter buffer (lock-free operation)
+    // The jitter buffer will handle reordering based on sequence numbers
+    if (!jitterBuffer_.addPacket(payload, payloadSize, sequenceNumber, presentationTime)) {
+        // Jitter buffer full or slot already occupied
+        stats_.overruns.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -225,8 +373,7 @@ void RTPReceiver::decodeL16(const uint8_t* payload, size_t payloadSize) {
     // Ensure audio buffer is large enough
     const size_t totalSamples = frameCount * sdp_.numChannels;
     if (totalSamples > audioBuffer_.size()) {
-        std::lock_guard<std::mutex> lock(statsMutex_);
-        stats_.malformedPackets++;
+        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -259,8 +406,7 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
     // Ensure audio buffer is large enough
     const size_t totalSamples = frameCount * sdp_.numChannels;
     if (totalSamples > audioBuffer_.size()) {
-        std::lock_guard<std::mutex> lock(statsMutex_);
-        stats_.malformedPackets++;
+        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -318,29 +464,29 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
 
         if (written < frameCount && !hadUnderrun) {
             // Ring buffer full - count underrun once per packet
-            std::lock_guard<std::mutex> lock(statsMutex_);
-            stats_.underruns++;
+            stats_.underruns.fetch_add(1, std::memory_order_relaxed);
             hadUnderrun = true;
         }
     }
 }
 
 void RTPReceiver::updateStats(uint16_t sequenceNumber, size_t payloadSize) {
-    std::lock_guard<std::mutex> lock(statsMutex_);
+    // Atomic operations eliminate need for mutex lock
 
     // Detect packet loss (sequence number gaps)
-    if (stats_.packetsReceived > 0) {
-        uint16_t expected = lastSequenceNumber_ + 1;
+    uint64_t currentPacketCount = stats_.packetsReceived.load(std::memory_order_relaxed);
+    if (currentPacketCount > 0) {
+        uint16_t expected = lastSequenceNumber_.load(std::memory_order_relaxed) + 1;
         if (sequenceNumber != expected) {
             // Handle sequence number wrap-around
             uint16_t gap = sequenceNumber - expected;
-            stats_.packetsLost += gap;
+            stats_.packetsLost.fetch_add(gap, std::memory_order_relaxed);
         }
     }
 
-    lastSequenceNumber_ = sequenceNumber;
-    stats_.packetsReceived++;
-    stats_.bytesReceived += payloadSize;
+    lastSequenceNumber_.store(sequenceNumber, std::memory_order_relaxed);
+    stats_.packetsReceived.fetch_add(1, std::memory_order_relaxed);
+    stats_.bytesReceived.fetch_add(payloadSize, std::memory_order_relaxed);
 
     // Note: Packet loss percentage is calculated by Statistics::getPacketLossPercent()
 }

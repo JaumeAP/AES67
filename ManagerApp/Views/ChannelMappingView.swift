@@ -1,16 +1,31 @@
 //
 // ChannelMappingView.swift
 // AES67 Manager - Build #17
-// Full 128-channel interactive mapping visualizer
+// Full 128-channel interactive mapping visualizer with simple/advanced modes
 //
 
 import SwiftUI
+
+// MARK: - View Mode
+
+enum ChannelViewMode: String, CaseIterable {
+    case simple    // Only show used channels + next available
+    case advanced  // Show all 128 channels (current behavior)
+
+    var label: String {
+        switch self {
+        case .simple: return "Simple"
+        case .advanced: return "Advanced"
+        }
+    }
+}
 
 struct ChannelMappingView: View {
     @ObservedObject var driverManager: DriverManager
     @State private var selectedChannel: Int? = nil
     @State private var selectedStream: StreamInfo? = nil
     @State private var hoveredChannel: Int? = nil
+    @State private var viewMode: ChannelViewMode = .simple
 
     private let totalChannels = 128
     private let channelsPerRow = 16
@@ -18,43 +33,19 @@ struct ChannelMappingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header with view mode toggle
             headerView
 
             Divider()
 
-            HStack(alignment: .top, spacing: 20) {
-                // Channel Grid
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("128-Channel Device Layout")
-                        .font(.headline)
-                        .padding(.horizontal)
-
-                    channelGridView
-                        .padding(.horizontal)
-
-                    channelInfoBar
-                        .padding(.horizontal)
+            // Content based on view mode
+            Group {
+                switch viewMode {
+                case .simple:
+                    simpleView
+                case .advanced:
+                    advancedGridView
                 }
-                .frame(maxWidth: .infinity)
-
-                Divider()
-
-                // Stream List & Controls
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Active Streams")
-                        .font(.headline)
-
-                    streamListView
-
-                    Spacer()
-
-                    if let stream = selectedStream {
-                        mappingControlsView(for: stream)
-                    }
-                }
-                .frame(width: 280)
-                .padding()
             }
             .frame(maxHeight: .infinity)
         }
@@ -77,14 +68,250 @@ struct ChannelMappingView: View {
 
             Spacer()
 
-            // Legend
-            HStack(spacing: 16) {
-                LegendItem(color: .gray.opacity(0.2), label: "Available")
-                LegendItem(color: .blue, label: "Assigned")
-                LegendItem(color: .green, label: "Selected")
+            // View mode toggle
+            Picker("View", selection: $viewMode) {
+                ForEach(ChannelViewMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+
+            Spacer()
+                .frame(width: 20)
+
+            // Legend (only shown in advanced mode)
+            if viewMode == .advanced {
+                HStack(spacing: 16) {
+                    LegendItem(color: .gray.opacity(0.2), label: "Available")
+                    LegendItem(color: .blue, label: "Assigned")
+                    LegendItem(color: .green, label: "Selected")
+                }
             }
         }
         .padding()
+    }
+
+    // MARK: - Simple View
+
+    @ViewBuilder
+    private var simpleView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Summary Card
+                summaryCard
+
+                // Stream Assignments Section
+                streamAssignmentsSection
+
+                // Quick Actions Section
+                quickActionsSection
+            }
+            .padding()
+        }
+    }
+
+    private var summaryCard: some View {
+        HStack(spacing: 24) {
+            // Channels Used
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Channels Used")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(usedChannelCount)")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(.blue)
+                    Text("/ 128")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Divider()
+                .frame(height: 50)
+
+            // Streams Mapped
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Streams Mapped")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(mappedStreamCount)")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(.green)
+                    Text("/ \(driverManager.streams.count)")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Divider()
+                .frame(height: 50)
+
+            // Available Channels
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Available")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(availableChannelCount)")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(availableChannelCount > 0 ? .green : .orange)
+                    Text("channels")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Visual Progress
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("Utilization")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                ProgressView(value: Double(usedChannelCount), total: 128)
+                    .progressViewStyle(.linear)
+                    .frame(width: 120)
+                Text("\(Int(Double(usedChannelCount) / 128.0 * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(12)
+    }
+
+    private var streamAssignmentsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Stream Assignments")
+                .font(.headline)
+
+            if driverManager.streams.isEmpty {
+                emptyStateView
+            } else {
+                ForEach(driverManager.streams) { stream in
+                    SimpleStreamRow(
+                        stream: stream,
+                        color: colorForStream(stream),
+                        onAutoMap: { autoMapStream(stream) },
+                        onClearMapping: { clearMapping(for: stream) }
+                    )
+                }
+            }
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "waveform.path")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary.opacity(0.5))
+
+            Text("No Streams Added")
+                .font(.headline)
+                .foregroundColor(.secondary)
+
+            Text("Add streams from the Stream List to begin mapping channels.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(40)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(12)
+    }
+
+    private var quickActionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Quick Actions")
+                .font(.headline)
+
+            HStack(spacing: 12) {
+                Button(action: autoMapAllStreams) {
+                    HStack {
+                        Image(systemName: "wand.and.stars")
+                        Text("Auto-Map All Streams")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(unmappedStreamCount == 0)
+
+                Button(action: clearAllMappings) {
+                    HStack {
+                        Image(systemName: "trash")
+                        Text("Clear All Mappings")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .foregroundColor(.red)
+                .disabled(mappedStreamCount == 0)
+
+                Button(action: { viewMode = .advanced }) {
+                    HStack {
+                        Image(systemName: "square.grid.3x3")
+                        Text("Advanced View")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            // Info text
+            if unmappedStreamCount > 0 {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.blue)
+                    Text("\(unmappedStreamCount) stream\(unmappedStreamCount == 1 ? "" : "s") not yet mapped. Click 'Auto-Map All' to assign channels automatically.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    // MARK: - Advanced Grid View (Original Implementation)
+
+    private var advancedGridView: some View {
+        HStack(alignment: .top, spacing: 20) {
+            // Channel Grid
+            VStack(alignment: .leading, spacing: 12) {
+                Text("128-Channel Device Layout")
+                    .font(.headline)
+                    .padding(.horizontal)
+
+                channelGridView
+                    .padding(.horizontal)
+
+                channelInfoBar
+                    .padding(.horizontal)
+            }
+            .frame(maxWidth: .infinity)
+
+            Divider()
+
+            // Stream List & Controls
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Active Streams")
+                    .font(.headline)
+
+                streamListView
+
+                Spacer()
+
+                if let stream = selectedStream {
+                    mappingControlsView(for: stream)
+                }
+            }
+            .frame(width: 280)
+            .padding()
+        }
     }
 
     // MARK: - Channel Grid View
@@ -147,7 +374,7 @@ struct ChannelMappingView: View {
                     .fontWeight(.semibold)
 
                 if let mapping = mappingForChannel(channel) {
-                    Text("•")
+                    Text("*")
                         .foregroundColor(.secondary)
                     Text(mapping.streamName)
                         .foregroundColor(.blue)
@@ -155,7 +382,7 @@ struct ChannelMappingView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {
-                    Text("•")
+                    Text("*")
                         .foregroundColor(.secondary)
                     Text("Available")
                         .foregroundColor(.secondary)
@@ -238,7 +465,7 @@ struct ChannelMappingView: View {
         .cornerRadius(8)
     }
 
-    // MARK: - Helper Functions
+    // MARK: - Computed Properties
 
     private var usedChannelCount: Int {
         var count = 0
@@ -249,6 +476,20 @@ struct ChannelMappingView: View {
         }
         return count
     }
+
+    private var availableChannelCount: Int {
+        totalChannels - usedChannelCount
+    }
+
+    private var mappedStreamCount: Int {
+        driverManager.streams.filter { $0.mapping != nil }.count
+    }
+
+    private var unmappedStreamCount: Int {
+        driverManager.streams.filter { $0.mapping == nil }.count
+    }
+
+    // MARK: - Helper Functions
 
     private func mappingForChannel(_ channel: Int) -> ChannelMappingInfo? {
         for stream in driverManager.streams {
@@ -309,8 +550,98 @@ struct ChannelMappingView: View {
         }
     }
 
+    private func autoMapStream(_ stream: StreamInfo) {
+        // Same as autoAssignChannels but called from simple view
+        autoAssignChannels(for: stream)
+    }
+
     private func clearMapping(for stream: StreamInfo) {
         driverManager.clearMapping(streamID: stream.id)
+    }
+
+    private func autoMapAllStreams() {
+        // Auto-map all unmapped streams in order
+        for stream in driverManager.streams {
+            if stream.mapping == nil {
+                autoAssignChannels(for: stream)
+            }
+        }
+    }
+
+    private func clearAllMappings() {
+        for stream in driverManager.streams {
+            if stream.mapping != nil {
+                driverManager.clearMapping(streamID: stream.id)
+            }
+        }
+    }
+}
+
+// MARK: - Simple Stream Row
+
+struct SimpleStreamRow: View {
+    let stream: StreamInfo
+    let color: Color
+    let onAutoMap: () -> Void
+    let onClearMapping: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Color indicator
+            Circle()
+                .fill(color)
+                .frame(width: 12, height: 12)
+
+            // Stream info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(stream.name)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    // Channel count
+                    Label("\(stream.numChannels) ch", systemImage: "waveform")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    // Mapping status
+                    if let mapping = stream.mapping {
+                        Label("Ch \(mapping.deviceChannelStart + 1)-\(mapping.deviceChannelStart + mapping.deviceChannelCount)",
+                              systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    } else {
+                        Label("Not mapped", systemImage: "exclamationmark.circle")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Actions
+            if stream.mapping != nil {
+                Button(action: onClearMapping) {
+                    Image(systemName: "xmark.circle")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear mapping")
+            } else {
+                Button("Auto-Map", action: onAutoMap)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(stream.mapping != nil ? Color.green.opacity(0.3) : Color.orange.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 
