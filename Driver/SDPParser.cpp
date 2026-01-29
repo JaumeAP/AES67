@@ -594,7 +594,7 @@ StreamInfo SDPParser::toStreamInfo(const SDPSession& session) {
     info.ptp.masterMAC = session.ptpMasterMAC;
     info.ptp.enabled = (session.ptpDomain >= 0);
 
-    return info;
+    return std::move(info);
 }
 
 SDPSession SDPParser::fromStreamInfo(const StreamInfo& info) {

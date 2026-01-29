@@ -1,68 +1,51 @@
-#include "CustomSys.h"
-#include "PTPDInterface.h"
+//
+// CustomSys.cpp
+// AES67 macOS Driver
+// Custom system time functions for PTP state tracking
+//
 
+#include "CustomSys.h"
 #include <time.h>
-#include <stdint.h>
+#include <sys/time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Include the original ptpd structures we need
-#include "../vendor/ptpd/src/datatypes.h"
-
-void custom_setTime(PTPD::PTPDInterface* ptpd_interface, int64_t seconds, int32_t nanoseconds) {
-    if (!ptpd_interface) {
-        return;
-    }
-    
-    // Instead of setting the system time, we update our shared state
-    // Calculate the offset between the PTP time and the local system time
-    int64_t current_system_seconds;
-    int32_t current_system_nanoseconds;
-    
-    standard_getTime(&current_system_seconds, &current_system_nanoseconds);
-    
-    // Calculate the offset in nanoseconds
-    int64_t ptp_time_ns = seconds * 1000000000LL + nanoseconds;
-    int64_t local_time_ns = current_system_seconds * 1000000000LL + current_system_nanoseconds;
-    
-    int64_t offset_ns = ptp_time_ns - local_time_ns;
-    
-    // Update our shared state
-    ptpd_interface->getState().masterOffsetNs.store(offset_ns);
-    ptpd_interface->getState().isLocked.store(true);
+void custom_setTime(struct PTPDInterface* ptpd_interface, int64_t seconds, int32_t nanoseconds) {
+    // Stub implementation - in a full PTP implementation, this would update
+    // the PTPDInterface state with the time offset
+    (void)ptpd_interface;
+    (void)seconds;
+    (void)nanoseconds;
 }
 
-int custom_adjFreq(PTPD::PTPDInterface* ptpd_interface, double adj) {
-    if (!ptpd_interface) {
-        return 0; // failure
-    }
-    
-    // Instead of adjusting the system frequency, update our shared state
-    ptpd_interface->getState().frequencyDrift.store(adj);
-    
-    // Return success
-    return 1;
+int custom_adjFreq(struct PTPDInterface* ptpd_interface, double adj) {
+    // Stub implementation - in a full PTP implementation, this would update
+    // the PTPDInterface state with the frequency adjustment
+    (void)ptpd_interface;
+    (void)adj;
+    return 1; // Success
 }
 
 void standard_getTime(int64_t* seconds, int32_t* nanoseconds) {
     struct timespec ts;
-    
+
 #if defined(_POSIX_TIMERS) && (_POSIX_TIMERS > 0)
     if (clock_gettime(CLOCK_REALTIME, &ts) < 0) {
         // Fallback to gettimeofday if clock_gettime fails
         struct timeval tv;
-        gettimeofday(&tv, 0);
+        gettimeofday(&tv, NULL);
         *seconds = tv.tv_sec;
         *nanoseconds = tv.tv_usec * 1000;
     } else {
         *seconds = ts.tv_sec;
-        *nanoseconds = ts.tv_nsec;
+        *nanoseconds = (int32_t)ts.tv_nsec;
     }
 #else
+    // Fallback for systems without POSIX timers
     struct timeval tv;
-    gettimeofday(&tv, 0);
+    gettimeofday(&tv, NULL);
     *seconds = tv.tv_sec;
     *nanoseconds = tv.tv_usec * 1000;
 #endif

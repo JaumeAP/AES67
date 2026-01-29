@@ -219,7 +219,7 @@ struct SignalPresentIndicator: View {
                 .onAppear {
                     isPulsing = hasSignal
                 }
-                .onChange(of: hasSignal) { _, newValue in
+                .onChange(of: hasSignal) { newValue in
                     isPulsing = newValue
                 }
 
@@ -475,7 +475,7 @@ struct StreamStatusView: View {
         return stream.isConnected ? "Active" : "Inactive"
     }
 
-    private var signalLevelColor: (Int) -> Color = { index in
+    private func signalLevelColor(index: Int) -> Color {
         if index < 3 { return .red }
         else if index < 6 { return .yellow }
         else { return .green }
