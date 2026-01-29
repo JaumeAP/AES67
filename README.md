@@ -14,7 +14,7 @@ An open-source virtual audio driver for macOS that aims to bring AES67/RAVENNA/D
 |--------|--------|-------|
 | Code Written | ~85% | Core components implemented |
 | Unit Tests | Pass (577+ assertions) | Isolated component testing only |
-| Compilation | Builds successfully | No build errors |
+| Compilation | Not compling | build errors |
 | Hardware Testing | **0%** | Never tested with real devices |
 | End-to-End Validation | **Unknown** | Audio path unverified |
 | DAW Compatibility | **Unknown** | Not tested with Logic, Pro Tools, QLab |
@@ -22,12 +22,7 @@ An open-source virtual audio driver for macOS that aims to bring AES67/RAVENNA/D
 
 ### What's Actually Known to Work
 
-- Code compiles without errors on Apple Silicon (arm64)
-- Individual components pass unit tests in isolation
-- Ring buffer algorithms are mathematically correct
-- RTP packet structures follow RFC 3550
-- SDP parser handles standard AES67 session descriptions
-- Architecture follows macOS Core Audio conventions
+---
 
 ### What's Unknown (Never Tested)
 
