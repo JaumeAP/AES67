@@ -65,3 +65,9 @@ CLAUDE.md
 # Test outputs
 Tests/output/
 Tests/*.log
+
+# Swift build cache
+ManagerApp/.build/
+
+# Serena plugin
+.serena/
