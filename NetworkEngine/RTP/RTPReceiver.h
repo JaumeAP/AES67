@@ -12,6 +12,7 @@
 #include "../StreamChannelMapper.h"
 #include "SimpleRTP.h"
 #include "LockFreeCircularJitterBuffer.h"
+#include "../../Driver/AudioThreadPriority.h"
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -137,7 +138,11 @@ private:
 
     // Connection state
     std::atomic<bool> connected_{false};
-    std::chrono::steady_clock::time_point lastPacketTime_;
+    std::atomic<int64_t> lastPacketTimeNs_{0};
+
+    // RTP timestamp wraparound tracking
+    std::atomic<uint32_t> firstTimestamp_{0};
+    std::atomic<bool> firstTimestampSet_{false};
 
     // Audio buffer (reused to avoid allocations)
     std::vector<float> audioBuffer_;

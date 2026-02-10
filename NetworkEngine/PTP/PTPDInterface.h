@@ -26,14 +26,20 @@ public:
     void stop();
 
     PTPState& getState();
-    
+
     // Get diagnostic information
     PTPDiagnostics& getDiagnostics();
+
+    // Returns true if running in stub mode (no real PTP synchronization).
+    // When true, isLocked/clockClass values are simulated and audio will
+    // NOT be synchronized to network PTP time.
+    bool isStubMode() const { return stubMode_; }
 
 private:
     PTPState state_;
     PTPDiagnostics diagnostics_;
     bool running_;
+    bool stubMode_{true}; // True until real ptpd integration is enabled
     std::string interfaceName_;
 
     // Internal ptpd structures (opaque to the outside)
