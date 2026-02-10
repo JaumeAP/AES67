@@ -1,52 +1,94 @@
 # AES67 macOS Audio Driver
 
-> **EXPERIMENTAL SOFTWARE - DRIVER LOADS BUT AUDIO UNTESTED**
+> **UNTESTED EXPERIMENTAL SOFTWARE**
 >
-> This driver compiles and loads into macOS Core Audio successfully. The device appears in Audio MIDI Setup with 128 channels. However, **actual audio flow has not been tested** with real AES67 hardware or DAW software.
+> This is a work-in-progress attempt at an open-source AES67 audio driver for macOS. The code compiles and the driver loads into Core Audio, but **no audio has ever been sent or received**. No testing has been performed with real AES67 hardware, DAW software, or network audio of any kind.
 >
-> **Do not use for production audio work.** Suitable for development, experimentation, and testing only.
+> **Do not use this for any audio work.** This project exists for development and experimentation only.
 
-An open-source virtual audio driver for macOS that brings AES67/RAVENNA/Dante network audio support to Mac. Built as a user-space AudioServerPlugIn using the libASPL framework.
+A work-in-progress open-source virtual audio driver for macOS that aims to provide AES67/RAVENNA network audio support. Built as a user-space AudioServerPlugIn using the libASPL framework.
 
-## Project Status
+## Honest Status
 
-| Aspect | Status | Notes |
-|--------|--------|-------|
-| Code Written | ~90% | Core components implemented |
-| Compilation | ✅ **Verified** | Builds on Apple Silicon |
-| Driver Loading | ✅ **Verified** | Loads into coreaudiod successfully |
-| System Recognition | ✅ **Verified** | Appears in Audio MIDI Setup |
-| Manager App | ✅ **Verified** | SwiftUI app builds and launches |
-| Hardware Testing | **0%** | Never tested with real devices |
-| DAW Compatibility | **Unknown** | Not tested with Logic, Pro Tools, etc. |
-| Audio Flow | **Unknown** | End-to-end audio path unverified |
+**What actually works:**
 
-### What's Verified Working
+- The code compiles on Apple Silicon (arm64)
+- The driver installs and loads into coreaudiod without crashing
+- The device appears as "AES67 Device" in Audio MIDI Setup
+- 128 input + 128 output channels are reported to the system
+- The Manager app builds and displays its UI
+- Components pass basic synthetic unit tests (isolated, no real audio/network data)
 
-- ✅ Code compiles without errors on Apple Silicon (arm64)
-- ✅ Driver installs to `/Library/Audio/Plug-Ins/HAL/`
-- ✅ coreaudiod loads the driver without crashing
-- ✅ Device appears as "AES67 Device" in system audio preferences
-- ✅ 128 input + 128 output channels reported correctly
-- ✅ Manager app launches and displays UI
-- ✅ Individual components pass unit tests
+**What has never been tested:**
 
-### What's Unknown (Needs Testing)
+- Audio flowing through the driver in any direction
+- Any application playing or recording audio through the device
+- RTP packets being sent to or received from a real network
+- PTP synchronization with any clock source (PTP is completely stubbed)
+- Compatibility with any AES67, Dante, or RAVENNA hardware
+- Compatibility with any DAW (Logic Pro, Pro Tools, Ableton, etc.)
+- Latency, stability, glitching, or performance under any real workload
+- Sample rates beyond what the system reports as available
+- Any channel count beyond what Audio MIDI Setup displays
 
-- Whether audio callbacks fire correctly when used by apps
-- Whether audio data actually flows through the device
-- Whether DAWs (Logic Pro, Pro Tools, Ableton) can record/playback
-- Whether RTP packets are correctly received from real networks
-- Whether PTP synchronization works with real PTP masters
-- Actual latency, stability, and performance characteristics
-- Compatibility with Dante, RAVENNA, or AES67 hardware
+There is a large gap between "code compiles and driver loads" and "audio works." This project has only crossed the first threshold.
 
-## Quick Start
+## Known Limitations
+
+### PTP Synchronization — Not Functional
+PTP is completely stubbed. The driver uses the local system clock and has no network time synchronization. The stub reports itself as "locked" after 500ms for testing convenience, but this is fake — there is no actual PTP implementation. Multi-device synchronization will not work.
+
+### Audio Path — Completely Unverified
+No audio has ever passed through this driver. The I/O handler, RTP receiver, RTP transmitter, jitter buffer, and ring buffer have code written but have never been exercised with real audio data.
+
+### Manager App — UI Only
+The SwiftUI Manager app renders its interface but has not been tested controlling actual streams. The UI includes screens for stream management, channel mapping, and PTP diagnostics, but whether these function beyond displaying placeholder data is unknown.
+
+## Architecture
+
+```
+AES67Driver/
+├── Driver/                  # AudioServerPlugIn (libASPL)
+│   ├── AES67Device          # Core Audio device declaration
+│   ├── AES67IOHandler       # Audio I/O callbacks (lock-free design)
+│   ├── PlugInMain           # AudioServerPlugIn entry point
+│   └── SDPParser            # SDP file parser (RFC 4566)
+├── NetworkEngine/           # Network audio code
+│   ├── RTP/
+│   │   ├── SimpleRTP        # RTP socket layer (RFC 3550)
+│   │   ├── RTPReceiver      # Packet receive + decode
+│   │   ├── RTPTransmitter   # Packet encode + send
+│   │   └── LockFreeCircularJitterBuffer
+│   ├── PTP/
+│   │   ├── PTPClock         # Clock interface
+│   │   └── PTPDInterface    # PTP daemon interface (STUB — not functional)
+│   ├── Resampling/          # Sample rate conversion
+│   └── Discovery/           # SAP stream discovery (RFC 2974)
+├── Shared/                  # Common components
+│   ├── RingBuffer.hpp       # Lock-free SPSC ring buffer
+│   └── Types.h              # Common data structures
+├── ManagerApp/              # SwiftUI configuration app
+└── Tests/                   # Unit tests (synthetic/isolated)
+```
+
+## Code Specifications
+
+These describe what the code is written to target, not what has been verified to work.
+
+| Feature | Code Target | Verified? |
+|---------|-------------|-----------|
+| Channels | 128 in/out | Reported to system only |
+| Sample Rates | 44.1kHz - 384kHz | Declared to HAL, never tested |
+| Bit Depths | L16, L24 | Code exists, never tested with audio |
+| Jitter Buffer | 256 packets, lock-free | Code exists, never received real packets |
+| PTP Sync | Stubbed (local clock) | Not functional |
+| Driver Transport | AudioServerPlugIn | Loads into coreaudiod |
+
+## Building
 
 ### Prerequisites
 
 ```bash
-# Install build tools
 brew install cmake boost
 
 # Install libASPL (AudioServerPlugIn framework)
@@ -57,10 +99,9 @@ brew install libaspl
 ### Build & Install
 
 ```bash
-git clone https://github.com/yourusername/AES67_macos_Driver.git
+git clone https://github.com/maxajbarlow/AES67_macos_Driver.git
 cd AES67_macos_Driver
 
-# Build the driver
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
 make -j
@@ -71,7 +112,7 @@ sudo cp -R AES67Driver.driver /Library/Audio/Plug-Ins/HAL/
 # Restart Core Audio to load the driver
 sudo killall coreaudiod
 
-# Verify installation - should show "AES67 Device"
+# Verify it appears
 system_profiler SPAudioDataType | grep -A 5 "AES67"
 ```
 
@@ -80,106 +121,41 @@ system_profiler SPAudioDataType | grep -A 5 "AES67"
 ```bash
 cd ManagerApp
 ./build.sh
-
-# Launch the app
 open AES67Manager.app
 ```
 
-## Architecture Overview
-
-```
-AES67Driver/
-├── Driver/                  # AudioServerPlugIn (libASPL)
-│   ├── AES67Device          # 128-channel Core Audio device
-│   ├── AES67IOHandler       # RT-safe audio I/O (lock-free)
-│   ├── PlugInMain           # AudioServerPlugIn entry point
-│   └── SDPParser            # SDP file parser (RFC 4566)
-├── NetworkEngine/           # Network audio processing
-│   ├── RTP/
-│   │   ├── SimpleRTP        # RTP implementation (RFC 3550)
-│   │   ├── RTPReceiver      # Network audio receiver
-│   │   ├── RTPTransmitter   # Network audio transmitter
-│   │   └── LockFreeCircularJitterBuffer
-│   ├── PTP/
-│   │   ├── PTPClock         # IEEE 1588 clock interface
-│   │   ├── PhaseLockedLoop  # Clock drift compensation
-│   │   └── PTPDInterface    # PTP daemon interface (stub)
-│   ├── Resampling/          # Sample rate conversion
-│   └── Discovery/           # SAP/RTSP discovery
-├── Shared/                  # Common components
-│   ├── RingBuffer.hpp       # Lock-free SPSC ring buffer
-│   ├── Types.h              # Common data structures
-│   └── NonBlockingLogger    # RT-safe logging
-├── ManagerApp/              # SwiftUI configuration app
-└── Tests/                   # Unit tests
-```
-
-## Technical Specifications
-
-| Feature | Implementation | Status |
-|---------|---------------|--------|
-| Channels | 128 in/out | Configured |
-| Sample Rates | 44.1kHz - 384kHz | Configured |
-| Bit Depths | L16, L24 | Implemented |
-| Jitter Buffer | 256 packets, lock-free | Implemented |
-| PTP Sync | Stub (local clock fallback) | Partial |
-| Transport | Virtual (AudioServerPlugIn) | Working |
-
-## Manager Application
-
-The SwiftUI Manager app provides:
-
-- **Stream List** - View and manage AES67 streams
-- **Add Stream** - Configure multicast IP, port, channels, sample rate
-- **Channel Mapping** - Visual 128-channel routing grid
-- **PTP Diagnostics** - Clock sync status and troubleshooting
-- **Quick Start Wizard** - First-run configuration guide
-- **Audio Status** - Signal presence indicators
-
 ## Why No Kernel Extension Required
 
-This driver uses Apple's modern AudioServerPlugIn architecture:
+This driver uses Apple's AudioServerPlugIn architecture:
 
 - Runs entirely in user space within coreaudiod
-- No System Integrity Protection (SIP) changes needed
-- No "Reduced Security" boot mode required
+- No SIP changes or "Reduced Security" boot mode required
 - Standard file copy installation
 - Apple-supported approach for modern macOS
 
-## Current Limitations
-
-### PTP Synchronization
-PTP support is currently stubbed - the driver uses local system clock. Full ptpd integration requires fixing vendored header dependencies. Audio will work but won't be network-synchronized.
-
-### Testing Required
-- No testing with actual AES67/Dante/RAVENNA equipment
-- No DAW integration testing
-- Audio flow through the driver unverified
-
 ## Help Wanted
 
-This project needs real-world testing. If you have access to:
+This project needs real-world testing before any audio claims can be made. If you have access to:
 
 - AES67 network audio devices
 - Dante-enabled equipment
 - RAVENNA systems
 - Professional audio software (Logic Pro, Pro Tools, etc.)
 
-Please try building and testing! Open GitHub issues with detailed results.
+Please try building and testing. Open GitHub issues with detailed results — even "it didn't work" reports are valuable.
 
 ## Contributing
 
-Contributions welcome:
+Contributions welcome, especially:
 
-- Hardware testing reports
+- **Hardware testing reports** (most needed)
 - Bug fixes with reproduction steps
-- PTP integration improvements
-- Documentation
+- PTP integration (replacing the current stub with real ptpd)
 
 ### Guidelines
 
 - C++17 standard
-- Maintain lock-free audio thread
+- Maintain lock-free audio thread safety
 - Add unit tests for new code
 
 ## License
@@ -199,6 +175,4 @@ MIT License - See LICENSE file.
 
 ---
 
-*Build #20 - Driver loads and appears in system, audio flow untested*
-
-*This is experimental software. The driver loads successfully but audio functionality requires real-world testing.*
+*This is untested experimental software. The driver compiles and loads but no audio functionality has been verified.*
