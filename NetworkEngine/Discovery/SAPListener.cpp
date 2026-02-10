@@ -157,43 +157,71 @@ private:
         }
     }
     
-    SAPAnnouncement parseSAPAnnouncement(const char* data, size_t length, 
+    SAPAnnouncement parseSAPAnnouncement(const char* data, size_t length,
                                        const std::string& sourceAddress) {
         SAPAnnouncement announcement;
         announcement.sourceAddress = sourceAddress;
-        
-        // SAP header is 4 bytes:
-        // Bits 0-7: Version (3 bits), Type (1 bit), Encrypted (1 bit), Compressed (1 bit), Auth Length (2 bits)
-        // Bits 8-31: Message ID Hash
-        // Bits 32-47: Length
-        // Bits 48-63: Source Address Type
-        
-        if (length < 4) {
-            return announcement; // Not enough data for SAP header
+
+        // SAP header (RFC 2974) minimum: 4 bytes + 4 bytes originating source
+        // Byte 0: V(3) | A(1) | R(1) | T(1) | E(1) | C(1)
+        // Byte 1: Auth length
+        // Bytes 2-3: Message ID Hash
+        // Bytes 4-7: Originating source (IPv4)
+        static constexpr size_t kMinSAPHeaderSize = 4;
+        static constexpr size_t kMaxSAPPacketSize = 4096; // Reasonable upper bound
+
+        if (length < kMinSAPHeaderSize || length > kMaxSAPPacketSize) {
+            return announcement; // Reject undersized or oversized packets
         }
-        
-        // Check if this is a SAP announcement (type bit should be 0 for announcement)
+
+        // Validate SAP version (must be 1, in bits 5-7 of byte 0)
         uint8_t sapHeader = static_cast<uint8_t>(data[0]);
-        uint8_t typeBit = (sapHeader >> 3) & 0x01;
-        
+        uint8_t version = (sapHeader >> 5) & 0x07;
+        if (version != 1) {
+            return announcement; // Unknown SAP version
+        }
+
+        // Check type bit (0 = announcement, 1 = deletion)
+        uint8_t typeBit = (sapHeader >> 2) & 0x01;
         if (typeBit != 0) {
-            return announcement; // Not an announcement (might be deletion)
+            return announcement; // Not an announcement (deletion)
         }
-        
-        // The payload typically starts after 4 bytes (or 8 if extended header is present)
-        // For simplicity, we'll assume basic header (4 bytes)
-        size_t payloadStart = 4;
-        if (length <= payloadStart) {
-            return announcement; // No payload
+
+        // Check encryption and compression bits — we don't support them
+        uint8_t encrypted = (sapHeader >> 1) & 0x01;
+        uint8_t compressed = sapHeader & 0x01;
+        if (encrypted || compressed) {
+            return announcement; // Encrypted/compressed SAP not supported
         }
-        
+
+        // Auth length (number of 32-bit words of authentication data)
+        uint8_t authLen = static_cast<uint8_t>(data[1]);
+
+        // Calculate payload offset: 4 (base header) + 4 (originating source) + authLen*4
+        size_t payloadStart = 8 + (static_cast<size_t>(authLen) * 4);
+        if (payloadStart >= length) {
+            return announcement; // No room for payload
+        }
+
+        // Payload must contain printable text (SDP). Reject binary garbage.
+        size_t payloadLen = length - payloadStart;
+        if (payloadLen < 5) { // Minimum valid SDP: "v=0\r\n"
+            return announcement;
+        }
+
         // The payload should be an SDP description
-        std::string sdpContent(data + payloadStart, length - payloadStart);
+        std::string sdpContent(data + payloadStart, payloadLen);
+
+        // Basic SDP sanity check: must start with "v=0" or contain "v=0"
+        if (sdpContent.find("v=0") == std::string::npos) {
+            return announcement; // Not valid SDP
+        }
+
         announcement.sessionDescription = sdpContent;
-        
+
         // Parse basic SDP information
         parseSDPInfo(sdpContent, announcement);
-        
+
         return announcement;
     }
     

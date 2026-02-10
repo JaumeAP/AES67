@@ -184,8 +184,9 @@ bool testPTPClockMasterID() {
     // Should be able to query master clock ID
     std::string masterID = clock.getMasterClockID();
 
-    // When not locked, master ID should be empty
-    TEST_ASSERT(masterID.empty(), "Master ID should be empty when not locked");
+    // When not locked, master ID should be empty or indicate stub mode
+    TEST_ASSERT(masterID.empty() || masterID.find("STUB") != std::string::npos,
+                "Master ID should be empty or indicate stub mode when not locked");
 
     std::cout << "PASS" << std::endl;
     return true;

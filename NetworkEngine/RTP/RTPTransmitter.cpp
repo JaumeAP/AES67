@@ -76,9 +76,12 @@ bool RTPTransmitter::start() {
     // Record start time for precise packet timing
     startTime_ = std::chrono::steady_clock::now();
 
-    // Start transmit thread
+    // Start transmit thread (elevated priority to prevent audio dropouts)
     running_ = true;
-    transmitThread_ = std::thread(&RTPTransmitter::transmitLoop, this);
+    transmitThread_ = std::thread([this]() {
+        AudioThreadPriority::configureForRealTime();
+        transmitLoop();
+    });
 
     return true;
 }

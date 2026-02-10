@@ -46,7 +46,10 @@ add_executable(TestRTPReceiver
     TestRTPReceiver.cpp
     ../NetworkEngine/RTP/RTPReceiver.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
+    ../NetworkEngine/RTP/LockFreePacketPool.cpp
     ../Driver/SDPParser.cpp
+    ../Driver/AudioThreadPriority.cpp
     ../NetworkEngine/StreamChannelMapper.cpp
     ../Shared/Types.cpp
 )
@@ -63,6 +66,7 @@ add_executable(TestRTPTransmitter
     ../NetworkEngine/RTP/RTPTransmitter.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
     ../Driver/SDPParser.cpp
+    ../Driver/AudioThreadPriority.cpp
     ../NetworkEngine/StreamChannelMapper.cpp
     ../Shared/Types.cpp
 )
@@ -77,6 +81,10 @@ target_compile_features(TestRTPTransmitter PRIVATE cxx_std_17)
 add_executable(TestPTPClock
     TestPTPClock.cpp
     ../NetworkEngine/PTP/PTPClock.cpp
+    ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PhaseLockedLoop.cpp
+    ../NetworkEngine/PTP/CustomSys.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
     ../Driver/SDPParser.cpp
     ../Shared/Types.cpp
 )
@@ -107,6 +115,10 @@ add_executable(TestMultiStream
     ../Driver/SDPParser.cpp
     ../NetworkEngine/StreamChannelMapper.cpp
     ../NetworkEngine/PTP/PTPClock.cpp
+    ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PhaseLockedLoop.cpp
+    ../NetworkEngine/PTP/CustomSys.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
     ../Shared/Types.cpp
 )
 

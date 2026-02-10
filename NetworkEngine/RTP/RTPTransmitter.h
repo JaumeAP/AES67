@@ -11,6 +11,7 @@
 #include "../../Driver/SDPParser.h"
 #include "../StreamChannelMapper.h"
 #include "SimpleRTP.h"
+#include "../../Driver/AudioThreadPriority.h"
 #include <thread>
 #include <atomic>
 #include <memory>

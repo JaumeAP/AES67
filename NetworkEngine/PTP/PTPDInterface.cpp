@@ -53,20 +53,21 @@ void PTPDInterface::start() {
 
     std::cout << "[PTPDInterface] Started (stub mode - no actual PTP)" << std::endl;
 
-    // Simulate being "locked" after a short delay for testing purposes
-    // In production, this would be actual PTP synchronization
+    // Simulate being "locked" after a short delay for testing purposes.
+    // WARNING: This is a STUB — audio is NOT synchronized to network PTP time.
+    // Multi-device synchronization will NOT work until real PTP is integrated.
     std::thread([this]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         if (running_) {
-            // Pretend we're locked for testing
-            // Real implementation would track actual PTP state
             state_.isLocked.store(true);
-            state_.clockClass.store(6); // Pretend we have a reasonable clock
+            state_.clockClass.store(248); // Clock class 248 = slave-only (not authoritative)
             diagnostics_.isLocked = true;
-            diagnostics_.masterClockID = "LOCAL-STUB-CLOCK";
+            diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (NOT SYNCHRONIZED)";
 
-            std::cout << "[PTPDInterface] Stub: Simulating PTP lock (for testing)" << std::endl;
+            std::cerr << "[PTPDInterface] WARNING: PTP STUB MODE - clock is NOT synchronized. "
+                      << "Multi-device sync will not work. "
+                      << "Integrate real ptpd for production use." << std::endl;
         }
     }).detach();
 }

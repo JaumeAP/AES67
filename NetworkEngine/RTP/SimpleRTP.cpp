@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace AES67 {
 namespace RTP {
@@ -206,7 +207,12 @@ void RTPSocket::close() {
             struct ip_mreq mreq;
             mreq.imr_multiaddr = multicastAddr_.sin_addr;
             mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-            setsockopt(sockfd_, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq));
+            if (setsockopt(sockfd_, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+                // Log but don't fail — socket is closing anyway.
+                // Repeated failures here could indicate multicast membership leak on macOS.
+                fprintf(stderr, "AES67 RTP: IP_DROP_MEMBERSHIP failed (errno=%d: %s)\n",
+                        errno, strerror(errno));
+            }
         }
 
         ::close(sockfd_);

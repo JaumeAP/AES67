@@ -164,11 +164,9 @@ uint64_t PTPClock::getTimeMicroseconds() const {
 
 std::string PTPClock::getMasterClockID() const {
     if (ptpdInterface_) {
-        // In a real implementation, we would extract this from the PTP state
-        // For now, returning a placeholder
-        return "PTP_MASTER_CLOCK_ID";
+        return ptpdInterface_->getDiagnostics().masterClockID;
     }
-    return "NO_PTP_INTERFACE";
+    return "";
 }
 
 uint8_t PTPClock::getClockClass() const {

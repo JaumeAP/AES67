@@ -108,7 +108,7 @@ void Statistics::reset() {
     latencyNs.store(0, std::memory_order_relaxed);
     bytesReceived.store(0, std::memory_order_relaxed);
     bytesSent.store(0, std::memory_order_relaxed);
-    lastPacketTime = std::chrono::steady_clock::time_point();
+    lastPacketTimeNs.store(0, std::memory_order_relaxed);
 }
 
 double Statistics::getPacketLossPercent() const {
@@ -121,13 +121,15 @@ double Statistics::getPacketLossPercent() const {
 }
 
 int64_t Statistics::timeSinceLastPacketMs() const {
-    if (lastPacketTime.time_since_epoch().count() == 0) {
+    int64_t lastNs = lastPacketTimeNs.load(std::memory_order_acquire);
+    if (lastNs == 0) {
         return -1;  // Never received
     }
 
     auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastPacketTime);
-    return duration.count();
+    int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        now.time_since_epoch()).count();
+    return (nowNs - lastNs) / 1000000; // ns to ms
 }
 
 StatisticsSnapshot Statistics::snapshot() const {
@@ -143,7 +145,7 @@ StatisticsSnapshot Statistics::snapshot() const {
     snap.latencyNs = latencyNs.load(std::memory_order_relaxed);
     snap.bytesReceived = bytesReceived.load(std::memory_order_relaxed);
     snap.bytesSent = bytesSent.load(std::memory_order_relaxed);
-    snap.lastPacketTime = lastPacketTime;
+    snap.lastPacketTimeNs = lastPacketTimeNs.load(std::memory_order_acquire);
     return snap;
 }
 

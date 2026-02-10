@@ -24,8 +24,14 @@ namespace AES67 {
 //
 // Stream Manager
 //
-// Central coordinator for all AES67 streams
-// Manages receivers, transmitters, channel mapping, and validation
+// Central coordinator for all AES67 streams.
+// Manages receivers, transmitters, channel mapping, and validation.
+//
+// WARNING: NOT REAL-TIME SAFE
+// All public methods acquire streamsMutex_ and must NEVER be called from
+// the Core Audio IO thread (AES67IOHandler callbacks) or any thread with
+// real-time constraints. Doing so will cause priority inversion and audio
+// dropouts. Only call from: initialization, UI/manager app, or control threads.
 //
 class StreamManager {
 public:

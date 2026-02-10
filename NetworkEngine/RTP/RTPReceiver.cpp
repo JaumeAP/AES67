@@ -60,10 +60,16 @@ bool RTPReceiver::start() {
 
     // Start receive thread (producer - adds packets to jitter buffer)
     running_ = true;
-    receiveThread_ = std::thread(&RTPReceiver::receiveLoop, this);
+    receiveThread_ = std::thread([this]() {
+        AudioThreadPriority::configureForRealTime();
+        receiveLoop();
+    });
 
     // Start consume thread (consumer - reads from jitter buffer and writes to ring buffers)
-    consumeThread_ = std::thread(&RTPReceiver::consumeLoop, this);
+    consumeThread_ = std::thread([this]() {
+        AudioThreadPriority::configureForRealTime();
+        consumeLoop();
+    });
 
     return true;
 }
@@ -107,6 +113,8 @@ void RTPReceiver::resetStatistics() {
     lastSequenceNumber_.store(0, std::memory_order_relaxed);
     lastTimestamp_.store(0, std::memory_order_relaxed);
     expectedSequenceNumber_.store(0, std::memory_order_relaxed);
+    firstTimestampSet_.store(false, std::memory_order_relaxed);
+    firstTimestamp_.store(0, std::memory_order_relaxed);
 
     // Reset jitter buffer
     jitterBuffer_.reset();
@@ -118,12 +126,13 @@ bool RTPReceiver::isConnected() const {
     }
 
     // Consider disconnected if no packet in last 1 second
+    int64_t lastNs = lastPacketTimeNs_.load(std::memory_order_acquire);
+    if (lastNs == 0) return false;
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - lastPacketTime_
-    );
+    int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        now.time_since_epoch()).count();
 
-    return elapsed.count() < 1000;
+    return (nowNs - lastNs) < 1000000000LL; // 1 second in ns
 }
 
 int64_t RTPReceiver::getTimeSinceLastPacket() const {
@@ -131,12 +140,13 @@ int64_t RTPReceiver::getTimeSinceLastPacket() const {
         return -1;
     }
 
+    int64_t lastNs = lastPacketTimeNs_.load(std::memory_order_acquire);
+    if (lastNs == 0) return -1;
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - lastPacketTime_
-    );
+    int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        now.time_since_epoch()).count();
 
-    return elapsed.count();
+    return (nowNs - lastNs) / 1000000; // ns to ms
 }
 
 bool RTPReceiver::updateMapping(const ChannelMapping& newMapping) {
@@ -319,18 +329,34 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
         // Initialize expected sequence number from first packet
         expectedSequenceNumber_.store(sequenceNumber, std::memory_order_relaxed);
     }
-    lastPacketTime_ = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    lastPacketTimeNs_.store(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now.time_since_epoch()).count(),
+        std::memory_order_release);
 
     // Update statistics
     updateStats(sequenceNumber, payloadSize);
 
-    // Calculate presentation time from RTP timestamp
-    // For AES67, timestamp is in sample units at the stream's sample rate
-    // Convert to nanoseconds: (timestamp / sampleRate) * 1e9
+    // Calculate presentation time from RTP timestamp delta (wraparound-safe)
+    // RTP timestamps are 32-bit and wrap every ~24h at 48kHz.
+    // We track the delta from the first timestamp to avoid overflow when
+    // multiplying by 1e9, and to correctly handle 32-bit wraparound.
     uint64_t presentationTime = 0;
     if (sdp_.sampleRate > 0) {
-        // Use 64-bit arithmetic to prevent overflow
-        presentationTime = (static_cast<uint64_t>(timestamp) * 1000000000ULL) / sdp_.sampleRate;
+        uint32_t firstTs = firstTimestamp_.load(std::memory_order_relaxed);
+        if (firstTimestampSet_.load(std::memory_order_relaxed)) {
+            // Wraparound-safe delta: unsigned subtraction handles 32-bit wrap
+            uint32_t delta = timestamp - firstTs;
+            // delta is at most 2^32-1 (~4.29e9). At 384kHz that's ~11184s.
+            // 4.29e9 * 1e9 = 4.29e18 < UINT64_MAX (1.84e19), so no overflow.
+            presentationTime = (static_cast<uint64_t>(delta) * 1000000000ULL) / sdp_.sampleRate;
+        } else {
+            // First packet — record baseline timestamp
+            firstTimestamp_.store(timestamp, std::memory_order_relaxed);
+            firstTimestampSet_.store(true, std::memory_order_relaxed);
+            presentationTime = 0;
+        }
     }
 
     // Add packet to jitter buffer (lock-free operation)
@@ -380,7 +406,7 @@ void RTPReceiver::decodeL16(const uint8_t* payload, size_t payloadSize) {
     // Decode: big-endian int16 → float [-1.0, 1.0)
     for (size_t i = 0; i < totalSamples; ++i) {
         const size_t offset = i * bytesPerSample;
-        if (offset + 1 >= payloadSize) break;
+        if (offset + bytesPerSample > payloadSize) break;
 
         // Big-endian 16-bit signed
         int16_t pcmSample = (payload[offset] << 8) | payload[offset + 1];
@@ -413,7 +439,7 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
     // Decode: big-endian int24 → float [-1.0, 1.0)
     for (size_t i = 0; i < totalSamples; ++i) {
         const size_t offset = i * bytesPerSample;
-        if (offset + 2 >= payloadSize) break;
+        if (offset + bytesPerSample > payloadSize) break;
 
         // Big-endian 24-bit signed (sign-extend to 32-bit)
         int32_t pcmSample = (payload[offset] << 24) |

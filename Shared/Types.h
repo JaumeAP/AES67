@@ -73,7 +73,7 @@ struct StatisticsSnapshot {
     uint64_t outOfOrderPackets{0};
     uint64_t underruns{0};
     uint64_t overruns{0};
-    std::chrono::steady_clock::time_point lastPacketTime;
+    int64_t lastPacketTimeNs{0};
     int64_t jitterNs{0};
     int64_t latencyNs{0};
     uint64_t bytesReceived{0};
@@ -85,10 +85,11 @@ struct StatisticsSnapshot {
     }
 
     int64_t timeSinceLastPacketMs() const {
-        if (lastPacketTime.time_since_epoch().count() == 0) return -1;
+        if (lastPacketTimeNs == 0) return -1;
         auto now = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastPacketTime);
-        return duration.count();
+        int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now.time_since_epoch()).count();
+        return (nowNs - lastPacketTimeNs) / 1000000; // ns to ms
     }
 };
 
@@ -103,8 +104,8 @@ struct Statistics {
     std::atomic<uint64_t> underruns{0};
     std::atomic<uint64_t> overruns{0};
 
-    // Timing (non-atomic, requires synchronization if updated from multiple threads)
-    std::chrono::steady_clock::time_point lastPacketTime;
+    // Timing (atomic nanoseconds since epoch for thread-safe access)
+    std::atomic<int64_t> lastPacketTimeNs{0};
     std::atomic<int64_t> jitterNs{0};
     std::atomic<int64_t> latencyNs{0};
 
@@ -123,7 +124,7 @@ struct Statistics {
         , outOfOrderPackets(other.outOfOrderPackets.load(std::memory_order_relaxed))
         , underruns(other.underruns.load(std::memory_order_relaxed))
         , overruns(other.overruns.load(std::memory_order_relaxed))
-        , lastPacketTime(other.lastPacketTime)
+        , lastPacketTimeNs(other.lastPacketTimeNs.load(std::memory_order_relaxed))
         , jitterNs(other.jitterNs.load(std::memory_order_relaxed))
         , latencyNs(other.latencyNs.load(std::memory_order_relaxed))
         , bytesReceived(other.bytesReceived.load(std::memory_order_relaxed))
@@ -139,7 +140,7 @@ struct Statistics {
             outOfOrderPackets.store(other.outOfOrderPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
             underruns.store(other.underruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
             overruns.store(other.overruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            lastPacketTime = other.lastPacketTime;
+            lastPacketTimeNs.store(other.lastPacketTimeNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
             jitterNs.store(other.jitterNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
             latencyNs.store(other.latencyNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
             bytesReceived.store(other.bytesReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
@@ -156,7 +157,7 @@ struct Statistics {
         , outOfOrderPackets(other.outOfOrderPackets.load(std::memory_order_relaxed))
         , underruns(other.underruns.load(std::memory_order_relaxed))
         , overruns(other.overruns.load(std::memory_order_relaxed))
-        , lastPacketTime(other.lastPacketTime)
+        , lastPacketTimeNs(other.lastPacketTimeNs.load(std::memory_order_relaxed))
         , jitterNs(other.jitterNs.load(std::memory_order_relaxed))
         , latencyNs(other.latencyNs.load(std::memory_order_relaxed))
         , bytesReceived(other.bytesReceived.load(std::memory_order_relaxed))
@@ -172,7 +173,7 @@ struct Statistics {
             outOfOrderPackets.store(other.outOfOrderPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
             underruns.store(other.underruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
             overruns.store(other.overruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            lastPacketTime = other.lastPacketTime;
+            lastPacketTimeNs.store(other.lastPacketTimeNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
             jitterNs.store(other.jitterNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
             latencyNs.store(other.latencyNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
             bytesReceived.store(other.bytesReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
