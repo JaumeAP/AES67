@@ -77,9 +77,7 @@ public:
 
         // Warmup
         for (int i = 0; i < 10; ++i) {
-            ioHandler_->OnReadClientInput(
-                nullptr, 0.0, nullptr, outputBuffer.data(), frameCount
-            );
+            ioHandler_->processInput(outputBuffer.data(), frameCount, kNumChannels);
             // Refill buffers
             for (size_t ch = 0; ch < kNumChannels; ++ch) {
                 std::vector<float> testData(frameCount);
@@ -91,9 +89,7 @@ public:
         for (size_t i = 0; i < iterations; ++i) {
             auto start = high_resolution_clock::now();
 
-            ioHandler_->OnReadClientInput(
-                nullptr, 0.0, nullptr, outputBuffer.data(), frameCount
-            );
+            ioHandler_->processInput(outputBuffer.data(), frameCount, kNumChannels);
 
             auto end = high_resolution_clock::now();
             auto duration = duration_cast<nanoseconds>(end - start);
@@ -124,9 +120,7 @@ public:
 
         // Warmup
         for (int i = 0; i < 10; ++i) {
-            ioHandler_->OnWriteClientOutput(
-                nullptr, 0.0, inputBuffer.data(), nullptr, frameCount
-            );
+            ioHandler_->processOutput(inputBuffer.data(), frameCount, kNumChannels);
             // Clear buffers
             for (size_t ch = 0; ch < kNumChannels; ++ch) {
                 outputBuffers_[ch].reset();
@@ -137,9 +131,7 @@ public:
         for (size_t i = 0; i < iterations; ++i) {
             auto start = high_resolution_clock::now();
 
-            ioHandler_->OnWriteClientOutput(
-                nullptr, 0.0, inputBuffer.data(), nullptr, frameCount
-            );
+            ioHandler_->processOutput(inputBuffer.data(), frameCount, kNumChannels);
 
             auto end = high_resolution_clock::now();
             auto duration = duration_cast<nanoseconds>(end - start);

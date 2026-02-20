@@ -10,10 +10,13 @@
 #include "../Shared/Types.h"
 #include "../Shared/RingBuffer.hpp"
 #include <aspl/IORequestHandler.hpp>
+#include <aspl/Client.hpp>
 #include <aspl/Stream.hpp>
 #include <memory>
 #include <array>
 #include <atomic>
+
+class IOHandlerBenchmark;
 
 namespace AES67 {
 
@@ -51,25 +54,28 @@ public:
     // aspl::IORequestHandler overrides (RT-SAFE!)
     //
 
-    // Called when Core Audio needs input data
-    // Reads from inputBuffers_ and provides to Core Audio
-    OSStatus OnReadClientInput(
+    // Called when Core Audio needs input data from device
+    // Reads from inputBuffers_ and provides raw bytes to Core Audio
+    void OnReadClientInput(
+        const std::shared_ptr<aspl::Client>& client,
         const std::shared_ptr<aspl::Stream>& stream,
+        Float64 zeroTimestamp,
         Float64 timestamp,
-        const void* inputData,
-        void* outputData,
-        UInt32 frameCount
-    );
+        void* bytes,
+        UInt32 bytesCount
+    ) override;
 
-    // Called when Core Audio has output data
-    // Writes to outputBuffers_ from Core Audio
-    OSStatus OnWriteClientOutput(
+    // Called when Core Audio has output data for device
+    // Writes Float32 frames to outputBuffers_
+    void OnWriteClientOutput(
+        const std::shared_ptr<aspl::Client>& client,
         const std::shared_ptr<aspl::Stream>& stream,
+        Float64 zeroTimestamp,
         Float64 timestamp,
-        const void* inputData,
-        void* outputData,
-        UInt32 frameCount
-    );
+        const Float32* frames,
+        UInt32 frameCount,
+        UInt32 channelCount
+    ) override;
 
 private:
     // Process input stream (Network → Core Audio)
@@ -94,6 +100,9 @@ private:
 
     // Constants
     static constexpr size_t kNumChannels = 128;
+
+    // Allow benchmark direct access to processInput/processOutput
+    friend class ::IOHandlerBenchmark;
 };
 
 } // namespace AES67
