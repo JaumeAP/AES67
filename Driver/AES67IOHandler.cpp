@@ -6,7 +6,6 @@
 //
 
 #include "AES67IOHandler.h"
-#include "DebugLog.h"
 #include <cstring>
 
 namespace AES67 {
@@ -41,13 +40,6 @@ void AES67IOHandler::OnReadClientInput(
     // libASPL calls this with raw bytes in the stream's native format.
     // Our stream format is 32-bit float, so bytesCount = frameCount * channelCount * 4.
 
-    static uint64_t entryCount = 0;
-    ++entryCount;
-    if (entryCount <= 3) {
-        AES67_LOGF("OnReadClientInput ENTERED #%llu: bytes=%p stream=%p bytesCount=%u",
-                   entryCount, bytes, (void*)stream.get(), bytesCount);
-    }
-
     if (!bytes || !stream) {
         return;
     }
@@ -56,24 +48,13 @@ void AES67IOHandler::OnReadClientInput(
     const UInt32 bytesPerFrame = channelCount * sizeof(Float32);
     const UInt32 frameCount = (bytesPerFrame > 0) ? (bytesCount / bytesPerFrame) : 0;
 
-    if (entryCount <= 3) {
-        AES67_LOGF("OnReadClientInput: channelCount=%u bytesPerFrame=%u frameCount=%u kNumChannels=%zu",
-                   channelCount, bytesPerFrame, frameCount, kNumChannels);
-    }
-
     if (frameCount == 0 || channelCount != kNumChannels) {
-        // Fill with silence on mismatch
         std::memset(bytes, 0, bytesCount);
-        if (entryCount <= 3) {
-            AES67_LOGF("OnReadClientInput: EARLY RETURN (ch mismatch or 0 frames) ch=%u need=%zu",
-                       channelCount, kNumChannels);
-        }
         return;
     }
 
     float* output = static_cast<float*>(bytes);
 
-    // Process input (read from ring buffers) - batch processing for performance
     processInput(output, frameCount, channelCount);
 
     (void)client;
@@ -103,7 +84,6 @@ void AES67IOHandler::OnWriteClientOutput(
         return;
     }
 
-    // Process output (write to ring buffers) - batch processing for performance
     processOutput(frames, frameCount, channelCount);
 
     (void)client;
@@ -128,17 +108,10 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
         return;
     }
 
-    // Diagnostic logging (static counter — only log first few calls)
-    static uint64_t ioCallCount = 0;
-    ++ioCallCount;
-
     bool hadUnderrun = false;
-    size_t ch0Read = 0;
 
     for (size_t ch = 0; ch < channelCount; ++ch) {
         const size_t samplesRead = inputBuffers_[ch].read(channelBuffer, frameCount);
-
-        if (ch == 0) ch0Read = samplesRead;
 
         if (samplesRead < frameCount) {
             std::memset(&channelBuffer[samplesRead], 0,
@@ -155,14 +128,6 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
             outputData[frame * channelCount + ch] = channelBuffer[frame];
         }
-    }
-
-    // Debug logging — first few calls + periodic summary
-    if (ioCallCount <= 3 || ioCallCount % 10000 == 0) {
-        AES67_LOGF("IOHandler::processInput #%llu: frames=%u ch=%u ch0Read=%zu avail[0]=%zu underrun=%s",
-                   ioCallCount, frameCount, channelCount, ch0Read,
-                   inputBuffers_[0].available(),
-                   hadUnderrun ? "YES" : "no");
     }
 }
 

@@ -6,7 +6,6 @@
 
 #include "RTPReceiver.h"
 #include "SimpleRTP.h"
-#include "../../Driver/DebugLog.h"
 #include <cstring>
 #include <stdexcept>
 #include <chrono>
@@ -188,22 +187,12 @@ void RTPReceiver::receiveLoop() {
     struct timeval tv;
 
     RTP::RTPPacket packet;
-    uint64_t selectCalls = 0;
-    uint64_t selectReady = 0;
-    uint64_t recvSuccess = 0;
-    uint64_t recvFail = 0;
-
-    AES67_LOGF("receiveLoop: STARTED on %s:%u (fd=%d, packetInterval=%lldus)",
-               sdp_.connectionAddress.c_str(), sdp_.port,
-               rtpSocket_.getFd(), (long long)packetInterval_.count());
 
     while (running_) {
         // Set up select with 1ms timeout (responsive but not spinning)
         FD_ZERO(&readfds);
         int sockfd = rtpSocket_.getFd();
         if (sockfd < 0) {
-            // Socket not valid, wait and retry
-            AES67_LOG("receiveLoop: socket fd < 0, waiting...");
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
@@ -213,37 +202,14 @@ void RTPReceiver::receiveLoop() {
         tv.tv_usec = 1000;  // 1ms timeout
 
         int ret = select(sockfd + 1, &readfds, nullptr, nullptr, &tv);
-        ++selectCalls;
 
         if (ret > 0 && FD_ISSET(sockfd, &readfds)) {
-            ++selectReady;
-            // Data available - receive it
             ssize_t bytesReceived = rtpSocket_.receive(packet, receiveBuffer_, sizeof(receiveBuffer_));
             if (bytesReceived > 0) {
-                ++recvSuccess;
-                if (recvSuccess == 1) {
-                    AES67_LOGF("receiveLoop: FIRST PACKET! %zd bytes, ver=%u pt=%u seq=%u ts=%u",
-                               bytesReceived, packet.header.version, packet.header.payloadType,
-                               packet.header.sequenceNumber, packet.header.timestamp);
-                }
                 processPacket(packet);
-            } else {
-                ++recvFail;
-                if (recvFail <= 3) {
-                    AES67_LOGF("receiveLoop: receive returned %zd (errno=%d)", bytesReceived, errno);
-                }
             }
         }
-
-        // Log progress every 5 seconds (~5000 select calls at 1ms timeout)
-        if (selectCalls % 5000 == 0) {
-            AES67_LOGF("receiveLoop: selectCalls=%llu ready=%llu recvOK=%llu recvFail=%llu jbuf=%zu",
-                       selectCalls, selectReady, recvSuccess, recvFail,
-                       jitterBuffer_.getBufferedPacketCount());
-        }
     }
-
-    AES67_LOGF("receiveLoop: STOPPED (recvOK=%llu, recvFail=%llu)", recvSuccess, recvFail);
 }
 
 void RTPReceiver::consumeLoop() {
@@ -259,31 +225,19 @@ void RTPReceiver::consumeLoop() {
     size_t outputLength = 0;
     uint64_t presentationTime = 0;
 
-    AES67_LOG("consumeLoop: STARTED - entering Phase 1 (prefill wait)");
-
     // ── Phase 1: Pre-fill wait ──────────────────────────────────────
     // The receive thread is already running and populating the jitter buffer.
     // We wait here until enough packets have accumulated before starting
     // paced consumption. During this time Core Audio reads empty ring buffers
     // and fills silence (existing AES67IOHandler behavior).
-    uint64_t prefillChecks = 0;
     while (running_ && !prefillComplete_.load(std::memory_order_relaxed)) {
         size_t buffered = jitterBuffer_.getBufferedPacketCount();
-        ++prefillChecks;
-        if (prefillChecks % 5000 == 0) {
-            AES67_LOGF("consumeLoop: prefill waiting... buffered=%zu (need %zu) checks=%llu",
-                       buffered, kPrefillPacketCount, prefillChecks);
-        }
         if (buffered >= kPrefillPacketCount) {
             prefillComplete_.store(true, std::memory_order_relaxed);
-            AES67_LOGF("consumeLoop: PREFILL COMPLETE! buffered=%zu after %llu checks", buffered, prefillChecks);
             break;
         }
         std::this_thread::sleep_for(packetInterval_);
     }
-
-    AES67_LOGF("consumeLoop: entering Phase 2 (paced consumption) expectedSeq=%u",
-               expectedSequenceNumber_.load(std::memory_order_relaxed));
 
     // ── Phase 2: Paced consumption via sleep_until ──────────────────
     // Target absolute wall-clock times so we don't accumulate drift from
@@ -294,8 +248,6 @@ void RTPReceiver::consumeLoop() {
     // Adaptive rate matching state
     double rateAdjustment = 0.0;        // current fractional adjustment
     size_t packetsSinceRateCheck = 0;
-
-    uint64_t consumeOK = 0, consumeMiss = 0, consumeUnderrun = 0;
 
     while (running_) {
         std::this_thread::sleep_until(nextConsumeTime);
@@ -317,13 +269,8 @@ void RTPReceiver::consumeLoop() {
         );
 
         if (gotPacket) {
-            ++consumeOK;
             // Successfully got the expected packet — decode and map to ring buffers
             expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
-
-            if (consumeOK <= 3) {
-                AES67_LOGF("consumeLoop: GOT PACKET seq=%u len=%zu (ok#%llu)", expectedSeq, outputLength, consumeOK);
-            }
 
             if (sdp_.encoding == "L16") {
                 decodeL16(jitterReadBuffer_, outputLength);
@@ -339,24 +286,11 @@ void RTPReceiver::consumeLoop() {
                 // Skip to the next sequence number so we don't stall.
                 expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
                 stats_.packetsLost.fetch_add(1, std::memory_order_relaxed);
-                ++consumeMiss;
-                if (consumeMiss <= 5) {
-                    AES67_LOGF("consumeLoop: MISS seq=%u buffered=%zu (miss#%llu)", expectedSeq, bufferedCount, consumeMiss);
-                }
             } else {
                 // Buffer completely empty — underrun.
                 // Do NOT advance sequence number; the packet may still arrive.
                 stats_.underruns.fetch_add(1, std::memory_order_relaxed);
-                ++consumeUnderrun;
             }
-        }
-
-        // Log periodic summary
-        uint64_t totalAttempts = consumeOK + consumeMiss + consumeUnderrun;
-        if (totalAttempts % 5000 == 0 && totalAttempts > 0) {
-            AES67_LOGF("consumeLoop: ok=%llu miss=%llu underrun=%llu expectedSeq=%u jbuf=%zu rateAdj=%.6f",
-                       consumeOK, consumeMiss, consumeUnderrun, expectedSeq,
-                       jitterBuffer_.getBufferedPacketCount(), rateAdjustment);
         }
 
         // ── Adaptive rate matching ──────────────────────────────────
@@ -389,15 +323,8 @@ void RTPReceiver::consumeLoop() {
 }
 
 void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
-    static uint64_t validateFailCount = 0;
     if (!validatePacket(packet)) {
         stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
-        ++validateFailCount;
-        if (validateFailCount <= 5) {
-            AES67_LOGF("processPacket: VALIDATION FAILED #%llu (ver=%u pt=%u expected_pt=%u payloadSize=%zu)",
-                       validateFailCount, packet.header.version, packet.header.payloadType,
-                       sdp_.payloadType, packet.payloadSize);
-        }
         return;
     }
 
@@ -411,7 +338,6 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
 
     if (!payload || payloadSize == 0) {
         stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
-        AES67_LOGF("processPacket: null/empty payload (payload=%p size=%zu)", (void*)payload, payloadSize);
         return;
     }
 
@@ -420,8 +346,6 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
         connected_ = true;
         // Initialize expected sequence number from first packet
         expectedSequenceNumber_.store(sequenceNumber, std::memory_order_relaxed);
-        AES67_LOGF("processPacket: CONNECTED! firstSeq=%u firstTs=%u payloadSize=%zu encoding=%s",
-                   sequenceNumber, timestamp, payloadSize, sdp_.encoding.c_str());
     }
     auto now = std::chrono::steady_clock::now();
     lastPacketTimeNs_.store(
@@ -455,21 +379,9 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
 
     // Add packet to jitter buffer (lock-free operation)
     // The jitter buffer will handle reordering based on sequence numbers
-    static uint64_t addOK = 0, addFail = 0;
     if (!jitterBuffer_.addPacket(payload, payloadSize, sequenceNumber, presentationTime)) {
         // Jitter buffer full or slot already occupied
         stats_.overruns.fetch_add(1, std::memory_order_relaxed);
-        ++addFail;
-        if (addFail <= 5) {
-            AES67_LOGF("processPacket: jitterBuffer.addPacket FAILED seq=%u (fail#%llu, buffered=%zu)",
-                       sequenceNumber, addFail, jitterBuffer_.getBufferedPacketCount());
-        }
-    } else {
-        ++addOK;
-        if (addOK <= 3) {
-            AES67_LOGF("processPacket: jitterBuffer.addPacket OK seq=%u (ok#%llu, buffered=%zu)",
-                       sequenceNumber, addOK, jitterBuffer_.getBufferedPacketCount());
-        }
     }
 }
 
@@ -557,20 +469,6 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
         audioBuffer_[i] = pcmSample / 8388608.0f;
     }
 
-    // Log first decode
-    static uint64_t decodeCount = 0;
-    ++decodeCount;
-    if (decodeCount <= 2) {
-        float peak = 0.0f;
-        for (size_t i = 0; i < totalSamples && i < 48; ++i) {
-            float abs = audioBuffer_[i] < 0 ? -audioBuffer_[i] : audioBuffer_[i];
-            if (abs > peak) peak = abs;
-        }
-        AES67_LOGF("decodeL24: frames=%zu ch=%u totalSamples=%zu peak=%.6f firstBytes=[%02x %02x %02x]",
-                   frameCount, sdp_.numChannels, totalSamples, peak,
-                   payload[0], payload[1], payload[2]);
-    }
-
     // Map to device channels
     mapChannelsToDevice(audioBuffer_.data(), frameCount);
 }
@@ -597,9 +495,6 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
 
     bool hadUnderrun = false;
 
-    static uint64_t mapCount = 0;
-    ++mapCount;
-
     for (size_t streamChannel = 0; streamChannel < sdp_.numChannels; ++streamChannel) {
         const size_t deviceChannel = mapping_.deviceChannelStart + streamChannel;
 
@@ -610,14 +505,6 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
 
         // Write to device ring buffer (batch write)
         const size_t written = deviceChannels_[deviceChannel].write(channelBuffer, frameCount);
-
-        if (mapCount <= 2 && streamChannel == 0) {
-            AES67_LOGF("mapChannels: ch%zu→devCh%zu frames=%zu written=%zu cap=%zu avail=%zu first=%.6f",
-                       streamChannel, deviceChannel, frameCount, written,
-                       deviceChannels_[deviceChannel].capacity(),
-                       deviceChannels_[deviceChannel].available(),
-                       channelBuffer[0]);
-        }
 
         if (written < frameCount && !hadUnderrun) {
             // Ring buffer full - count underrun once per packet
@@ -652,8 +539,6 @@ void RTPReceiver::updateStats(uint16_t sequenceNumber, size_t payloadSize) {
     lastSequenceNumber_.store(sequenceNumber, std::memory_order_relaxed);
     stats_.packetsReceived.fetch_add(1, std::memory_order_relaxed);
     stats_.bytesReceived.fetch_add(payloadSize, std::memory_order_relaxed);
-
-    // Note: Packet loss percentage is calculated by Statistics::getPacketLossPercent()
 }
 
 } // namespace AES67
