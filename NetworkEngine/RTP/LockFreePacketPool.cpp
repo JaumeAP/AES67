@@ -64,8 +64,14 @@ void LockFreePacketPool::release(LockFreePacketPool::PooledRTPPacket* packet) {
         return; // Not a valid pool packet
     }
 
-    // Verify it was actually in use
-    if (!inUseFlags_[index].load(std::memory_order_acquire)) {
+    // Atomically check-and-clear the in-use flag.
+    // compare_exchange prevents the TOCTOU race where two concurrent
+    // release() calls could both see inUseFlags_ as true and double-push
+    // the same node onto the free list.
+    bool expected = true;
+    if (!inUseFlags_[index].compare_exchange_strong(expected, false,
+                                                     std::memory_order_acq_rel,
+                                                     std::memory_order_relaxed)) {
         return; // Already free (double-free protection)
     }
 
@@ -74,9 +80,6 @@ void LockFreePacketPool::release(LockFreePacketPool::PooledRTPPacket* packet) {
     packet->sequenceNumber = 0;
     packet->presentationTime = 0;
     packet->arrivalTime = 0;
-
-    // Mark as not in use
-    inUseFlags_[index].store(false, std::memory_order_release);
 
     // Push the node back to the free list (ABA-safe via tagged pointer)
     TaggedPtr oldHead = freeListHead_.load(std::memory_order_relaxed);

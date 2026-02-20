@@ -350,18 +350,27 @@ void PTPClock::updatePLL(uint64_t localTimeNs, uint64_t ptpTimeNs, uint64_t samp
 }
 
 bool PTPClock::isMediaClockLocked() const {
-    // Media clock is locked if:
-    // 1. We have a valid reference point
-    // 2. PTP is locked to master
-    // 3. PLL is locked (if available)
+    // Media clock recovery can operate in two modes:
+    //
+    // 1. Full PTP mode: PTP is locked to a network master, so reference
+    //    points correlate RTP timestamps to real PTP time. This gives
+    //    multi-device synchronization.
+    //
+    // 2. Local clock fallback: PTP is not available (stub mode), but we
+    //    still have valid reference points correlating RTP timestamps to
+    //    local time. This gives single-device timing — enough for audio
+    //    to flow correctly through this driver, just not synchronized
+    //    with other AES67 devices on the network.
+    //
+    // We require:
+    //   - At least one valid reference point
+    //   - The reference is recent (not stale)
+    //   - If PTP IS locked, also require PLL lock for full accuracy
+    //   - If PTP is NOT locked (stub), accept local-clock-based references
 
     std::lock_guard<std::mutex> lock(mediaClockMutex_);
 
     if (!currentReference_.valid) {
-        return false;
-    }
-
-    if (!isLocked()) {
         return false;
     }
 
@@ -374,11 +383,17 @@ bool PTPClock::isMediaClockLocked() const {
         return false;
     }
 
-    // If PLL is available, check its lock status
-    if (pll_) {
-        return pll_->isLocked();
+    // If PTP is locked to a real master, require PLL lock for full accuracy
+    if (isLocked()) {
+        if (pll_) {
+            return pll_->isLocked();
+        }
+        return true;
     }
 
+    // PTP not locked (stub mode): accept local-clock-based recovery.
+    // We have a valid, recent reference point — that's sufficient for
+    // single-device operation using the local system clock.
     return true;
 }
 

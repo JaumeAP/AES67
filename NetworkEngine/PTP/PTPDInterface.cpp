@@ -7,8 +7,6 @@
 
 #include "PTPDInterface.h"
 #include <iostream>
-#include <thread>
-#include <chrono>
 
 namespace AES67 {
 
@@ -25,7 +23,7 @@ PTPDInterface::PTPDInterface()
     // Initialize diagnostics with defaults (matching PTPDiagnostics struct)
     diagnostics_.isConnected = false;
     diagnostics_.isLocked = false;
-    diagnostics_.masterClockID = "Not Available";
+    diagnostics_.masterClockID = "";
     diagnostics_.currentDomain = 0;
     diagnostics_.currentOffset = 0.0;
 }
@@ -51,25 +49,19 @@ void PTPDInterface::start() {
     running_ = true;
     diagnostics_.isConnected = true;
 
-    std::cout << "[PTPDInterface] Started (stub mode - no actual PTP)" << std::endl;
+    // Stub mode: isLocked stays FALSE. The local clock fallback will be
+    // used for media clock recovery instead. Do NOT fake a lock — that
+    // causes downstream code (resampling, presentation timing) to trust a
+    // clock source that doesn't exist.
+    state_.isLocked.store(false);
+    state_.clockClass.store(255); // Clock class 255 = slave-only, not traceable
+    diagnostics_.isLocked = false;
+    diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (NOT SYNCHRONIZED)";
 
-    // Simulate being "locked" after a short delay for testing purposes.
-    // WARNING: This is a STUB — audio is NOT synchronized to network PTP time.
-    // Multi-device synchronization will NOT work until real PTP is integrated.
-    std::thread([this]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-        if (running_) {
-            state_.isLocked.store(true);
-            state_.clockClass.store(248); // Clock class 248 = slave-only (not authoritative)
-            diagnostics_.isLocked = true;
-            diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (NOT SYNCHRONIZED)";
-
-            std::cerr << "[PTPDInterface] WARNING: PTP STUB MODE - clock is NOT synchronized. "
-                      << "Multi-device sync will not work. "
-                      << "Integrate real ptpd for production use." << std::endl;
-        }
-    }).detach();
+    std::cerr << "[PTPDInterface] WARNING: PTP STUB MODE - clock is NOT synchronized. "
+              << "Using local clock fallback for media clock recovery. "
+              << "Multi-device sync will not work. "
+              << "Integrate real ptpd for production use." << std::endl;
 }
 
 void PTPDInterface::stop() {

@@ -500,13 +500,21 @@ void RTPReceiver::updateStats(uint16_t sequenceNumber, size_t payloadSize) {
     // Atomic operations eliminate need for mutex lock
 
     // Detect packet loss (sequence number gaps)
+    // Use signed 16-bit arithmetic so that the two's-complement result
+    // correctly distinguishes forward gaps (lost packets) from backward
+    // gaps (reordered/duplicate packets), even across 16-bit wraparound.
     uint64_t currentPacketCount = stats_.packetsReceived.load(std::memory_order_relaxed);
     if (currentPacketCount > 0) {
         uint16_t expected = lastSequenceNumber_.load(std::memory_order_relaxed) + 1;
         if (sequenceNumber != expected) {
-            // Handle sequence number wrap-around
-            uint16_t gap = sequenceNumber - expected;
-            stats_.packetsLost.fetch_add(gap, std::memory_order_relaxed);
+            int16_t gap = static_cast<int16_t>(sequenceNumber - expected);
+            if (gap > 0) {
+                // Forward gap: packets between expected and sequenceNumber were lost
+                stats_.packetsLost.fetch_add(static_cast<uint64_t>(gap), std::memory_order_relaxed);
+            } else {
+                // Negative gap: packet arrived out of order (or duplicate)
+                stats_.outOfOrderPackets.fetch_add(1, std::memory_order_relaxed);
+            }
         }
     }
 
