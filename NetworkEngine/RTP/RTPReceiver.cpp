@@ -29,6 +29,17 @@ RTPReceiver::RTPReceiver(
     const size_t maxFrames = 512;
     const size_t maxSamples = maxFrames * sdp_.numChannels;
     audioBuffer_.resize(maxSamples);
+
+    // Calculate packet interval from SDP (mirrors RTPTransmitter constructor)
+    // Priority: ptime field > framecount/sampleRate > 1ms fallback
+    if (sdp_.ptime > 0) {
+        packetInterval_ = std::chrono::microseconds(sdp_.ptime * 1000);
+    } else if (sdp_.framecount > 0 && sdp_.sampleRate > 0) {
+        uint64_t intervalUs = (static_cast<uint64_t>(sdp_.framecount) * 1000000ULL) / sdp_.sampleRate;
+        packetInterval_ = std::chrono::microseconds(intervalUs);
+    } else {
+        packetInterval_ = std::chrono::microseconds(1000); // 1ms default for AES67
+    }
 }
 
 RTPReceiver::~RTPReceiver() {
@@ -54,9 +65,10 @@ bool RTPReceiver::start() {
         return false;
     }
 
-    // Reset jitter buffer
+    // Reset jitter buffer and prefill gate
     jitterBuffer_.reset();
     expectedSequenceNumber_.store(0, std::memory_order_relaxed);
+    prefillComplete_.store(false, std::memory_order_relaxed);
 
     // Start receive thread (producer - adds packets to jitter buffer)
     running_ = true;
@@ -208,18 +220,50 @@ void RTPReceiver::receiveLoop() {
 
 void RTPReceiver::consumeLoop() {
     // This thread pulls packets from the jitter buffer in sequence order
-    // and writes them to the ring buffers after decoding
-
-    // Calculate packet interval based on sample rate and frame count
-    // For AES67, typical packet time is 1ms (48 samples at 48kHz)
-    // Use a conservative interval to avoid spinning too much
-    const auto packetInterval = std::chrono::microseconds(500); // 500us (2x faster than 1ms packets)
+    // and writes decoded audio to the device ring buffers.
+    //
+    // Two phases:
+    //   1. Pre-fill: wait for the jitter buffer to accumulate enough packets
+    //      so that the consumer has a cushion against network jitter.
+    //   2. Paced consumption: consume one packet per packetInterval_ using
+    //      sleep_until (mirrors RTPTransmitter::transmitLoop pattern).
 
     size_t outputLength = 0;
     uint64_t presentationTime = 0;
 
+    // ── Phase 1: Pre-fill wait ──────────────────────────────────────
+    // The receive thread is already running and populating the jitter buffer.
+    // We wait here until enough packets have accumulated before starting
+    // paced consumption. During this time Core Audio reads empty ring buffers
+    // and fills silence (existing AES67IOHandler behavior).
+    while (running_ && !prefillComplete_.load(std::memory_order_relaxed)) {
+        size_t buffered = jitterBuffer_.getBufferedPacketCount();
+        if (buffered >= kPrefillPacketCount) {
+            prefillComplete_.store(true, std::memory_order_relaxed);
+            break;
+        }
+        std::this_thread::sleep_for(packetInterval_);
+    }
+
+    // ── Phase 2: Paced consumption via sleep_until ──────────────────
+    // Target absolute wall-clock times so we don't accumulate drift from
+    // variable decode/write latency. This is the same pattern used by
+    // RTPTransmitter::transmitLoop().
+    auto nextConsumeTime = std::chrono::steady_clock::now();
+
+    // Adaptive rate matching state
+    double rateAdjustment = 0.0;        // current fractional adjustment
+    size_t packetsSinceRateCheck = 0;
+
     while (running_) {
-        // Get the expected next packet from the jitter buffer
+        std::this_thread::sleep_until(nextConsumeTime);
+
+        // Advance target time (with rate adjustment applied)
+        auto adjustedInterval = std::chrono::microseconds(
+            static_cast<int64_t>(packetInterval_.count() * (1.0 + rateAdjustment))
+        );
+        nextConsumeTime += adjustedInterval;
+
         uint32_t expectedSeq = expectedSequenceNumber_.load(std::memory_order_relaxed);
 
         bool gotPacket = jitterBuffer_.getNextPacket(
@@ -231,74 +275,54 @@ void RTPReceiver::consumeLoop() {
         );
 
         if (gotPacket) {
-            // Successfully got the next packet in sequence
-            // Increment expected sequence number (handle 16-bit wraparound)
+            // Successfully got the expected packet — decode and map to ring buffers
             expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
 
-            // Decode based on encoding type
             if (sdp_.encoding == "L16") {
                 decodeL16(jitterReadBuffer_, outputLength);
             } else if (sdp_.encoding == "L24") {
                 decodeL24(jitterReadBuffer_, outputLength);
             }
-
-            // Note: decodeL16/L24 already call mapChannelsToDevice internally
         } else {
-            // Packet not yet available - this could be:
-            // 1. Jitter buffer underrun (packet hasn't arrived yet)
-            // 2. Packet was dropped or lost
-            // 3. Out-of-order packet in buffer but not the one we want
-
-            // Check if there are any packets in the buffer
+            // Expected packet not available
             size_t bufferedCount = jitterBuffer_.getBufferedPacketCount();
 
             if (bufferedCount > 0) {
-                // There are packets, but not the one we want
-                // This indicates out-of-order delivery or packet loss
-
-                // Try waiting a bit for the expected packet to arrive
-                // If it doesn't arrive within a reasonable time, skip it
-                static constexpr int kMaxRetries = 3;
-                int retries = 0;
-
-                while (retries < kMaxRetries && running_) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-
-                    gotPacket = jitterBuffer_.getNextPacket(
-                        jitterReadBuffer_,
-                        sizeof(jitterReadBuffer_),
-                        outputLength,
-                        presentationTime,
-                        expectedSeq
-                    );
-
-                    if (gotPacket) {
-                        // Got it on retry
-                        expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
-
-                        if (sdp_.encoding == "L16") {
-                            decodeL16(jitterReadBuffer_, outputLength);
-                        } else if (sdp_.encoding == "L24") {
-                            decodeL24(jitterReadBuffer_, outputLength);
-                        }
-                        break;
-                    }
-
-                    retries++;
-                }
-
-                if (!gotPacket) {
-                    // Packet loss - skip to next sequence number
-                    expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
-                    stats_.packetsLost.fetch_add(1, std::memory_order_relaxed);
-                    // Only count as underrun if we actually had packets but not the right one
-                    stats_.outOfOrderPackets.fetch_add(1, std::memory_order_relaxed);
-                }
+                // Buffer has packets but not the one we want — packet loss.
+                // Skip to the next sequence number so we don't stall.
+                expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
+                stats_.packetsLost.fetch_add(1, std::memory_order_relaxed);
             } else {
-                // No packets in buffer at all - underrun
-                // Sleep a bit to allow packets to arrive
-                std::this_thread::sleep_for(packetInterval);
+                // Buffer completely empty — underrun.
+                // Do NOT advance sequence number; the packet may still arrive.
                 stats_.underruns.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        // ── Adaptive rate matching ──────────────────────────────────
+        // Every kRateCheckIntervalPackets, sample the first mapped channel's
+        // ring buffer fill level and nudge the consume rate to keep it near 50%.
+        ++packetsSinceRateCheck;
+        if (packetsSinceRateCheck >= kRateCheckIntervalPackets) {
+            packetsSinceRateCheck = 0;
+
+            size_t deviceCh = mapping_.deviceChannelStart;
+            if (deviceCh < 128) {
+                auto& ringBuf = deviceChannels_[deviceCh];
+                size_t cap = ringBuf.capacity();
+                if (cap > 0) {
+                    double fillRatio = static_cast<double>(ringBuf.available()) /
+                                       static_cast<double>(cap);
+                    double error = fillRatio - kTargetFillRatio;
+
+                    // Positive error (buffer too full) → speed up consumption (negative adjust)
+                    // Negative error (buffer too empty) → slow down consumption (positive adjust)
+                    rateAdjustment -= error * kRateAdjustmentGain;
+
+                    // Clamp to maximum adjustment range
+                    if (rateAdjustment > kMaxRateAdjustment) rateAdjustment = kMaxRateAdjustment;
+                    if (rateAdjustment < -kMaxRateAdjustment) rateAdjustment = -kMaxRateAdjustment;
+                }
             }
         }
     }

@@ -17,6 +17,7 @@
 #include <atomic>
 #include <memory>
 #include <functional>
+#include <chrono>
 
 namespace AES67 {
 
@@ -111,6 +112,22 @@ private:
 
     // Statistics tracking
     void updateStats(uint16_t sequenceNumber, size_t payloadSize);
+
+    // Consumer pacing (mirrors RTPTransmitter::packetInterval_)
+    std::chrono::microseconds packetInterval_;
+
+    // Pre-fill gate: consumer waits until jitter buffer has enough packets
+    // before starting paced consumption, preventing initial starvation
+    std::atomic<bool> prefillComplete_{false};
+    static constexpr size_t kPrefillPacketCount = 6;
+
+    // Adaptive rate matching: lightweight P-controller to compensate for
+    // clock drift between network sender and local Core Audio clock.
+    // Adjusts consume interval based on ring buffer fill level.
+    static constexpr size_t kRateCheckIntervalPackets = 48;   // check every ~48ms
+    static constexpr double kMaxRateAdjustment = 0.005;       // +/- 0.5%
+    static constexpr double kTargetFillRatio = 0.5;           // 50% ring buffer fill
+    static constexpr double kRateAdjustmentGain = 0.0001;     // very gentle P-controller
 
     // Configuration
     SDPSession sdp_;
