@@ -117,7 +117,15 @@ void AES67Device::Initialize() {
 }
 
 AES67Device::~AES67Device() {
-    StopIO();
+    // Deactivate streams directly rather than calling StopIO() (which requires
+    // framework context). This is safe in the destructor.
+    if (inputStream_) {
+        inputStream_->SetIsActive(false);
+    }
+    if (outputStream_) {
+        outputStream_->SetIsActive(false);
+    }
+    ioRunning_.store(false);
 }
 
 void AES67Device::InitializeStreams() {
@@ -308,40 +316,38 @@ std::string AES67Device::GetDeviceUID() const {
     return "com.aes67.driver.device";
 }
 
-OSStatus AES67Device::StartIO() {
-    if (ioRunning_.load()) {
-        return kAudioHardwareNoError; // Already running
+OSStatus AES67Device::StartIOImpl(UInt32 clientID, UInt32 startCount) {
+    // startCount == 0 means first client starting IO (device transitions to running)
+    if (startCount == 0) {
+        // Activate streams
+        if (inputStream_) {
+            inputStream_->SetIsActive(true);
+        }
+        if (outputStream_) {
+            outputStream_->SetIsActive(true);
+        }
+
+        ioRunning_.store(true);
     }
 
-    // Start streams
-    if (inputStream_) {
-        inputStream_->SetIsActive(true);
-    }
-    if (outputStream_) {
-        outputStream_->SetIsActive(true);
-    }
-
-    ioRunning_.store(true);
-
-    return kAudioHardwareNoError;
+    return aspl::Device::StartIOImpl(clientID, startCount);
 }
 
-OSStatus AES67Device::StopIO() {
-    if (!ioRunning_.load()) {
-        return kAudioHardwareNoError; // Already stopped
+OSStatus AES67Device::StopIOImpl(UInt32 clientID, UInt32 startCount) {
+    // startCount == 0 means last client stopped IO (device transitions to not running)
+    if (startCount == 0) {
+        // Deactivate streams
+        if (inputStream_) {
+            inputStream_->SetIsActive(false);
+        }
+        if (outputStream_) {
+            outputStream_->SetIsActive(false);
+        }
+
+        ioRunning_.store(false);
     }
 
-    // Stop streams
-    if (inputStream_) {
-        inputStream_->SetIsActive(false);
-    }
-    if (outputStream_) {
-        outputStream_->SetIsActive(false);
-    }
-
-    ioRunning_.store(false);
-
-    return kAudioHardwareNoError;
+    return aspl::Device::StopIOImpl(clientID, startCount);
 }
 
 void AES67Device::ResetStatistics() {

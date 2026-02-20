@@ -29,9 +29,8 @@ int custom_adjFreq(struct PTPDInterface* ptpd_interface, double adj) {
 }
 
 void standard_getTime(int64_t* seconds, int32_t* nanoseconds) {
-    struct timespec ts;
-
 #if defined(_POSIX_TIMERS) && (_POSIX_TIMERS > 0)
+    struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) < 0) {
         // Fallback to gettimeofday if clock_gettime fails
         struct timeval tv;

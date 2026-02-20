@@ -154,7 +154,7 @@ StatisticsSnapshot Statistics::snapshot() const {
 // ============================================================================
 
 bool NetworkAddress::isValid() const {
-    return !ip.empty() && port > 0 && port < 65536;
+    return !ip.empty() && port > 0;
 }
 
 bool NetworkAddress::isMulticast() const {

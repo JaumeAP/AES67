@@ -104,8 +104,8 @@ private:
 
 class SampleRateAdapter::Impl {
 public:
-    Impl(double inputRate, double outputRate, int channels, ConversionQuality quality)
-        : inputRate_(inputRate), outputRate_(outputRate), channels_(channels), quality_(quality) {
+    Impl(double inputRate, double outputRate, int channels, ConversionQuality /* quality */)
+        : inputRate_(inputRate), outputRate_(outputRate), channels_(channels) {
         needsConversion_ = std::abs(inputRate_ - outputRate_) > 0.1; // Account for floating point precision
         
         if (needsConversion_) {
@@ -142,7 +142,6 @@ private:
     double inputRate_;
     double outputRate_;
     int channels_;
-    ConversionQuality quality_;
     bool needsConversion_;
     std::unique_ptr<LinearResampler> resampler_;
 };

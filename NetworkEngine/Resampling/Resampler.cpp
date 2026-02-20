@@ -103,9 +103,7 @@ private:
     std::vector<float> lastSample_;
 };
 
-Resampler::Resampler(double inputSampleRate, double outputSampleRate, int channels)
-    : inputSampleRate_(inputSampleRate), outputSampleRate_(outputSampleRate), 
-      channels_(channels), ratio_(outputSampleRate / inputSampleRate) {
+Resampler::Resampler(double inputSampleRate, double outputSampleRate, int channels) {
     resamplerState_ = new SimpleResampler(inputSampleRate, outputSampleRate, channels);
 }
 

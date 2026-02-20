@@ -285,12 +285,17 @@ bool testThreadSafety() {
     });
 
     // Consumer thread
-    std::thread consumer([&]() {
+    std::thread consumer([&]() -> void {
         float value;
         while (!producerDone || !buffer.isEmpty()) {
             if (buffer.read(&value, 1) == 1) {
-                TEST_ASSERT(value == static_cast<float>(samplesRead.load()),
-                           "Data should be in order");
+                if (value != static_cast<float>(samplesRead.load())) {
+                    std::cerr << "FAIL: " << "Data should be in order" << std::endl;
+                    testsFailed++;
+                    return;
+                } else {
+                    testsPassed++;
+                }
                 samplesRead++;
             } else {
                 std::this_thread::yield();

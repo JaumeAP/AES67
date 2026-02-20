@@ -6,8 +6,9 @@ namespace AES67 {
 
 SmoothedPIController::SmoothedPIController(double kp, double ki, double minOutput, double maxOutput, size_t smoothingWindow)
     : kp_(kp), ki_(ki), minOutput_(minOutput), maxOutput_(maxOutput),
-      integral_(0.0), lastError_(0.0), smoothingWindow_(smoothingWindow), 
-      smoothingIndex_(0), proportionalTerm_(0.0), integralTerm_(0.0) {
+      integral_(0.0), lastError_(0.0),
+      smoothingIndex_(0), smoothingWindow_(smoothingWindow),
+      proportionalTerm_(0.0), integralTerm_(0.0) {
     smoothingBuffer_.resize(smoothingWindow_, 0.0);
 }
 

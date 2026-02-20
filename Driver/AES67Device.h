@@ -109,10 +109,9 @@ public:
     // Control
     //
 
-    // Start/Stop IO
-    OSStatus StartIO();
-    OSStatus StopIO();
-    bool IsIORunning() const { return ioRunning_.load(); }
+    // Start/Stop IO (overrides from aspl::Device)
+    OSStatus StartIOImpl(UInt32 clientID, UInt32 startCount) override;
+    OSStatus StopIOImpl(UInt32 clientID, UInt32 startCount) override;
 
     //
     // Statistics
