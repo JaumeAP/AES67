@@ -318,7 +318,10 @@ bool SDPParser::parseFrameCountAttribute(const std::string& value, SDPSession& s
 bool SDPParser::parseSourceFilterAttribute(const std::string& value, SDPSession& session) {
     // Format: incl IN IP4 <dst-address> <src-list>
     // Example: incl IN IP4 239.69.83.171 192.168.1.100
-    auto parts = splitString(value, ' ');
+    // Note: SDP source-filter values often have a leading space after the colon
+    // (e.g., "a=source-filter: incl ..."), so trim before splitting to avoid
+    // an empty first token that shifts all indices.
+    auto parts = splitString(trim(value), ' ');
     if (parts.size() >= 5) {
         session.sourceAddress = parts[4];
         return true;

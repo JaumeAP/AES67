@@ -6,9 +6,11 @@
 
 #include "RTPTransmitter.h"
 #include "SimpleRTP.h"
+#include "../../Driver/DebugLog.h"
 #include <cstring>
 #include <random>
 #include <chrono>
+#include <cerrno>
 
 namespace AES67 {
 
@@ -51,20 +53,28 @@ RTPTransmitter::~RTPTransmitter() {
 
 bool RTPTransmitter::start() {
     if (running_ || rtpSocket_.isOpen()) {
+        AES67_LOGF("RTPTransmitter::start: already running or socket open (stream=%s)",
+                   sdp_.sessionName.c_str());
         return false; // Already running
     }
 
     // Validate SDP configuration
     if (sdp_.connectionAddress.empty() || sdp_.port == 0) {
+        AES67_LOGF("RTPTransmitter::start: invalid SDP - address='%s' port=%u (stream=%s)",
+                   sdp_.connectionAddress.c_str(), sdp_.port, sdp_.sessionName.c_str());
         return false;
     }
 
     if (sdp_.numChannels == 0 || sdp_.numChannels > 128) {
+        AES67_LOGF("RTPTransmitter::start: invalid channel count %u (stream=%s)",
+                   sdp_.numChannels, sdp_.sessionName.c_str());
         return false;
     }
 
     // Open RTP transmitter socket
     if (!rtpSocket_.openTransmitter(sdp_.connectionAddress.c_str(), sdp_.port)) {
+        AES67_LOGF("RTPTransmitter::start: socket open failed for %s:%u (stream=%s)",
+                   sdp_.connectionAddress.c_str(), sdp_.port, sdp_.sessionName.c_str());
         return false;
     }
 
@@ -78,7 +88,10 @@ bool RTPTransmitter::start() {
     // Start transmit thread (elevated priority to prevent audio dropouts)
     running_ = true;
     transmitThread_ = std::thread([this]() {
-        AudioThreadPriority::configureForRealTime();
+        if (!AudioThreadPriority::configureForRealTime()) {
+            AES67_LOGF("RTPTransmitter: failed to set RT priority on transmit thread (stream=%s)",
+                       sdp_.sessionName.c_str());
+        }
         transmitLoop();
     });
 
@@ -141,9 +154,10 @@ bool RTPTransmitter::updateMapping(const ChannelMapping& newMapping) {
 
 void RTPTransmitter::transmitLoop() {
     // Calculate samples per packet (typically 48 for 48kHz @ 1ms)
-    const size_t samplesPerPacket = sdp_.sampleRate / 1000;
+    const size_t samplesPerPacket = sdp_.framecount;
 
     auto nextTransmitTime = startTime_;
+    bool unsupportedEncodingLogged = false;
 
     while (running_) {
         // Wait until next transmit time (precise 1ms intervals)
@@ -166,6 +180,11 @@ void RTPTransmitter::transmitLoop() {
             encodeL24(audioBuffer_.data(), samplesPerPacket, payload);
             payloadSize = samplesPerPacket * sdp_.numChannels * 3; // 3 bytes/sample
         } else {
+            if (!unsupportedEncodingLogged) {
+                AES67_LOGF("RTPTransmitter::transmitLoop: unsupported encoding '%s' - no packets will be sent (stream=%s)",
+                           sdp_.encoding.c_str(), sdp_.sessionName.c_str());
+                unsupportedEncodingLogged = true;
+            }
             continue; // Unsupported encoding
         }
 
@@ -275,8 +294,14 @@ void RTPTransmitter::sendPacket(const uint8_t* payload, size_t payloadSize, uint
     ssize_t bytesSent = rtpSocket_.send(packet);
 
     if (bytesSent < 0) {
-        // Send failed
-        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed); // Reuse this field for send errors
+        // Send failed — count via malformedPackets (repurposed as send error counter for TX)
+        uint64_t count = stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed) + 1;
+        // Log first occurrence and then every 100th to avoid flooding
+        if (count == 1 || count % 100 == 0) {
+            AES67_LOGF("RTPTransmitter::sendPacket: send failed #%llu (seq=%u, errno=%d: %s) stream=%s",
+                       (unsigned long long)count, sequenceNumber_ - 1,
+                       errno, strerror(errno), sdp_.sessionName.c_str());
+        }
     }
 }
 

@@ -45,7 +45,9 @@ public:
         DeviceChannelBuffers& inputBuffers,
         DeviceChannelBuffers& outputBuffers,
         std::atomic<uint64_t>& inputUnderruns,
-        std::atomic<uint64_t>& outputUnderruns
+        std::atomic<uint64_t>& outputUnderruns,
+        UInt32 channelCount = 128,
+        UInt32 bytesPerSample = sizeof(Float32)
     );
 
     ~AES67IOHandler() override;
@@ -97,6 +99,11 @@ private:
     // Statistics references
     std::atomic<uint64_t>& inputUnderruns_;
     std::atomic<uint64_t>& outputUnderruns_;
+
+    // Cached audio format (set at construction, avoids virtual calls in RT path)
+    const UInt32 cachedChannelCount_;
+    const UInt32 cachedBytesPerSample_;
+    const UInt32 cachedBytesPerFrame_;   // cachedChannelCount_ * cachedBytesPerSample_
 
     // Constants
     static constexpr size_t kNumChannels = 128;

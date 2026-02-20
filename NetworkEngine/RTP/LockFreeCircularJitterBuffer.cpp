@@ -91,8 +91,11 @@ bool LockFreeCircularJitterBuffer::getNextPacket(uint8_t* outputBuffer, size_t b
 
     // Check if it matches the expected sequence number
     if (storedSequence != expectedSequenceNumber) {
-        // Wrong packet - release the slot back to EMPTY
+        // Wrong packet in this slot (stale from a previous wrap-around).
+        // The slot held a valid packet that was counted in validPackets_,
+        // so we must decrement before releasing the slot back to EMPTY.
         slot.state.store(SlotState::EMPTY, std::memory_order_release);
+        validPackets_.fetch_sub(1, std::memory_order_relaxed);
         return false;
     }
 
@@ -150,8 +153,11 @@ bool LockFreeCircularJitterBuffer::getPacketBySequence(uint8_t* outputBuffer, si
 
     // Check if it matches the requested sequence number
     if (storedSequence != sequenceNumber) {
-        // Wrong packet - release the slot back to EMPTY
+        // Wrong packet in this slot (stale from a previous wrap-around).
+        // The slot held a valid packet that was counted in validPackets_,
+        // so we must decrement before releasing the slot back to EMPTY.
         slot.state.store(SlotState::EMPTY, std::memory_order_release);
+        validPackets_.fetch_sub(1, std::memory_order_relaxed);
         return false;
     }
 

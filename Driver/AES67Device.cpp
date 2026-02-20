@@ -213,7 +213,9 @@ void AES67Device::InitializeIOHandler() {
         inputBuffers_,
         outputBuffers_,
         inputUnderruns_,
-        outputUnderruns_
+        outputUnderruns_,
+        kNumChannels,           // Cache channel count for RT-safe access
+        sizeof(Float32)         // Cache bytes per sample for RT-safe access
     );
     AES67_LOG("InitializeIOHandler: IOHandler created successfully");
 

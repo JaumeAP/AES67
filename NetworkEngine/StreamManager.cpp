@@ -33,6 +33,8 @@ StreamID StreamManager::addStream(const SDPSession& sdp) {
     // Auto-create channel mapping
     auto optMapping = mapper_.createDefaultMapping(sdp);
     if (!optMapping) {
+        AES67_LOGF("StreamManager::addStream: failed to create default mapping for '%s' (%u channels)",
+                   sdp.sessionName.c_str(), sdp.numChannels);
         return StreamID::null();
     }
 
@@ -45,6 +47,8 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     // Validate stream can be added
     std::string error;
     if (!canAddStream(sdp, &error)) {
+        AES67_LOGF("StreamManager::addStream: validation failed for '%s': %s",
+                   sdp.sessionName.c_str(), error.c_str());
         return StreamID::null();
     }
 
@@ -53,6 +57,8 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
 
     // Check if stream already exists (shouldn't happen with UUIDs but be safe)
     if (streams_.find(id) != streams_.end()) {
+        AES67_LOGF("StreamManager::addStream: duplicate stream ID for '%s'",
+                   sdp.sessionName.c_str());
         return StreamID::null();
     }
 
@@ -65,6 +71,8 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
 
     // Add mapping to mapper
     if (!mapper_.addMapping(completeMapping)) {
+        AES67_LOGF("StreamManager::addStream: mapper rejected mapping for '%s' (devCh=%zu, count=%u)",
+                   sdp.sessionName.c_str(), mapping.deviceChannelStart, sdp.numChannels);
         return StreamID::null();
     }
 
@@ -77,12 +85,16 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     // Create RTP receiver
     managed.receiver = createReceiver(sdp, completeMapping);
     if (!managed.receiver) {
+        AES67_LOGF("StreamManager::addStream: failed to create RTP receiver for '%s'",
+                   sdp.sessionName.c_str());
         mapper_.removeMapping(id);
         return StreamID::null();
     }
 
     // Start receiver
     if (!managed.receiver->start()) {
+        AES67_LOGF("StreamManager::addStream: failed to start RTP receiver for '%s' (%s:%u)",
+                   sdp.sessionName.c_str(), sdp.connectionAddress.c_str(), sdp.port);
         mapper_.removeMapping(id);
         return StreamID::null();
     }
@@ -238,6 +250,8 @@ StreamID StreamManager::createTxStream(
     // Validate
     std::string error;
     if (!canAddStream(sdp, &error)) {
+        AES67_LOGF("StreamManager::createTxStream: validation failed for '%s': %s",
+                   name.c_str(), error.c_str());
         return StreamID::null();
     }
 
@@ -253,6 +267,8 @@ StreamID StreamManager::createTxStream(
 
     // Add mapping
     if (!mapper_.addMapping(completeMapping)) {
+        AES67_LOGF("StreamManager::createTxStream: mapper rejected mapping for '%s' (devCh=%zu, count=%u)",
+                   name.c_str(), mapping.deviceChannelStart, numChannels);
         return StreamID::null();
     }
 
@@ -265,12 +281,16 @@ StreamID StreamManager::createTxStream(
     // Create RTP transmitter
     managed.transmitter = createTransmitter(sdp, completeMapping);
     if (!managed.transmitter) {
+        AES67_LOGF("StreamManager::createTxStream: failed to create RTP transmitter for '%s'",
+                   name.c_str());
         mapper_.removeMapping(id);
         return StreamID::null();
     }
 
     // Start transmitter
     if (!managed.transmitter->start()) {
+        AES67_LOGF("StreamManager::createTxStream: failed to start RTP transmitter for '%s' (%s:%u)",
+                   name.c_str(), multicastIP.c_str(), port);
         mapper_.removeMapping(id);
         return StreamID::null();
     }

@@ -14,12 +14,17 @@ AES67IOHandler::AES67IOHandler(
     DeviceChannelBuffers& inputBuffers,
     DeviceChannelBuffers& outputBuffers,
     std::atomic<uint64_t>& inputUnderruns,
-    std::atomic<uint64_t>& outputUnderruns
+    std::atomic<uint64_t>& outputUnderruns,
+    UInt32 channelCount,
+    UInt32 bytesPerSample
 )
     : inputBuffers_(inputBuffers)
     , outputBuffers_(outputBuffers)
     , inputUnderruns_(inputUnderruns)
     , outputUnderruns_(outputUnderruns)
+    , cachedChannelCount_(channelCount)
+    , cachedBytesPerSample_(bytesPerSample)
+    , cachedBytesPerFrame_(channelCount * bytesPerSample)
 {
 }
 
@@ -40,12 +45,14 @@ void AES67IOHandler::OnReadClientInput(
     // libASPL calls this with raw bytes in the stream's native format.
     // Our stream format is 32-bit float, so bytesCount = frameCount * channelCount * 4.
 
-    if (!bytes || !stream) {
+    if (!bytes) {
         return;
     }
 
-    const UInt32 channelCount = stream->GetPhysicalFormat().mChannelsPerFrame;
-    const UInt32 bytesPerFrame = channelCount * sizeof(Float32);
+    // RT-SAFE: Use cached format values instead of calling stream->GetPhysicalFormat()
+    // (virtual method call is not safe on the RT audio thread)
+    const UInt32 channelCount = cachedChannelCount_;
+    const UInt32 bytesPerFrame = cachedBytesPerFrame_;
     const UInt32 frameCount = (bytesPerFrame > 0) ? (bytesCount / bytesPerFrame) : 0;
 
     if (frameCount == 0 || channelCount != kNumChannels) {
@@ -58,6 +65,7 @@ void AES67IOHandler::OnReadClientInput(
     processInput(output, frameCount, channelCount);
 
     (void)client;
+    (void)stream;
     (void)zeroTimestamp;
     (void)timestamp;
 }
@@ -76,7 +84,7 @@ void AES67IOHandler::OnWriteClientOutput(
     //
     // libASPL provides Float32 interleaved frames in canonical format.
 
-    if (!frames || !stream) {
+    if (!frames) {
         return;
     }
 
@@ -87,6 +95,7 @@ void AES67IOHandler::OnWriteClientOutput(
     processOutput(frames, frameCount, channelCount);
 
     (void)client;
+    (void)stream;
     (void)zeroTimestamp;
     (void)timestamp;
 }
