@@ -134,7 +134,7 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
 void AES67IOHandler::processOutput(const float* inputData, UInt32 frameCount, UInt32 channelCount) noexcept {
     // RT-SAFE: Write to output ring buffers (Core Audio → Network)
 
-    constexpr UInt32 kMaxFramesPerBuffer = 512;
+    constexpr UInt32 kMaxFramesPerBuffer = 4096;
     float channelBuffer[kMaxFramesPerBuffer];
 
     if (frameCount > kMaxFramesPerBuffer) {
