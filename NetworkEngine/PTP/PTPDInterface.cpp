@@ -12,6 +12,8 @@ namespace AES67 {
 
 PTPDInterface::PTPDInterface()
     : running_(false), ptpdInstance_(nullptr) {
+    // ptpdInstance_ reserved for future real ptpd integration
+    (void)ptpdInstance_;
     // Initialize state with defaults
     state_.masterOffsetNs.store(0);
     state_.frequencyDrift.store(0.0);

@@ -114,7 +114,6 @@ bool testTimestampIncrement() {
     std::cout << "Test: Timestamp increment... ";
 
     // At 48kHz, 1ms packet = 48 samples
-    uint32_t sampleRate = 48000;
     uint32_t samplesPerPacket = 48;
     uint32_t timestamp = 0;
 

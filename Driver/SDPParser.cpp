@@ -594,7 +594,7 @@ StreamInfo SDPParser::toStreamInfo(const SDPSession& session) {
     info.ptp.masterMAC = session.ptpMasterMAC;
     info.ptp.enabled = (session.ptpDomain >= 0);
 
-    return std::move(info);
+    return info;
 }
 
 SDPSession SDPParser::fromStreamInfo(const StreamInfo& info) {
@@ -701,7 +701,7 @@ bool SDPParser::isValidIPv4(const std::string& ip) {
 }
 
 bool SDPParser::isValidPort(uint16_t port) {
-    return port > 0 && port < 65536;
+    return port > 0;
 }
 
 bool SDPParser::isValidSampleRate(uint32_t sampleRate) {

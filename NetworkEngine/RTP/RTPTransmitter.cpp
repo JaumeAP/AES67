@@ -41,7 +41,6 @@ RTPTransmitter::RTPTransmitter(
     // Calculate packet interval based on sample rate
     // AES67 standard: 1ms packets = sample_rate / 1000 samples per packet
     // Example: 48000 Hz → 48 samples/packet → 1ms interval
-    const uint32_t samplesPerPacket = sdp_.sampleRate / 1000;
     const uint64_t intervalUs = 1000; // 1ms in microseconds
     packetInterval_ = std::chrono::microseconds(intervalUs);
 }

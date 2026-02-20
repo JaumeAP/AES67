@@ -13,6 +13,8 @@ ClockAdjustmentController::ClockAdjustmentController(JitterBuffer& jitterBuffer,
       targetFillRatio_(targetFillRatio),
       currentRatio_(1.0), targetBufferLevel_(0), maxBufferLevel_(jitterBuffer.getMaxBufferSize()),
       lastUpdateTime_(std::chrono::steady_clock::now()), lastError_(0.0) {
+    // resampler_ reserved for future use (adaptive resampling ratio adjustment)
+    (void)resampler_;
     // Calculate the target buffer level based on the max size and target ratio
     targetBufferLevel_ = static_cast<size_t>(maxBufferLevel_ * targetFillRatio_);
 }

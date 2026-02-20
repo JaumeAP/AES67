@@ -24,12 +24,6 @@ namespace {
     // RTP timestamps are 32-bit, so half range is 2^31
     constexpr uint32_t kRTPTimestampHalfRange = 0x80000000U;
 
-    // Nanoseconds per second
-    constexpr double kNsPerSecond = 1000000000.0;
-
-    // Default sample rate for calculations
-    constexpr uint32_t kDefaultSampleRate = 48000;
-
     // Minimum time between reference points for drift calculation (100ms)
     constexpr uint64_t kMinDriftCalcIntervalNs = 100000000ULL;
 

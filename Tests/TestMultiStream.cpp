@@ -185,7 +185,7 @@ bool testNonOverlappingMappings() {
     // Check no overlaps
     uint16_t end1 = map1.getDeviceChannelEnd();
     uint16_t end2 = map2.getDeviceChannelEnd();
-    uint16_t end3 = map3.getDeviceChannelEnd();
+    (void)map3.getDeviceChannelEnd();
 
     TEST_ASSERT(end1 == map2.deviceChannelStart, "Mappings 1 and 2 should be contiguous");
     TEST_ASSERT(end2 == map3.deviceChannelStart, "Mappings 2 and 3 should be contiguous");

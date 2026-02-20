@@ -23,10 +23,6 @@ public:
     
 private:
     void* resamplerState_;  // Opaque pointer to underlying resampler implementation
-    double inputSampleRate_;
-    double outputSampleRate_;
-    int channels_;
-    double ratio_;
 };
 
 } // namespace AES67
