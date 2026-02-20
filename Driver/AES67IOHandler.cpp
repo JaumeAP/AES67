@@ -6,8 +6,8 @@
 //
 
 #include "AES67IOHandler.h"
+#include "DebugLog.h"
 #include <cstring>
-#include <algorithm>
 
 namespace AES67 {
 
@@ -27,70 +27,88 @@ AES67IOHandler::AES67IOHandler(
 AES67IOHandler::~AES67IOHandler() {
 }
 
-OSStatus AES67IOHandler::OnReadClientInput(
+void AES67IOHandler::OnReadClientInput(
+    const std::shared_ptr<aspl::Client>& client,
     const std::shared_ptr<aspl::Stream>& stream,
+    Float64 zeroTimestamp,
     Float64 timestamp,
-    const void* inputData,
-    void* outputData,
-    UInt32 frameCount
+    void* bytes,
+    UInt32 bytesCount
 ) {
     // RT-SAFE: Read from ring buffers (Network → Core Audio)
     // This provides INPUT audio to the client (DAW)
+    //
+    // libASPL calls this with raw bytes in the stream's native format.
+    // Our stream format is 32-bit float, so bytesCount = frameCount * channelCount * 4.
 
-    if (!outputData || !stream) {
-        return kAudioHardwareUnspecifiedError;
+    static uint64_t entryCount = 0;
+    ++entryCount;
+    if (entryCount <= 3) {
+        AES67_LOGF("OnReadClientInput ENTERED #%llu: bytes=%p stream=%p bytesCount=%u",
+                   entryCount, bytes, (void*)stream.get(), bytesCount);
     }
 
-    // Validate channel count matches our buffer configuration
+    if (!bytes || !stream) {
+        return;
+    }
+
     const UInt32 channelCount = stream->GetPhysicalFormat().mChannelsPerFrame;
-    if (channelCount != kNumChannels) {
-        // Channel count mismatch - this is a configuration error
-        // Fill with silence to prevent crashes
-        std::memset(outputData, 0, frameCount * channelCount * sizeof(float));
-        return kAudioHardwareUnspecifiedError;
+    const UInt32 bytesPerFrame = channelCount * sizeof(Float32);
+    const UInt32 frameCount = (bytesPerFrame > 0) ? (bytesCount / bytesPerFrame) : 0;
+
+    if (entryCount <= 3) {
+        AES67_LOGF("OnReadClientInput: channelCount=%u bytesPerFrame=%u frameCount=%u kNumChannels=%zu",
+                   channelCount, bytesPerFrame, frameCount, kNumChannels);
     }
 
-    float* output = static_cast<float*>(outputData);
+    if (frameCount == 0 || channelCount != kNumChannels) {
+        // Fill with silence on mismatch
+        std::memset(bytes, 0, bytesCount);
+        if (entryCount <= 3) {
+            AES67_LOGF("OnReadClientInput: EARLY RETURN (ch mismatch or 0 frames) ch=%u need=%zu",
+                       channelCount, kNumChannels);
+        }
+        return;
+    }
+
+    float* output = static_cast<float*>(bytes);
 
     // Process input (read from ring buffers) - batch processing for performance
     processInput(output, frameCount, channelCount);
 
-    // Note: timestamp parameter reserved for future PTP synchronization
-    (void)timestamp;  // Suppress unused parameter warning
-
-    return kAudioHardwareNoError;
+    (void)client;
+    (void)zeroTimestamp;
+    (void)timestamp;
 }
 
-OSStatus AES67IOHandler::OnWriteClientOutput(
+void AES67IOHandler::OnWriteClientOutput(
+    const std::shared_ptr<aspl::Client>& client,
     const std::shared_ptr<aspl::Stream>& stream,
+    Float64 zeroTimestamp,
     Float64 timestamp,
-    const void* inputData,
-    void* outputData,
-    UInt32 frameCount
+    const Float32* frames,
+    UInt32 frameCount,
+    UInt32 channelCount
 ) {
     // RT-SAFE: Write to ring buffers (Core Audio → Network)
     // This receives OUTPUT audio from the client (DAW)
+    //
+    // libASPL provides Float32 interleaved frames in canonical format.
 
-    if (!inputData || !stream) {
-        return kAudioHardwareUnspecifiedError;
+    if (!frames || !stream) {
+        return;
     }
 
-    // Validate channel count matches our buffer configuration
-    const UInt32 channelCount = stream->GetPhysicalFormat().mChannelsPerFrame;
     if (channelCount != kNumChannels) {
-        // Channel count mismatch - discard data to prevent crashes
-        return kAudioHardwareUnspecifiedError;
+        return;
     }
-
-    const float* input = static_cast<const float*>(inputData);
 
     // Process output (write to ring buffers) - batch processing for performance
-    processOutput(input, frameCount, channelCount);
+    processOutput(frames, frameCount, channelCount);
 
-    // Note: timestamp parameter reserved for future PTP synchronization
-    (void)timestamp;  // Suppress unused parameter warning
-
-    return kAudioHardwareNoError;
+    (void)client;
+    (void)zeroTimestamp;
+    (void)timestamp;
 }
 
 void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 channelCount) noexcept {
@@ -100,90 +118,78 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
     //
     // PERFORMANCE OPTIMIZED: Batch reads per channel instead of per-sample
     // This reduces ring buffer calls from (frameCount × channelCount) to (channelCount)
-    // Example: 64 frames × 128 channels = 8,192 → 128 calls (64× reduction!)
 
     // Stack-allocated temporary buffer (RT-safe, no heap allocation)
-    // Maximum supported buffer size to avoid VLAs
-    constexpr UInt32 kMaxFramesPerBuffer = 512;
+    constexpr UInt32 kMaxFramesPerBuffer = 4096;
     float channelBuffer[kMaxFramesPerBuffer];
 
-    // Safety check - should never happen in production
     if (frameCount > kMaxFramesPerBuffer) {
-        // Fall back to silence if buffer is too large
         std::memset(outputData, 0, frameCount * channelCount * sizeof(float));
         return;
     }
 
-    bool hadUnderrun = false;
+    // Diagnostic logging (static counter — only log first few calls)
+    static uint64_t ioCallCount = 0;
+    ++ioCallCount;
 
-    // Process each channel independently
+    bool hadUnderrun = false;
+    size_t ch0Read = 0;
+
     for (size_t ch = 0; ch < channelCount; ++ch) {
-        // BATCH READ: Read all frames for this channel at once
         const size_t samplesRead = inputBuffers_[ch].read(channelBuffer, frameCount);
 
-        // Check for underrun
+        if (ch == 0) ch0Read = samplesRead;
+
         if (samplesRead < frameCount) {
-            // Underrun detected: fill remainder with silence
             std::memset(&channelBuffer[samplesRead], 0,
                        (frameCount - samplesRead) * sizeof(float));
 
-            // Count underrun only once per callback (not per channel)
             if (!hadUnderrun) {
                 inputUnderruns_.fetch_add(1, std::memory_order_relaxed);
                 hadUnderrun = true;
             }
         }
 
-        // De-interleave from channel buffer into interleaved output
+        // Interleave into output
         // outputData layout: [ch0_f0, ch1_f0, ..., ch127_f0, ch0_f1, ch1_f1, ...]
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
             outputData[frame * channelCount + ch] = channelBuffer[frame];
         }
     }
+
+    // Debug logging — first few calls + periodic summary
+    if (ioCallCount <= 3 || ioCallCount % 10000 == 0) {
+        AES67_LOGF("IOHandler::processInput #%llu: frames=%u ch=%u ch0Read=%zu avail[0]=%zu underrun=%s",
+                   ioCallCount, frameCount, channelCount, ch0Read,
+                   inputBuffers_[0].available(),
+                   hadUnderrun ? "YES" : "no");
+    }
 }
 
 void AES67IOHandler::processOutput(const float* inputData, UInt32 frameCount, UInt32 channelCount) noexcept {
     // RT-SAFE: Write to output ring buffers (Core Audio → Network)
-    // Core Audio writes to outputBuffers_ here
-    // Network threads read from outputBuffers_
-    //
-    // PERFORMANCE OPTIMIZED: Batch writes per channel instead of per-sample
-    // This reduces ring buffer calls from (frameCount × channelCount) to (channelCount)
-    // Example: 64 frames × 128 channels = 8,192 → 128 calls (64× reduction!)
 
-    // Stack-allocated temporary buffer (RT-safe, no heap allocation)
     constexpr UInt32 kMaxFramesPerBuffer = 512;
     float channelBuffer[kMaxFramesPerBuffer];
 
-    // Safety check - should never happen in production
     if (frameCount > kMaxFramesPerBuffer) {
-        // Silently discard data if buffer is too large
         return;
     }
 
     bool hadOverrun = false;
 
-    // Process each channel independently
     for (size_t ch = 0; ch < channelCount; ++ch) {
-        // Interleave from input into channel buffer
-        // inputData layout: [ch0_f0, ch1_f0, ..., ch127_f0, ch0_f1, ch1_f1, ...]
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
             channelBuffer[frame] = inputData[frame * channelCount + ch];
         }
 
-        // BATCH WRITE: Write all frames for this channel at once
         const size_t samplesWritten = outputBuffers_[ch].write(channelBuffer, frameCount);
 
-        // Check for overrun
         if (samplesWritten < frameCount) {
-            // Overrun detected: buffer was full, some samples were dropped
-            // Count overrun only once per callback (not per channel)
             if (!hadOverrun) {
                 outputUnderruns_.fetch_add(1, std::memory_order_relaxed);
                 hadOverrun = true;
             }
-            // Note: Dropped samples = (frameCount - samplesWritten)
-            // This is acceptable for RT audio - cannot block waiting for space
         }
     }
 }
