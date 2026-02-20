@@ -6,6 +6,7 @@
 
 #include "RTPReceiver.h"
 #include "SimpleRTP.h"
+#include "../../Driver/DebugLog.h"
 #include <cstring>
 #include <stdexcept>
 #include <chrono>
@@ -48,20 +49,28 @@ RTPReceiver::~RTPReceiver() {
 
 bool RTPReceiver::start() {
     if (running_ || rtpSocket_.isOpen()) {
+        AES67_LOGF("RTPReceiver::start: already running or socket open (stream=%s)",
+                   sdp_.sessionName.c_str());
         return false; // Already running
     }
 
     // Validate SDP configuration
     if (sdp_.connectionAddress.empty() || sdp_.port == 0) {
+        AES67_LOGF("RTPReceiver::start: invalid SDP - address='%s' port=%u (stream=%s)",
+                   sdp_.connectionAddress.c_str(), sdp_.port, sdp_.sessionName.c_str());
         return false;
     }
 
     if (sdp_.numChannels == 0 || sdp_.numChannels > 128) {
+        AES67_LOGF("RTPReceiver::start: invalid channel count %u (stream=%s)",
+                   sdp_.numChannels, sdp_.sessionName.c_str());
         return false;
     }
 
     // Open RTP receiver socket
     if (!rtpSocket_.openReceiver(sdp_.connectionAddress.c_str(), sdp_.port)) {
+        AES67_LOGF("RTPReceiver::start: socket open failed for %s:%u (stream=%s)",
+                   sdp_.connectionAddress.c_str(), sdp_.port, sdp_.sessionName.c_str());
         return false;
     }
 
@@ -73,13 +82,19 @@ bool RTPReceiver::start() {
     // Start receive thread (producer - adds packets to jitter buffer)
     running_ = true;
     receiveThread_ = std::thread([this]() {
-        AudioThreadPriority::configureForRealTime();
+        if (!AudioThreadPriority::configureForRealTime()) {
+            AES67_LOGF("RTPReceiver: failed to set RT priority on receive thread (stream=%s)",
+                       sdp_.sessionName.c_str());
+        }
         receiveLoop();
     });
 
     // Start consume thread (consumer - reads from jitter buffer and writes to ring buffers)
     consumeThread_ = std::thread([this]() {
-        AudioThreadPriority::configureForRealTime();
+        if (!AudioThreadPriority::configureForRealTime()) {
+            AES67_LOGF("RTPReceiver: failed to set RT priority on consume thread (stream=%s)",
+                       sdp_.sessionName.c_str());
+        }
         consumeLoop();
     });
 
@@ -258,7 +273,7 @@ void RTPReceiver::consumeLoop() {
         );
         nextConsumeTime += adjustedInterval;
 
-        uint32_t expectedSeq = expectedSequenceNumber_.load(std::memory_order_relaxed);
+        uint32_t expectedSeq = expectedSequenceNumber_.load(std::memory_order_acquire);
 
         bool gotPacket = jitterBuffer_.getNextPacket(
             jitterReadBuffer_,
@@ -270,7 +285,7 @@ void RTPReceiver::consumeLoop() {
 
         if (gotPacket) {
             // Successfully got the expected packet — decode and map to ring buffers
-            expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
+            expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_release);
 
             if (sdp_.encoding == "L16") {
                 decodeL16(jitterReadBuffer_, outputLength);
@@ -284,7 +299,7 @@ void RTPReceiver::consumeLoop() {
             if (bufferedCount > 0) {
                 // Buffer has packets but not the one we want — packet loss.
                 // Skip to the next sequence number so we don't stall.
-                expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_relaxed);
+                expectedSequenceNumber_.store((expectedSeq + 1) & 0xFFFF, std::memory_order_release);
                 stats_.packetsLost.fetch_add(1, std::memory_order_relaxed);
             } else {
                 // Buffer completely empty — underrun.
@@ -324,7 +339,14 @@ void RTPReceiver::consumeLoop() {
 
 void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
     if (!validatePacket(packet)) {
-        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
+        uint64_t count = stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed) + 1;
+        // Log first occurrence and then every 100th to avoid flooding
+        if (count == 1 || count % 100 == 0) {
+            AES67_LOGF("RTPReceiver: malformed packet #%llu (ver=%u pt=%u size=%zu, expected pt=%u) stream=%s",
+                       (unsigned long long)count, packet.header.version,
+                       packet.header.payloadType, packet.payloadSize,
+                       sdp_.payloadType, sdp_.sessionName.c_str());
+        }
         return;
     }
 
@@ -337,15 +359,21 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
     size_t payloadSize = packet.payloadSize;
 
     if (!payload || payloadSize == 0) {
-        stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed);
+        uint64_t count = stats_.malformedPackets.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (count == 1 || count % 100 == 0) {
+            AES67_LOGF("RTPReceiver: empty payload in packet #%llu (seq=%u) stream=%s",
+                       (unsigned long long)count, sequenceNumber, sdp_.sessionName.c_str());
+        }
         return;
     }
 
     // Update connection state
     if (!connected_) {
         connected_ = true;
-        // Initialize expected sequence number from first packet
-        expectedSequenceNumber_.store(sequenceNumber, std::memory_order_relaxed);
+        // Initialize expected sequence number from first packet.
+        // Use release ordering so the consume thread (which loads with
+        // acquire) is guaranteed to see this initial value.
+        expectedSequenceNumber_.store(sequenceNumber, std::memory_order_release);
     }
     auto now = std::chrono::steady_clock::now();
     lastPacketTimeNs_.store(
@@ -426,8 +454,10 @@ void RTPReceiver::decodeL16(const uint8_t* payload, size_t payloadSize) {
         const size_t offset = i * bytesPerSample;
         if (offset + bytesPerSample > payloadSize) break;
 
-        // Big-endian 16-bit signed
-        int16_t pcmSample = (payload[offset] << 8) | payload[offset + 1];
+        // Big-endian 16-bit signed (assemble as unsigned to avoid
+        // implementation-defined narrowing from promoted int to int16_t)
+        uint16_t rawSample = (static_cast<uint16_t>(payload[offset]) << 8) | payload[offset + 1];
+        int16_t pcmSample = static_cast<int16_t>(rawSample);
 
         // Convert to float: divide by 32768 (2^15)
         audioBuffer_[i] = pcmSample / 32768.0f;
@@ -460,9 +490,12 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
         if (offset + bytesPerSample > payloadSize) break;
 
         // Big-endian 24-bit signed (sign-extend to 32-bit)
-        int32_t pcmSample = (payload[offset] << 24) |
-                           (payload[offset + 1] << 16) |
-                           (payload[offset + 2] << 8);
+        // Cast to uint32_t before shifting to avoid undefined behavior
+        // when high byte >= 128 causes signed int overflow on << 24
+        uint32_t rawSample = (static_cast<uint32_t>(payload[offset]) << 24) |
+                             (static_cast<uint32_t>(payload[offset + 1]) << 16) |
+                             (static_cast<uint32_t>(payload[offset + 2]) << 8);
+        int32_t pcmSample = static_cast<int32_t>(rawSample);
         pcmSample >>= 8; // Arithmetic right shift preserves sign
 
         // Convert to float: divide by 8388608 (2^23)

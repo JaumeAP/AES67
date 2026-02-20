@@ -84,18 +84,18 @@ bool testBufferWrapAround() {
 
     SPSCRingBuffer<float> buffer(64);
 
-    // Fill buffer almost completely
-    float writeData[60];
-    for (int i = 0; i < 60; ++i) {
+    // Write 50 samples (capacity is 64, so 14 slots remain)
+    float writeData[50];
+    for (int i = 0; i < 50; ++i) {
         writeData[i] = static_cast<float>(i);
     }
-    buffer.write(writeData, 60);
+    buffer.write(writeData, 50);
 
-    // Read half
+    // Read 30, freeing space (20 items remain, 44 writable)
     float readData[30];
     buffer.read(readData, 30);
 
-    // Write more (will wrap around)
+    // Write 40 more (will wrap around past end of internal buffer)
     float moreData[40];
     for (int i = 0; i < 40; ++i) {
         moreData[i] = static_cast<float>(100 + i);
@@ -103,12 +103,14 @@ bool testBufferWrapAround() {
     size_t written = buffer.write(moreData, 40);
     TEST_ASSERT(written == 40, "Should handle wrap-around write");
 
-    // Read remaining from first batch
-    buffer.read(readData, 30);
+    // Read remaining 20 from first batch
+    float remainder[20];
+    size_t read = buffer.read(remainder, 20);
+    TEST_ASSERT(read == 20, "Should read remainder of first batch");
 
     // Read wrapped data
     float wrappedRead[40];
-    size_t read = buffer.read(wrappedRead, 40);
+    read = buffer.read(wrappedRead, 40);
     TEST_ASSERT(read == 40, "Should read wrapped data");
 
     // Verify wrapped data
@@ -125,14 +127,14 @@ bool testBufferFull() {
 
     SPSCRingBuffer<float> buffer(64);
 
-    // Fill buffer completely (capacity - 1)
-    float writeData[63];
-    for (int i = 0; i < 63; ++i) {
+    // Fill buffer completely (full capacity)
+    float writeData[64];
+    for (int i = 0; i < 64; ++i) {
         writeData[i] = static_cast<float>(i);
     }
 
-    size_t written = buffer.write(writeData, 63);
-    TEST_ASSERT(written == 63, "Should fill buffer");
+    size_t written = buffer.write(writeData, 64);
+    TEST_ASSERT(written == 64, "Should fill buffer");
     TEST_ASSERT(buffer.isFull(), "Buffer should be full");
 
     // Try to write more - should fail
@@ -173,14 +175,14 @@ bool testAvailable() {
     SPSCRingBuffer<float> buffer(64);
 
     TEST_ASSERT(buffer.available() == 0, "Empty buffer has 0 available");
-    TEST_ASSERT(buffer.availableWrite() == 63, "Empty buffer has capacity-1 writable");
+    TEST_ASSERT(buffer.availableWrite() == 64, "Empty buffer has full capacity writable");
 
     // Write 32 samples
     float writeData[32];
     buffer.write(writeData, 32);
 
     TEST_ASSERT(buffer.available() == 32, "Should have 32 samples available");
-    TEST_ASSERT(buffer.availableWrite() == 31, "Should have 31 samples writable");
+    TEST_ASSERT(buffer.availableWrite() == 32, "Should have 32 samples writable");
 
     std::cout << "PASS" << std::endl;
     return true;
@@ -347,7 +349,7 @@ bool testPartialWrites() {
     float moreData[10];
     size_t written = buffer.write(moreData, 10);
 
-    TEST_ASSERT(written == 3, "Should write only available space (63-60=3)");
+    TEST_ASSERT(written == 4, "Should write only available space (64-60=4)");
 
     std::cout << "PASS" << std::endl;
     return true;

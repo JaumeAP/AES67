@@ -35,6 +35,8 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // Create UDP socket
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
+        fprintf(stderr, "AES67 RTP openReceiver: socket() failed for %s:%u (errno=%d: %s)\n",
+                multicastIP, port, errno, strerror(errno));
         return false;
     }
 
@@ -42,11 +44,15 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // macOS/BSD requires both SO_REUSEADDR and SO_REUSEPORT for UDP port sharing
     int reuse = 1;
     if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        fprintf(stderr, "AES67 RTP openReceiver: SO_REUSEADDR failed for %s:%u (errno=%d: %s)\n",
+                multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
         return false;
     }
     if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
+        fprintf(stderr, "AES67 RTP openReceiver: SO_REUSEPORT failed for %s:%u (errno=%d: %s)\n",
+                multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
         return false;
@@ -60,6 +66,8 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     bindAddr.sin_port = htons(port);
 
     if (bind(sockfd_, (struct sockaddr*)&bindAddr, sizeof(bindAddr)) < 0) {
+        fprintf(stderr, "AES67 RTP openReceiver: bind() failed on port %u (errno=%d: %s)\n",
+                port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
         return false;
@@ -71,6 +79,8 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     mreq.imr_interface.s_addr = interfaceIP ? inet_addr(interfaceIP) : htonl(INADDR_ANY);
 
     if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
+                multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
         return false;
@@ -107,12 +117,16 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
     // Create UDP socket
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
+        fprintf(stderr, "AES67 RTP openTransmitter: socket() failed for %s:%u (errno=%d: %s)\n",
+                multicastIP, port, errno, strerror(errno));
         return false;
     }
 
     // Set multicast TTL
     uint8_t ttl = 32;
     if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl)) < 0) {
+        fprintf(stderr, "AES67 RTP openTransmitter: IP_MULTICAST_TTL failed for %s:%u (errno=%d: %s)\n",
+                multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
         return false;
@@ -123,6 +137,8 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
         struct in_addr ifaddr;
         ifaddr.s_addr = inet_addr(interfaceIP);
         if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_IF, &ifaddr, sizeof(ifaddr)) < 0) {
+            fprintf(stderr, "AES67 RTP openTransmitter: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
+                    multicastIP, port, interfaceIP, errno, strerror(errno));
             ::close(sockfd_);
             sockfd_ = -1;
             return false;
@@ -264,8 +280,10 @@ void L16Codec::decode(const uint8_t* input, size_t numBytes, float* samples) {
     size_t numSamples = numBytes / 2;
 
     for (size_t i = 0; i < numSamples; i++) {
-        // Read big-endian 16-bit value
-        int16_t pcm = (input[i * 2 + 0] << 8) | input[i * 2 + 1];
+        // Read big-endian 16-bit value (assemble as unsigned to avoid
+        // implementation-defined narrowing from promoted int to int16_t)
+        uint16_t raw = (static_cast<uint16_t>(input[i * 2 + 0]) << 8) | input[i * 2 + 1];
+        int16_t pcm = static_cast<int16_t>(raw);
 
         // Convert to float [-1.0, 1.0]
         samples[i] = pcm / 32768.0f;
@@ -295,10 +313,12 @@ void L24Codec::decode(const uint8_t* input, size_t numBytes, float* samples) {
     size_t numSamples = numBytes / 3;
 
     for (size_t i = 0; i < numSamples; i++) {
-        // Read big-endian 24-bit value
-        int32_t pcm = (input[i * 3 + 0] << 16) |
-                      (input[i * 3 + 1] << 8) |
-                      input[i * 3 + 2];
+        // Read big-endian 24-bit value (cast to uint32_t before shifting
+        // to avoid relying on signed int promotion of uint8_t)
+        uint32_t raw = (static_cast<uint32_t>(input[i * 3 + 0]) << 16) |
+                       (static_cast<uint32_t>(input[i * 3 + 1]) << 8) |
+                       static_cast<uint32_t>(input[i * 3 + 2]);
+        int32_t pcm = static_cast<int32_t>(raw);
 
         // Sign extend from 24-bit to 32-bit
         if (pcm & 0x800000) {

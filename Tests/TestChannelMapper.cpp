@@ -127,17 +127,19 @@ void testMappingRemoval() {
 
     StreamChannelMapper mapper;
 
-    // Add three streams
+    // Add three streams — must addMapping before next createDefaultMapping
+    // so the mapper knows which channels are already taken
     StreamID stream1 = StreamID::generate();
     StreamID stream2 = StreamID::generate();
     StreamID stream3 = StreamID::generate();
 
     auto m1 = mapper.createDefaultMapping(stream1, "Stream 1", 16);
-    auto m2 = mapper.createDefaultMapping(stream2, "Stream 2", 16);
-    auto m3 = mapper.createDefaultMapping(stream3, "Stream 3", 16);
-
     mapper.addMapping(*m1);
+
+    auto m2 = mapper.createDefaultMapping(stream2, "Stream 2", 16);
     mapper.addMapping(*m2);
+
+    auto m3 = mapper.createDefaultMapping(stream3, "Stream 3", 16);
     mapper.addMapping(*m3);
 
     assert(mapper.getAllMappings().size() == 3);
