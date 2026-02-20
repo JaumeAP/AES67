@@ -150,12 +150,10 @@ void RTPTransmitter::transmitLoop() {
         std::this_thread::sleep_until(nextTransmitTime);
         nextTransmitTime += packetInterval_;
 
-        // Read audio from device channels
-        if (!readDeviceChannels(audioBuffer_.data(), samplesPerPacket)) {
-            // No audio available or error
-            stats_.overruns.fetch_add(1, std::memory_order_relaxed);
-            continue;
-        }
+        // Read audio from device channels (silence-fills on underrun)
+        // Always send packets even with empty ring buffers — AES67 requires
+        // continuous packet flow for receiver clock recovery
+        readDeviceChannels(audioBuffer_.data(), samplesPerPacket);
 
         // Encode payload based on encoding type
         uint8_t* payload = payloadBuffer_.data();

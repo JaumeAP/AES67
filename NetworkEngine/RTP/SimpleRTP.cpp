@@ -39,8 +39,14 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     }
 
     // Allow multiple sockets to bind to same port (for multiple streams)
+    // macOS/BSD requires both SO_REUSEADDR and SO_REUSEPORT for UDP port sharing
     int reuse = 1;
     if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        ::close(sockfd_);
+        sockfd_ = -1;
+        return false;
+    }
+    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
         ::close(sockfd_);
         sockfd_ = -1;
         return false;

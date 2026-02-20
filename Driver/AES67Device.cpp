@@ -85,9 +85,10 @@ void AES67Device::Initialize() {
     AES67_LOG("AES67Device: Attempting to load saved stream configurations");
     bool loadedSavedStreams = streamManager_->loadSavedStreams();
 
-    // If no saved streams were loaded, create a test stream for initial testing
+    // If no saved streams were loaded, create test streams for initial testing
     if (!loadedSavedStreams) {
-        AES67_LOG("AES67Device: No saved streams found, adding test stream (239.1.1.1:5004, 8ch @ 48kHz)");
+        // Create test RX stream (Network → Core Audio) on channels 0-7
+        AES67_LOG("AES67Device: No saved streams found, adding test RX stream (239.1.1.1:5004, 8ch @ 48kHz)");
         SDPSession testSDP;
         testSDP.sessionName = "Test AES67 Stream";
         testSDP.sessionInfo = "Hard-coded test stream for driver development";
@@ -106,10 +107,32 @@ void AES67Device::Initialize() {
 
         StreamID testStreamID = streamManager_->addStream(testSDP);
         if (!testStreamID.isNull()) {
-            AES67_LOG("AES67Device: Test stream added successfully");
-            AES67_LOGF("AES67Device: Test stream ID: %s", testStreamID.toString().c_str());
+            AES67_LOG("AES67Device: Test RX stream added successfully");
+            AES67_LOGF("AES67Device: Test RX stream ID: %s", testStreamID.toString().c_str());
         } else {
-            AES67_LOG("AES67Device: WARNING - Failed to add test stream");
+            AES67_LOG("AES67Device: WARNING - Failed to add test RX stream");
+        }
+
+        // Create test TX stream (Core Audio → Network) on channels 8-15
+        // Uses a different multicast group (239.1.1.2) to avoid confusion with RX
+        AES67_LOG("AES67Device: Adding test TX stream (239.1.1.2:5004, 8ch @ 48kHz, channels 8-15)");
+        ChannelMapping txMapping;
+        txMapping.streamChannelCount = 8;
+        txMapping.deviceChannelStart = 8;   // Channels 8-15 (non-overlapping with RX 0-7)
+        txMapping.deviceChannelCount = 8;
+
+        StreamID txStreamID = streamManager_->createTxStream(
+            "Test AES67 TX Stream",
+            "239.1.1.2",   // Different multicast group from RX (239.1.1.1)
+            5004,
+            8,
+            txMapping
+        );
+        if (!txStreamID.isNull()) {
+            AES67_LOG("AES67Device: Test TX stream added successfully");
+            AES67_LOGF("AES67Device: Test TX stream ID: %s", txStreamID.toString().c_str());
+        } else {
+            AES67_LOG("AES67Device: WARNING - Failed to add test TX stream");
         }
     }
 
