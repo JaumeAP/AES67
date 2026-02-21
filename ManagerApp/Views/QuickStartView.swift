@@ -738,9 +738,7 @@ struct SDPImportContent: View {
                   url.pathExtension.lowercased() == "sdp" else { return }
 
             DispatchQueue.main.async {
-                // Would need to call importSDPFile with the URL
-                // For now, trigger the file picker
-                driverManager.importSDPFile()
+                driverManager.importSDPFromURL(url)
             }
         }
 

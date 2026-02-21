@@ -112,6 +112,20 @@ struct StreamAudioLevels {
         return channelLevels.filter { $0.hasSignal }.count
     }
 
+    /// Creates silent placeholder data for when no real driver data is available
+    static func silentData(channelCount: Int, isConnected: Bool) -> StreamAudioLevels {
+        var levels: [ChannelLevelInfo] = []
+        for i in 0..<channelCount {
+            levels.append(ChannelLevelInfo(
+                id: i,
+                level: 0,
+                peak: 0,
+                levelDB: -60.0
+            ))
+        }
+        return StreamAudioLevels(channelLevels: levels, lastUpdate: Date())
+    }
+
     /// Creates mock data for UI testing
     static func mockData(channelCount: Int) -> StreamAudioLevels {
         var levels: [ChannelLevelInfo] = []

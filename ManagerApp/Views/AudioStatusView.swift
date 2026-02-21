@@ -283,15 +283,12 @@ struct StreamAudioStatusPanel: View {
     }
 
     private func startLevelUpdates() {
-        // Generate initial mock data
-        audioLevels = StreamAudioLevels.mockData(channelCount: Int(stream.numChannels))
-
-        // Update periodically to simulate real-time levels
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            withAnimation(.linear(duration: 0.1)) {
-                audioLevels = StreamAudioLevels.mockData(channelCount: Int(stream.numChannels))
-            }
-        }
+        // Show static silent meters when no real driver data is available
+        // Real implementation would query driver for actual audio levels
+        audioLevels = StreamAudioLevels.silentData(
+            channelCount: Int(stream.numChannels),
+            isConnected: stream.isConnected
+        )
     }
 
     private func stopLevelUpdates() {
@@ -374,12 +371,11 @@ struct AudioStatusIndicator: View {
     }
 
     private func updateStatus() {
-        // Simulate status updates - in a real implementation, this would connect
-        // to the driver's status reporting system
-        let randomValue = Double.random(in: 0...1)
-        isActive = randomValue > 0.3
-        signalLevel = randomValue
-        hasError = randomValue < 0.1
+        // Static state until real driver integration
+        // Real implementation would connect to the driver's status reporting system
+        isActive = false
+        signalLevel = 0.0
+        hasError = false
     }
 }
 
@@ -482,7 +478,7 @@ struct StreamStatusView: View {
     }
 
     private var signalLevelSegments: Int {
-        return Int(Double.random(in: 4...10))
+        return stream.isConnected ? 5 : 0
     }
 }
 
