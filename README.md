@@ -32,7 +32,7 @@ A work-in-progress open-source virtual audio driver for macOS that aims to provi
 - Audio flowing end-to-end through the driver into a real application
 - Any DAW (Logic Pro, Pro Tools, Ableton, etc.) playing or recording through the device
 - RTP interoperability with real AES67, Dante, or RAVENNA hardware
-- PTP synchronization with any clock source (PTP is completely stubbed — see below)
+- PTP synchronization with any real network clock source (see below)
 - Latency, glitching, or stability under real workloads
 - Multi-device synchronisation
 - Sample rates beyond 48kHz in practice
@@ -42,8 +42,12 @@ There is a meaningful gap between "paths exercised with test tools" and "works w
 
 ## Known Limitations
 
-### PTP Synchronisation — Not Functional
-PTP is completely stubbed. The driver uses the local system clock and has no network time synchronisation. The stub reports itself as "locked" after 500ms for testing convenience, but this is fake — there is no actual PTP implementation. Multi-device synchronisation will not work.
+### PTP — Media Clock Recovery Built, Network Sync Stubbed
+The PTP subsystem has two layers, and only the upper one is functional:
+
+- **Media clock recovery (implemented):** `PTPClock` correlates RTP timestamps with local time per AES67-2018 Section 8.2. A Phase-Locked Loop tracks clock drift between the remote source and local audio hardware. Reference point history enables drift ratio calculation for adaptive resampling. `PTPClockManager` handles multi-domain clock management. In local-clock fallback mode, this is sufficient for single-device operation — audio can flow through the driver using local timing.
+
+- **Network PTP synchronisation (stubbed):** `PTPDInterface` is a stub. It does not communicate with any PTP grandmaster, does not exchange Sync/FollowUp/DelayReq messages, and `isLocked` stays `false`. The vendored ptpd source is present in `PTP/vendor/ptpd/` but is not compiled or linked. Until this layer is integrated, multi-device synchronisation will not work and timestamps will not be traceable to a real PTP time source.
 
 ### Audio Path — Exercised Synthetically Only
 The RTP receiver/transmitter, jitter buffer, IO handler, and ring buffers have been exercised with test sender/receiver tools over loopback, but never with real audio content or real AES67 network traffic. Codec paths (L16/L24) are covered by unit tests but not verified for audible correctness.
@@ -67,8 +71,11 @@ AES67Driver/
 │   │   ├── RTPTransmitter   # Packet encode + send
 │   │   └── LockFreeCircularJitterBuffer
 │   ├── PTP/
-│   │   ├── PTPClock         # Clock interface
-│   │   └── PTPDInterface    # PTP daemon interface (STUB — not functional)
+│   │   ├── PTPClock         # Media clock recovery (AES67 Section 8.2)
+│   │   ├── PTPClockManager  # Multi-domain clock management
+│   │   ├── PhaseLockedLoop  # Audio clock drift tracking
+│   │   ├── PTPDInterface    # Network PTP layer (STUB — not functional)
+│   │   └── vendor/ptpd/     # Vendored ptpd source (not yet compiled)
 │   ├── StreamManager        # RX/TX stream lifecycle, IO-gated start/stop
 │   ├── Resampling/          # Sample rate conversion
 │   └── Discovery/           # SAP stream discovery (RFC 2974)
@@ -95,7 +102,8 @@ These describe what the code is written to target, not what has been verified wi
 | RTP TX Path | Encode, multicast send | Exercised with test receiver |
 | Jitter Buffer | 256 packets, lock-free | Synthetic tests only |
 | IO Lifecycle | RTP threads start/stop with Core Audio IO | Implemented, not hardware-tested |
-| PTP Sync | Stubbed (local clock) | Not functional |
+| Media Clock Recovery | RTP↔time correlation, PLL, drift tracking | Implemented, uses local clock fallback |
+| PTP Network Sync | IEEE 1588 via ptpd | Stubbed — no network sync |
 | Driver Transport | AudioServerPlugIn | Loads into coreaudiod |
 
 ## Building
@@ -167,7 +175,7 @@ Contributions welcome, especially:
 
 - **Hardware testing reports** (most needed)
 - Bug fixes with reproduction steps
-- PTP integration (replacing the current stub with real ptpd)
+- PTP network integration (compiling and linking the vendored ptpd to replace the stub in `PTPDInterface`)
 
 ### Guidelines
 
