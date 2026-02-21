@@ -212,9 +212,27 @@ endif()
 # ============================================================================
 
 if(APPLE)
-    # Note: SwiftUI app will be built separately via Xcode
-    # This CMake file focuses on the C++ driver component
-    # See ManagerApp/AES67Manager.xcodeproj for Swift app
+    add_custom_target(ManagerApp ALL
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
+        COMMENT "Building AES67 Manager App (SwiftUI)"
+        VERBATIM
+    )
+
+    # Installer target (explicit only — not part of ALL)
+    add_custom_target(installer
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/Installer/build-installer.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Installer
+        COMMENT "Building .pkg installer"
+        DEPENDS AES67Driver ManagerApp
+        VERBATIM
+    )
+
+    # Install the Manager app to /Applications
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/AES67Manager.app
+        DESTINATION "/Applications"
+        USE_SOURCE_PERMISSIONS
+    )
 endif()
 
 # ============================================================================
@@ -322,6 +340,8 @@ endif()
 message(STATUS "  RTP: SimpleRTP (minimal implementation)")
 message(STATUS "  libASPL: ${ASPL_INCLUDE_DIR}")
 message(STATUS "  ptpd: Stub (PTP sync disabled - TODO: fix vendored ptpd)")
+message(STATUS "  Manager App: ManagerApp target (SwiftUI)")
+message(STATUS "  Installer: make installer")
 message(STATUS "  Tests: ${BUILD_TESTS}")
 message(STATUS "  Examples: ${BUILD_EXAMPLES}")
 message(STATUS "")

@@ -5,6 +5,21 @@ set -e
 
 cd "$(dirname "$0")"
 
+FORCE=0
+if [ "$1" = "--force" ]; then
+    FORCE=1
+fi
+
+# Incremental build: skip if binary is newer than all Swift sources
+BINARY="AES67Manager.app/Contents/MacOS/AES67Manager"
+if [ "$FORCE" -eq 0 ] && [ -f "$BINARY" ]; then
+    CHANGED=$(find . -name '*.swift' -newer "$BINARY" 2>/dev/null)
+    if [ -z "$CHANGED" ]; then
+        echo "AES67 Manager: Up to date"
+        exit 0
+    fi
+fi
+
 echo "Building AES67 Manager..."
 
 # Compile Swift files - include all Views and Models
