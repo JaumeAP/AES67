@@ -57,14 +57,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 endif()
 
-# Find Boost for lockfree containers (header-only in modern Boost)
-find_package(Boost 1.70 REQUIRED)
-if(Boost_FOUND)
-    message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS} (version ${Boost_VERSION})")
-else()
-    message(FATAL_ERROR "Boost library not found. Please install Boost: brew install boost")
-endif()
-
 # ============================================================================
 # Dependencies
 # ============================================================================
@@ -184,10 +176,6 @@ if(APPLE)
     target_include_directories(AES67Driver PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${ASPL_INCLUDE_DIR}
-    )
-
-    target_include_directories(AES67Driver PRIVATE
-        ${Boost_INCLUDE_DIRS}
     )
 
     target_link_libraries(AES67Driver PRIVATE

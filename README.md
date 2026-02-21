@@ -17,7 +17,7 @@ A work-in-progress open-source virtual audio driver for macOS that aims to provi
 - The device appears as "AES67 Device" in Audio MIDI Setup
 - 128 input + 128 output channels are reported to the system
 - RTP receiver: joins multicast, decodes L16/L24, writes to ring buffers
-- RTP transmitter: reads from ring buffers, encodes L24, sends multicast
+- RTP transmitter: reads from ring buffers, encodes L16/L24, sends multicast
 - Lock-free SPSC ring buffers bridge network and Core Audio IO threads
 - IO handler reads/writes Core Audio buffers in the real-time callback
 - Lock-free jitter buffer absorbs network timing variation
@@ -111,7 +111,7 @@ These describe what the code is written to target, not what has been verified wi
 ### Prerequisites
 
 ```bash
-brew install cmake boost
+brew install cmake
 
 # Install libASPL (AudioServerPlugIn framework)
 brew tap gavv/gavv
@@ -190,7 +190,6 @@ MIT License - See LICENSE file.
 ### Dependencies
 
 - **libASPL**: MIT License - AudioServerPlugIn framework
-- **Boost**: Boost Software License - Lock-free containers
 
 ## Acknowledgments
 
