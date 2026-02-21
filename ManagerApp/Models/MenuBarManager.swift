@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 class MenuBarManager: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
@@ -148,48 +149,25 @@ class MenuBarManager: NSObject, ObservableObject {
         NSApp.terminate(nil)
     }
 
-    // MARK: - Launch at Login
+    // MARK: - Launch at Login (SMAppService, macOS 13+)
 
     func isLaunchAtLoginEnabled() -> Bool {
-        // Check if app is in login items
-        guard let bundleId = Bundle.main.bundleIdentifier else { return false }
-
-        let loginItems = SMCopyAllJobDictionaries(kSMDomainUserLaunchd)?.takeRetainedValue() as? [[String: Any]] ?? []
-        return loginItems.contains { dict in
-            (dict["Label"] as? String) == bundleId
-        }
+        return SMAppService.mainApp.status == .enabled
     }
 
     func enableLaunchAtLogin() {
-        guard let bundleId = Bundle.main.bundleIdentifier else { return }
-
-        // Use deprecated API (SMLoginItemSetEnabled) as newer APIs require helper apps
-        // For production, should use Service Management framework with helper
-        if !SMLoginItemSetEnabled(bundleId as CFString, true) {
-            print("Failed to enable launch at login")
+        do {
+            try SMAppService.mainApp.register()
+        } catch {
+            print("Failed to enable launch at login: \(error)")
         }
     }
 
     func disableLaunchAtLogin() {
-        guard let bundleId = Bundle.main.bundleIdentifier else { return }
-
-        if !SMLoginItemSetEnabled(bundleId as CFString, false) {
-            print("Failed to disable launch at login")
+        do {
+            try SMAppService.mainApp.unregister()
+        } catch {
+            print("Failed to disable launch at login: \(error)")
         }
     }
 }
-
-// Service Management Framework stub for launch at login
-// Note: This uses deprecated APIs. For production, should implement helper app approach
-@available(macOS 10.6, *)
-func SMLoginItemSetEnabled(_ identifier: CFString, _ enabled: Bool) -> Bool {
-    // This is a simplified version - real implementation would need proper Service Management
-    return false // Placeholder - will need proper implementation
-}
-
-@available(macOS 10.6, *)
-func SMCopyAllJobDictionaries(_ domain: CFString) -> Unmanaged<CFArray>? {
-    return nil // Placeholder
-}
-
-let kSMDomainUserLaunchd = "kSMDomainUserLaunchd" as CFString

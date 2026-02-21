@@ -9,6 +9,8 @@ import SwiftUI
 struct StreamDetailView: View {
     let stream: StreamInfo
     @State private var showExpandedMeters = false
+    @AppStorage("showDetailedStats") private var showDetailedStats = true
+    @AppStorage("showChannelViz") private var showChannelViz = true
 
     var body: some View {
         ScrollView {
@@ -70,14 +72,16 @@ struct StreamDetailView: View {
                                value: "\(mapping.deviceChannelStart) - \(mapping.deviceChannelStart + mapping.deviceChannelCount - 1)")
                         InfoRow(label: "Stream Channels", value: "0 - \(mapping.streamChannelCount - 1)")
 
-                        // Visual channel map
-                        ChannelMapVisualization(mapping: mapping)
-                            .padding(.top, 8)
+                        // Visual channel map (controlled by Settings toggle)
+                        if showChannelViz {
+                            ChannelMapVisualization(mapping: mapping)
+                                .padding(.top, 8)
+                        }
                     }
                 }
 
-                // Statistics
-                if let stats = stream.statistics {
+                // Statistics (controlled by Settings toggle)
+                if showDetailedStats, let stats = stream.statistics {
                     GroupBox("Statistics") {
                         InfoRow(label: "Packets Received", value: formatNumber(stats.packetsReceived))
                         InfoRow(label: "Packets Lost", value: formatNumber(stats.packetsLost))
@@ -156,10 +160,14 @@ struct StatusBadge: View {
 // MARK: - Stream Signal Indicator
 
 /// Compact signal indicator for stream headers showing signal presence
+/// Displays stable state based on connection status.
+/// Real driver integration would query actual audio levels.
 struct StreamSignalIndicator: View {
     let stream: StreamInfo
-    @State private var hasSignal = false
-    @State private var updateTimer: Timer?
+
+    private var hasSignal: Bool {
+        stream.isConnected
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -178,33 +186,6 @@ struct StreamSignalIndicator: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(hasSignal ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
         )
-        .onAppear {
-            startUpdates()
-        }
-        .onDisappear {
-            stopUpdates()
-        }
-    }
-
-    private func startUpdates() {
-        // Simulate signal detection - in real implementation, this would
-        // query the driver for actual audio levels
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            // Mock: randomly toggle signal presence with bias towards having signal
-            // when stream is connected
-            if stream.isConnected {
-                hasSignal = Double.random(in: 0...1) > 0.1
-            } else {
-                hasSignal = false
-            }
-        }
-        // Initial state
-        hasSignal = stream.isConnected
-    }
-
-    private func stopUpdates() {
-        updateTimer?.invalidate()
-        updateTimer = nil
     }
 }
 

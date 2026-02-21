@@ -11,7 +11,7 @@ import AppKit
 @main
 struct AES67ManagerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var driverManager = DriverManager()
+    @StateObject private var driverManager: DriverManager
     @StateObject private var menuBarManager: MenuBarManager
     @AppStorage("hasCompletedQuickStart") private var hasCompletedQuickStart = false
     @State private var showQuickStart = false
@@ -80,7 +80,7 @@ struct AES67ManagerApp: App {
                 Divider()
 
                 Button("AES67 Manager Help") {
-                    if let url = URL(string: "https://github.com/yourusername/AES67_macos_Driver#readme") {
+                    if let url = URL(string: "https://github.com/maxbarlow/AES67_macos_Driver#readme") {
                         NSWorkspace.shared.open(url)
                     }
                 }

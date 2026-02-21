@@ -25,8 +25,15 @@ let package = Package(
                 "Views/StreamDetailView.swift",
                 "Views/AddStreamView.swift",
                 "Views/SettingsView.swift",
+                "Views/AudioStatusView.swift",
+                "Views/QuickStartView.swift",
+                "Views/PTPDiagnosticView.swift",
+                "Views/ChannelMappingView.swift",
+                "Views/ChannelMapDiagnosticView.swift",
+                "Views/SDPProcessor.swift",
                 "Models/StreamInfo.swift",
-                "Models/DriverManager.swift"
+                "Models/DriverManager.swift",
+                "Models/MenuBarManager.swift"
             ]
         )
     ]

@@ -1,6 +1,6 @@
 //
 // AddStreamView.swift
-// AES67 Manager - Build #12
+// AES67 Manager
 // Sheet for adding new streams manually with sample rate mismatch handling
 //
 
@@ -86,11 +86,14 @@ struct AddStreamView: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var streamName = ""
+    @State private var streamDescription = ""
     @State private var multicastIP = "239.0.0.1"
     @State private var port = "5004"
     @State private var numChannels = 8
     @State private var sampleRate = 48000
     @State private var encoding = "L24"
+    @State private var ttl = 32
+    @State private var ptpDomain = 0
     @State private var showMismatchAlert = false
     @State private var pendingAddition = false
 
@@ -120,15 +123,37 @@ struct AddStreamView: View {
                     Section("Stream Information") {
                         TextField("Stream Name", text: $streamName)
                             .textFieldStyle(.roundedBorder)
+
+                        TextField("Description (optional)", text: $streamDescription)
+                            .textFieldStyle(.roundedBorder)
                     }
 
                     Section("Network") {
                         TextField("Multicast IP", text: $multicastIP)
                             .textFieldStyle(.roundedBorder)
 
+                        if let ipError = multicastIPError {
+                            Text(ipError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+
                         TextField("Port", text: $port)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 100)
+
+                        if let portError = portError {
+                            Text(portError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+
+                        HStack {
+                            Text("TTL")
+                            Spacer()
+                            Stepper("\(ttl)", value: $ttl, in: 1...255)
+                                .frame(width: 120)
+                        }
                     }
 
                     Section("Audio Format") {
@@ -188,6 +213,15 @@ struct AddStreamView: View {
                         }
                     }
 
+                    Section("Synchronisation") {
+                        HStack {
+                            Text("PTP Domain")
+                            Spacer()
+                            Stepper("\(ptpDomain)", value: $ptpDomain, in: 0...127)
+                                .frame(width: 120)
+                        }
+                    }
+
                     Section("Channel Mapping") {
                         HStack {
                             Text("Current device sample rate:")
@@ -217,6 +251,12 @@ struct AddStreamView: View {
 
                 // Footer
                 HStack {
+                    if let reason = validationFailureReason {
+                        Text(reason)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
                     Spacer()
                     Button("Cancel") {
                         dismiss()
@@ -232,7 +272,7 @@ struct AddStreamView: View {
                 }
                 .padding()
             }
-            .frame(width: 500, height: 600)
+            .frame(width: 500, height: 650)
             .blur(radius: showMismatchAlert ? 2 : 0)
             .disabled(showMismatchAlert)
 
@@ -258,11 +298,49 @@ struct AddStreamView: View {
         .animation(.easeInOut(duration: 0.2), value: showMismatchAlert)
     }
 
+    // MARK: - Validation
+
+    private var multicastIPError: String? {
+        let trimmed = multicastIP.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let parts = trimmed.components(separatedBy: ".")
+        guard parts.count == 4 else { return "Must be a valid IPv4 address (e.g. 239.0.0.1)" }
+        for part in parts {
+            guard let octet = Int(part), octet >= 0, octet <= 255 else {
+                return "Each octet must be 0-255"
+            }
+        }
+        guard let first = Int(parts[0]), first >= 224, first <= 239 else {
+            return "Multicast range is 224.0.0.0 - 239.255.255.255"
+        }
+        return nil
+    }
+
+    private var portError: String? {
+        let trimmed = port.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        guard let portNum = Int(trimmed) else { return "Port must be a number" }
+        guard portNum >= 1024, portNum <= 65535 else { return "Port must be 1024-65535" }
+        return nil
+    }
+
     private var isValid: Bool {
         !streamName.isEmpty &&
         !multicastIP.isEmpty &&
         !port.isEmpty &&
+        multicastIPError == nil &&
+        portError == nil &&
         driverManager.totalChannelsUsed + numChannels <= 128
+    }
+
+    private var validationFailureReason: String? {
+        if streamName.isEmpty { return "Stream name is required" }
+        if multicastIP.isEmpty { return "Multicast IP is required" }
+        if port.isEmpty { return "Port is required" }
+        if let err = multicastIPError { return err }
+        if let err = portError { return err }
+        if driverManager.totalChannelsUsed + numChannels > 128 { return "Channel limit exceeded" }
+        return nil
     }
 
     private func addStream() {
@@ -297,6 +375,9 @@ struct AddStreamView: View {
             numChannels: UInt16(numChannels),
             sampleRate: UInt32(sampleRate),
             encoding: encoding,
+            ttl: UInt8(ttl),
+            ptpDomain: ptpDomain,
+            description: streamDescription.isEmpty ? nil : streamDescription,
             bypassSampleRateCheck: true
         )
 
@@ -304,10 +385,8 @@ struct AddStreamView: View {
         case .success:
             dismiss()
         case .sampleRateMismatch:
-            // This shouldn't happen with bypassSampleRateCheck: true
             showMismatchAlert = true
         case .channelLimitExceeded:
-            // Already handled by isValid, but just in case
             break
         }
     }

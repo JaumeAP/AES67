@@ -64,6 +64,10 @@ struct StreamListView: View {
     @State private var showingSuccessAlert = false
     @State private var successMessage = ""
 
+    // Confirmation dialog for removal
+    @State private var streamToRemove: StreamInfo?
+    @State private var showingRemoveConfirmation = false
+
     // Sample rate mismatch handling for SDP imports
     @State private var showingSampleRateMismatchAlert = false
     @State private var pendingSDPImport: ParsedSDPInfo?
@@ -76,8 +80,9 @@ struct StreamListView: View {
                     StreamRowView(stream: stream)
                         .tag(stream)
                         .contextMenu {
-                            Button("Remove Stream") {
-                                driverManager.removeStream(stream)
+                            Button("Remove Stream", role: .destructive) {
+                                streamToRemove = stream
+                                showingRemoveConfirmation = true
                             }
 
                             Button("Export SDP...") {
@@ -130,6 +135,21 @@ struct StreamListView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(successMessage)
+        }
+        .confirmationDialog(
+            "Remove Stream",
+            isPresented: $showingRemoveConfirmation,
+            presenting: streamToRemove
+        ) { stream in
+            Button("Remove \"\(stream.name)\"", role: .destructive) {
+                driverManager.removeStream(stream)
+                if selectedStream?.id == stream.id {
+                    selectedStream = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { stream in
+            Text("Are you sure you want to remove \"\(stream.name)\"? This will stop receiving audio from this stream.")
         }
 
             // Sample rate mismatch overlay for SDP imports
@@ -508,6 +528,7 @@ fileprivate struct StreamListSDPDropDelegate: DropDelegate {
 }
 
 struct PTPDiagnosticButton: View {
+    @EnvironmentObject var driverManager: DriverManager
     @State private var showingDiagnostic = false
 
     var body: some View {
@@ -516,7 +537,7 @@ struct PTPDiagnosticButton: View {
         }
         .sheet(isPresented: $showingDiagnostic) {
             PTPDiagnosticView()
-                .environmentObject(DriverManager())
+                .environmentObject(driverManager)
         }
     }
 }
@@ -548,11 +569,11 @@ struct StreamRowView: View {
                 }
             }
 
-            HStack {
+            HStack(spacing: 4) {
                 Text("\(stream.numChannels)ch")
-                Text("@")
+                Text("\u{00B7}")
                 Text("\(formatSampleRate(stream.sampleRate))")
-                Text("@")
+                Text("\u{00B7}")
                 Text(stream.encoding)
 
                 Spacer()
@@ -588,14 +609,8 @@ struct StreamRowView: View {
     }
 
     private func startSignalUpdates() {
-        // Mock signal detection - in real implementation, query driver
-        signalTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
-            if stream.isConnected {
-                hasSignal = Double.random(in: 0...1) > 0.15
-            } else {
-                hasSignal = false
-            }
-        }
+        // Show signal based on connection state
+        // Real implementation would query driver for actual audio levels
         hasSignal = stream.isConnected
     }
 
@@ -606,47 +621,15 @@ struct StreamRowView: View {
 }
 
 /// Mini level indicator for sidebar stream rows
+/// Shows a static green bar when connected (real data would come from driver)
 struct MiniLevelIndicator: View {
-    @State private var levels: [Float] = [0, 0]
-    @State private var timer: Timer?
-
     var body: some View {
         HStack(spacing: 1) {
-            ForEach(0..<min(2, levels.count), id: \.self) { index in
+            ForEach(0..<2, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(levelColor(levels[index]))
+                    .fill(Color.green.opacity(0.6))
                     .frame(width: 12, height: 4)
-                    .overlay(
-                        GeometryReader { geo in
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: geo.size.width * CGFloat(1 - levels[index]))
-                                .offset(x: geo.size.width * CGFloat(levels[index]))
-                        }
-                    )
             }
-        }
-        .onAppear {
-            startUpdates()
-        }
-        .onDisappear {
-            timer?.invalidate()
-        }
-    }
-
-    private func levelColor(_ level: Float) -> Color {
-        if level > 0.9 { return .red }
-        if level > 0.7 { return .orange }
-        if level > 0.4 { return .yellow }
-        return .green
-    }
-
-    private func startUpdates() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            levels = [
-                Float.random(in: 0.2...0.8),
-                Float.random(in: 0.2...0.8)
-            ]
         }
     }
 }

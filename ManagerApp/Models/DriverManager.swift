@@ -79,8 +79,11 @@ class DriverManager: ObservableObject {
         .appendingPathComponent("Library/Application Support/AES67Driver/config.json")
 
     private var refreshTimer: Timer?
+    private var currentRefreshInterval: Double = 1.0
 
     init() {
+        currentRefreshInterval = UserDefaults.standard.double(forKey: "refreshInterval")
+        if currentRefreshInterval < 0.5 { currentRefreshInterval = 1.0 }
         checkDriverStatus()
         loadConfiguration()
         loadDeviceSampleRate()
@@ -109,18 +112,42 @@ class DriverManager: ObservableObject {
 
     func restartCoreAudio() {
         let task = Process()
-        task.launchPath = "/usr/bin/sudo"
-        task.arguments = ["killall", "coreaudiod"]
+        task.launchPath = "/bin/launchctl"
+        task.arguments = ["kickstart", "-kp", "system/com.apple.audio.coreaudiod"]
 
         do {
             try task.run()
             task.waitUntilExit()
 
+            if task.terminationStatus == 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.checkDriverStatus()
+                }
+            } else {
+                // Fall back to AppleScript with privilege escalation
+                restartCoreAudioWithPrivileges()
+            }
+        } catch {
+            restartCoreAudioWithPrivileges()
+        }
+    }
+
+    private func restartCoreAudioWithPrivileges() {
+        let script = NSAppleScript(source: """
+            do shell script "launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
+            """)
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+
+        if let error = error {
+            DispatchQueue.main.async {
+                self.showAlert(title: "Restart Failed",
+                             message: "Could not restart Core Audio: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+            }
+        } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.checkDriverStatus()
             }
-        } catch {
-            print("Failed to restart CoreAudio: \(error)")
         }
     }
 
@@ -138,6 +165,7 @@ class DriverManager: ObservableObject {
     @discardableResult
     func addStream(name: String, multicastIP: String, port: UInt16,
                    numChannels: UInt16, sampleRate: UInt32, encoding: String,
+                   ttl: UInt8 = 32, ptpDomain: Int = 0, description: String? = nil,
                    bypassSampleRateCheck: Bool = false) -> AddStreamResult {
 
         // Check sample rate compatibility unless bypassed
@@ -163,11 +191,14 @@ class DriverManager: ObservableObject {
         let stream = StreamInfo(
             id: UUID(),
             name: name,
+            description: description,
             multicastIP: multicastIP,
             port: port,
+            ttl: ttl,
             encoding: encoding,
             sampleRate: sampleRate,
-            numChannels: numChannels
+            numChannels: numChannels,
+            ptpDomain: ptpDomain
         )
 
         // Auto-assign device channels
@@ -262,6 +293,11 @@ class DriverManager: ObservableObject {
                 self.parseSDP(from: url)
             }
         }
+    }
+
+    /// Imports an SDP file directly from a URL (used for drag-and-drop)
+    func importSDPFromURL(_ url: URL) {
+        parseSDP(from: url)
     }
 
     func exportSDP(for stream: StreamInfo) {
@@ -420,9 +456,17 @@ class DriverManager: ObservableObject {
     }
 
     private func startAutoRefresh() {
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: currentRefreshInterval, repeats: true) { [weak self] _ in
             self?.refreshStatus()
         }
+    }
+
+    /// Updates the auto-refresh interval (called when user changes setting)
+    func updateRefreshInterval(_ interval: Double) {
+        guard interval >= 0.5, interval != currentRefreshInterval else { return }
+        currentRefreshInterval = interval
+        startAutoRefresh()
     }
 
     private func showAlert(title: String, message: String) {
