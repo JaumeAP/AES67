@@ -91,12 +91,15 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
         return StreamID::null();
     }
 
-    // Start receiver
-    if (!managed.receiver->start()) {
-        AES67_LOGF("StreamManager::addStream: failed to start RTP receiver for '%s' (%s:%u)",
-                   sdp.sessionName.c_str(), sdp.connectionAddress.c_str(), sdp.port);
-        mapper_.removeMapping(id);
-        return StreamID::null();
+    // Only start receiver if IO is active (a Core Audio client has called StartIO).
+    // Otherwise the stream is created dormant and will be started by setIOActive(true).
+    if (ioActive_.load()) {
+        if (!managed.receiver->start()) {
+            AES67_LOGF("StreamManager::addStream: failed to start RTP receiver for '%s' (%s:%u)",
+                       sdp.sessionName.c_str(), sdp.connectionAddress.c_str(), sdp.port);
+            mapper_.removeMapping(id);
+            return StreamID::null();
+        }
     }
 
     // Build stream info
@@ -287,12 +290,15 @@ StreamID StreamManager::createTxStream(
         return StreamID::null();
     }
 
-    // Start transmitter
-    if (!managed.transmitter->start()) {
-        AES67_LOGF("StreamManager::createTxStream: failed to start RTP transmitter for '%s' (%s:%u)",
-                   name.c_str(), multicastIP.c_str(), port);
-        mapper_.removeMapping(id);
-        return StreamID::null();
+    // Only start transmitter if IO is active (a Core Audio client has called StartIO).
+    // Otherwise the stream is created dormant and will be started by setIOActive(true).
+    if (ioActive_.load()) {
+        if (!managed.transmitter->start()) {
+            AES67_LOGF("StreamManager::createTxStream: failed to start RTP transmitter for '%s' (%s:%u)",
+                       name.c_str(), multicastIP.c_str(), port);
+            mapper_.removeMapping(id);
+            return StreamID::null();
+        }
     }
 
     // Build stream info
@@ -463,6 +469,37 @@ std::string StreamManager::getAddStreamError(const SDPSession& sdp) const {
 //
 // Device State
 //
+
+void StreamManager::setIOActive(bool active) {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    bool wasActive = ioActive_.exchange(active);
+    if (wasActive == active) {
+        return; // No state change
+    }
+
+    if (active) {
+        AES67_LOGF("StreamManager::setIOActive: Starting %zu stream(s)", streams_.size());
+        for (auto& [id, managed] : streams_) {
+            if (managed.receiver) {
+                managed.receiver->start();
+            }
+            if (managed.transmitter) {
+                managed.transmitter->start();
+            }
+        }
+    } else {
+        AES67_LOGF("StreamManager::setIOActive: Stopping %zu stream(s)", streams_.size());
+        for (auto& [id, managed] : streams_) {
+            if (managed.receiver) {
+                managed.receiver->stop();
+            }
+            if (managed.transmitter) {
+                managed.transmitter->stop();
+            }
+        }
+    }
+}
 
 bool StreamManager::setDeviceSampleRate(double sampleRate) {
     if (sampleRate < 44100 || sampleRate > 384000) {
@@ -680,17 +717,27 @@ bool StreamManager::loadSavedStreams() {
         managed.mapping = config.mapping;
         managed.isTransmit = (config.sdp.direction == "sendonly" || config.sdp.direction == "sendrecv");
 
-        // Create RTP receiver or transmitter
+        // Create RTP receiver or transmitter (only start if IO is active)
         if (managed.isTransmit) {
             managed.transmitter = createTransmitter(config.sdp, config.mapping);
-            if (!managed.transmitter || !managed.transmitter->start()) {
+            if (!managed.transmitter) {
+                mapper_.removeMapping(id);
+                failedCount++;
+                continue;
+            }
+            if (ioActive_.load() && !managed.transmitter->start()) {
                 mapper_.removeMapping(id);
                 failedCount++;
                 continue;
             }
         } else {
             managed.receiver = createReceiver(config.sdp, config.mapping);
-            if (!managed.receiver || !managed.receiver->start()) {
+            if (!managed.receiver) {
+                mapper_.removeMapping(id);
+                failedCount++;
+                continue;
+            }
+            if (ioActive_.load() && !managed.receiver->start()) {
                 mapper_.removeMapping(id);
                 failedCount++;
                 continue;

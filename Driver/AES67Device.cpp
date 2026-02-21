@@ -353,6 +353,11 @@ OSStatus AES67Device::StartIOImpl(UInt32 clientID, UInt32 startCount) {
         }
 
         ioRunning_.store(true);
+
+        // Start RTP network threads now that a client needs audio
+        if (streamManager_) {
+            streamManager_->setIOActive(true);
+        }
     }
 
     return aspl::Device::StartIOImpl(clientID, startCount);
@@ -367,6 +372,11 @@ OSStatus AES67Device::StopIOImpl(UInt32 clientID, UInt32 startCount) {
         }
         if (outputStream_) {
             outputStream_->SetIsActive(false);
+        }
+
+        // Stop RTP network threads — no client needs audio anymore
+        if (streamManager_) {
+            streamManager_->setIOActive(false);
         }
 
         ioRunning_.store(false);
