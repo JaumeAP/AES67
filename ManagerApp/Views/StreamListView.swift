@@ -379,7 +379,7 @@ struct StreamListView: View {
                 if !parts.isEmpty {
                     // Port can be just a number or port/count
                     let portStr = parts[0].components(separatedBy: "/").first ?? parts[0]
-                    if let port = UInt16(portStr) {
+                    if let port = UInt16(portStr), port > 0 {
                         parsed.port = port
                     } else {
                         throw SDPParseError.invalidPort(parts[0])
@@ -545,7 +545,6 @@ struct PTPDiagnosticButton: View {
 struct StreamRowView: View {
     let stream: StreamInfo
     @State private var hasSignal = false
-    @State private var signalTimer: Timer?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -596,9 +595,6 @@ struct StreamRowView: View {
         .onAppear {
             startSignalUpdates()
         }
-        .onDisappear {
-            stopSignalUpdates()
-        }
     }
 
     private func formatSampleRate(_ rate: UInt32) -> String {
@@ -614,10 +610,6 @@ struct StreamRowView: View {
         hasSignal = stream.isConnected
     }
 
-    private func stopSignalUpdates() {
-        signalTimer?.invalidate()
-        signalTimer = nil
-    }
 }
 
 /// Mini level indicator for sidebar stream rows

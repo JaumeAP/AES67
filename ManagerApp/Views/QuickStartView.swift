@@ -6,12 +6,14 @@
 
 import SwiftUI
 import Network
+import ServiceManagement
 
 // MARK: - Main Quick Start View
 
 struct QuickStartView: View {
     @EnvironmentObject var driverManager: DriverManager
     @Binding var isPresented: Bool
+    @AppStorage("hasCompletedQuickStart") private var hasCompletedQuickStart = false
     @State private var currentStep = 1
 
     var body: some View {
@@ -94,12 +96,12 @@ struct QuickStartView: View {
     }
 
     private func completeWizard() {
-        UserDefaults.standard.set(true, forKey: "hasCompletedQuickStart")
+        hasCompletedQuickStart = true
         isPresented = false
     }
 
     private func skipWizard() {
-        UserDefaults.standard.set(true, forKey: "hasCompletedQuickStart")
+        hasCompletedQuickStart = true
         isPresented = false
     }
 }
@@ -868,9 +870,10 @@ struct FinishStep: View {
         UserDefaults.standard.set(showInMenuBar, forKey: "showInMenuBar")
         UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
 
-        // If launch at login is enabled, would set up the login item here
         if launchAtLogin {
-            // SMAppService.mainApp.register() - requires macOS 13+
+            try? SMAppService.mainApp.register()
+        } else {
+            try? SMAppService.mainApp.unregister()
         }
     }
 }

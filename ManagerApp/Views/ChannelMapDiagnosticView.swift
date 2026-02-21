@@ -5,6 +5,8 @@
 //
 
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct ChannelMapDiagnosticView: View {
     @EnvironmentObject var driverManager: DriverManager
@@ -297,9 +299,6 @@ struct ChannelMapDiagnosticView: View {
     }
 
     private func exportChannelMap() {
-        // TODO: Export channel mapping to JSON file
-        print("Exporting channel map...")
-
         var mappingData: [String: Any] = [:]
         mappingData["totalChannels"] = 128
         mappingData["usedChannels"] = usedChannelCount
@@ -319,13 +318,20 @@ struct ChannelMapDiagnosticView: View {
         }
         mappingData["streams"] = streams
 
-        // Save to file
-        let data = try? JSONSerialization.data(withJSONObject: mappingData, options: .prettyPrinted)
-        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        let fileURL = desktop.appendingPathComponent("AES67_ChannelMap.json")
+        guard let data = try? JSONSerialization.data(withJSONObject: mappingData, options: .prettyPrinted) else {
+            return
+        }
 
-        try? data?.write(to: fileURL)
-        print("Exported to: \(fileURL.path)")
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType.json]
+        panel.nameFieldStringValue = "AES67_ChannelMap.json"
+        panel.message = "Export channel mapping"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                try? data.write(to: url, options: .atomic)
+            }
+        }
     }
 }
 

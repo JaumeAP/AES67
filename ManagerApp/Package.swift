@@ -30,7 +30,6 @@ let package = Package(
                 "Views/PTPDiagnosticView.swift",
                 "Views/ChannelMappingView.swift",
                 "Views/ChannelMapDiagnosticView.swift",
-                "Views/SDPProcessor.swift",
                 "Models/StreamInfo.swift",
                 "Models/DriverManager.swift",
                 "Models/MenuBarManager.swift"

@@ -313,51 +313,68 @@ class DriverManager: ObservableObject {
         }
     }
 
+    /// Parses an SDP file and adds the stream.
+    /// Uses rtpmap-based parsing for accurate codec/channel extraction.
     private func parseSDP(from url: URL) {
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
-            // Parse SDP content (simplified version)
-            // In a real implementation, this would use the C++ SDPParser
-
             let lines = content.components(separatedBy: .newlines)
-            var name = "Imported Stream"
-            var multicastIP = "239.0.0.1"
+            var name = url.deletingPathExtension().lastPathComponent
+            var multicastIP = ""
             var port: UInt16 = 5004
             var numChannels: UInt16 = 2
             var sampleRate: UInt32 = 48000
             var encoding = "L24"
+            var ttl: UInt8 = 32
+            var ptpDomain: Int = 0
 
             for line in lines {
-                if line.hasPrefix("s=") {
-                    name = String(line.dropFirst(2))
-                } else if line.hasPrefix("c=") {
-                    // c=IN IP4 239.0.0.1/32
-                    let parts = line.components(separatedBy: " ")
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { continue }
+
+                if trimmed.hasPrefix("s=") {
+                    let sessionName = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    if !sessionName.isEmpty && sessionName != "-" {
+                        name = sessionName
+                    }
+                } else if trimmed.hasPrefix("c=") {
+                    let parts = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
                     if parts.count >= 3 {
-                        multicastIP = parts[2].components(separatedBy: "/").first ?? multicastIP
-                    }
-                } else if line.hasPrefix("m=audio ") {
-                    // m=audio 5004 RTP/AVP 97
-                    let parts = line.components(separatedBy: " ")
-                    if parts.count >= 2 {
-                        port = UInt16(parts[1]) ?? 5004
-                    }
-                } else if line.contains("rtpmap") {
-                    // a=rtpmap:97 L24/48000/2
-                    if let match = line.range(of: "L\\d+/\\d+/\\d+", options: .regularExpression) {
-                        let rtpInfo = String(line[match])
-                        let parts = rtpInfo.components(separatedBy: "/")
-                        if parts.count >= 3 {
-                            encoding = parts[0]
-                            sampleRate = UInt32(parts[1]) ?? 48000
-                            numChannels = UInt16(parts[2]) ?? 2
+                        let addrParts = parts[2].components(separatedBy: "/")
+                        multicastIP = addrParts[0]
+                        if addrParts.count >= 2, let parsedTTL = UInt8(addrParts[1]) {
+                            ttl = parsedTTL
                         }
+                    }
+                } else if trimmed.hasPrefix("m=audio ") {
+                    let parts = trimmed.dropFirst(8).components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                    if let portStr = parts.first?.components(separatedBy: "/").first,
+                       let parsedPort = UInt16(portStr), parsedPort > 0 {
+                        port = parsedPort
+                    }
+                } else if trimmed.contains("rtpmap") {
+                    if let match = trimmed.range(of: #"(L\d+|AM824)/(\d+)(?:/(\d+))?"#, options: .regularExpression) {
+                        let rtpInfo = String(trimmed[match])
+                        let parts = rtpInfo.components(separatedBy: "/")
+                        if parts.count >= 1 { encoding = parts[0] }
+                        if parts.count >= 2, let r = UInt32(parts[1]) { sampleRate = r }
+                        if parts.count >= 3, let c = UInt16(parts[2]) { numChannels = c }
+                    }
+                } else if trimmed.contains("clock-domain:") || trimmed.contains("ptp-domain") {
+                    if let match = trimmed.range(of: #"\d+"#, options: .regularExpression) {
+                        if let d = Int(trimmed[match]) { ptpDomain = d }
                     }
                 }
             }
 
+            guard !multicastIP.isEmpty else {
+                print("Failed to import SDP: no multicast address found")
+                return
+            }
+
             addStream(name: name, multicastIP: multicastIP, port: port,
-                     numChannels: numChannels, sampleRate: sampleRate, encoding: encoding)
+                     numChannels: numChannels, sampleRate: sampleRate, encoding: encoding,
+                     ttl: ttl, ptpDomain: ptpDomain)
 
         } catch {
             print("Failed to import SDP: \(error)")
@@ -443,7 +460,7 @@ class DriverManager: ObservableObject {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(config)
-            try data.write(to: configURL)
+            try data.write(to: configURL, options: .atomic)
         } catch {
             print("Failed to save configuration: \(error)")
         }
@@ -527,9 +544,7 @@ class DriverManager: ObservableObject {
 
         guard let deviceID = findAES67DeviceID() else {
             print("AES67 device not found")
-            // For testing purposes, update local state even if device not found
-            currentDeviceSampleRate = rate
-            return true
+            return false
         }
 
         var propertyAddress = AudioObjectPropertyAddress(
@@ -544,9 +559,7 @@ class DriverManager: ObservableObject {
 
         if settableStatus != noErr || !isSettable.boolValue {
             print("Sample rate property is not settable")
-            // Still update local state for demonstration
-            currentDeviceSampleRate = rate
-            return true
+            return false
         }
 
         var sampleRate = Float64(rate)
@@ -567,9 +580,7 @@ class DriverManager: ObservableObject {
             return true
         } else {
             print("Failed to set device sample rate: \(status)")
-            // Update local state for UI feedback even if CoreAudio fails
-            currentDeviceSampleRate = rate
-            return true
+            return false
         }
     }
 

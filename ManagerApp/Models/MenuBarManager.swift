@@ -11,7 +11,7 @@ import ServiceManagement
 
 class MenuBarManager: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
-    private var driverManager: DriverManager
+    private weak var driverManager: DriverManager?
     @Published var showMainWindow = false
 
     init(driverManager: DriverManager) {
@@ -41,6 +41,8 @@ class MenuBarManager: NSObject, ObservableObject {
     }
 
     func updateMenu() {
+        guard let driverManager = driverManager else { return }
+
         let menu = NSMenu(title: "AES67")
 
         // Status section

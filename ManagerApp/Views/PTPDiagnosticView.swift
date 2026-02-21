@@ -481,8 +481,8 @@ struct PTPDiagnosticView: View {
                 // Network Diagnostics
                 GroupBox("Network Diagnostics") {
                     VStack(alignment: .leading, spacing: 8) {
-                        StatusRow(title: "Firewall Blocking PTP:", status: firewallBlockingPTP ? "Yes" : "No")
-                        StatusRow(title: "Firewall Blocking RTP:", status: firewallBlockingRTP ? "Yes" : "No")
+                        StatusRow(title: "Firewall Blocking PTP:", status: firewallBlockingPTP ? "Yes" : "No", invertColors: true)
+                        StatusRow(title: "Firewall Blocking RTP:", status: firewallBlockingRTP ? "Yes" : "No", invertColors: true)
                         StatusRow(title: "Last Message Type:", status: "\(lastMessageReceived)")
                         StatusRow(title: "Last Message Time:", status: formatTime(lastMessageTime))
                     }
@@ -672,6 +672,9 @@ struct PTPDiagnosticView: View {
 struct StatusRow: View {
     let title: String
     let status: String
+    /// When true, "Yes" is bad (red) and "No" is good (green).
+    /// Used for rows like "Firewall Blocking PTP" where "Yes" means a problem.
+    var invertColors: Bool = false
 
     var body: some View {
         HStack {
@@ -685,11 +688,9 @@ struct StatusRow: View {
     }
 
     private var statusColor: Color {
-        // More nuanced color logic
-        if status == "Yes" { return .green }
-        if status == "No" { return .red }
+        if status == "Yes" { return invertColors ? .red : .green }
+        if status == "No" { return invertColors ? .green : .red }
         if status == "Unknown" { return .orange }
-        // For numeric values, keep them neutral unless they indicate errors
         return .primary
     }
 }
