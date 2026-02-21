@@ -91,6 +91,7 @@ echo "✓ Found Manager app at: $MANAGER_APP_PATH"
 
 # Clean and create output directories
 echo "Preparing directories..."
+chmod -R u+w "$PAYLOAD_DIR" 2>/dev/null || true
 rm -rf "$OUTPUT_DIR" "$PAYLOAD_DIR"
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$PAYLOAD_DIR"
@@ -159,6 +160,7 @@ COMPONENT_PKG="$OUTPUT_DIR/AES67Driver.pkg"
 
 pkgbuild \
     --root "$PAYLOAD_DIR" \
+    --component-plist "$INSTALLER_DIR/component.plist" \
     --identifier "$PACKAGE_ID" \
     --version "$PACKAGE_VERSION" \
     --scripts "$SCRIPTS_DIR" \

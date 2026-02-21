@@ -12,11 +12,6 @@
     <readme     file="readme.html"     mime-type="text/html" />
     <conclusion file="conclusion.html" mime-type="text/html" />
 
-    <!--
-    WARNING BANNER - Displayed prominently
-    -->
-    <background file="background.png" mime-type="image/png" alignment="topleft" scaling="proportional"/>
-
     <!-- System requirements -->
     <installation-check script="checkSystem()"/>
 
@@ -35,19 +30,13 @@
             }
 
             // Warn about Apple Silicon requirement
-            var arch = system.hardware.cpuType;
+            var arch = system.sysctl('hw.machine');
             if (arch !== 'arm64') {
                 my.result.title = 'Architecture Warning';
                 my.result.message = 'This driver is optimized for Apple Silicon Macs. Intel Macs are not officially supported and the driver may not work correctly.';
                 my.result.type = 'Warning';
             }
 
-            return true;
-        }
-
-        function installationCheck() {
-            // Display warning about experimental nature
-            var result = system.run('/bin/echo', 'Installation check passed');
             return true;
         }
     ]]>
