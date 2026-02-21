@@ -21,6 +21,25 @@ OUTPUT_DIR="$INSTALLER_DIR/output"
 PAYLOAD_DIR="$INSTALLER_DIR/payload"
 SCRIPTS_DIR="$INSTALLER_DIR/scripts"
 
+# --build flag: build missing artifacts before packaging
+if [ "$1" = "--build" ]; then
+    echo "Auto-building artifacts..."
+    echo ""
+
+    if [ ! -d "$BUILD_DIR/AES67Driver.driver" ]; then
+        echo "Building driver..."
+        mkdir -p "$BUILD_DIR"
+        (cd "$BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=Release && make AES67Driver)
+        echo ""
+    fi
+
+    if [ ! -d "$PROJECT_ROOT/ManagerApp/AES67Manager.app" ]; then
+        echo "Building Manager app..."
+        (cd "$PROJECT_ROOT/ManagerApp" && ./build.sh)
+        echo ""
+    fi
+fi
+
 # Package info
 PACKAGE_ID="com.aes67.driver"
 PACKAGE_VERSION="1.0.0"
