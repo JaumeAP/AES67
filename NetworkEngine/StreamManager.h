@@ -123,6 +123,11 @@ public:
     // Device State
     //
 
+    // Notify StreamManager that Core Audio IO has started/stopped.
+    // When active, starts all dormant receivers/transmitters.
+    // When inactive, stops all running receivers/transmitters.
+    void setIOActive(bool active);
+
     // Set current device sample rate (validates against streams)
     bool setDeviceSampleRate(double sampleRate);
 
@@ -213,6 +218,9 @@ private:
     // Configuration management
     std::unique_ptr<StreamConfigManager> configManager_;
     bool autoSaveEnabled_{true};
+
+    // IO lifecycle state — true when Core Audio IO is active (StartIO/StopIO)
+    std::atomic<bool> ioActive_{false};
 
     // Device state
     std::atomic<double> currentDeviceSampleRate_{48000.0};
