@@ -528,6 +528,7 @@ struct ChannelMappingView: View {
     private func autoAssignChannels(for stream: StreamInfo) {
         // Find first available contiguous block
         let neededChannels = Int(stream.numChannels)
+        guard neededChannels > 0 && neededChannels <= totalChannels else { return }
 
         for startCh in 0...(totalChannels - neededChannels) {
             var available = true

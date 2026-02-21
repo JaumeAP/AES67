@@ -238,7 +238,6 @@ struct SignalPresentIndicator: View {
 struct StreamAudioStatusPanel: View {
     let stream: StreamInfo
     @State private var audioLevels: StreamAudioLevels?
-    @State private var updateTimer: Timer?
 
     var body: some View {
         GroupBox("Audio Levels") {
@@ -277,9 +276,6 @@ struct StreamAudioStatusPanel: View {
         .onAppear {
             startLevelUpdates()
         }
-        .onDisappear {
-            stopLevelUpdates()
-        }
     }
 
     private func startLevelUpdates() {
@@ -289,11 +285,6 @@ struct StreamAudioStatusPanel: View {
             channelCount: Int(stream.numChannels),
             isConnected: stream.isConnected
         )
-    }
-
-    private func stopLevelUpdates() {
-        updateTimer?.invalidate()
-        updateTimer = nil
     }
 }
 
