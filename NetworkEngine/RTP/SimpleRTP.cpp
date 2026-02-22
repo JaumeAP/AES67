@@ -25,6 +25,7 @@ RTPSocket::RTPSocket()
     , isReceiver_(false)
 {
     memset(&multicastAddr_, 0, sizeof(multicastAddr_));
+    memset(&boundInterfaceAddr_, 0, sizeof(boundInterfaceAddr_));
 }
 
 RTPSocket::~RTPSocket() {
@@ -73,10 +74,35 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
         return false;
     }
 
-    // Join multicast group
+    // Resolve interface address for multicast binding
+    struct in_addr ifaceAddr;
+    if (interfaceIP) {
+        ifaceAddr.s_addr = inet_addr(interfaceIP);
+    } else {
+        ifaceAddr.s_addr = htonl(INADDR_ANY);
+    }
+
+    // Store bound interface for proper IP_DROP_MEMBERSHIP on close()
+    boundInterfaceAddr_ = ifaceAddr;
+
+    // Bind multicast reception to a specific interface (prevents duplicate
+    // packets on machines with multiple NICs, common in pro audio setups)
+    if (interfaceIP) {
+        if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_IF, &ifaceAddr, sizeof(ifaceAddr)) < 0) {
+            fprintf(stderr, "AES67 RTP openReceiver: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
+                    multicastIP, port, interfaceIP, errno, strerror(errno));
+            ::close(sockfd_);
+            sockfd_ = -1;
+            return false;
+        }
+        fprintf(stderr, "AES67 RTP openReceiver: bound multicast to interface %s for %s:%u\n",
+                interfaceIP, multicastIP, port);
+    }
+
+    // Join multicast group on the specified interface
     struct ip_mreq mreq;
     mreq.imr_multiaddr.s_addr = inet_addr(multicastIP);
-    mreq.imr_interface.s_addr = interfaceIP ? inet_addr(interfaceIP) : htonl(INADDR_ANY);
+    mreq.imr_interface = ifaceAddr;
 
     if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
@@ -225,10 +251,11 @@ ssize_t RTPSocket::receive(RTPPacket& packet, uint8_t* buffer, size_t bufferSize
 void RTPSocket::close() {
     if (sockfd_ >= 0) {
         // Leave multicast group if receiver
+        // Use the same interface address that was used for IP_ADD_MEMBERSHIP
         if (isReceiver_) {
             struct ip_mreq mreq;
             mreq.imr_multiaddr = multicastAddr_.sin_addr;
-            mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+            mreq.imr_interface = boundInterfaceAddr_;
             if (setsockopt(sockfd_, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
                 // Log but don't fail — socket is closing anyway.
                 // Repeated failures here could indicate multicast membership leak on macOS.

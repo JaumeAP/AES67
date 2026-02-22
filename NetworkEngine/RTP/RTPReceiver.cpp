@@ -17,11 +17,16 @@ namespace AES67 {
 RTPReceiver::RTPReceiver(
     const SDPSession& sdp,
     const ChannelMapping& mapping,
-    DeviceChannelBuffers& deviceChannels
+    DeviceChannelBuffers& deviceChannels,
+    size_t jitterBufferDepth,
+    const std::string& networkInterface
 )
     : sdp_(sdp)
     , mapping_(mapping)
     , deviceChannels_(deviceChannels)
+    , jitterBuffer_(jitterBufferDepth > 0 ? jitterBufferDepth
+                                          : LockFreeCircularJitterBuffer::DEFAULT_BUFFER_SIZE)
+    , networkInterface_(networkInterface)
 {
     std::memset(&stats_, 0, sizeof(stats_));
 
@@ -40,6 +45,34 @@ RTPReceiver::RTPReceiver(
         packetInterval_ = std::chrono::microseconds(intervalUs);
     } else {
         packetInterval_ = std::chrono::microseconds(1000); // 1ms default for AES67
+    }
+
+    // Resolve network interface name to IP address
+    if (!networkInterface_.empty()) {
+        bool looksLikeIP = true;
+        for (char c : networkInterface_) {
+            if (c != '.' && !isdigit(c)) {
+                looksLikeIP = false;
+                break;
+            }
+        }
+
+        if (looksLikeIP) {
+            resolvedInterfaceIP_ = networkInterface_;
+            AES67_LOGF("RTPReceiver: using interface IP %s directly (stream=%s)",
+                       resolvedInterfaceIP_.c_str(), sdp_.sessionName.c_str());
+        } else {
+            resolvedInterfaceIP_ = NetworkInterfaceDetection::getInterfaceIPAddress(networkInterface_);
+            if (resolvedInterfaceIP_.empty()) {
+                AES67_LOGF("RTPReceiver: WARNING - failed to resolve interface '%s' to IP, "
+                           "falling back to INADDR_ANY (stream=%s)",
+                           networkInterface_.c_str(), sdp_.sessionName.c_str());
+            } else {
+                AES67_LOGF("RTPReceiver: resolved interface '%s' to IP %s (stream=%s)",
+                           networkInterface_.c_str(), resolvedInterfaceIP_.c_str(),
+                           sdp_.sessionName.c_str());
+            }
+        }
     }
 }
 
@@ -67,12 +100,20 @@ bool RTPReceiver::start() {
         return false;
     }
 
-    // Open RTP receiver socket
-    if (!rtpSocket_.openReceiver(sdp_.connectionAddress.c_str(), sdp_.port)) {
-        AES67_LOGF("RTPReceiver::start: socket open failed for %s:%u (stream=%s)",
-                   sdp_.connectionAddress.c_str(), sdp_.port, sdp_.sessionName.c_str());
+    // Open RTP receiver socket, optionally bound to a specific interface
+    const char* ifaceIP = resolvedInterfaceIP_.empty() ? nullptr : resolvedInterfaceIP_.c_str();
+    if (!rtpSocket_.openReceiver(sdp_.connectionAddress.c_str(), sdp_.port, ifaceIP)) {
+        AES67_LOGF("RTPReceiver::start: socket open failed for %s:%u iface=%s (stream=%s)",
+                   sdp_.connectionAddress.c_str(), sdp_.port,
+                   resolvedInterfaceIP_.empty() ? "ANY" : resolvedInterfaceIP_.c_str(),
+                   sdp_.sessionName.c_str());
         return false;
     }
+
+    AES67_LOGF("RTPReceiver::start: opened socket for %s:%u on interface %s (stream=%s)",
+               sdp_.connectionAddress.c_str(), sdp_.port,
+               resolvedInterfaceIP_.empty() ? "INADDR_ANY" : resolvedInterfaceIP_.c_str(),
+               sdp_.sessionName.c_str());
 
     // Reset jitter buffer and prefill gate
     jitterBuffer_.reset();

@@ -11,17 +11,11 @@
 namespace AES67 {
 
 AES67IOHandler::AES67IOHandler(
-    DeviceChannelBuffers& inputBuffers,
-    DeviceChannelBuffers& outputBuffers,
-    std::atomic<uint64_t>& inputUnderruns,
-    std::atomic<uint64_t>& outputUnderruns,
+    RTSafeStreamInterface& rtInterface,
     UInt32 channelCount,
     UInt32 bytesPerSample
 )
-    : inputBuffers_(inputBuffers)
-    , outputBuffers_(outputBuffers)
-    , inputUnderruns_(inputUnderruns)
-    , outputUnderruns_(outputUnderruns)
+    : rtInterface_(rtInterface)
     , cachedChannelCount_(channelCount)
     , cachedBytesPerSample_(bytesPerSample)
     , cachedBytesPerFrame_(channelCount * bytesPerSample)
@@ -118,16 +112,17 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
     }
 
     bool hadUnderrun = false;
+    auto& inputBuffers = rtInterface_.inputBuffers();
 
     for (size_t ch = 0; ch < channelCount; ++ch) {
-        const size_t samplesRead = inputBuffers_[ch].read(channelBuffer, frameCount);
+        const size_t samplesRead = inputBuffers[ch].read(channelBuffer, frameCount);
 
         if (samplesRead < frameCount) {
             std::memset(&channelBuffer[samplesRead], 0,
                        (frameCount - samplesRead) * sizeof(float));
 
             if (!hadUnderrun) {
-                inputUnderruns_.fetch_add(1, std::memory_order_relaxed);
+                rtInterface_.recordInputUnderrun();
                 hadUnderrun = true;
             }
         }
@@ -151,17 +146,18 @@ void AES67IOHandler::processOutput(const float* inputData, UInt32 frameCount, UI
     }
 
     bool hadOverrun = false;
+    auto& outputBuffers = rtInterface_.outputBuffers();
 
     for (size_t ch = 0; ch < channelCount; ++ch) {
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
             channelBuffer[frame] = inputData[frame * channelCount + ch];
         }
 
-        const size_t samplesWritten = outputBuffers_[ch].write(channelBuffer, frameCount);
+        const size_t samplesWritten = outputBuffers[ch].write(channelBuffer, frameCount);
 
         if (samplesWritten < frameCount) {
             if (!hadOverrun) {
-                outputUnderruns_.fetch_add(1, std::memory_order_relaxed);
+                rtInterface_.recordOutputOverrun();
                 hadOverrun = true;
             }
         }

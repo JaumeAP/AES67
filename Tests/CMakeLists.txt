@@ -51,6 +51,7 @@ add_executable(TestRTPReceiver
     ../Driver/SDPParser.cpp
     ../Driver/AudioThreadPriority.cpp
     ../NetworkEngine/StreamChannelMapper.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
     ../Shared/Types.cpp
 )
 
@@ -82,6 +83,7 @@ add_executable(TestPTPClock
     TestPTPClock.cpp
     ../NetworkEngine/PTP/PTPClock.cpp
     ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PTPSlave.cpp
     ../NetworkEngine/PTP/PhaseLockedLoop.cpp
     ../NetworkEngine/PTP/CustomSys.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
@@ -116,6 +118,7 @@ add_executable(TestMultiStream
     ../NetworkEngine/StreamChannelMapper.cpp
     ../NetworkEngine/PTP/PTPClock.cpp
     ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PTPSlave.cpp
     ../NetworkEngine/PTP/PhaseLockedLoop.cpp
     ../NetworkEngine/PTP/CustomSys.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
@@ -147,6 +150,27 @@ if(ASPL_LIBRARY)
     target_link_libraries(BenchmarkIOHandler PRIVATE ${ASPL_LIBRARY})
 endif()
 
+# Integration Test: Full Audio Path
+add_executable(TestIntegrationAudioPath
+    TestIntegrationAudioPath.cpp
+    ../NetworkEngine/RTP/RTPReceiver.cpp
+    ../NetworkEngine/RTP/RTPTransmitter.cpp
+    ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
+    ../NetworkEngine/RTP/LockFreePacketPool.cpp
+    ../Driver/SDPParser.cpp
+    ../Driver/AudioThreadPriority.cpp
+    ../NetworkEngine/StreamChannelMapper.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
+    ../Shared/Types.cpp
+)
+
+target_include_directories(TestIntegrationAudioPath PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(TestIntegrationAudioPath PRIVATE cxx_std_17)
+
 # Add tests to CTest
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
@@ -157,6 +181,7 @@ add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME MultiStream COMMAND TestMultiStream)
+add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")
@@ -167,6 +192,7 @@ message(STATUS "  - TestRTPTransmitter")
 message(STATUS "  - TestPTPClock")
 message(STATUS "  - TestStreamManager")
 message(STATUS "  - TestMultiStream (Integration)")
+message(STATUS "  - TestIntegrationAudioPath (Integration)")
 message(STATUS "")
 message(STATUS "Benchmarks configured:")
 message(STATUS "  - BenchmarkIOHandler")

@@ -127,16 +127,17 @@ void test_buffer_full() {
     uint8_t packet[100];
     std::memset(packet, 0x55, sizeof(packet));
 
-    // Fill the buffer
+    // Fill the buffer (use getMaxBufferSize() since buffer size is now configurable)
+    const size_t maxSize = buffer.getMaxBufferSize();
     size_t successCount = 0;
-    for (size_t i = 0; i < LockFreeCircularJitterBuffer::BUFFER_SIZE + 10; i++) {
+    for (size_t i = 0; i < maxSize + 10; i++) {
         if (buffer.addPacket(packet, sizeof(packet), i, i * 1000000)) {
             successCount++;
         }
     }
 
-    // Should have succeeded for at most BUFFER_SIZE packets
-    assert(successCount <= LockFreeCircularJitterBuffer::BUFFER_SIZE);
+    // Should have succeeded for at most maxSize packets
+    assert(successCount <= maxSize);
 
     std::cout << "✓ Buffer full test passed (accepted " << successCount << " packets)\n";
 }

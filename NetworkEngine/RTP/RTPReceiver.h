@@ -1,8 +1,5 @@
-//
-// RTPReceiver.h
-// AES67 macOS Driver - Build #1
-// RTP packet receiver with L16/L24 decoding and channel mapping
-//
+/// @file RTPReceiver.h
+/// @brief RTP packet receiver with L16/L24 decoding and channel mapping.
 
 #pragma once
 
@@ -10,6 +7,7 @@
 #include "../../Shared/RingBuffer.hpp"
 #include "../../Driver/SDPParser.h"
 #include "../StreamChannelMapper.h"
+#include "../NetworkInterfaceDetection.h"
 #include "SimpleRTP.h"
 #include "LockFreeCircularJitterBuffer.h"
 #include "../../Driver/AudioThreadPriority.h"
@@ -21,27 +19,27 @@
 
 namespace AES67 {
 
-//
-// RTP Receiver
-//
-// Receives RTP audio packets from network and writes decoded audio
-// to device channels according to the channel mapping
-//
+/// Receives RTP audio packets from a multicast group and writes decoded
+/// audio to device ring buffers via channel mapping.
+///
+/// Uses two threads: receiveLoop() for network I/O into a jitter buffer,
+/// and consumeLoop() for paced readout into per-channel ring buffers.
+/// Includes adaptive rate matching (P-controller) to compensate for clock drift.
 class RTPReceiver {
 public:
     using DeviceChannelBuffers = std::array<SPSCRingBuffer<float>, 128>;
 
-    //
-    // Constructor
-    //
-    // sdp: SDP session describing the stream to receive
-    // mapping: Channel mapping configuration
-    // deviceChannels: Reference to device channel ring buffers
-    //
+    /// @param sdp SDP session describing the stream to receive.
+    /// @param mapping Channel mapping from stream channels to device channels.
+    /// @param deviceChannels Reference to device input ring buffers.
+    /// @param jitterBufferDepth Jitter buffer slots (0=default 256, clamped [32,4096], rounded to power-of-2).
+    /// @param networkInterface Interface name ("en0") or IP to bind multicast. Empty = INADDR_ANY.
     RTPReceiver(
         const SDPSession& sdp,
         const ChannelMapping& mapping,
-        DeviceChannelBuffers& deviceChannels
+        DeviceChannelBuffers& deviceChannels,
+        size_t jitterBufferDepth = 0,
+        const std::string& networkInterface = ""
     );
 
     ~RTPReceiver();
@@ -169,6 +167,10 @@ private:
 
     // Jitter buffer read buffer
     uint8_t jitterReadBuffer_[1500];
+
+    // Network interface binding
+    std::string networkInterface_;   // Interface name or IP from config
+    std::string resolvedInterfaceIP_; // Resolved IP address (empty = INADDR_ANY)
 };
 
 } // namespace AES67

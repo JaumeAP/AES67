@@ -68,7 +68,19 @@ void AES67Device::Initialize() {
     AES67_LOG("AES67Device: Calling InitializeStreams()");
     InitializeStreams();
 
-    // Initialize IO handler
+    // Create RT-safe interface (compile-time boundary for IO handler)
+    // Must be created before InitializeIOHandler() so it can be passed in.
+    AES67_LOG("AES67Device: Creating RTSafeStreamInterface");
+    rtInterface_ = std::make_unique<RTSafeStreamInterface>(
+        inputBuffers_,
+        outputBuffers_,
+        inputUnderruns_,
+        outputUnderruns_,
+        ioRunning_
+    );
+    AES67_LOG("AES67Device: RTSafeStreamInterface created successfully");
+
+    // Initialize IO handler (uses RT-safe interface)
     AES67_LOG("AES67Device: Calling InitializeIOHandler()");
     InitializeIOHandler();
 
@@ -208,12 +220,9 @@ void AES67Device::InitializeStreams() {
 }
 
 void AES67Device::InitializeIOHandler() {
-    AES67_LOG("InitializeIOHandler: Creating AES67IOHandler");
+    AES67_LOG("InitializeIOHandler: Creating AES67IOHandler with RTSafeStreamInterface");
     ioHandler_ = std::make_shared<AES67IOHandler>(
-        inputBuffers_,
-        outputBuffers_,
-        inputUnderruns_,
-        outputUnderruns_,
+        *rtInterface_,
         kNumChannels,           // Cache channel count for RT-safe access
         sizeof(Float32)         // Cache bytes per sample for RT-safe access
     );

@@ -1,9 +1,5 @@
-//
-// RingBuffer.hpp
-// AES67 macOS Driver - Build #1
-// Lock-free Single-Producer Single-Consumer (SPSC) Ring Buffer
-// RT-SAFE: No allocation, no locks, no blocking
-//
+/// @file RingBuffer.hpp
+/// @brief Lock-free SPSC ring buffer. RT-safe: no allocation, no locks, no blocking.
 
 #pragma once
 
@@ -14,22 +10,17 @@
 
 namespace AES67 {
 
-//
-// SPSCRingBuffer
-//
-// Lock-free ring buffer for single-producer, single-consumer scenarios.
-// Uses memory ordering guarantees for thread safety without locks.
-//
-// Key properties:
-// - NO ALLOCATION after construction
-// - NO LOCKS (lock-free atomics)
-// - NO BLOCKING (returns immediately with actual count)
-// - CACHE-LINE ALIGNED atomic indices to prevent false sharing
-// - RT-SAFE: Can be used in real-time audio threads
-//
+/// Lock-free single-producer, single-consumer ring buffer.
+///
+/// Thread safety via memory-ordered atomics (no locks). Cache-line aligned
+/// indices prevent false sharing. T must be trivially copyable.
+///
+/// @tparam T Element type (must be trivially copyable)
 template<typename T>
 class SPSCRingBuffer {
 public:
+    /// Construct with given capacity (usable elements; internal size is capacity+1).
+    /// @param capacity Maximum number of elements the buffer can hold.
     explicit SPSCRingBuffer(size_t capacity)
         : buffer_(capacity + 1),  // +1 for full/empty distinction
           capacity_(capacity + 1)
@@ -46,11 +37,10 @@ public:
     SPSCRingBuffer(SPSCRingBuffer&&) noexcept = default;
     SPSCRingBuffer& operator=(SPSCRingBuffer&&) noexcept = default;
 
-    //
-    // Write data to the ring buffer (PRODUCER)
-    // Returns the number of elements actually written
-    // Thread: SINGLE producer thread only
-    //
+    /// Write elements into the buffer (producer thread only).
+    /// @param data Source data pointer.
+    /// @param count Number of elements to write.
+    /// @return Number of elements actually written (may be less if buffer is full).
     size_t write(const T* data, size_t count) noexcept {
         // Load indices with appropriate memory ordering
         const size_t writeIdx = writeIndex_.load(std::memory_order_relaxed);
@@ -82,11 +72,10 @@ public:
         return toWrite;
     }
 
-    //
-    // Read data from the ring buffer (CONSUMER) - RT-SAFE
-    // Returns the number of elements actually read
-    // Thread: SINGLE consumer thread only
-    //
+    /// Read elements from the buffer (consumer thread only). RT-safe.
+    /// @param data Destination data pointer.
+    /// @param count Number of elements to read.
+    /// @return Number of elements actually read (may be less if buffer is empty).
     size_t read(T* data, size_t count) noexcept {
         // Load indices with appropriate memory ordering
         const size_t readIdx = readIndex_.load(std::memory_order_relaxed);
@@ -118,52 +107,37 @@ public:
         return toRead;
     }
 
-    //
-    // Get number of elements available for reading - RT-SAFE
-    // Can be called from either thread
-    //
+    /// Number of elements available for reading. Thread-safe, RT-safe.
     size_t available() const noexcept {
         const size_t writeIdx = writeIndex_.load(std::memory_order_acquire);
         const size_t readIdx = readIndex_.load(std::memory_order_relaxed);
         return getAvailableRead(readIdx, writeIdx);
     }
 
-    //
-    // Get number of free elements available for writing - RT-SAFE
-    // Can be called from either thread
-    //
+    /// Number of free elements available for writing. Thread-safe, RT-safe.
     size_t availableWrite() const noexcept {
         const size_t writeIdx = writeIndex_.load(std::memory_order_relaxed);
         const size_t readIdx = readIndex_.load(std::memory_order_acquire);
         return getAvailableWrite(writeIdx, readIdx);
     }
 
-    //
-    // Reset buffer to empty state
-    // WARNING: NOT thread-safe, only call when no threads are accessing
-    //
+    /// Reset buffer to empty. WARNING: not thread-safe -- call only when idle.
     void reset() noexcept {
         writeIndex_.store(0, std::memory_order_release);
         readIndex_.store(0, std::memory_order_release);
     }
 
-    //
-    // Get buffer capacity (not including the +1 for full/empty distinction)
-    //
+    /// Usable capacity (excludes the internal sentinel element).
     size_t capacity() const noexcept {
         return capacity_ - 1;
     }
 
-    //
-    // Check if buffer is empty - RT-SAFE
-    //
+    /// Check if buffer is empty. RT-safe.
     bool isEmpty() const noexcept {
         return available() == 0;
     }
 
-    //
-    // Check if buffer is full - RT-SAFE
-    //
+    /// Check if buffer is full. RT-safe.
     bool isFull() const noexcept {
         return availableWrite() == 0;
     }

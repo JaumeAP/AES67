@@ -5,9 +5,35 @@
 
 namespace AES67 {
 
-LockFreeCircularJitterBuffer::LockFreeCircularJitterBuffer() : packetPool_(BUFFER_SIZE) {
-    // Initialize the buffer slots (they start as EMPTY by default)
-    for (size_t i = 0; i < BUFFER_SIZE; ++i) {
+// Round up to the next power of 2.
+// If v is already a power of 2 it is returned unchanged.
+// Handles the full size_t range safely.
+size_t LockFreeCircularJitterBuffer::nextPowerOf2(size_t v) {
+    if (v == 0) return 1;
+    // If already a power of 2, return as-is
+    if ((v & (v - 1)) == 0) return v;
+    // Standard bit-twiddling round-up
+    --v;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    if constexpr (sizeof(size_t) > 4) {
+        v |= v >> 32;
+    }
+    return v + 1;
+}
+
+LockFreeCircularJitterBuffer::LockFreeCircularJitterBuffer(size_t depth)
+    : bufferSize_(nextPowerOf2(std::clamp(depth, MIN_BUFFER_SIZE, MAX_BUFFER_SIZE)))
+    , sequenceMask_(static_cast<uint32_t>(bufferSize_ - 1))
+    , buffer_(bufferSize_)
+    , packetPool_(bufferSize_)
+{
+    // Initialize the buffer slots (they start as EMPTY by default via LockFreeBufferPacket ctor,
+    // but we make it explicit for clarity and to ensure relaxed-ordered visibility)
+    for (size_t i = 0; i < bufferSize_; ++i) {
         buffer_[i].state.store(SlotState::EMPTY, std::memory_order_relaxed);
     }
 
@@ -193,7 +219,7 @@ size_t LockFreeCircularJitterBuffer::getBufferedPacketCount() const {
 
 void LockFreeCircularJitterBuffer::reset() {
     // Reset all slots to EMPTY state
-    for (size_t i = 0; i < BUFFER_SIZE; ++i) {
+    for (size_t i = 0; i < bufferSize_; ++i) {
         buffer_[i].state.store(SlotState::EMPTY, std::memory_order_release);
     }
 
