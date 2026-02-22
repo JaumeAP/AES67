@@ -20,19 +20,26 @@ A work-in-progress open-source virtual audio driver for macOS that aims to provi
 - RTP transmitter: reads from ring buffers, encodes L16/L24, sends multicast
 - Lock-free SPSC ring buffers bridge network and Core Audio IO threads
 - IO handler reads/writes Core Audio buffers in the real-time callback
-- Lock-free jitter buffer absorbs network timing variation
+- Lock-free jitter buffer absorbs network timing variation (configurable depth, 32–4096 slots)
 - Stream manager handles RX/TX stream lifecycle, channel mapping, and SDP import/export
+- Stream configurations persist across reboots (stored in `/Library/Application Support/AES67Driver/`)
+- RT-safe interface boundary prevents accidental mutex access from the audio callback at compile time
+- Multicast receiver can bind to a specific network interface (prevents duplicate packets on multi-NIC machines)
 - RTP threads are deferred to Core Audio IO lifecycle (zero idle CPU when no client is running)
+- PTP slave-only implementation written (IEEE 1588 message exchange, offset/delay calculation, lock detection)
 - Test sender/receiver tools exercise the network path over loopback
-- 8 unit test suites pass (SDP parser, channel mapper, ring buffer, RTP receiver, RTP transmitter, PTP clock, stream manager, multi-stream)
+- 9 test suites pass (SDP parser, channel mapper, ring buffer, RTP receiver, RTP transmitter, PTP clock, stream manager, multi-stream, integration audio path)
 - IO handler benchmark exists for real-time performance characterisation
+- Doxygen API documentation can be generated via `make docs`
 
 **What has NOT been tested:**
 
 - Audio flowing end-to-end through the driver into a real application
 - Any DAW (Logic Pro, Pro Tools, Ableton, etc.) playing or recording through the device
 - RTP interoperability with real AES67, Dante, or RAVENNA hardware
-- PTP synchronization with any real network clock source (see below)
+- PTP synchronization with any real network clock source — the PTP slave code has been written but never run against a real grandmaster
+- Interface-specific multicast binding on a machine with multiple NICs
+- The configurable jitter buffer under real network jitter conditions
 - Latency, glitching, or stability under real workloads
 - Multi-device synchronisation
 - Sample rates beyond 48kHz in practice
@@ -42,12 +49,12 @@ There is a meaningful gap between "paths exercised with test tools" and "works w
 
 ## Known Limitations
 
-### PTP — Media Clock Recovery Built, Network Sync Stubbed
-The PTP subsystem has two layers, and only the upper one is functional:
+### PTP — Code Written, Not Tested Against Real Hardware
+The PTP subsystem has two layers:
 
-- **Media clock recovery (implemented):** `PTPClock` correlates RTP timestamps with local time per AES67-2018 Section 8.2. A Phase-Locked Loop tracks clock drift between the remote source and local audio hardware. Reference point history enables drift ratio calculation for adaptive resampling. `PTPClockManager` handles multi-domain clock management. In local-clock fallback mode, this is sufficient for single-device operation — audio can flow through the driver using local timing.
+- **Media clock recovery (implemented):** `PTPClock` correlates RTP timestamps with local time per AES67-2018 Section 8.2. A Phase-Locked Loop tracks clock drift between the remote source and local audio hardware. Reference point history enables drift ratio calculation for adaptive resampling. In local-clock fallback mode, this is sufficient for single-device operation — audio can flow through the driver using local timing.
 
-- **Network PTP synchronisation (stubbed):** `PTPDInterface` is a stub. It does not communicate with any PTP grandmaster, does not exchange Sync/FollowUp/DelayReq messages, and `isLocked` stays `false`. The vendored ptpd source is present in `PTP/vendor/ptpd/` but is not compiled or linked. Until this layer is integrated, multi-device synchronisation will not work and timestamps will not be traceable to a real PTP time source.
+- **Network PTP synchronisation (code written, untested):** `PTPSlave` implements IEEE 1588 slave-only mode — Sync/Follow_Up/Delay_Req/Delay_Resp message exchange, offset and path delay calculation, 8-sample moving average filtering, lock detection with hysteresis, and frequency drift estimation. It joins the 224.0.1.129 multicast group on ports 319/320 and feeds measurements into the existing PLL via `PTPDInterface`. However, this code has **never been tested against a real PTP grandmaster**. It auto-falls back to stub mode if PTP ports are unavailable (e.g., without root privileges). Until verified with real hardware, multi-device synchronisation should not be relied upon.
 
 ### Audio Path — Exercised Synthetically Only
 The RTP receiver/transmitter, jitter buffer, IO handler, and ring buffers have been exercised with test sender/receiver tools over loopback, but never with real audio content or real AES67 network traffic. Codec paths (L16/L24) are covered by unit tests but not verified for audible correctness.
@@ -72,10 +79,10 @@ AES67Driver/
 │   │   └── LockFreeCircularJitterBuffer
 │   ├── PTP/
 │   │   ├── PTPClock         # Media clock recovery (AES67 Section 8.2)
-│   │   ├── PTPClockManager  # Multi-domain clock management
+│   │   ├── PTPSlave         # IEEE 1588 slave-only (written, untested)
 │   │   ├── PhaseLockedLoop  # Audio clock drift tracking
-│   │   ├── PTPDInterface    # Network PTP layer (STUB — not functional)
-│   │   └── vendor/ptpd/     # Vendored ptpd source (not yet compiled)
+│   │   ├── PTPDInterface    # PTP interface (stub fallback available)
+│   │   └── vendor/ptpd/     # Vendored ptpd source (not used)
 │   ├── StreamManager        # RX/TX stream lifecycle, IO-gated start/stop
 │   ├── Resampling/          # Sample rate conversion
 │   └── Discovery/           # SAP stream discovery (RFC 2974)
@@ -100,10 +107,13 @@ These describe what the code is written to target, not what has been verified wi
 | Bit Depths | L16, L24 | Unit-tested codec paths |
 | RTP RX Path | Multicast join, decode, jitter buffer | Exercised with test sender |
 | RTP TX Path | Encode, multicast send | Exercised with test receiver |
-| Jitter Buffer | 256 packets, lock-free | Synthetic tests only |
+| Jitter Buffer | Configurable 32–4096 slots, lock-free | Synthetic tests only, default 256 |
+| Multicast Binding | Interface-specific via IP_MULTICAST_IF | Code written, untested on multi-NIC |
 | IO Lifecycle | RTP threads start/stop with Core Audio IO | Implemented, not hardware-tested |
+| RT-Safe Boundary | Compile-time separation of RT/non-RT paths | Implemented |
 | Media Clock Recovery | RTP↔time correlation, PLL, drift tracking | Implemented, uses local clock fallback |
-| PTP Network Sync | IEEE 1588 via ptpd | Stubbed — no network sync |
+| PTP Network Sync | IEEE 1588 slave-only (PTPSlave) | Code written, never tested against real grandmaster |
+| Stream Persistence | JSON config in /Library/Application Support/ | Implemented, survives reboot |
 | Driver Transport | AudioServerPlugIn | Loads into coreaudiod |
 
 ## Building
@@ -130,6 +140,9 @@ make -j
 
 # Run tests
 ctest --output-on-failure
+
+# Generate API docs (requires doxygen)
+make docs
 
 # Install the driver
 sudo cp -R AES67Driver.driver /Library/Audio/Plug-Ins/HAL/
@@ -175,7 +188,9 @@ Contributions welcome, especially:
 
 - **Hardware testing reports** (most needed)
 - Bug fixes with reproduction steps
-- PTP network integration (compiling and linking the vendored ptpd to replace the stub in `PTPDInterface`)
+- Testing PTPSlave against a real IEEE 1588 grandmaster
+- Testing multicast interface binding on multi-NIC setups
+- DAW compatibility testing (Logic Pro, Pro Tools, Ableton, etc.)
 
 ### Guidelines
 
