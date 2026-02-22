@@ -38,9 +38,10 @@ bool PersistedStreamConfig::isValid() const {
 // ============================================================================
 
 StreamConfigManager::StreamConfigManager() {
-    // Use /tmp for config storage since the driver runs as coreaudiod (system daemon)
-    // which doesn't have write access to user directories or /Library/Application Support
-    configPath_ = "/tmp/AES67Driver/" + defaultConfigFile_;
+    // Use /Library/Application Support for persistent config storage.
+    // The driver runs as coreaudiod (system daemon) which has write access to
+    // /Library/Application Support/. This persists across reboots unlike /tmp/.
+    configPath_ = "/Library/Application Support/AES67Driver/" + defaultConfigFile_;
     AES67_LOGF("StreamConfigManager: Using config path: %s", configPath_.c_str());
 }
 
@@ -63,16 +64,27 @@ bool StreamConfigManager::ensureConfigDirectoryExists() {
 
     std::string dir = configPath_.substr(0, lastSlash);
 
-    // Create directory if it doesn't exist
+    // Check if directory already exists
     struct stat st;
-    if (stat(dir.c_str(), &st) != 0) {
-        // Directory doesn't exist, create it
-        std::string cmd = "mkdir -p \"" + dir + "\"";
-        int result = system(cmd.c_str());
-        return result == 0;
+    if (stat(dir.c_str(), &st) == 0) {
+        return S_ISDIR(st.st_mode);
     }
 
-    return S_ISDIR(st.st_mode);
+    // Directory doesn't exist — create parent first, then target.
+    // For /Library/Application Support/AES67Driver/ the parent should already exist,
+    // but handle the case where it doesn't gracefully.
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        AES67_LOGF("StreamConfigManager: Failed to create directory '%s': %s",
+                   dir.c_str(), ec.message().c_str());
+        return false;
+    }
+
+    // Set directory permissions to 755 (rwxr-xr-x)
+    chmod(dir.c_str(), 0755);
+
+    return true;
 }
 
 bool StreamConfigManager::saveConfig(const std::vector<PersistedStreamConfig>& configs) {
@@ -108,12 +120,26 @@ std::optional<std::vector<PersistedStreamConfig>> StreamConfigManager::loadConfi
     std::stringstream buffer;
     buffer << file.rdbuf();
     std::string json = buffer.str();
+    file.close();
 
     auto configs = fromJSON(json);
     if (configs) {
         AES67_LOGF("StreamConfigManager: Loaded %zu stream configurations from %s", configs->size(), configPath_.c_str());
     } else {
-        AES67_LOG("StreamConfigManager: Failed to parse config file");
+        // JSON is corrupt — back it up and start fresh
+        AES67_LOGF("WARNING: StreamConfigManager: Config file is corrupt, backing up to %s.bak",
+                   configPath_.c_str());
+
+        std::string backupPath = configPath_ + ".bak";
+        std::error_code ec;
+        std::filesystem::copy_file(configPath_, backupPath,
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            AES67_LOGF("StreamConfigManager: Failed to create backup: %s", ec.message().c_str());
+        }
+
+        // Remove the corrupt file so a fresh one can be written on next save
+        std::filesystem::remove(configPath_, ec);
     }
 
     return configs;
@@ -150,6 +176,8 @@ std::string StreamConfigManager::configToJSON(const PersistedStreamConfig& confi
     json << "      \"description\": \"" << escapeJSON(config.description) << "\",\n";
     json << "      \"createdTimestamp\": " << config.createdTimestamp << ",\n";
     json << "      \"modifiedTimestamp\": " << config.modifiedTimestamp << ",\n";
+    json << "      \"jitterBufferDepth\": " << config.jitterBufferDepth << ",\n";
+    json << "      \"networkInterface\": \"" << escapeJSON(config.networkInterface) << "\",\n";
     json << "      \"sdp\": " << sdpToJSON(config.sdp) << ",\n";
     json << "      \"mapping\": " << mappingToJSON(config.mapping) << "\n";
     json << "    }";
@@ -297,6 +325,14 @@ std::optional<PersistedStreamConfig> StreamConfigManager::configFromJSON(const s
 
     if (auto modified = extractUInt64Field(json, "modifiedTimestamp")) {
         config.modifiedTimestamp = *modified;
+    }
+
+    if (auto jbDepth = extractUInt64Field(json, "jitterBufferDepth")) {
+        config.jitterBufferDepth = static_cast<size_t>(*jbDepth);
+    }
+
+    if (auto iface = extractStringField(json, "networkInterface")) {
+        config.networkInterface = *iface;
     }
 
     // Extract SDP object

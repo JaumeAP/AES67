@@ -2,10 +2,14 @@
 #define PTPD_INTERFACE_H
 
 #include <atomic>
+#include <memory>
 #include <string>
 #include "PTPDiagnostics.h"
 
 namespace AES67 {
+
+// Forward declaration
+class PTPSlave;
 
 struct PTPState {
     std::atomic<int64_t> masterOffsetNs;   // The difference: PTP Time - Local Time
@@ -18,7 +22,12 @@ struct PTPState {
 
 class PTPDInterface {
 public:
-    PTPDInterface();
+    /**
+     * Construct the PTP interface.
+     * @param useStub If true, operate in stub mode (no network PTP).
+     *                If false (default), attempt real IEEE 1588 PTP synchronization.
+     */
+    explicit PTPDInterface(bool useStub = false);
     ~PTPDInterface();
 
     bool init(const std::string& interfaceName);
@@ -35,15 +44,26 @@ public:
     // NOT be synchronized to network PTP time.
     bool isStubMode() const { return stubMode_; }
 
+    // Set PTP domain (default 0, per AES67)
+    void setDomain(int domain) { domain_ = domain; }
+    int getDomain() const { return domain_; }
+
 private:
+    // Called by PTPSlave when new measurements arrive
+    void onPTPMeasurement(int64_t offsetNs, int64_t pathDelayNs,
+                          double driftPpb, uint8_t clockClass,
+                          uint8_t clockAccuracy, bool locked,
+                          const std::string& grandmasterID);
+
     PTPState state_;
     PTPDiagnostics diagnostics_;
     bool running_;
-    bool stubMode_{true}; // True until real ptpd integration is enabled
+    bool stubMode_;
+    int domain_{0};
     std::string interfaceName_;
 
-    // Internal ptpd structures (opaque to the outside)
-    void* ptpdInstance_;
+    // Real PTP slave instance (null in stub mode)
+    std::unique_ptr<PTPSlave> ptpSlave_;
 };
 
 } // namespace AES67

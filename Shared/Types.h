@@ -1,8 +1,5 @@
-//
-// Types.h
-// AES67 macOS Driver - Build #1
-// Common types and structures used throughout the driver
-//
+/// @file Types.h
+/// @brief Common types and structures used throughout the AES67 driver.
 
 #pragma once
 
@@ -19,20 +16,24 @@ namespace AES67 {
 // Stream Identification
 // ============================================================================
 
+/// UUID-based identifier for AES67 streams. Comparable and map-ordered.
 class StreamID {
 public:
+    /// Generate a null (zero) StreamID.
     StreamID();
     explicit StreamID(const uint8_t uuid[16]);
     explicit StreamID(const std::string& uuidString);
 
     bool operator==(const StreamID& other) const;
     bool operator!=(const StreamID& other) const;
-    bool operator<(const StreamID& other) const;  // For std::map
+    bool operator<(const StreamID& other) const;
 
     std::string toString() const;
     bool isNull() const;
 
+    /// Return a null StreamID (all zeros).
     static StreamID null();
+    /// Generate a new random StreamID.
     static StreamID generate();
 
 private:
@@ -43,13 +44,15 @@ private:
 // Audio Formats
 // ============================================================================
 
+/// Audio encoding formats supported by AES67 streams.
 enum class AudioEncoding {
-    L16,     // 16-bit linear PCM
-    L24,     // 24-bit linear PCM
-    DoP,     // DSD over PCM
+    L16,     ///< 16-bit linear PCM (AES67 standard)
+    L24,     ///< 24-bit linear PCM (AES67 standard)
+    DoP,     ///< DSD over PCM
     Unknown
 };
 
+/// Standard AES67/AES3 sample rates in Hz.
 enum class SampleRate : uint32_t {
     SR_44100  = 44100,
     SR_48000  = 48000,
@@ -65,7 +68,7 @@ enum class SampleRate : uint32_t {
 // Statistics
 // ============================================================================
 
-// Non-atomic snapshot structure for reading statistics
+/// Non-atomic snapshot of stream statistics, safe to read from any thread.
 struct StatisticsSnapshot {
     uint64_t packetsReceived{0};
     uint64_t packetsLost{0};
@@ -93,6 +96,7 @@ struct StatisticsSnapshot {
     }
 };
 
+/// Thread-safe stream statistics with atomic counters. Use snapshot() for consistent reads.
 struct Statistics {
     // Packet statistics (atomic for lock-free updates)
     std::atomic<uint64_t> packetsReceived{0};
@@ -191,7 +195,7 @@ struct Statistics {
     // Time since last packet (milliseconds)
     int64_t timeSinceLastPacketMs() const;
 
-    // Create a non-atomic snapshot copy (for consistent reads across multiple fields)
+    /// Create a non-atomic snapshot for consistent multi-field reads.
     StatisticsSnapshot snapshot() const;
 };
 
@@ -199,10 +203,11 @@ struct Statistics {
 // Network Types
 // ============================================================================
 
+/// IPv4 network address with port and TTL for multicast.
 struct NetworkAddress {
     std::string ip;
     uint16_t port;
-    uint8_t ttl{32};
+    uint8_t ttl{32};   ///< Time-to-live for multicast (default 32 hops)
 
     bool isValid() const;
     bool isMulticast() const;
@@ -211,9 +216,10 @@ struct NetworkAddress {
     std::string toString() const;
 };
 
+/// PTP (IEEE 1588) clock configuration for stream synchronisation.
 struct PTPConfig {
-    int domain{0};              // PTP domain number (-1 = no PTP)
-    std::string masterMAC;      // Master clock MAC address
+    int domain{0};              ///< PTP domain number (-1 = no PTP)
+    std::string masterMAC;      ///< Master clock MAC address
     bool enabled{true};
 
     bool isValid() const;
@@ -223,6 +229,7 @@ struct PTPConfig {
 // Stream Information
 // ============================================================================
 
+/// Complete description of an active or configured AES67 stream.
 struct StreamInfo {
     StreamID id;
     std::string name;
@@ -239,8 +246,14 @@ struct StreamInfo {
     uint8_t payloadType;
 
     // Timing
-    uint32_t ptime;         // Packet time in milliseconds
-    uint32_t framecount;    // Samples per packet
+    uint32_t ptime;         ///< Packet time in microseconds
+    uint32_t framecount;    ///< Samples per RTP packet
+
+    // Jitter buffer configuration
+    // Number of slots in the lock-free jitter buffer.
+    // Will be rounded up to the next power of 2 (min 32, max 4096).
+    // 0 means use the default (256 slots).
+    size_t jitterBufferDepth{0};
 
     // PTP
     PTPConfig ptp;
@@ -260,9 +273,10 @@ struct StreamInfo {
 // Device Configuration
 // ============================================================================
 
+/// Global device configuration with audio, network, and path settings.
 struct DeviceConfig {
-    static constexpr size_t kMaxChannels = 128;
-    static constexpr size_t kMaxStreams = 64;
+    static constexpr size_t kMaxChannels = 128;   ///< Maximum device channels
+    static constexpr size_t kMaxStreams = 64;      ///< Maximum simultaneous streams
 
     // Audio settings
     double sampleRate{48000.0};
@@ -292,6 +306,7 @@ struct DeviceConfig {
 // Error Types
 // ============================================================================
 
+/// Error codes used throughout the driver subsystems.
 enum class ErrorCode {
     Success = 0,
 
@@ -341,6 +356,7 @@ enum class ErrorCode {
     InternalError
 };
 
+/// Error with code, message, and optional context string.
 struct Error {
     ErrorCode code;
     std::string message;
@@ -357,22 +373,22 @@ struct Error {
 // Utility Functions
 // ============================================================================
 
+/// Utility functions for sample rate conversion, IP validation, and formatting.
 namespace Utils {
-    // Convert sample rate enum to Hz
     uint32_t sampleRateToHz(SampleRate sr);
     SampleRate hzToSampleRate(uint32_t hz);
 
-    // Validate IP addresses
     bool isValidIPv4(const std::string& ip);
     bool isMulticastIP(const std::string& ip);
+    /// Check if IP is in the AES67 multicast range (239.x.x.x).
     bool isAES67MulticastIP(const std::string& ip);
 
-    // Time utilities
+    /// Current time in nanoseconds since epoch (steady clock).
     uint64_t getNanoseconds();
     uint64_t getMicroseconds();
     uint64_t getMilliseconds();
 
-    // String utilities
+    /// Format byte count as human-readable string (e.g. "1.5 MB").
     std::string formatBytes(uint64_t bytes);
     std::string formatDuration(std::chrono::milliseconds ms);
 }

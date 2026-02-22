@@ -1,8 +1,5 @@
-//
-// RTPTransmitter.h
-// AES67 macOS Driver - Build #1
-// RTP packet transmitter with L16/L24 encoding and channel mapping
-//
+/// @file RTPTransmitter.h
+/// @brief RTP packet transmitter with L16/L24 encoding and channel mapping.
 
 #pragma once
 
@@ -18,19 +15,17 @@
 
 namespace AES67 {
 
-//
-// RTP Transmitter
-//
-// Reads audio from device channels and transmits as RTP packets
-// with L16/L24 encoding according to SDP configuration
-//
+/// Reads audio from device output ring buffers and transmits as RTP multicast packets.
+///
+/// Single transmit thread using sleep_until pacing for drift-free timing.
+/// Sends continuous packets (including silence) for receiver clock recovery.
 class RTPTransmitter {
 public:
     using DeviceChannelBuffers = std::array<SPSCRingBuffer<float>, 128>;
 
-    //
-    // Constructor
-    //
+    /// @param sdp SDP session describing the TX stream configuration.
+    /// @param mapping Channel mapping from device channels to stream channels.
+    /// @param deviceChannels Reference to device output ring buffers.
     RTPTransmitter(
         const SDPSession& sdp,
         const ChannelMapping& mapping,

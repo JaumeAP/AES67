@@ -10,6 +10,7 @@
 #include "../Shared/Types.h"
 #include "../Shared/RingBuffer.hpp"
 #include "../NetworkEngine/StreamManager.h"
+#include "../NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
 #include <aspl/Stream.hpp>
 #include <aspl/Context.hpp>
@@ -99,6 +100,16 @@ public:
     DeviceChannelBuffers& GetOutputBuffers() { return outputBuffers_; }
 
     //
+    // RT-Safe Interface Access
+    //
+
+    // Returns the RT-safe interface for use by AES67IOHandler.
+    // The interface is created during Initialize() and is valid for the
+    // lifetime of this device. Only pass this to RT-safe code paths.
+    RTSafeStreamInterface* GetRTInterface() { return rtInterface_.get(); }
+    const RTSafeStreamInterface* GetRTInterface() const { return rtInterface_.get(); }
+
+    //
     // Stream Manager Access
     //
 
@@ -150,6 +161,10 @@ private:
 
     // Stream Manager (manages all AES67 network streams)
     std::unique_ptr<StreamManager> streamManager_;
+
+    // RT-safe interface (compile-time boundary for IO handler)
+    // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
+    std::unique_ptr<RTSafeStreamInterface> rtInterface_;
 
     // Current configuration
     std::atomic<Float64> currentSampleRate_{48000.0};

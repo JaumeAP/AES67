@@ -1,8 +1,5 @@
-//
-// StreamManager.h
-// AES67 macOS Driver - Build #1
-// Unified management of all AES67 streams (RX and TX)
-//
+/// @file StreamManager.h
+/// @brief Central coordinator for all AES67 RX and TX streams.
 
 #pragma once
 
@@ -21,23 +18,18 @@
 
 namespace AES67 {
 
-//
-// Stream Manager
-//
-// Central coordinator for all AES67 streams.
-// Manages receivers, transmitters, channel mapping, and validation.
-//
-// WARNING: NOT REAL-TIME SAFE
-// All public methods acquire streamsMutex_ and must NEVER be called from
-// the Core Audio IO thread (AES67IOHandler callbacks) or any thread with
-// real-time constraints. Doing so will cause priority inversion and audio
-// dropouts. Only call from: initialization, UI/manager app, or control threads.
-//
+/// Central coordinator for all AES67 streams (receivers, transmitters, channel mapping).
+///
+/// @warning NOT REAL-TIME SAFE. All public methods acquire a mutex. Never call from
+/// the Core Audio IO thread or any RT-constrained thread. Safe to call from
+/// initialization, UI/manager app, or control threads.
 class StreamManager {
 public:
     using DeviceChannelBuffers = std::array<SPSCRingBuffer<float>, 128>;
     using StreamCallback = std::function<void(const StreamInfo&)>;
 
+    /// @param inputChannels  Ring buffers written by RTP receivers (RX path).
+    /// @param outputChannels Ring buffers read by RTP transmitters (TX path).
     StreamManager(DeviceChannelBuffers& inputChannels, DeviceChannelBuffers& outputChannels);
     ~StreamManager();
 
@@ -49,13 +41,13 @@ public:
     // Stream Management - RX
     //
 
-    // Add stream with automatic channel mapping
+    /// Add an RX stream with automatic channel assignment. Returns the new StreamID.
     StreamID addStream(const SDPSession& sdp);
 
-    // Add stream with custom mapping
+    /// Add an RX stream with explicit channel mapping.
     StreamID addStream(const SDPSession& sdp, const ChannelMapping& mapping);
 
-    // Import from SDP file
+    /// Import an RX stream from an SDP file on disk.
     StreamID importSDPFile(const std::string& filepath);
 
     // Remove stream
@@ -68,7 +60,7 @@ public:
     // Stream Management - TX
     //
 
-    // Create transmit stream
+    /// Create a TX stream that reads from device output channels and sends RTP.
     StreamID createTxStream(
         const std::string& name,
         const std::string& multicastIP,
@@ -123,9 +115,8 @@ public:
     // Device State
     //
 
-    // Notify StreamManager that Core Audio IO has started/stopped.
-    // When active, starts all dormant receivers/transmitters.
-    // When inactive, stops all running receivers/transmitters.
+    /// Notify that Core Audio IO has started or stopped.
+    /// When active, starts all dormant receivers/transmitters; when inactive, stops them.
     void setIOActive(bool active);
 
     // Set current device sample rate (validates against streams)
@@ -141,10 +132,10 @@ public:
     // Configuration Persistence
     //
 
-    // Load saved stream configurations from disk
+    /// Load saved stream configurations from /tmp/AES67Driver/streams.json.
     bool loadSavedStreams();
 
-    // Save all current streams to disk
+    /// Persist all current streams to disk.
     bool saveAllStreams();
 
     // Enable/disable auto-save (automatically save after add/remove/update)

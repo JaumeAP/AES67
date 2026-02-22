@@ -138,6 +138,7 @@ private:
     int sockfd_;
     struct sockaddr_in multicastAddr_;
     bool isReceiver_;
+    struct in_addr boundInterfaceAddr_;  // Interface used for multicast join (for proper leave)
 };
 
 //

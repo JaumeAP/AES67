@@ -32,6 +32,14 @@ struct PersistedStreamConfig {
     uint64_t createdTimestamp{0};    // When stream was added
     uint64_t modifiedTimestamp{0};   // Last modification
 
+    // Jitter buffer configuration: 0 = default (256 slots).
+    // Values are clamped to [32, 4096] and rounded up to next power of 2.
+    size_t jitterBufferDepth{0};
+
+    // Network interface for multicast binding (e.g., "en0" or "192.168.1.10").
+    // Empty string = bind to INADDR_ANY (all interfaces).
+    std::string networkInterface;
+
     // Validation
     bool isValid() const;
 };
@@ -41,7 +49,7 @@ struct PersistedStreamConfig {
 //
 // Handles saving and loading stream configurations to/from disk
 // Configurations are stored in JSON format at:
-// /tmp/AES67Driver/streams.json
+// /Library/Application Support/AES67Driver/streams.json
 //
 class StreamConfigManager {
 public:

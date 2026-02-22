@@ -23,7 +23,7 @@ fi
 DRIVER_NAME="AES67Driver.driver"
 INSTALL_DIR="/Library/Audio/Plug-Ins/HAL"
 DRIVER_PATH="${INSTALL_DIR}/${DRIVER_NAME}"
-CONFIG_DIR="$HOME/Library/Application Support/AES67Driver"
+CONFIG_DIR="/Library/Application Support/AES67Driver"
 MANAGER_APP="/Applications/AES67Manager.app"
 
 # Check if driver is installed

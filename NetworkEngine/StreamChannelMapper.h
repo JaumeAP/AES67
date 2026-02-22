@@ -1,9 +1,5 @@
-//
-// StreamChannelMapper.h
-// AES67 macOS Driver - Build #1
-// Maps AES67 streams to device channels with validation and persistence
-// CRITICAL COMPONENT for multi-stream channel routing
-//
+/// @file StreamChannelMapper.h
+/// @brief Maps AES67 streams to the 128-channel device with overlap prevention.
 
 #pragma once
 
@@ -17,29 +13,21 @@
 
 namespace AES67 {
 
-//
-// Channel Mapping
-//
-// Defines how channels from an AES67 stream map to device channels
-// Supports flexible mapping including offsets and custom channel routing
-//
+/// Defines how channels from an AES67 stream map to device channels.
+/// Supports sequential mapping with offsets or per-channel custom routing.
 struct ChannelMapping {
     // Stream identification
     StreamID streamID;
     std::string streamName;
 
-    // Stream channels (source)
-    uint16_t streamChannelCount{0};      // Total channels in stream
-    uint16_t streamChannelOffset{0};     // Start at stream channel N
+    uint16_t streamChannelCount{0};      ///< Total channels in the stream
+    uint16_t streamChannelOffset{0};     ///< First stream channel to use
 
-    // Device channels (destination)
-    uint16_t deviceChannelStart{0};      // Device channel 0-127
-    uint16_t deviceChannelCount{0};      // Number of channels to map
+    uint16_t deviceChannelStart{0};      ///< First device channel (0-127)
+    uint16_t deviceChannelCount{0};      ///< Number of channels to map
 
-    // Optional per-channel custom mapping
-    // If empty, uses sequential mapping: streamCh[i] → deviceCh[start + i]
-    // If set, uses custom routing: streamCh[i] → deviceCh[channelMap[i]]
-    std::vector<int> channelMap;         // [streamCh] → deviceCh
+    /// Per-channel custom routing. If empty, sequential: streamCh[i] -> deviceCh[start+i].
+    std::vector<int> channelMap;
 
     // Validation
     bool isValid() const;
@@ -54,19 +42,13 @@ struct ChannelMapping {
     }
 };
 
-//
-// Stream Channel Mapper
-//
-// Central coordinator for mapping AES67 streams to the 128-channel device
-// Key responsibilities:
-// - Prevent channel overlaps
-// - Auto-assign channels to new streams
-// - Validate mappings
-// - Persist mappings to disk
-//
+/// Central coordinator for mapping AES67 streams to the 128-channel device.
+///
+/// Prevents channel overlaps, auto-assigns channels, validates mappings,
+/// and persists mapping state to disk. Thread-safe (internal mutex).
 class StreamChannelMapper {
 public:
-    static constexpr size_t kMaxDeviceChannels = 128;
+    static constexpr size_t kMaxDeviceChannels = 128;  ///< Device channel limit
 
     StreamChannelMapper();
     ~StreamChannelMapper();
@@ -97,10 +79,10 @@ public:
     // Auto-Assignment
     //
 
-    // Create a default mapping for a stream (finds first available channels)
+    /// Auto-assign channels for a stream described by SDP.
     std::optional<ChannelMapping> createDefaultMapping(const SDPSession& sdp);
 
-    // Create a default mapping for a stream (finds first available channels)
+    /// Auto-assign channels for a stream by ID, name, and channel count.
     std::optional<ChannelMapping> createDefaultMapping(
         const StreamID& streamID,
         const std::string& streamName,
@@ -139,7 +121,7 @@ public:
     // Check if device channel is assigned
     bool isChannelAssigned(int deviceCh) const;
 
-    // Find first contiguous block of N free channels
+    /// Find first contiguous block of N free channels. Returns start index or nullopt.
     std::optional<int> findContiguousBlock(size_t numChannels) const;
 
     //

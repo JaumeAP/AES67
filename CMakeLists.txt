@@ -97,15 +97,9 @@ else()
     message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
 endif()
 
-# NOTE: ptpd vendored code disabled - using stub PTP implementation
-# The ptpd integration requires additional work to properly compile on macOS
-# For now, PTPDInterface.cpp provides a stub that simulates PTP lock
-# TODO: Fix ptpd header dependencies and re-enable full PTP support
-#
-# set(PTPD_SOURCES
-#     NetworkEngine/PTP/vendor/ptpd/src/ptpd.c
-#     ... (ptpd sources disabled)
-# )
+# NOTE: The vendored ptpd C code is NOT used. PTP synchronization is implemented
+# natively in C++17 via PTPSlave.cpp (IEEE 1588 slave-only mode). The vendored
+# ptpd source in NetworkEngine/PTP/vendor/ptpd/ is kept for reference only.
 
 # ============================================================================
 # Shared Library
@@ -141,6 +135,7 @@ set(NETWORK_SOURCES
     NetworkEngine/RTP/BufferStatusMonitor.cpp
     NetworkEngine/PTP/PTPClock.cpp
     NetworkEngine/PTP/PTPDInterface.cpp
+    NetworkEngine/PTP/PTPSlave.cpp
     NetworkEngine/PTP/CustomSys.cpp
     NetworkEngine/PTP/PhaseLockedLoop.cpp
     NetworkEngine/Resampling/Resampler.cpp
@@ -270,22 +265,21 @@ endif()
 # Documentation
 # ============================================================================
 
-option(BUILD_DOCS "Build documentation" OFF)
+find_package(Doxygen QUIET)
 
-if(BUILD_DOCS)
-    find_package(Doxygen)
-    if(DOXYGEN_FOUND)
-        set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Docs/Doxyfile.in)
-        set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
-        configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+if(DOXYGEN_FOUND)
+    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/Docs/Doxyfile.in)
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
 
-        add_custom_target(docs ALL
-            COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-            COMMENT "Generating API documentation with Doxygen"
-            VERBATIM
-        )
-    endif()
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM
+    )
+else()
+    message(STATUS "Doxygen not found — 'make docs' target will not be available")
 endif()
 
 # ============================================================================
@@ -339,7 +333,7 @@ if(APPLE)
 endif()
 message(STATUS "  RTP: SimpleRTP (minimal implementation)")
 message(STATUS "  libASPL: ${ASPL_INCLUDE_DIR}")
-message(STATUS "  ptpd: Stub (PTP sync disabled - TODO: fix vendored ptpd)")
+message(STATUS "  PTP: IEEE 1588 slave-only (PTPSlave.cpp, stub fallback available)")
 message(STATUS "  Manager App: ManagerApp target (SwiftUI)")
 message(STATUS "  Installer: make installer")
 message(STATUS "  Tests: ${BUILD_TESTS}")

@@ -5,6 +5,7 @@
 //
 
 #include "../Driver/AES67IOHandler.h"
+#include "../NetworkEngine/RTSafeStreamInterface.h"
 #include "../Shared/RingBuffer.hpp"
 #include <iostream>
 #include <iomanip>
@@ -49,14 +50,11 @@ public:
         , outputBuffers_(MakeRingBufferArray<kNumChannels>(512))
         , inputUnderruns_(0)
         , outputUnderruns_(0)
+        , ioRunning_(false)
+        , rtInterface_(inputBuffers_, outputBuffers_, inputUnderruns_, outputUnderruns_, ioRunning_)
     {
-        // Create I/O handler
-        ioHandler_ = std::make_unique<AES67IOHandler>(
-            inputBuffers_,
-            outputBuffers_,
-            inputUnderruns_,
-            outputUnderruns_
-        );
+        // Create I/O handler using RT-safe interface
+        ioHandler_ = std::make_unique<AES67IOHandler>(rtInterface_);
     }
 
     BenchmarkResult benchmarkInputProcessing(UInt32 frameCount, size_t iterations) {
@@ -218,6 +216,8 @@ private:
     DeviceChannelBuffers outputBuffers_;
     std::atomic<uint64_t> inputUnderruns_;
     std::atomic<uint64_t> outputUnderruns_;
+    std::atomic<bool> ioRunning_;
+    RTSafeStreamInterface rtInterface_;
     std::unique_ptr<AES67IOHandler> ioHandler_;
 };
 

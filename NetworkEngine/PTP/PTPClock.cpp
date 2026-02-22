@@ -75,8 +75,12 @@ PTPClock::PTPClock(int domain)
         networkInterface_ = "en0";
     }
 
-    // Initialize the PTPD interface for this domain
-    ptpdInterface_ = std::make_unique<PTPDInterface>();
+    // Initialize the PTPD interface for this domain.
+    // Pass useStub=false to enable real IEEE 1588 PTP synchronization.
+    // If PTP sockets fail to open (e.g., no permissions for port 319/320),
+    // PTPDInterface will automatically fall back to stub mode.
+    ptpdInterface_ = std::make_unique<PTPDInterface>(/* useStub= */ false);
+    ptpdInterface_->setDomain(domain);
 
     // Initialize the Phase-Locked Loop for audio clock recovery
     pll_ = std::make_unique<PhaseLockedLoop>(1.0, 0.707); // 1Hz bandwidth, critical damping

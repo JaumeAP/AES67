@@ -9,6 +9,7 @@
 
 #include "../Shared/Types.h"
 #include "../Shared/RingBuffer.hpp"
+#include "../NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/IORequestHandler.hpp>
 #include <aspl/Client.hpp>
 #include <aspl/Stream.hpp>
@@ -41,11 +42,11 @@ public:
     //
     // Constructor
     //
+    // Takes an RTSafeStreamInterface which provides the RT-safe boundary:
+    // only lock-free ring buffers and atomic counters, no StreamManager access.
+    //
     AES67IOHandler(
-        DeviceChannelBuffers& inputBuffers,
-        DeviceChannelBuffers& outputBuffers,
-        std::atomic<uint64_t>& inputUnderruns,
-        std::atomic<uint64_t>& outputUnderruns,
+        RTSafeStreamInterface& rtInterface,
         UInt32 channelCount = 128,
         UInt32 bytesPerSample = sizeof(Float32)
     );
@@ -90,15 +91,11 @@ private:
     // Uses batch processing for optimal performance
     void processOutput(const float* inputData, UInt32 frameCount, UInt32 channelCount) noexcept;
 
-    // Ring buffer references
-    // Input: Network writes, Core Audio reads
-    // Output: Core Audio writes, Network reads
-    DeviceChannelBuffers& inputBuffers_;
-    DeviceChannelBuffers& outputBuffers_;
-
-    // Statistics references
-    std::atomic<uint64_t>& inputUnderruns_;
-    std::atomic<uint64_t>& outputUnderruns_;
+    // RT-safe interface (compile-time boundary)
+    // Provides lock-free access to ring buffers and atomic counters.
+    // This is the ONLY path through which the IO handler accesses audio data.
+    // It does NOT provide access to StreamManager or any locked resources.
+    RTSafeStreamInterface& rtInterface_;
 
     // Cached audio format (set at construction, avoids virtual calls in RT path)
     const UInt32 cachedChannelCount_;
