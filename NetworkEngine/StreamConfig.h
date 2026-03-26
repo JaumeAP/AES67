@@ -60,14 +60,25 @@ public:
     // Configuration File Management
     //
 
-    // Get the default configuration file path
+    /// Get the active configuration file path (first found in search order).
     std::string getConfigPath() const;
 
-    // Set a custom configuration file path
+    /// Set a custom configuration file path (overrides search).
     void setConfigPath(const std::string& path);
 
-    // Ensure the configuration directory exists
+    /// Ensure the configuration directory exists.
     bool ensureConfigDirectoryExists();
+
+    /// Get all config search paths in order of priority.
+    /// Search order:
+    ///   1. AES67_CONFIG_PATH environment variable (if set)
+    ///   2. ~/Library/Application Support/AES67Driver/streams.json (user)
+    ///   3. /Library/Application Support/AES67Driver/streams.json (system)
+    static std::vector<std::string> getConfigSearchPaths();
+
+    /// Find first existing config file from search paths.
+    /// @return Path to existing config, or empty string if none found.
+    static std::string findExistingConfig();
 
     //
     // Save/Load Operations

@@ -5,6 +5,7 @@
 //
 
 #include "StreamConfig.h"
+#include "NetworkUtils.h"
 #include "../Driver/DebugLog.h"
 #include <fstream>
 #include <sstream>
@@ -12,6 +13,9 @@
 #include <sys/stat.h>
 #include <ctime>
 #include <regex>
+#include <cstdlib>
+#include <pwd.h>
+#include <unistd.h>
 
 namespace AES67 {
 
@@ -38,11 +42,64 @@ bool PersistedStreamConfig::isValid() const {
 // ============================================================================
 
 StreamConfigManager::StreamConfigManager() {
-    // Use /Library/Application Support for persistent config storage.
-    // The driver runs as coreaudiod (system daemon) which has write access to
-    // /Library/Application Support/. This persists across reboots unlike /tmp/.
-    configPath_ = "/Library/Application Support/AES67Driver/" + defaultConfigFile_;
-    AES67_LOGF("StreamConfigManager: Using config path: %s", configPath_.c_str());
+    // Search for existing config in priority order, or use default
+    std::string existingConfig = findExistingConfig();
+    if (!existingConfig.empty()) {
+        configPath_ = existingConfig;
+        AES67_LOGF("StreamConfigManager: Found config at: %s", configPath_.c_str());
+    } else {
+        // Default to system-wide location for new configs
+        configPath_ = "/Library/Application Support/AES67Driver/" + defaultConfigFile_;
+        AES67_LOGF("StreamConfigManager: No existing config found, will use: %s", configPath_.c_str());
+    }
+
+    // Log available interfaces for debugging
+    auto interfaces = NetworkUtils::getActiveInterfacesWithIPs();
+    AES67_LOGF("StreamConfigManager: Available network interfaces (%zu):", interfaces.size());
+    for (const auto& iface : interfaces) {
+        AES67_LOGF("  - %s: %s", iface.first.c_str(), iface.second.c_str());
+    }
+}
+
+std::vector<std::string> StreamConfigManager::getConfigSearchPaths() {
+    std::vector<std::string> paths;
+
+    // 1. Environment variable override (highest priority)
+    const char* envPath = std::getenv("AES67_CONFIG_PATH");
+    if (envPath && envPath[0] != '\0') {
+        paths.push_back(envPath);
+        AES67_LOGF("StreamConfigManager: AES67_CONFIG_PATH set to: %s", envPath);
+    }
+
+    // 2. User-level config (~/.config/AES67Driver or ~/Library/Application Support)
+    const char* home = std::getenv("HOME");
+    if (!home) {
+        struct passwd* pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+    }
+    if (home && home[0] != '\0') {
+        std::string userPath = std::string(home) + "/Library/Application Support/AES67Driver/streams.json";
+        paths.push_back(userPath);
+    }
+
+    // 3. System-wide config (default)
+    paths.push_back("/Library/Application Support/AES67Driver/streams.json");
+
+    return paths;
+}
+
+std::string StreamConfigManager::findExistingConfig() {
+    auto searchPaths = getConfigSearchPaths();
+
+    for (const auto& path : searchPaths) {
+        struct stat st;
+        if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+            AES67_LOGF("StreamConfigManager: Found config file at: %s", path.c_str());
+            return path;
+        }
+    }
+
+    return "";
 }
 
 StreamConfigManager::~StreamConfigManager() = default;
@@ -332,7 +389,42 @@ std::optional<PersistedStreamConfig> StreamConfigManager::configFromJSON(const s
     }
 
     if (auto iface = extractStringField(json, "networkInterface")) {
-        config.networkInterface = *iface;
+        // Resolve interface name or "auto" to IP address
+        std::string ifaceSpec = *iface;
+
+        if (ifaceSpec == "auto" || ifaceSpec.empty()) {
+            // Auto-detect best interface
+            std::string resolved = NetworkUtils::resolveInterfaceToIP("");
+            if (!resolved.empty()) {
+                config.networkInterface = resolved;
+                AES67_LOGF("StreamConfigManager: Auto-detected interface IP: %s", resolved.c_str());
+            } else {
+                AES67_LOG("StreamConfigManager: Warning - could not auto-detect interface");
+                config.networkInterface = "";
+            }
+        } else if (!NetworkUtils::isIPv4Address(ifaceSpec)) {
+            // It's an interface name like "en0" - resolve to IP
+            std::string resolved = NetworkUtils::getInterfaceIP(ifaceSpec);
+            if (!resolved.empty()) {
+                config.networkInterface = resolved;
+                AES67_LOGF("StreamConfigManager: Resolved interface '%s' to IP: %s",
+                           ifaceSpec.c_str(), resolved.c_str());
+            } else {
+                AES67_LOGF("StreamConfigManager: Warning - interface '%s' not found, using as-is",
+                           ifaceSpec.c_str());
+                config.networkInterface = ifaceSpec;
+            }
+        } else {
+            // Already an IP address
+            config.networkInterface = ifaceSpec;
+        }
+    } else {
+        // No interface specified - auto-detect
+        std::string resolved = NetworkUtils::resolveInterfaceToIP("");
+        if (!resolved.empty()) {
+            config.networkInterface = resolved;
+            AES67_LOGF("StreamConfigManager: No interface specified, auto-detected: %s", resolved.c_str());
+        }
     }
 
     // Extract SDP object

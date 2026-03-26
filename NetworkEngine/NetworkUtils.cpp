@@ -233,4 +233,79 @@ std::string NetworkUtils::getMulticastRouteCommand(const std::string& interfaceN
     return "sudo route add -net 239.0.0.0/8 -interface " + iface;
 }
 
+bool NetworkUtils::isIPv4Address(const std::string& str) {
+    if (str.empty()) return false;
+
+    struct in_addr addr;
+    return inet_pton(AF_INET, str.c_str(), &addr) == 1;
+}
+
+std::string NetworkUtils::getInterfaceIP(const std::string& interfaceName) {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    std::string result;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET &&
+                interfaceName == ifa->ifa_name) {
+                char ip[INET_ADDRSTRLEN];
+                struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+                inet_ntop(AF_INET, &sa->sin_addr, ip, sizeof(ip));
+                result = ip;
+                break;
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return result;
+}
+
+std::string NetworkUtils::resolveInterfaceToIP(const std::string& interfaceSpec) {
+    // Empty string -> auto-detect best interface
+    if (interfaceSpec.empty()) {
+        std::string primaryIface = getPrimaryEthernetInterface();
+        if (!primaryIface.empty()) {
+            return getInterfaceIP(primaryIface);
+        }
+        return "";
+    }
+
+    // Already an IP address -> return as-is
+    if (isIPv4Address(interfaceSpec)) {
+        return interfaceSpec;
+    }
+
+    // Interface name -> resolve to IP
+    return getInterfaceIP(interfaceSpec);
+}
+
+std::vector<std::pair<std::string, std::string>> NetworkUtils::getActiveInterfacesWithIPs() {
+    std::vector<std::pair<std::string, std::string>> result;
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family != AF_INET) continue;
+
+            // Skip loopback
+            if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+
+            // Only include interfaces that are up
+            if (!(ifa->ifa_flags & IFF_UP)) continue;
+
+            char ip[INET_ADDRSTRLEN];
+            struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+            inet_ntop(AF_INET, &sa->sin_addr, ip, sizeof(ip));
+
+            result.emplace_back(ifa->ifa_name, ip);
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return result;
+}
+
 } // namespace AES67
