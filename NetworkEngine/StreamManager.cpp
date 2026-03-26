@@ -614,18 +614,21 @@ bool StreamManager::validateNetworkConfig(const SDPSession& sdp, std::string* er
 
 std::unique_ptr<RTPReceiver> StreamManager::createReceiver(
     const SDPSession& sdp,
-    const ChannelMapping& mapping
+    const ChannelMapping& mapping,
+    size_t jitterBufferDepth,
+    const std::string& networkInterface
 ) {
     // Receivers write decoded network audio to INPUT buffers (Network → Core Audio)
-    return std::make_unique<RTPReceiver>(sdp, mapping, inputChannels_);
+    return std::make_unique<RTPReceiver>(sdp, mapping, inputChannels_, jitterBufferDepth, networkInterface);
 }
 
 std::unique_ptr<RTPTransmitter> StreamManager::createTransmitter(
     const SDPSession& sdp,
-    const ChannelMapping& mapping
+    const ChannelMapping& mapping,
+    const std::string& networkInterface
 ) {
     // Transmitters read audio from OUTPUT buffers (Core Audio → Network)
-    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_);
+    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface);
 }
 
 //
@@ -719,7 +722,7 @@ bool StreamManager::loadSavedStreams() {
 
         // Create RTP receiver or transmitter (only start if IO is active)
         if (managed.isTransmit) {
-            managed.transmitter = createTransmitter(config.sdp, config.mapping);
+            managed.transmitter = createTransmitter(config.sdp, config.mapping, config.networkInterface);
             if (!managed.transmitter) {
                 mapper_.removeMapping(id);
                 failedCount++;
@@ -731,7 +734,7 @@ bool StreamManager::loadSavedStreams() {
                 continue;
             }
         } else {
-            managed.receiver = createReceiver(config.sdp, config.mapping);
+            managed.receiver = createReceiver(config.sdp, config.mapping, config.jitterBufferDepth, config.networkInterface);
             if (!managed.receiver) {
                 mapper_.removeMapping(id);
                 failedCount++;
