@@ -26,10 +26,12 @@ public:
     /// @param sdp SDP session describing the TX stream configuration.
     /// @param mapping Channel mapping from device channels to stream channels.
     /// @param deviceChannels Reference to device output ring buffers.
+    /// @param networkInterface Interface name ("en0") or IP to bind multicast. Empty = default.
     RTPTransmitter(
         const SDPSession& sdp,
         const ChannelMapping& mapping,
-        DeviceChannelBuffers& deviceChannels
+        DeviceChannelBuffers& deviceChannels,
+        const std::string& networkInterface = ""
     );
 
     ~RTPTransmitter();
@@ -79,6 +81,7 @@ private:
     SDPSession sdp_;
     ChannelMapping mapping_;
     DeviceChannelBuffers& deviceChannels_;
+    std::string networkInterface_;
 
     // RTP socket
     RTP::RTPSocket rtpSocket_;

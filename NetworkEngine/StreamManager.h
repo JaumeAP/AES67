@@ -182,12 +182,15 @@ private:
     // Stream creation helpers
     std::unique_ptr<RTPReceiver> createReceiver(
         const SDPSession& sdp,
-        const ChannelMapping& mapping
+        const ChannelMapping& mapping,
+        size_t jitterBufferDepth = 0,
+        const std::string& networkInterface = ""
     );
 
     std::unique_ptr<RTPTransmitter> createTransmitter(
         const SDPSession& sdp,
-        const ChannelMapping& mapping
+        const ChannelMapping& mapping,
+        const std::string& networkInterface = ""
     );
 
     // Callback invocation
