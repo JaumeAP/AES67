@@ -1,14 +1,20 @@
 # AES67 macOS Audio Driver
 
-> **EXPERIMENTAL SOFTWARE — NOT PRODUCTION READY**
+> **EXPERIMENTAL SOFTWARE — USE WITH CAUTION**
 >
-> This is a work-in-progress open-source AES67 audio driver for macOS. The code compiles, the driver loads into Core Audio, and the RTP send/receive paths have been built and exercised with synthetic test tooling — but **no testing has been performed with real AES67 hardware or professional DAW software**.
+> This is a work-in-progress open-source AES67 audio driver for macOS. The RX (receive) path has been **verified working with real AES67 hardware** (Riedel Artist intercom system) and audio successfully flows into DAW software (Reaper). The TX (transmit) path has been built but not yet tested with real hardware.
 >
-> **Do not rely on this for any production audio work.** This project exists for development and experimentation only.
+> **Production use is not recommended without thorough testing in your environment.** This project is under active development.
 
 A work-in-progress open-source virtual audio driver for macOS that aims to provide AES67/RAVENNA network audio support. Built as a user-space AudioServerPlugIn using the libASPL framework.
 
 ## Current Status
+
+**Verified Working (Real Hardware):**
+
+- **RX Path Tested with Riedel Artist:** Audio successfully received from Riedel Artist intercom system via AES67 multicast and recorded in Reaper
+- Multicast interface binding verified on multi-NIC machine (correctly binds to specified interface)
+- L24 encoding at 48kHz, 1ms packet time verified working with professional broadcast hardware
 
 **What has been built and passes synthetic tests:**
 
@@ -31,16 +37,15 @@ A work-in-progress open-source virtual audio driver for macOS that aims to provi
 - 9 test suites pass (SDP parser, channel mapper, ring buffer, RTP receiver, RTP transmitter, PTP clock, stream manager, multi-stream, integration audio path)
 - IO handler benchmark exists for real-time performance characterisation
 - Doxygen API documentation can be generated via `make docs`
+- Flexible configuration: supports interface name ("en0") or IP address, auto-detects if not specified
+- Multiple config search paths: environment variable, user-level, and system-wide
 
 **What has NOT been tested:**
 
-- Audio flowing end-to-end through the driver into a real application
-- Any DAW (Logic Pro, Pro Tools, Ableton, etc.) playing or recording through the device
-- RTP interoperability with real AES67, Dante, or RAVENNA hardware
+- TX path (sending audio to AES67 devices) — code written but not verified with real hardware
 - PTP synchronization with any real network clock source — the PTP slave code has been written but never run against a real grandmaster
-- Interface-specific multicast binding on a machine with multiple NICs
-- The configurable jitter buffer under real network jitter conditions
-- Latency, glitching, or stability under real workloads
+- The configurable jitter buffer under varied network jitter conditions
+- Long-term stability under real workloads
 - Multi-device synchronisation
 - Sample rates beyond 48kHz in practice
 - The Manager app controlling live streams
@@ -103,17 +108,18 @@ These describe what the code is written to target, not what has been verified wi
 | Feature | Code Target | Status |
 |---------|-------------|--------|
 | Channels | 128 in/out | Reported to system |
-| Sample Rates | 44.1kHz - 384kHz | Declared to HAL, untested beyond 48kHz |
-| Bit Depths | L16, L24 | Unit-tested codec paths |
-| RTP RX Path | Multicast join, decode, jitter buffer | Exercised with test sender |
-| RTP TX Path | Encode, multicast send | Exercised with test receiver |
-| Jitter Buffer | Configurable 32–4096 slots, lock-free | Synthetic tests only, default 256 |
-| Multicast Binding | Interface-specific via IP_MULTICAST_IF | Code written, untested on multi-NIC |
-| IO Lifecycle | RTP threads start/stop with Core Audio IO | Implemented, not hardware-tested |
+| Sample Rates | 44.1kHz - 384kHz | Declared to HAL, 48kHz verified |
+| Bit Depths | L16, L24 | L24 verified with real hardware |
+| RTP RX Path | Multicast join, decode, jitter buffer | **Verified with Riedel Artist** |
+| RTP TX Path | Encode, multicast send | Exercised with test receiver, not hardware-verified |
+| Jitter Buffer | Configurable 32–4096 slots, lock-free | Working in production use, default 256 |
+| Multicast Binding | Interface-specific via IP_MULTICAST_IF | **Verified working on multi-NIC** |
+| IO Lifecycle | RTP threads start/stop with Core Audio IO | Implemented, verified in DAW |
 | RT-Safe Boundary | Compile-time separation of RT/non-RT paths | Implemented |
 | Media Clock Recovery | RTP↔time correlation, PLL, drift tracking | Implemented, uses local clock fallback |
 | PTP Network Sync | IEEE 1588 slave-only (PTPSlave) | Code written, never tested against real grandmaster |
 | Stream Persistence | JSON config in /Library/Application Support/ | Implemented, survives reboot |
+| Interface Config | Name ("en0"), IP, or auto-detect | **Implemented** |
 | Driver Transport | AudioServerPlugIn | Loads into coreaudiod |
 
 ## Building

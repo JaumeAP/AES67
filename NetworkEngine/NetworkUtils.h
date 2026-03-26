@@ -79,6 +79,35 @@ public:
      * @return Shell command string to add multicast route
      */
     static std::string getMulticastRouteCommand(const std::string& interfaceName);
+
+    /**
+     * Resolve interface specification to IP address.
+     * Accepts: interface name ("en0"), IP address (returned as-is),
+     * or empty string (auto-detect best interface).
+     * @param interfaceSpec Interface name, IP, or empty string
+     * @return Resolved IP address, or empty string if not found
+     */
+    static std::string resolveInterfaceToIP(const std::string& interfaceSpec);
+
+    /**
+     * Get IP address of a named interface
+     * @param interfaceName Interface name (e.g., "en0")
+     * @return IP address string, or empty if not found
+     */
+    static std::string getInterfaceIP(const std::string& interfaceName);
+
+    /**
+     * Check if a string looks like an IPv4 address
+     * @param str String to check
+     * @return True if it appears to be an IP address
+     */
+    static bool isIPv4Address(const std::string& str);
+
+    /**
+     * Get all interface info (name and IP) for interfaces that are up
+     * @return Vector of pairs (name, IP)
+     */
+    static std::vector<std::pair<std::string, std::string>> getActiveInterfacesWithIPs();
 };
 
 } // namespace AES67
