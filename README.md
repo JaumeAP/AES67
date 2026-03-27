@@ -6,7 +6,7 @@
 >
 > **Production use is not recommended without thorough testing in your environment.** This project is under active development.
 
-A work-in-progress open-source virtual audio driver for macOS that aims to provide AES67/RAVENNA network audio support. Built as a user-space AudioServerPlugIn using the libASPL framework.
+A work-in-progress open-source virtual audio driver for macOS that aims to provide AES67 network audio support. Built as a user-space AudioServerPlugIn using the libASPL framework.
 
 ## Current Status
 
