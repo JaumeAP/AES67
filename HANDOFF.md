@@ -2,10 +2,14 @@
 
 ## Evergreen state
 
-All work merged to main. No active feature branches. Configuration: user's portable bundle (CLAUDE.md, .claude/ config, 25 skills) fully integrated and binding.
+Active branch: `claude/todo-implementation-tsxtnu` — TODO implementation, dead code removal, CI workflow, libASPL submodule.
 
-Git workflow: autonomous local merge (no PR), per bundle's git-rules. Response style: Catalan, telegraphic. Development targets: macOS Apple Silicon + x86_64, CMake out-of-source, per-subsystem CTest targets.
+Configuration: portable bundle (CLAUDE.md, .claude/, 25 skills) fully integrated.
 
-## Session summary (2026-07-24)
+Git workflow: autonomous local merge (no PR) per git-rules. Response style: Catalan, telegraphic. Development: macOS (Apple Silicon + x86_64) + cross-platform tests, CMake out-of-source, per-subsystem CTests.
 
-Closed session by removing harness override that mandated branch+PR workflow. User requested bundle's autonomous local-merge rule be the only binding configuration. Edited CLAUDE.md to remove "Superseded in this repo (2026-07-24)" clauses from session-close and sync-command sections, restored to original bundle text. Edited HANDOFF.md to remove harness reference. Committed both edits, pushed branch, merged to main locally per git-rules, pushed main. PR #1 merged by user/automation. Configuration now: bundle's rules exclusively.
+Architecture invariants: RT-safe thread boundaries (IO thread touches only RTSafeStreamInterface + lock-free ring buffers, never StreamManager), AudioServerPlugIn via libASPL. Stream configs persist as JSON.
+
+## Session summary (compacted turn, 2026-07-24)
+
+Completed TODO implementation: `StreamChannelMapper::fromJSON()` parses JSON stream mappings, added round-trip + clearing tests (all 12 tests passing). Removed 111 dead code files: 12 unused RTP implementations (CircularJitterBuffer, JitterBuffer, etc.), entire ptpd vendor directory. Created GitHub Actions workflow (cmake configure + make + ctest on macOS-latest). Added libASPL as git submodule (https://github.com/gavv/libASPL, external/libASPL). Made ASPL optional in CMakeLists.txt to allow CI to run without driver plugin when not on macOS. Fixed CMakeLists.txt flow control nesting error (removed orphaned else/endif). Pushed latest syntax fix. Awaiting CI success on current commit to proceed with PR.
