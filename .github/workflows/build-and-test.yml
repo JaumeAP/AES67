@@ -22,10 +22,7 @@ jobs:
         run: |
           echo "Installing cmake..."
           brew install cmake
-
-          echo "Installing libaspl..."
-          brew tap gavv/gavv || true
-          brew install libaspl || echo "Warning: libaspl installation had issues, will attempt fallback"
+          echo "cmake installed, skipping libaspl (now optional in CMakeLists.txt)"
 
       - name: Create build directory
         run: mkdir -p build
