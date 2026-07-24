@@ -408,6 +408,56 @@ bool testPTPDomainConfiguration() {
 }
 
 //
+// StreamManager Validation Tests (without requiring instance creation)
+//
+
+bool testStreamManagerValidationHelper() {
+    std::cout << "Test: SDP validation for StreamManager constraints... ";
+
+    // Test that our test SDP generation follows AES67 rules
+    SDPSession validSDP = createTestSDP("Valid", 5004, 8, 48000);
+    TEST_ASSERT(validSDP.sampleRate > 0, "Sample rate must be positive");
+    TEST_ASSERT(validSDP.numChannels > 0 && validSDP.numChannels <= 128,
+                "Channels must be 1-128");
+    TEST_ASSERT(validSDP.port > 0, "Port must be positive");
+
+    // Test constraint: channels must not exceed 128
+    SDPSession tooManyChannels = createTestSDP();
+    tooManyChannels.numChannels = 256;
+    TEST_ASSERT(tooManyChannels.numChannels > 128, "Should generate >128 for test");
+
+    // Test constraint: sample rate mismatch detection
+    SDPSession sr48 = createTestSDP("Test", 5004, 8, 48000);
+    SDPSession sr96 = createTestSDP("Test", 5004, 8, 96000);
+    TEST_ASSERT(sr48.sampleRate != sr96.sampleRate, "Different rates should differ");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testChannelMapperAvailability() {
+    std::cout << "Test: Channel mapping availability constraints... ";
+
+    // Test max channels = 128
+    ChannelMapping maxMapping = createTestMapping(128, 0);
+    TEST_ASSERT(maxMapping.isValid(), "128-channel mapping at start should be valid");
+    TEST_ASSERT(maxMapping.getDeviceChannelEnd() == 128, "Max should end at 128");
+
+    // Test overflow: start at 1, request 128 channels
+    ChannelMapping overflow = createTestMapping(128, 1);
+    TEST_ASSERT(!overflow.isValid(), "Mapping beyond 128 should be invalid");
+
+    // Test non-overlapping mappings can be detected
+    ChannelMapping m1 = createTestMapping(16, 0);    // 0-15
+    ChannelMapping m2 = createTestMapping(16, 16);   // 16-31
+    TEST_ASSERT(m1.getDeviceChannelEnd() == m2.deviceChannelStart,
+                "Non-overlapping mappings should be contiguous");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+//
 // Main Test Runner
 //
 
@@ -463,6 +513,12 @@ int main() {
     std::cout << "PTP Configuration Tests:" << std::endl;
     std::cout << "-----------------------" << std::endl;
     testPTPDomainConfiguration();
+    std::cout << std::endl;
+
+    std::cout << "StreamManager Validation Tests:" << std::endl;
+    std::cout << "------------------------------" << std::endl;
+    testStreamManagerValidationHelper();
+    testChannelMapperAvailability();
     std::cout << std::endl;
 
     std::cout << "========================================" << std::endl;

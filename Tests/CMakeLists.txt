@@ -111,6 +111,37 @@ target_include_directories(TestStreamManager PRIVATE
 
 target_compile_features(TestStreamManager PRIVATE cxx_std_17)
 
+# Test: Resampling Subsystem
+add_executable(TestResampling
+    TestResampling.cpp
+    ../NetworkEngine/Resampling/PIController.cpp
+    ../NetworkEngine/Resampling/SmoothedPIController.cpp
+    ../NetworkEngine/Resampling/Resampler.cpp
+    ../NetworkEngine/Resampling/SampleRateAdapter.cpp
+)
+
+target_include_directories(TestResampling PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(TestResampling PRIVATE cxx_std_17)
+
+# Test: Stream Config
+add_executable(TestStreamConfig
+    TestStreamConfig.cpp
+    ../NetworkEngine/StreamConfig.cpp
+    ../NetworkEngine/NetworkUtils.cpp
+    ../Driver/SDPParser.cpp
+    ../NetworkEngine/StreamChannelMapper.cpp
+    ../Shared/Types.cpp
+)
+
+target_include_directories(TestStreamConfig PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(TestStreamConfig PRIVATE cxx_std_17)
+
 # Integration Test: Multi-Stream Scenarios
 add_executable(TestMultiStream
     TestMultiStream.cpp
@@ -182,6 +213,8 @@ add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME StreamManager COMMAND TestStreamManager)
+add_test(NAME Resampling COMMAND TestResampling)
+add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 
@@ -193,6 +226,8 @@ message(STATUS "  - TestRTPReceiver")
 message(STATUS "  - TestRTPTransmitter")
 message(STATUS "  - TestPTPClock")
 message(STATUS "  - TestStreamManager")
+message(STATUS "  - TestResampling (NEW)")
+message(STATUS "  - TestStreamConfig (NEW)")
 message(STATUS "  - TestMultiStream (Integration)")
 message(STATUS "  - TestIntegrationAudioPath (Integration)")
 message(STATUS "")

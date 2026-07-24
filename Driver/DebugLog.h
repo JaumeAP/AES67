@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <sys/time.h>
+#include <cstdarg>
 
 namespace AES67 {
 namespace Debug {
