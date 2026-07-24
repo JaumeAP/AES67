@@ -67,3 +67,7 @@ ManagerApp/.build/
 
 # Serena plugin
 .serena/
+
+# npx-skills universal-format mirror of .claude/skills/ (not read by any
+# tooling in this repo; .claude/skills/ is the copy that matters)
+.agents/
