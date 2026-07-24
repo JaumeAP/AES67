@@ -62,9 +62,10 @@ endif()
 # ============================================================================
 
 # Check if ASPL submodule exists
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/aspl/Plugin.hpp")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
     set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
     message(STATUS "Using ASPL from submodule: ${ASPL_INCLUDE_DIR}")
+    set(ASPL_FOUND TRUE)
 
     # Add ASPL as a subdirectory if it has its own CMakeLists.txt
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/CMakeLists.txt")
@@ -80,7 +81,6 @@ else()
         PATHS
             /usr/local/include
             /opt/homebrew/include
-            ${CMAKE_SOURCE_DIR}/external/libASPL/include
     )
 
     # Also find libASPL static library
