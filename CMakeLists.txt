@@ -97,8 +97,6 @@ else()
         message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
         set(ASPL_FOUND TRUE)
     endif()
-else()
-    set(ASPL_FOUND TRUE)
 endif()
 
 # NOTE: The vendored ptpd C code is NOT used. PTP synchronization is implemented
