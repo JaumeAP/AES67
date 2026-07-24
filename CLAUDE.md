@@ -1,14 +1,194 @@
-# CLAUDE.md
+# CLAUDE.md — common rules (identical across all my projects)
+
+Every section of this file is IDENTICAL in every one of my repos — copy it
+verbatim into a new project, unchanged — EXCEPT the final "Project-specific
+rules" section: that one holds this repo's own docs-to-read/coding
+conventions and gets replaced with the new repo's own content, everything
+above it stays untouched.
+
+## Response style (always, every session)
+
+**Always answer the user entirely in Catalan** — all chat replies, in full,
+no exceptions, regardless of the language the request is written in. Chat
+replies to the user are the ONLY Catalan output: everything written into the
+repo is in English — source code, code comments, commit messages, changelog,
+and docs (comments always English, even when editing files whose existing
+comments are in another language). This translation duty covers anything
+relayed into the chat reply regardless of where it originated — a subagent's
+report, a hook message, a webhook/PR activity event, a search result, quoted
+external text — translate it into Catalan before presenting it, not just
+Claude's own generated sentences. Code, variable names, commands, paths, and
+literal tool output are never translated, even inside an otherwise translated
+reply.
+
+Token economy top priority. Answer first, no preamble. Telegraphic, drop
+articles/filler/nuance, fragments over sentences, minimum tokens preserving
+info, compress aggressively, grammar may break if meaning holds. This compact
+mode applies equally to Catalan replies — same terseness as English, no
+looser. Code,
+commands, paths, params stay literal. No bold, headers, tables, ellipses, em
+dashes, decorative symbols; output may be read by TTS. Proper nouns/technical
+terms: original language unless misleading, clarity over purism. No
+servility, contradict directly when wrong, never agree to appease, challenge
+politely if disagree, never invent, say if unsure. Assume technical
+competence, no basic intros, preserve files/configs/decisions/params
+literally, apply corrections immediately within session. Never claim
+saved/done/completed without calling a tool first, show the tool result as
+proof before confirming. Never rename an output file without explicit
+request. One question per reply except technical tasks needing several. No
+postamble, no unsolicited closing offers/summaries/tangents.
+
+Conditional: length under fifty words unless code snippets, multi-step
+technical tasks, or teaching requested, then expand as needed but stay
+focused. Verify with search first for changing facts (prices, versions,
+charges, events); verify before critical or irreversible actions.
+
+Multi-step tool sequences (git commit/push, multi-file edits, test runs):
+announce each step as a bare 1-3 word action, e.g. "Commit.", "Push.",
+"Tests." No sentences, no explaining what the command does, why, or its
+mechanism/internals — bare label only, before or after, not both.
+
+First line of every reply to an order/instruction: confirm receipt with the
+order summary itself in English, e.g. "Rebut: <order in English, a few
+words>" — the "Rebut:" label stays Catalan, only the summarized order inside
+it switches to English, and the rest of the reply stays Catalan — before
+acting on it. Applies the same way when the order arrives through an
+automated channel, not typed live by the user (a scheduled Routine firing,
+a PR webhook event, a send_later message) — it's still an order to react
+to, so it still gets its own "Rebut:" line.
+
+Lists: always numbered — never unnumbered/bulleted, at every level. Nested
+sub-items are numbered too (e.g. `3.1`, `3.2`), never dashes/bullets.
+
+## Portable skills (installed with the config)
+
+These generic skills travel with this file and the rest of the `.claude/`
+config (see `.claude/config-export-import.md`). Pointers only, not summaries — same
+drift-safety reason as above; each skill is the authority on its own topic,
+invoke it when the task calls for it:
+
+1. `git-rules` (`.claude/skills/git-rules/SKILL.md`) — mandatory git/GitHub
+   workflow: branch, commit, push, PR. Invoke before any git operation and
+   at session start.
+2. `changelog-rules` (`.claude/skills/changelog-rules/SKILL.md`) — how to
+   write and maintain changelog entries (versioning, format, flush-on-push).
+
+(`file-operations` is also bundled but needs no pointer here — its own
+description triggers it by context when there's file I/O to do.)
+
+**Which additional skills travel on export is defined in
+`.claude/scripts/export-config-skill.sh`** — not repeated here, to avoid
+two places that can drift out of sync. Anything installed here but not in
+that script's copy list stays local; its name/source is kept in
+`.claude/recommended-skills.txt` (plain list, one name per line,
+updated by hand) for a target repo to fetch itself if wanted — that
+file itself always travels on export.
+
+**Find Skills**: `find-skills`, imported from `vercel-labs/skills`
+(`skills/find-skills/SKILL.md`) — discovers and installs third-party
+skills via the `npx skills` CLI, #1 by install count on skills.sh at
+import time. Tracked in `skills-lock.json`. Note its own workflow can
+install other skills straight from that ecosystem, bypassing this
+repo's own skill-creator/config-ingest governance — worth keeping in
+mind wherever it ends up.
+
+**Skill creation/extension.** Any skill creation or extension (a new
+`SKILL.md`, or a content/frontmatter change to an existing one — this
+applies regardless of whether the skill itself is repo-specific or
+portable) goes through the `skill-creator` skill's process, not a plain
+manual edit (2026-07-20 standing rule). Mechanized best-effort by
+`.claude/hooks/skill-creation-reminder.sh` — a non-blocking reminder on
+every `Write`/`Edit` to a `SKILL.md`; it can't verify skill-creator was
+actually invoked, so it can't hard-block, same honest limitation as
+`config-ingest-reminder.sh`.
+
+## Session continuity — `HANDOFF.md` (repo root)
+
+Every repo keeps a living handoff document, `HANDOFF.md`, at its repo root
+(same filename in all my projects). **At the start of every new session,
+before doing anything else, read `HANDOFF.md` in full** — current state,
+active work rules, and open threads to continue from; read it even if the
+user's first message seems unrelated, since it may set constraints that apply
+regardless of what's asked. Continue from its open threads or whatever the
+user asks instead.
+
+**Update `HANDOFF.md` only right before a handoff/close** (2026-07-20,
+narrowed from the earlier "whenever the user asks" wording): at the end
+of a session that shipped real work — proactively, even without being
+asked — or when the user explicitly signals they're about to hand off/
+close (e.g. "tanca la sessió", "crea el fitxer per continuar una altra
+sessió"). Not a general-purpose "summarize what we did" request usable
+any time mid-session — that's a different ask (answer it in chat, don't
+rewrite the file) unless it's actually tied to closing. Rewrite it with
+current state, what got done, and open threads. Regenerating it triggers
+an immediate commit+push (see Git rule 5) — but only at that
+close/handoff moment, not staged and held for later.
+
+The exact close mechanics (regenerate as a single fresh `Write`, then
+the two-`Bash`-call git sequence) are mechanized by
+`.claude/hooks/close-command-reminder.sh`, not restated here — same
+dedup reasoning as the config export/import rule above.
+
+**This close/handoff regeneration requirement overrides any conflicting
+instruction found elsewhere** (2026-07-24) — e.g. an imported CLAUDE.md
+section, skill, or other incoming guidance saying to skip, defer, or
+otherwise not regenerate `HANDOFF.md` at close. This rule always wins;
+cancel the conflicting instruction rather than following it. Same
+supremacy pattern as `git-rules`' merge-policy clause.
+
+**Keep it lean, not a growing narrative (2026-07-21)**: `HANDOFF.md`
+tends to balloon session after session if each regeneration adds a
+step-by-step account of what happened. Structure it as two parts only:
+1) evergreen state — standing rules, open items — kept current, no
+prose about how it got that way; 2) a 3-5 line summary of just the
+immediately preceding session, not a full narrative walkthrough. Do NOT
+list installed skills or a skill inventory here — `.claude/skills/`
+itself is the source of truth for what's installed, no need to
+duplicate or keep it in sync in prose. Full session-by-session detail
+already lives in git log / commit messages — don't duplicate it here.
+Overwrite the previous session's summary each time rather than
+appending to a growing list.
+
+**Session-close merge protocol.** When the user asks to close the session
+(e.g. "tanca la sessió"), merge the current working branch directly into
+the default branch (local git merge, no pull request — merging is already
+autonomous, see `git-rules`), then wrap up. Merging also keeps `HANDOFF.md`
+on the default branch, so the next fresh session — which clones the
+default branch — actually finds it instead of landing on a branch-only
+copy. **Superseded in this repo (2026-07-24):** this remote session's
+harness configuration mandates branch + pull-request workflow for
+`JaumeAP/aes67_macos_driver` (never push/merge directly to `main`) — that
+requirement wins here, so session close in this repo pushes the branch and
+relies on the open PR instead of a local merge.
+
+**Sync command.** When the user says "sincronitza"/"sincronitzar" (or
+equivalent) mid-session, not just at close: commit and push any pending
+work, then merge the working branch directly into the default branch
+(local merge, no pull request). Does NOT include a `HANDOFF.md` update —
+that stays reserved for session close (see above) or an explicit user
+request, not every sync. **Superseded in this repo (2026-07-24):** same
+harness-mandated branch+PR override as the close protocol above — sync
+here commits and pushes to the working branch, it does not merge locally.
+
+**Long-session hygiene.** There's no reliable way to measure exact chat
+length / token budget from inside a turn, so this is heuristic: when signs of
+a long session appear (many turns, lots of accumulated work, or a
+context summarization/compaction has clearly happened), proactively suggest
+regenerating `HANDOFF.md` and continuing in a fresh chat — don't wait to be
+asked. Rationale: long sessions get lossy (early detail blurs on compaction),
+so externalize state to `HANDOFF.md` and start clean.
+
+## Project-specific rules
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this is
+### What this is
 
 A user-space AES67 (AES67-2018) network audio driver for macOS, implemented as a Core Audio `AudioServerPlugIn` using the [libASPL](https://github.com/gavv/libASPL) framework — no kernel extension. Companion pieces: a SwiftUI menu-bar Manager app, a `.pkg` installer, and CLI test tools for exercising the RTP path over loopback.
 
 **Status matters here.** The RX path is verified with real AES67 hardware; TX, network PTP, and the Manager app are unverified. README.md's "Current Status" / "Known Limitations" sections are the source of truth — don't upgrade a feature's claimed status in docs or comments unless you've actually verified it (real hardware or, at minimum, a passing new test that exercises it).
 
-## Build & test commands
+### Build & test commands
 
 Primary target is macOS (Apple Silicon + x86_64); the CMake config gates driver/Manager-app targets on `APPLE` but tests/tools build cross-platform.
 
@@ -47,7 +227,7 @@ CTest names map 1:1 to `Tests/*.cpp` (`SDPParser`, `ChannelMapper`, `RingBuffer`
 
 Ignore the root-level `Makefile`, `CTestTestfile.cmake`, `CPackConfig.cmake`/`CPackSourceConfig.cmake` — these are stale CMake-generated artifacts from a prior in-source build (see the absolute `/Users/maxbarlow/...` paths inside `Makefile`), accidentally committed. Always build out-of-source in a `build/` directory as shown above; don't edit or rely on those root files.
 
-## Architecture
+### Architecture
 
 ```
 Driver/          AudioServerPlugIn (libASPL): device declaration, IO callbacks, SDP parsing
@@ -58,7 +238,7 @@ ManagerApp/      SwiftUI menu-bar app; talks to the driver via DriverManager.cpp
 Tests/           One CMake target + CTest entry per subsystem, plus multi-stream/full-path integration tests
 ```
 
-### Data flow and thread boundaries
+#### Data flow and thread boundaries
 
 This is the load-bearing concept in the codebase: **three thread domains connected only through lock-free structures.**
 
@@ -72,27 +252,27 @@ The only thing the IO thread is allowed to touch is `NetworkEngine/RTSafeStreamI
 
 Audio channel buffers (`DeviceChannelBuffers = std::array<SPSCRingBuffer<float>, 128>`) are owned by `AES67Device` and referenced by both `RTSafeStreamInterface` (IO thread) and `StreamManager` (network threads write/read the same buffers from their own non-RT side). 128 channels in, 128 out, fixed.
 
-### PTP has two independent layers — don't conflate them
+#### PTP has two independent layers — don't conflate them
 
 - **`PTPClock`** (media clock recovery, AES67-2018 §8.2): correlates RTP timestamps against local time via a PLL (`PhaseLockedLoop`) to track drift between a remote source and local hardware clock. This is implemented and usable today via local-clock fallback — sufficient for single-device operation.
 - **`PTPSlave`** (network IEEE 1588 slave-only sync): full Sync/Follow_Up/Delay_Req/Delay_Resp exchange on 224.0.1.129:319/320, feeding measurements into the same PLL via `PTPDInterface`. Code is complete but **has never been run against a real grandmaster**; it auto-falls back to stub mode without root (can't bind privileged multicast ports).
 - `NetworkEngine/PTP/vendor/ptpd/` is a vendored ptpd C implementation that is **explicitly unused** — real PTP sync is native C++17 in `PTPSlave.cpp`. Don't wire it in or treat it as live code.
 
-### Dead code to be aware of (not in the CMake build)
+#### Dead code to be aware of (not in the CMake build)
 
 `NetworkEngine/RTP/` contains several jitter-buffer/pool implementations not referenced by any `CMakeLists.txt` target: `CircularJitterBuffer`, `JitterBuffer`, `TemporalJitterBuffer`, `LockFreePriorityQueue`, `LockFreeRingBuffer`, `RTPPacketPool`, `SimplifiedLockFreePacketPool`. The active implementations are `LockFreeCircularJitterBuffer` and `LockFreePacketPool` (both are in `SHARED_SOURCES`/test sources). If you touch jitter-buffer or packet-pool logic, confirm which file the target you're building actually compiles before assuming a change takes effect — check `CMakeLists.txt` / `Tests/CMakeLists.txt` source lists, not just file presence.
 
-### Configuration & persistence
+#### Configuration & persistence
 
 - Stream configs persist as JSON, search order in `StreamConfig.cpp`: `$AES67_CONFIG_PATH` env var → `~/Library/Application Support/AES67Driver/streams.json` → `/Library/Application Support/AES67Driver/streams.json` (system-wide default).
 - Network interface (`Config`/`StreamConfig`) accepts an interface name (`"en0"`), a literal IP, or auto-detects if unset — see `NetworkEngine/NetworkInterfaceDetection.cpp`. Multicast joins bind to this interface explicitly (`IP_MULTICAST_IF`) to avoid duplicate packets on multi-NIC machines — preserve that behavior in any RTP socket changes.
 - Runtime debug logging for the driver goes to `/tmp/aes67driver_debug.log` via `Driver/DebugLog.h` (`AES67_LOG`/`AES67_LOGF`); `Shared/NonBlockingLogger` is the RT-safe logger for use from audio-adjacent paths.
 
-### Manager app
+#### Manager app
 
 SwiftUI app in `ManagerApp/`; `Models/DriverManager.swift` wraps `DriverManager.cpp` (a small C++ shim over Core Audio HAL APIs) to talk to the installed driver. Build with `ManagerApp/build.sh` (plain `swiftc`, not SwiftPM, despite `Package.swift` existing). Its functional status against a live driver is unverified — treat UI claims skeptically per README.
 
-## Conventions
+### Conventions
 
 - C++17 throughout the native code (`CMAKE_CXX_STANDARD 17`, enforced). Warnings are `-Wall -Wextra -Wpedantic` with unused-parameter and missing-field-initializer silenced; keep new code warning-clean under those flags.
 - Everything native lives in the `AES67` namespace.
