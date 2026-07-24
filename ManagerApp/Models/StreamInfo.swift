@@ -26,6 +26,9 @@ struct StreamInfo: Identifiable, Hashable {
     // PTP
     var ptpDomain: Int = 0
 
+    // Direction
+    var direction: String = "recvonly"  // "recvonly", "sendonly", "sendrecv"
+
     // Status
     var isActive: Bool = true
     var isConnected: Bool = false
@@ -162,6 +165,8 @@ extension StreamInfo {
             encoding: "L24",
             sampleRate: 48000,
             numChannels: 8,
+            ptpDomain: 0,
+            direction: "recvonly",
             isConnected: true,
             startTime: Date(),
             mapping: ChannelMappingInfo(

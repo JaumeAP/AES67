@@ -61,26 +61,19 @@ endif()
 # Dependencies
 # ============================================================================
 
-# Check if ASPL submodule exists
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/aspl/Plugin.hpp")
+# Check if ASPL submodule exists and has the required headers
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/aspl/Device.hpp")
     set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
     message(STATUS "Using ASPL from submodule: ${ASPL_INCLUDE_DIR}")
-
-    # Add ASPL as a subdirectory if it has its own CMakeLists.txt
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/CMakeLists.txt")
-        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL" ASPL)
-        set(ASPL_LIBRARY ASPL::ASPL)
-    else()
-        # If ASPL doesn't have CMakeLists.txt, treat as header-only
-        set(ASPL_LIBRARY "")
-    endif()
+    set(ASPL_FOUND TRUE)
+    # Treat as header-only, don't add_subdirectory to avoid CMakeLists.txt issues
+    set(ASPL_LIBRARY "")
 else()
     # Find libASPL (header-only library) in system locations
     find_path(ASPL_INCLUDE_DIR aspl/Plugin.hpp
         PATHS
             /usr/local/include
             /opt/homebrew/include
-            ${CMAKE_SOURCE_DIR}/external/libASPL/include
     )
 
     # Also find libASPL static library
@@ -91,10 +84,13 @@ else()
     )
 
     if(NOT ASPL_INCLUDE_DIR)
-        message(FATAL_ERROR "libASPL not found. Please install from https://github.com/gavv/libASPL or add as submodule in external/libASPL/")
+        message(WARNING "libASPL not found — driver and examples will be skipped")
+        set(ASPL_FOUND FALSE)
+        set(ASPL_INCLUDE_DIR "")
+    else()
+        message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
+        set(ASPL_FOUND TRUE)
     endif()
-
-    message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
 endif()
 
 # NOTE: The vendored ptpd C code is NOT used. PTP synchronization is implemented
@@ -161,7 +157,7 @@ set(ALL_CPP_SOURCES
 # AudioServerPlugIn Bundle (macOS only)
 # ============================================================================
 
-if(APPLE)
+if(APPLE AND ASPL_FOUND)
     # Create driver bundle
     add_library(AES67Driver MODULE
         ${ALL_CPP_SOURCES}
@@ -206,7 +202,7 @@ endif()
 # Manager App (SwiftUI - macOS only)
 # ============================================================================
 
-if(APPLE)
+if(APPLE AND ASPL_FOUND)
     add_custom_target(ManagerApp ALL
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
