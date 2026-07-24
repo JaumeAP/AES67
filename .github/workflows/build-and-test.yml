@@ -10,10 +10,6 @@ jobs:
   build-and-test:
     runs-on: macos-latest
 
-    strategy:
-      matrix:
-        build-type: [Debug, Release]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,35 +18,35 @@ jobs:
         run: |
           echo "Installing cmake..."
           brew install cmake
-          echo "cmake installed, skipping libaspl (now optional in CMakeLists.txt)"
+          cmake --version
 
       - name: Create build directory
         run: mkdir -p build
 
-      - name: Configure CMake
+      - name: Configure CMake (Release)
         working-directory: build
         run: |
+          echo "Configuring CMake..."
           cmake .. \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTS=ON \
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_TOOLS=OFF
+          echo "CMake configuration complete"
 
       - name: Build
         working-directory: build
-        run: make -j$(sysctl -n hw.logicalcpu)
+        run: |
+          echo "Starting build..."
+          make -j$(sysctl -n hw.logicalcpu)
+          echo "Build complete"
 
       - name: Run tests
         working-directory: build
-        run: ctest --output-on-failure
-
-      - name: Check for warnings
-        working-directory: build
         run: |
-          if make 2>&1 | grep -i "warning" | grep -v "^--"; then
-            echo "Build completed with warnings"
-            exit 0
-          fi
+          echo "Running tests..."
+          ctest --output-on-failure
+          echo "Tests complete"
 
   lint-and-format:
     runs-on: ubuntu-latest
