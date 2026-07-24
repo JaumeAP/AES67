@@ -155,20 +155,14 @@ the default branch (local git merge, no pull request — merging is already
 autonomous, see `git-rules`), then wrap up. Merging also keeps `HANDOFF.md`
 on the default branch, so the next fresh session — which clones the
 default branch — actually finds it instead of landing on a branch-only
-copy. **Superseded in this repo (2026-07-24):** this remote session's
-harness configuration mandates branch + pull-request workflow for
-`JaumeAP/aes67_macos_driver` (never push/merge directly to `main`) — that
-requirement wins here, so session close in this repo pushes the branch and
-relies on the open PR instead of a local merge.
+copy.
 
 **Sync command.** When the user says "sincronitza"/"sincronitzar" (or
 equivalent) mid-session, not just at close: commit and push any pending
 work, then merge the working branch directly into the default branch
 (local merge, no pull request). Does NOT include a `HANDOFF.md` update —
 that stays reserved for session close (see above) or an explicit user
-request, not every sync. **Superseded in this repo (2026-07-24):** same
-harness-mandated branch+PR override as the close protocol above — sync
-here commits and pushes to the working branch, it does not merge locally.
+request, not every sync.
 
 **Long-session hygiene.** There's no reliable way to measure exact chat
 length / token budget from inside a turn, so this is heuristic: when signs of

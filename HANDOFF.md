@@ -3,7 +3,7 @@
 ## Evergreen state
 
 Working branch: `claude/claude-md-documentation-tw160c`
-PR #1 (draft) open for merge to main via harness-mandated PR workflow (override to bundle's local-merge rule per 2026-07-24).
+PR #1 (draft) open for merge to main via autonomous local merge (git-rules).
 
 Development complete: CLAUDE.md created with full architecture guide, .claude/ config bootstrapped from cross-repo bundle (4 mandatory + 21 optional skills installed), all commits pushed to branch.
 
