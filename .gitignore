@@ -52,10 +52,6 @@ Icon
 *.swo
 *~
 
-# Sensitive files (CLAUDE.md contains credentials)
-CLAUDE.md
-.claude/
-
 # Package files
 *.deb
 *.rpm
