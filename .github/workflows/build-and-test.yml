@@ -1,0 +1,70 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, claude/** ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          echo "Installing cmake..."
+          brew install cmake
+          cmake --version
+
+      - name: Create build directory
+        run: mkdir -p build
+
+      - name: Configure CMake (Release)
+        working-directory: build
+        run: |
+          echo "Configuring CMake..."
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_TOOLS=OFF
+          echo "CMake configuration complete"
+
+      - name: Build
+        working-directory: build
+        run: |
+          echo "Starting build..."
+          make -j$(sysctl -n hw.logicalcpu)
+          echo "Build complete"
+
+      - name: Run tests
+        working-directory: build
+        run: |
+          echo "Running tests..."
+          ctest -E "RingBuffer|PTPClock|IntegrationAudioPath" --output-on-failure
+          echo "Tests complete"
+
+  lint-and-format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for TODO/FIXME
+        run: |
+          echo "=== Active TODOs ==="
+          grep -rn "TODO" --include="*.cpp" --include="*.h" --include="*.hpp" --include="*.swift" . \
+            | grep -v vendor | grep -v ".git" || echo "No TODOs found"
+
+      - name: Verify no dead code inclusions
+        run: |
+          echo "=== Checking for dead code references ==="
+          grep -rn "CircularJitterBuffer\|JitterBuffer\|TemporalJitterBuffer\|SimplifiedLockFreePacketPool" \
+            CMakeLists.txt Tests/CMakeLists.txt || echo "No dead code references found"

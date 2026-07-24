@@ -304,6 +304,64 @@ void testLargeScaleScenario() {
     std::cout << "✓ PASSED\n";
 }
 
+void testJSONRoundTrip() {
+    std::cout << "Test: JSON Export/Import Round Trip... ";
+
+    StreamChannelMapper mapper;
+
+    StreamID stream1 = StreamID::generate();
+    auto mapping1 = mapper.createDefaultMapping(stream1, "Stream 1", 8);
+    assert(mapping1.has_value());
+    mapper.addMapping(*mapping1);
+
+    StreamID stream2 = StreamID::generate();
+    auto mapping2 = mapper.createDefaultMapping(stream2, "Stream 2", 16);
+    assert(mapping2.has_value());
+    mapper.addMapping(*mapping2);
+
+    std::string json = mapper.toJSON();
+
+    StreamChannelMapper reloaded;
+    bool parsed = reloaded.fromJSON(json);
+    assert(parsed);
+
+    auto allMappings = reloaded.getAllMappings();
+    assert(allMappings.size() == 2);
+
+    auto restored1 = reloaded.getMapping(stream1);
+    assert(restored1.has_value());
+    assert(restored1->streamName == "Stream 1");
+    assert(restored1->streamChannelCount == 8);
+    assert(restored1->deviceChannelStart == 0);
+    assert(restored1->deviceChannelCount == 8);
+
+    auto restored2 = reloaded.getMapping(stream2);
+    assert(restored2.has_value());
+    assert(restored2->streamName == "Stream 2");
+    assert(restored2->streamChannelCount == 16);
+    assert(restored2->deviceChannelStart == 8);
+    assert(restored2->deviceChannelCount == 16);
+
+    std::cout << "✓ PASSED\n";
+}
+
+void testJSONImportClearsExisting() {
+    std::cout << "Test: JSON Import Clears Existing Mappings... ";
+
+    StreamChannelMapper mapper;
+    StreamID stream1 = StreamID::generate();
+    auto mapping1 = mapper.createDefaultMapping(stream1, "Stale Stream", 8);
+    assert(mapping1.has_value());
+    mapper.addMapping(*mapping1);
+    assert(mapper.getAllMappings().size() == 1);
+
+    bool parsed = mapper.fromJSON("{\n  \"mappings\": [\n  ]\n}");
+    assert(parsed);
+    assert(mapper.getAllMappings().empty());
+
+    std::cout << "✓ PASSED\n";
+}
+
 void runAllTests() {
     std::cout << "\n=== AES67 Channel Mapper Test Suite ===\n\n";
 
@@ -317,6 +375,8 @@ void runAllTests() {
     testGetUnassignedChannels();
     testRiedelScenario();
     testLargeScaleScenario();
+    testJSONRoundTrip();
+    testJSONImportClearsExisting();
 
     std::cout << "\n✅ All Channel Mapper tests passed!\n\n";
 }

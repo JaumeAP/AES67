@@ -273,7 +273,7 @@ struct ChannelMapDiagnosticView: View {
                 if channel >= start && channel < start + count {
                     return ChannelStreamInfo(
                         name: stream.name,
-                        isInput: true,  // TODO: Determine from stream type
+                        isInput: stream.direction != "sendonly",
                         multicastIP: stream.multicastIP,
                         port: stream.port,
                         mapping: mapping
