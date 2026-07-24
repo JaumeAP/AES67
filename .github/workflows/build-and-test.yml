@@ -17,11 +17,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install dependencies
         run: |
+          echo "Installing cmake..."
           brew install cmake
-          brew tap gavv/gavv && brew install libaspl
+          echo "Dependencies installed (libASPL will be used from submodule)"
 
       - name: Create build directory
         run: mkdir -p build
