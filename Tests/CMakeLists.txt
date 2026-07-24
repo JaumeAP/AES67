@@ -131,23 +131,25 @@ target_include_directories(TestMultiStream PRIVATE
 
 target_compile_features(TestMultiStream PRIVATE cxx_std_17)
 
-# Benchmark: I/O Handler Performance
-add_executable(BenchmarkIOHandler
-    BenchmarkIOHandler.cpp
-    ../Driver/AES67IOHandler.cpp
-    ../Shared/Types.cpp
-)
+# Benchmark: I/O Handler Performance (requires libASPL)
+if(ASPL_FOUND)
+    add_executable(BenchmarkIOHandler
+        BenchmarkIOHandler.cpp
+        ../Driver/AES67IOHandler.cpp
+        ../Shared/Types.cpp
+    )
 
-target_include_directories(BenchmarkIOHandler PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${ASPL_INCLUDE_DIR}
-)
+    target_include_directories(BenchmarkIOHandler PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${ASPL_INCLUDE_DIR}
+    )
 
-target_compile_features(BenchmarkIOHandler PRIVATE cxx_std_17)
+    target_compile_features(BenchmarkIOHandler PRIVATE cxx_std_17)
 
-# Link libASPL for benchmark
-if(ASPL_LIBRARY)
-    target_link_libraries(BenchmarkIOHandler PRIVATE ${ASPL_LIBRARY})
+    # Link libASPL for benchmark
+    if(ASPL_LIBRARY)
+        target_link_libraries(BenchmarkIOHandler PRIVATE ${ASPL_LIBRARY})
+    endif()
 endif()
 
 # Integration Test: Full Audio Path
