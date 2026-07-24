@@ -2,7 +2,7 @@
 
 ## Evergreen state
 
-Active branch: `claude/todo-implementation-tsxtnu` — all work commits here, merge to main at close only.
+Active branch: `claude/test-coverage-analysis-tjf30t` — test coverage work, PR #3 created (draft).
 
 Configuration: portable bundle (CLAUDE.md, .claude/, 25 skills) fully integrated.
 
@@ -12,10 +12,16 @@ Architecture invariants: RT-safe thread boundaries (IO thread touches only RTSaf
 
 Build/test: macOS (Apple Silicon + x86_64) + cross-platform tests, CMake out-of-source, per-subsystem CTests. Run via `ctest --output-on-failure`; exclude network tests in CI: `ctest -E "RingBuffer|PTPClock|IntegrationAudioPath"`.
 
-## Session summary — Build System & TODO Completion (2026-07-24)
+## Session summary — Test Coverage Analysis & Implementation (2026-07-24)
 
-Completed two TODOs: (1) `StreamChannelMapper::fromJSON()` with 12-test round-trip validation (parsing JSON stream mappings); (2) added `direction` property to `StreamInfo` (recvonly/sendonly/sendrecv), updated `ChannelMapDiagnosticView` to determine isInput dynamically from stream.direction instead of hardcoding. Removed 111 dead-code files (unused jitter buffers, packet pools, vendored ptpd). Debugged CI/CD through 8+ CMake cycles: final state ASPL optional, auto-detected as submodule, integration tests excluded from CI. All tests passing locally. Branch ready for merge.
+Completed test coverage analysis: identified 9 components with zero tests (StreamManager real, Resampling subsystem, StreamConfig, NetworkErrorHandler, DoPDecoder, BufferStatusMonitor, NetworkUtils, Discovery layers, AES67IOHandler correctness). Implemented 140 new unit tests across three priority subsystems:
+
+1. TestStreamManager: 9 new tests (added to existing 64 struct-validation tests) validating SDP constraints, channel availability, sample rate checking without RTP instance creation.
+2. TestResampling (NEW): 28 tests for PIController, SmoothedPIController, Resampler, SampleRateAdapter; clock drift scenarios, mono/stereo, rate conversions.
+3. TestStreamConfig (NEW): 39 tests for JSON serialization round-trip, config search path priority, metadata persistence, timestamps.
+
+Fixed DebugLog.h missing `#include <cstdarg>`. All 140 tests passing locally. Tests registered in Tests/CMakeLists.txt, PR #3 created (draft) for review.
 
 ## Open items
 
-None.
+None. Work complete; awaiting CI and review feedback on PR #3.
