@@ -66,15 +66,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
     set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
     message(STATUS "Using ASPL from submodule: ${ASPL_INCLUDE_DIR}")
     set(ASPL_FOUND TRUE)
-
-    # Add ASPL as a subdirectory if it has its own CMakeLists.txt
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/CMakeLists.txt")
-        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL" ASPL)
-        set(ASPL_LIBRARY ASPL::ASPL)
-    else()
-        # If ASPL doesn't have CMakeLists.txt, treat as header-only
-        set(ASPL_LIBRARY "")
-    endif()
+    # Treat as header-only, don't add_subdirectory to avoid CMakeLists.txt issues
+    set(ASPL_LIBRARY "")
 else()
     # Find libASPL (header-only library) in system locations
     find_path(ASPL_INCLUDE_DIR aspl/Plugin.hpp
