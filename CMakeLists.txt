@@ -61,8 +61,8 @@ endif()
 # Dependencies
 # ============================================================================
 
-# Check if ASPL submodule exists
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
+# Check if ASPL submodule exists and has the required headers
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/aspl/Device.hpp")
     set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
     message(STATUS "Using ASPL from submodule: ${ASPL_INCLUDE_DIR}")
     set(ASPL_FOUND TRUE)
