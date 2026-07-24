@@ -91,10 +91,14 @@ else()
     )
 
     if(NOT ASPL_INCLUDE_DIR)
-        message(FATAL_ERROR "libASPL not found. Please install from https://github.com/gavv/libASPL or add as submodule in external/libASPL/")
+        message(WARNING "libASPL not found — driver and examples will be skipped")
+        set(ASPL_FOUND FALSE)
+    else()
+        message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
+        set(ASPL_FOUND TRUE)
     endif()
-
-    message(STATUS "Found libASPL: ${ASPL_INCLUDE_DIR}")
+else()
+    set(ASPL_FOUND TRUE)
 endif()
 
 # NOTE: The vendored ptpd C code is NOT used. PTP synchronization is implemented
@@ -161,7 +165,7 @@ set(ALL_CPP_SOURCES
 # AudioServerPlugIn Bundle (macOS only)
 # ============================================================================
 
-if(APPLE)
+if(APPLE AND ASPL_FOUND)
     # Create driver bundle
     add_library(AES67Driver MODULE
         ${ALL_CPP_SOURCES}
@@ -206,7 +210,7 @@ endif()
 # Manager App (SwiftUI - macOS only)
 # ============================================================================
 
-if(APPLE)
+if(APPLE AND ASPL_FOUND)
     add_custom_target(ManagerApp ALL
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
