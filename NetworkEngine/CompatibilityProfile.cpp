@@ -166,30 +166,79 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         break;
 
     case CompatibilityProfileKind::DMA:
-        p.displayName = "Dolby DMA (spec pending)";
-        // PLACEHOLDER: audio parameters copied from DAC3202 until the real
-        // device/spec is looked up. What's actually fixed here isn't a
-        // spec value at all — it's an explicit instruction: this driver is
-        // always PTP master and transmits 32 channels total, same as
-        // DAC3202, but under different (not yet researched) parameters.
+        p.displayName = "Dolby DMA (Multichannel Amplifier)";
+        // Source: Docs/references/dolby_multichannel_amplifier_manual.pdf
+        // (Dolby Multichannel Amplifier User Manual, Issue 7). Real units
+        // come in fixed-channel models (DMA16301/16302, DMA24300/24302,
+        // DMA32300/32301, and multiple units can be combined for more), but
+        // this profile doesn't hardcode a model: unlike CP850/DAC3202's
+        // maxTotalChannels, this driver's own output count is user-
+        // selectable (ContentView's Output channel-count selector) rather
+        // than fixed, so one profile covers every model — just pick the
+        // real amplifier's channel count there. maxTotalChannels here is
+        // the outer ceiling that selector is clamped to, not a specific
+        // model's count.
+        //
+        // PTP: confirmed, not assumed. §3.2.4 "PTP Domain Number": "The
+        // Dolby Multichannel Amplifier does not allow you to set the PTP
+        // clock priority. It is always 255 (or the lowest priority in the
+        // chain). It should never be chosen as the source of the clock for
+        // the network. It is strictly a downstream device." This driver, in
+        // this profile, plays the cinema-processor role sending TO a DMA —
+        // so it takes the complementary role: always PTP master.
+        //
+        // PTP domain: same section documents the Dolby-recommended default
+        // as 109 (not 0) for a single-auditorium install; it must match the
+        // sending processor's domain, so it's not literally fixed —
+        // recorded as recommendedPtpDomain, not domainIsFixed.
+        //
+        // Sample rate/ptime/encoding: not stated in the manual — the DMA
+        // just decodes whatever its Dolby Atmos Connect input carries, which
+        // is set by the upstream processor (CP850/CP950A/IMS3000). Copied
+        // from CP850/DAC3202's DCI parameters (48/96 kHz, 1 ms, L16/L24) as
+        // the same-chain assumption, not independently confirmed here.
+        //
+        // Channel ceiling: 64, from the same chain's own limits — CP850's
+        // 64-channel render cap, and the DMA's own Atmos Connect port table
+        // (below) only defines channels 1–64 (8 flows of 8).
+        //
+        // Port scheme: §3.2.4 "Source UDP and RTP Destination Ports"
+        // documents a FIXED RTP destination port (6517) with the SOURCE UDP
+        // port stepped per 8-channel block (6518, 6519, 6520, 6521, ...) —
+        // one multicast address, ports distinguish the flows. This driver's
+        // own StreamManager::createTxStreamFlows() instead steps the
+        // destination multicast IP's last octet per flow and keeps ports
+        // fixed. That's a real mismatch, not enforced or worked around by
+        // anything here — multi-flow (>8ch) interop with a real DMA is
+        // unverified until this driver's flow addressing matches Dolby's.
         p.allowedSampleRates = {48000.0, 96000.0};
         p.allowedPtimesMs = {1};
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
         p.domainIsFixed = false;
-        p.recommendedDscp = -1; // not yet documented for this profile
+        p.recommendedPtpDomain = 109;
+        p.recommendedDscp = -1; // manual recommends DiffServ QoS (4 queues, strict priority) on the switch, not one documented codepoint
         p.direction = ProfileDirection::TransmitOnly;
-        p.maxTotalChannels = 32;
+        p.maxTotalChannels = 64;
         p.ptpRole = PTPRoleConstraint::ForcedMaster;
         p.caveats =
-            "PLACEHOLDER PROFILE — the exact device and its real parameters "
-            "haven't been looked up yet. Sample rates, ptime, encoding, and "
-            "PTP domain here are copied from DAC3202 as a stand-in and will "
-            "change once the real spec is found. Only two things are fixed "
-            "already, by instruction rather than a spec: this driver is "
-            "always PTP master under this profile, and transmit-only, up "
-            "to 32 channels total.";
+            "Covers the whole Dolby Multichannel Amplifier family "
+            "(DMA16301/16302, DMA24300/24302, DMA32300/32301) — pick your "
+            "real amplifier's channel count with the Output selector on the "
+            "main window rather than a separate profile per model; 64 is "
+            "the outer ceiling (the Atmos Connect chain's own limit), not a "
+            "specific model's count. This driver's flow splitter steps the "
+            "destination multicast IP's last octet per 8-channel flow; the "
+            "real DMA instead keeps one multicast address and steps the "
+            "source UDP port per flow (fixed RTP destination port 6517). "
+            "Multi-flow interop with a real unit is unverified until that's "
+            "reconciled. Sample rate/ptime/encoding are inherited from the "
+            "same Atmos Connect chain as CP850/DAC3202 (not independently "
+            "documented for the DMA itself). PTP domain defaults to 109 for "
+            "Dolby gear (not fixed — must match the sending processor). "
+            "This driver is always PTP master under this profile, "
+            "transmit-only.";
         break;
     }
 
