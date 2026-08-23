@@ -52,14 +52,11 @@ belongs to the original publisher (Dolby Laboratories).
   <https://professional.dolby.com/siteassets/products/cp950a/dolby_cp950-cp950a_manual_issue_13.pdf>.
 
 - `dolby_cp850_base_product_sheet.pdf`, `dolby_cp850_line_product_sheet.pdf`
-  — official CP850 product sheets (2 pages each, March/August 2020). Same
-  situation as DAC3202: Dolby doesn't publicly host a standalone CP850
-  installation/user manual (its product page only lists these sheets and
-  an EULA) — likely because CP950/CP950A has superseded it. No AES67/PTP/
-  network specifics in either sheet, only feature/physical/power specs.
-  One real fact worth noting: "A Dolby Atmos Cinema Processor CP850
-  together with a single Dolby Atmos Connect Interface can support up to
-  48 speaker feeds" (CP850's own 16 built-in analog outputs + one
+  — official CP850 product sheets (2 pages each, March/August 2020). No
+  AES67/PTP/network specifics in either, only feature/physical/power
+  specs. One real fact worth noting: "A Dolby Atmos Cinema Processor
+  CP850 together with a single Dolby Atmos Connect Interface can support
+  up to 48 speaker feeds" (CP850's own 16 built-in analog outputs + one
   DAC3202's 32) — a real-installation total, not a change to either
   profile's own maxTotalChannels (CP850's 64ch render cap and DAC3202's
   32ch output cap are each independently correct and unaffected).
@@ -67,3 +64,34 @@ belongs to the original publisher (Dolby Laboratories).
   <https://professional.dolby.com/siteassets/cinema-products---documents/dolby_cp850_base_product_sheet.pdf>
   and
   <https://professional.dolby.com/siteassets/products/cp850/dolby_cp850_line_product_sheet.pdf>.
+
+- `dolby_cp850_installation_manual_issue2.pdf` — Dolby Atmos Cinema
+  Processor CP850 Manual, Issue 2 (© 2014), part number 9111710, model
+  DAC3201. Supplied directly by the user (not found publicly hosted by
+  Dolby when searched — professional.dolby.com's CP850 page only lists
+  the two product sheets above and an EULA). Important, load-bearing
+  finding from actually reading it in full (105 pages, checked for every
+  AES67/PTP/multicast/DSCP/BLU-Link keyword — none appear anywhere): this
+  is the ORIGINAL CP850 manual, covering the **DAC3201** breakout box, not
+  DAC3202. §2.11/§4.8 "Configuring/Modifying the Network Settings" only
+  cover the COMMAND port and the "Dolby Atmos Input" port's own IP
+  addressing — the Atmos Input port itself is described as a fixed
+  point-to-point link ("This is a point‐to‐point connection... Do not
+  connect this port to an Ethernet switch"), not a switched AES67/Atmos
+  Connect network. No PTP domain, no RTP port table, no multicast address
+  anywhere in the document. This matches the DMA manual's own warning
+  (§2.3): "You cannot combine the Dolby Multichannel Amplifier or DAC3202
+  outputs with a Dolby Atmos Interface DAC3201. The DAC3201 uses a
+  different protocol that is not supported by the Dolby Multichannel
+  Amplifier or DAC3202." §1.3/§4.1 do mention the Atmos Connect ports can
+  *also* transmit to "Dolby Atmos Connect enabled amplifiers" (third-party)
+  when "the required enablements" are installed — i.e. AES67 capability
+  exists as a separate, licensed enablement this Issue 2 manual doesn't
+  itself document configuration for. Consequence for the "CP850"
+  CompatibilityProfileKind: its AES67-specific parameters (sample rate,
+  ptime, PTP behavior) remain inherited from the CP950/CP950A and DMA
+  manuals' shared-family documentation, same as before this manual was
+  found — this manual doesn't add AES67 specifics, it confirms there
+  genuinely aren't any published for CP850 itself, and separately
+  documents the DAC3201 incompatibility so it doesn't get confused with
+  DAC3202/DMA gear.
