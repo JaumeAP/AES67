@@ -75,6 +75,13 @@ enum class CompatibilityProfileKind {
     /// channels. Same constraint set as CP850; they're two ends of one
     /// link, not two different networks.
     DAC3202,
+    /// PLACEHOLDER — exact device/spec not yet identified; audio parameters
+    /// (sample rates, ptime, encoding, DSCP) are copied from DAC3202 as a
+    /// stand-in until looked up. What's already fixed, per explicit
+    /// instruction rather than a spec: this driver is always PTP master
+    /// (like DAC3202) and transmits 32 channels total (also like DAC3202,
+    /// but under different — still to be researched — parameters).
+    DMA,
 };
 
 struct CompatibilityProfile {

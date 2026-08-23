@@ -251,7 +251,8 @@ bool testOnlyCP850AndDAC3202RestrictDirection() {
     std::cout << "Test: B9 · every other profile leaves direction unrestricted... ";
     for (const auto& profile : CompatibilityProfile::all()) {
         if (profile.kind == CompatibilityProfileKind::CP850 ||
-            profile.kind == CompatibilityProfileKind::DAC3202) {
+            profile.kind == CompatibilityProfileKind::DAC3202 ||
+            profile.kind == CompatibilityProfileKind::DMA) {
             continue;
         }
         TEST_ASSERT(profile.direction == ProfileDirection::Any,
@@ -288,12 +289,36 @@ bool testCP850AndDAC3202ForcePTPRole() {
 
     for (const auto& profile : CompatibilityProfile::all()) {
         if (profile.kind == CompatibilityProfileKind::CP850 ||
-            profile.kind == CompatibilityProfileKind::DAC3202) {
+            profile.kind == CompatibilityProfileKind::DAC3202 ||
+            profile.kind == CompatibilityProfileKind::DMA) {
             continue;
         }
         TEST_ASSERT(profile.ptpRole == PTPRoleConstraint::Any,
                     profile.displayName + " should not force a PTP role — BMCA decides");
     }
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testDMAIsAPlaceholderWithFixedRoleAndChannels() {
+    std::cout << "Test: B12 · DMA (spec pending) is transmit-only/32ch/forced-master, same as DAC3202... ";
+    const auto dma = CompatibilityProfile::forKind(CompatibilityProfileKind::DMA);
+    // What's actually fixed for this profile isn't a spec — it's an
+    // explicit instruction: master, transmit-only, 32 channels. Everything
+    // else (sample rates, ptime, encoding, DSCP) is a DAC3202-shaped
+    // placeholder until the real device's spec is looked up.
+    TEST_ASSERT(dma.direction == ProfileDirection::TransmitOnly,
+                "DMA must be transmit-only, same as DAC3202");
+    TEST_ASSERT(dma.maxTotalChannels == 32, "DMA must cap at 32 channels total, same as DAC3202");
+    TEST_ASSERT(dma.ptpRole == PTPRoleConstraint::ForcedMaster,
+                "this driver must always be PTP master under the DMA profile");
+
+    auto sdp = baselineSession();
+    std::string error;
+    TEST_ASSERT(dma.validate(sdp, /*isTransmit=*/true, &error),
+                "transmitting to DMA under the placeholder parameters must be accepted: " + error);
+    TEST_ASSERT(!dma.validate(sdp, /*isTransmit=*/false, &error),
+                "this driver must not be allowed to receive under the DMA profile");
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -384,6 +409,7 @@ int main() {
     testOnlyCP850AndDAC3202RestrictDirection();
     testCinemaProfilesRecordDscpAsInformationalOnly();
     testCP850AndDAC3202ForcePTPRole();
+    testDMAIsAPlaceholderWithFixedRoleAndChannels();
     std::cout << std::endl;
 
     std::cout << "C · Limits shared by every profile" << std::endl;
