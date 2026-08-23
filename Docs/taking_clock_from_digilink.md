@@ -74,6 +74,57 @@ be the single origin both worlds hang off rather than one chasing the
 other. Note Loop Sync always runs at 1x (44.1/48 kHz) — fine as a
 reference, it is not a sample-rate carrier.
 
+## Old rooms: no grandmaster, no network clock gear
+
+All three paths above assume a PTP grandmaster already exists. Plenty of
+HDX rooms have nothing of the sort — word clock and Loop Sync between the
+Avid boxes, and that's the whole clock system.
+
+If the AES67 audio and the HDX audio **sum or chain anywhere**, the two
+sides must share a clock. This is not a quality argument, it is an
+arithmetic one:
+
+> Two free-running crystals 10 ppm apart drift 0.48 samples per second at
+> 48 kHz — one sample every two seconds, a whole 1 ms packet's worth
+> inside two minutes. Audio-grade crystals are typically ±10–25 ppm, so
+> that is the optimistic case. It surfaces as periodic clicks or dropouts
+> that get blamed on the network for weeks.
+
+The receive path here has adaptive rate matching (`RTPReceiver`'s
+P-controller) which absorbs some of this, but it is a shock absorber, not
+a clock. It cannot make two clock domains one.
+
+### The minimal fix: one box
+
+    HD interface ──word clock──▶ PTP grandmaster ──PTPv2──▶ AES67 network
+                                        │                      │
+                                        └── this driver ───────┘
+
+A grandmaster that accepts a **word clock input** — the Dante/AES67 leader
+clocks sold for exactly this, or a broadcast GM with external reference.
+One BNC out of any HD I/O or HD OMNI, and the AES67 side now runs on the
+HDX clock. Everything downstream, this driver included, is a plain PTP
+slave.
+
+Take the clock **from** the HDX rig rather than feeding word clock into
+it, when there's a choice: HDX is the harder side to discipline, and this
+way it keeps doing what it already does.
+
+### Why "let this driver be the master" isn't the answer here
+
+This driver can be PTP grandmaster, and in a room with Dolby amplifiers it
+may have to be — the DMA and DAC3202 are PTP slaves with clock priority
+fixed at 255 and will not originate timing for anyone.
+
+But its clock would then be the Mac's own crystal, with no relationship to
+the HDX rig. The AES67 side would be internally coherent and still drifting
+against Pro Tools, which is the same failure with more steps. The Mac has
+no word clock output to feed the HDX rig from, so there is no way to close
+the loop in software.
+
+Hence: one box. It is the smallest change that makes the room correct, and
+there isn't a cheaper one that actually works.
+
 ## What this driver needs in each case
 
 Nothing new. In all three the network gets a PTPv2 grandmaster that is
@@ -104,6 +155,8 @@ disappears the moment Pro Tools opens.
 | HD interface word clock out (Path B) | hardware | Yes |
 | SYNC X / SYNC HD (Path C) | hardware | Yes |
 | AAX plugin / DirectIO driver | software | Yes, but a different product |
+| Word-clock-input grandmaster (old rooms) | hardware, one box | Yes |
+| No shared clock at all | — | Only if the audio never sums |
 
 Untested against real HDX hardware here — as with everything in this
 driver that needs hardware to verify.
