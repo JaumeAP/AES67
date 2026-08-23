@@ -610,6 +610,29 @@ bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::st
         }
     }
 
+    // User-configured per-direction cap (DeviceChannelSettings.rx/tx via
+    // setUsableChannelCount/setUsableTxChannelCount) — same cumulative check
+    // as maxTotalChannels above, just driven by the user's own selector
+    // instead of the active profile. Checked in addition to, not instead of,
+    // the profile limit: whichever is stricter wins.
+    const uint32_t usableCount = (isTransmit ? usableTxChannelCount_ : usableRxChannelCount_)
+                                      .load(std::memory_order_relaxed);
+    if (usableCount > 0) {
+        const uint32_t inUse = (isTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+                                    .load(std::memory_order_relaxed);
+        if (inUse + sdp.numChannels > usableCount) {
+            if (errorOut) {
+                *errorOut = std::to_string(sdp.numChannels) +
+                           " more channels would bring total " + (isTransmit ? "TX" : "RX") +
+                           " usage to " + std::to_string(inUse + sdp.numChannels) +
+                           ", over the " + std::to_string(usableCount) +
+                           " channels selected for " + (isTransmit ? "output" : "input") +
+                           " in ManagerApp";
+            }
+            return false;
+        }
+    }
+
     return true;
 }
 

@@ -1,16 +1,26 @@
 //
 // DeviceChannelSettings.h
 // AES67 macOS Driver
-// How many channels the device exposes to Core Audio — persisted, chosen
-// from ManagerApp's main window, read by the driver at startup.
+// How many channels the device makes USABLE, per direction — persisted,
+// chosen from ManagerApp's main window as two independent selectors (input
+// / output), read by the driver at startup.
+//
+// Two selectors, not one, because direction isn't symmetric once a
+// compatibility profile restricts it: CP850 (NetworkEngine/CompatibilityProfile.h)
+// is receive-only from this driver's own point of view, DAC3202 is
+// transmit-only. The input selector is meaningless under a transmit-only
+// profile and vice versa — ManagerApp disables whichever side the active
+// profile rules out, rather than offering a control that would just be
+// rejected on submit.
 //
 // Deliberately NOT a runtime-resizable thing: the ring buffers behind the
-// real-time path stay a fixed std::array<..., kMaxDeviceChannels> (128),
-// allocated once, never touched again. Selecting fewer channels changes only
-// what the device *advertises* in its stream format — the RT path, the one
-// part of this driver verified against real hardware, is not restructured.
-// Changing the selection therefore takes effect when Core Audio next starts
-// the driver, not while audio is running.
+// real-time path stay a fixed std::array<..., kMaxDeviceChannels> (128) in
+// each direction, allocated once, never touched again. Selecting fewer
+// channels changes only how many StreamManager will actually hand out to
+// streams (StreamManager::canAddStream) — the RT path, the one part of this
+// driver verified against real hardware, is not restructured. Changing the
+// selection therefore takes effect when Core Audio next starts the driver,
+// not while audio is running.
 //
 #pragma once
 
@@ -20,13 +30,14 @@
 
 namespace AES67 {
 
-struct DeviceChannelSettings {
-    /// Channels the device exposes, in each direction (input and output
-    /// alike). One of kAllowedChannelCounts; anything else is rejected by
-    /// isValid() and falls back to the default.
+/// One direction's half of the setting — same shape for input and output,
+/// deliberately: the group-of-8 rule applies identically to both.
+struct DeviceChannelSelection {
+    /// One of DeviceChannelSettings::allowedChannelCounts(); anything else
+    /// is rejected by isValid() and falls back to the default.
     uint32_t channelCount{128};
 
-    /// Auxiliary channel pair. When enabled, the device exposes one extra
+    /// Auxiliary channel pair. When enabled, this direction gets one extra
     /// group of 8 on top of channelCount, of which the first 2 are the
     /// auxiliary pair and the remaining 6 are reserved padding.
     ///
@@ -36,20 +47,8 @@ struct DeviceChannelSettings {
     /// rather than breaking the invariant for the sake of 6 channels.
     bool auxChannelEnabled{false};
 
-    /// Channels in the auxiliary group that actually carry audio.
-    static constexpr uint32_t kAuxChannelCount = 2;
-
-    /// Everything is a multiple of this — see auxChannelEnabled.
-    static constexpr uint32_t kChannelGroupSize = 8;
-
-    /// Hard ceiling: the compile-time size of the RT ring buffer arrays
-    /// (AES67Device::kNumChannels / RTSafeStreamInterface::kNumChannels).
-    /// totalChannelCount() never exceeds this.
-    static constexpr uint32_t kMaxDeviceChannels = 128;
-
-    static const std::vector<uint32_t>& allowedChannelCounts();
-
-    /// channelCount plus the auxiliary group, clamped to kMaxDeviceChannels.
+    /// channelCount plus the auxiliary group, clamped to
+    /// DeviceChannelSettings::kMaxDeviceChannels.
     ///
     /// The clamp matters at the top of the range: 128 + 8 = 136 would
     /// overrun the fixed RT buffers, so with 128 selected the auxiliary
@@ -58,8 +57,27 @@ struct DeviceChannelSettings {
     /// dropping the auxiliary channels.
     uint32_t totalChannelCount() const;
 
-    /// True if channelCount is one of the allowed values and the auxiliary
-    /// group (if enabled) fits within kMaxDeviceChannels.
+    bool isValid() const;
+};
+
+struct DeviceChannelSettings {
+    DeviceChannelSelection rx; ///< Input: Network -> Core Audio
+    DeviceChannelSelection tx; ///< Output: Core Audio -> Network
+
+    /// Channels in the auxiliary group that actually carry audio.
+    static constexpr uint32_t kAuxChannelCount = 2;
+
+    /// Everything is a multiple of this — see DeviceChannelSelection::auxChannelEnabled.
+    static constexpr uint32_t kChannelGroupSize = 8;
+
+    /// Hard ceiling: the compile-time size of the RT ring buffer arrays
+    /// (AES67Device::kNumChannels / RTSafeStreamInterface::kNumChannels),
+    /// in EACH direction independently.
+    static constexpr uint32_t kMaxDeviceChannels = 128;
+
+    static const std::vector<uint32_t>& allowedChannelCounts();
+
+    /// True if both rx and tx are individually valid.
     bool isValid() const;
 };
 
@@ -68,9 +86,9 @@ public:
     DeviceChannelSettingsManager();
     ~DeviceChannelSettingsManager();
 
-    /// Settings from disk, or defaults (128 channels, no auxiliary — the
-    /// driver's behavior before this setting existed) if the file is
-    /// missing, unreadable, or holds an invalid combination.
+    /// Settings from disk, or defaults (128 channels each direction, no
+    /// auxiliary — the driver's behavior before this setting existed) if
+    /// the file is missing, unreadable, or holds an invalid combination.
     DeviceChannelSettings load();
 
     bool save(const DeviceChannelSettings& settings);
