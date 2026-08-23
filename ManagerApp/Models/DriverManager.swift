@@ -151,6 +151,79 @@ class DriverManager: ObservableObject {
         }
     }
 
+    // MARK: - Driver Install / Uninstall (app-lifecycle bound)
+    //
+    // This app carries its own copy of AES67Driver.driver, embedded at build
+    // time into AES67Manager.app/Contents/Resources/ (see ManagerApp/build.sh).
+    // Installing/uninstalling on launch/quit means the driver is present in
+    // the HAL only while this app is actually running — there's no "leave it
+    // installed after quitting" mode. One admin-privileges prompt per launch,
+    // one per quit; that's the tradeoff of tying installation to app
+    // lifecycle rather than a persistent install step.
+
+    private static let driverName = "AES67Driver.driver"
+    private static let driverInstallPath = "/Library/Audio/Plug-Ins/HAL/\(driverName)"
+
+    /// Path to the driver bundle embedded in this app, or nil if this build
+    /// of the app doesn't carry one (e.g. AES67Driver wasn't built when
+    /// ManagerApp/build.sh ran).
+    private var embeddedDriverURL: URL? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent(Self.driverName),
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url
+    }
+
+    /// Installs this app's embedded driver into the HAL and restarts Core
+    /// Audio, replacing whatever was there before. Call once, at launch.
+    func installDriverOnLaunch() {
+        guard let source = embeddedDriverURL else {
+            showAlert(title: "Driver Not Bundled",
+                     message: "This build of AES67 Manager doesn't carry a driver to install — "
+                             + "rebuild with AES67Driver.driver present before ManagerApp/build.sh runs.")
+            return
+        }
+
+        // ditto, not cp -R: preserves the bundle's resource fork / extended
+        // attributes, which cp -R can silently drop.
+        let script = NSAppleScript(source: """
+            do shell script "ditto '\(source.path)' '\(Self.driverInstallPath)' && \
+            chown -R root:wheel '\(Self.driverInstallPath)' && \
+            chmod -R 755 '\(Self.driverInstallPath)' && \
+            launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
+            """)
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+
+        if let error = error {
+            showAlert(title: "Install Failed",
+                     message: "Could not install the AES67 driver: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.checkDriverStatus()
+            }
+        }
+    }
+
+    /// Removes the driver from the HAL and restarts Core Audio. Call once,
+    /// on quit — synchronous, so it finishes before the app actually
+    /// terminates (see AppDelegate.applicationWillTerminate).
+    func uninstallDriverOnQuit() {
+        let script = NSAppleScript(source: """
+            do shell script "rm -rf '\(Self.driverInstallPath)' && \
+            launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
+            """)
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+
+        if let error = error {
+            // Best-effort: the app is quitting either way, but leave a
+            // record of why the driver may still be present.
+            NSLog("AES67 Manager: failed to uninstall driver on quit: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+        }
+    }
+
     // MARK: - Stream Management
 
     /// Result of attempting to add a stream
