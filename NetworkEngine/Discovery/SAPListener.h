@@ -1,6 +1,7 @@
 #ifndef SAP_LISTENER_H
 #define SAP_LISTENER_H
 
+#include <chrono>
 #include <string>
 #include <vector>
 #include <thread>
@@ -17,7 +18,18 @@ struct SAPAnnouncement {
     std::string multicastAddress;    // Multicast address for the stream
     int port;                        // Port for the stream
     int ptpDomain;                   // PTP domain
-    
+
+    /// When this session was last announced. A SAP announcer repeats
+    /// itself indefinitely, so an entry that stops being refreshed means
+    /// the sender is gone — see SAPListener::kSessionTimeout.
+    std::chrono::steady_clock::time_point lastSeen{};
+
+    /// True for a SAP deletion packet (RFC 2974 type bit set) — the
+    /// announcer saying this session is finished. Never appears in
+    /// getDiscoveredStreams(); the listener acts on it by removing the
+    /// matching session instead of waiting out kSessionTimeout.
+    bool isDeletion{false};
+
     SAPAnnouncement() : port(0), ptpDomain(0) {}
 };
 
@@ -25,6 +37,20 @@ using SAPAnnouncementCallback = std::function<void(const SAPAnnouncement&)>;
 
 class SAPListener {
 public:
+    /// How long a session may go un-announced before it's dropped from
+    /// getDiscoveredStreams().
+    ///
+    /// RFC 2974 announcers repeat on an interval derived from the
+    /// announcement bandwidth, with 30 s the usual result in practice, and
+    /// the AES67 Linux daemon (see
+    /// Docs/comparison_ravenna_aes67_linux_driver.md) drops a remote
+    /// source after ten missed announcements. 300 s is that same rule at
+    /// the usual interval: tolerant of a few lost packets, but a list that
+    /// still reflects what is actually on the network. A listener can't
+    /// know the announcer's own interval, so this is a fixed timeout
+    /// rather than a computed one.
+    static constexpr std::chrono::seconds kSessionTimeout{300};
+
     SAPListener();
     ~SAPListener();
     

@@ -45,6 +45,7 @@ swiftc -o AES67Manager \
   Views/QuickStartView.swift \
   Views/PTPDiagnosticView.swift \
   Views/ProfileParametersView.swift \
+  Views/DiscoveredSessionsView.swift \
   Views/AudioStatusView.swift \
   AES67ManagerApp.swift
 

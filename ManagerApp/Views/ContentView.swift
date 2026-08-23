@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var showChannelDiagnostic = false
     @State private var showProfileCaveats = false
     @State private var showProfileParameters = false
+    @State private var showDiscoveredSessions = false
 
     /// One direction's channel-count selector — count picker, aux-pair
     /// toggle, running total. Used twice below (input/output), each wired to
@@ -214,6 +215,10 @@ struct ContentView: View {
             .padding()
             .frame(width: 380)
         }
+        .sheet(isPresented: $showDiscoveredSessions) {
+            DiscoveredSessionsView()
+                .environmentObject(driverManager)
+        }
         .sheet(isPresented: $showProfileParameters) {
             VStack(spacing: 0) {
                 HStack {
@@ -257,6 +262,11 @@ struct ContentView: View {
                 Button(action: { driverManager.importSDPFile() }) {
                     Label("Import SDP", systemImage: "doc.badge.plus")
                 }
+
+                Button(action: { showDiscoveredSessions = true }) {
+                    Label("Discover", systemImage: "antenna.radiowaves.left.and.right")
+                }
+                .help("Sessions other devices are announcing over SAP on this network")
 
                 Divider()
 
