@@ -927,6 +927,13 @@ class DriverManager: ObservableObject {
     // not a conformance claim: each profile carries its own caveats, shown
     // in the UI, about what it can't enforce.
 
+    /// Mirrors CompatibilityProfile's ProfileDirection (CompatibilityProfile.h)
+    /// — always from THIS driver's own point of view. .receiveOnly means we
+    /// may receive from the remote device, never transmit to it.
+    enum ProfileDirection {
+        case any, receiveOnly, transmitOnly
+    }
+
     struct CompatibilityProfileOption: Identifiable, Equatable {
         let id: String       // matches CompatibilityProfile::kindToString()
         let name: String
@@ -936,6 +943,15 @@ class DriverManager: ObservableObject {
         /// that case, editable 0–127 otherwise.
         let domainIsFixed: Bool
         let fixedDomain: Int
+        /// Which way this driver may talk to the described gear. AddStreamView
+        /// (RX only) disables itself under .transmitOnly.
+        let direction: ProfileDirection
+        /// Aggregate channel ceiling in the allowed direction, 0 = unlimited.
+        let maxTotalChannels: Int
+
+        static func == (lhs: CompatibilityProfileOption, rhs: CompatibilityProfileOption) -> Bool {
+            lhs.id == rhs.id
+        }
     }
 
     /// Must stay in step with CompatibilityProfile::all() on the C++ side —
@@ -946,7 +962,8 @@ class DriverManager: ObservableObject {
               caveats: "Baseline. Accepts the three sample rates AES67 names; the device "
                      + "itself declares more (up to 384 kHz), which other AES67 gear may refuse. "
                      + "PTP domain fixed at 0.",
-              domainIsFixed: true, fixedDomain: 0),
+              domainIsFixed: true, fixedDomain: 0,
+              direction: .any, maxTotalChannels: 0),
         .init(id: "ravenna",
               name: "RAVENNA",
               caveats: "Constraints are currently identical to AES67: RAVENNA is more permissive, "
@@ -954,7 +971,8 @@ class DriverManager: ObservableObject {
                      + "configurable transmit packet time this driver doesn't have yet. "
                      + "RAVENNA's own additions — Bonjour discovery and stream redundancy — "
                      + "are not implemented.",
-              domainIsFixed: false, fixedDomain: 0),
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .any, maxTotalChannels: 0),
         .init(id: "st2110-30",
               name: "SMPTE ST 2110-30 (Level A)",
               caveats: "Level A only — Levels B and C need 125 µs packets, which this driver's "
@@ -962,7 +980,8 @@ class DriverManager: ObservableObject {
                      + "stricter PTP than AES67, and this driver's PTP has never been verified "
                      + "against a real grandmaster. Enforces the parameters it can check; "
                      + "it is not a conformance claim.",
-              domainIsFixed: false, fixedDomain: 0),
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .any, maxTotalChannels: 0),
         .init(id: "dante",
               name: "Dante (AES67 mode)",
               caveats: "Requires the Dante device to have AES67 mode explicitly enabled — this "
@@ -970,21 +989,30 @@ class DriverManager: ObservableObject {
                      + "(Dante Controller). Dante natively syncs with PTPv1; AES67 mode is what "
                      + "switches it to PTPv2, which is what this driver speaks. Enforces the "
                      + "239.69.0.0/16 multicast range Dante requires in AES67 mode.",
-              domainIsFixed: false, fixedDomain: 0),
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .any, maxTotalChannels: 0),
         .init(id: "cp850",
               name: "Dolby CP850 (Atmos Cinema Processor)",
               caveats: "Uses AES67 as its transport to Dolby Atmos Connect Interfaces (DAC3202), "
                      + "not the full Dante protocol. Dolby's own documentation notes it applies "
                      + "a more traditional DSCP marking than typical Dante configs (EF/46) — "
                      + "this driver has a DSCP-setting function but nothing calls it yet, so no "
-                     + "marking is actually applied. No documented fixed PTP domain.",
-              domainIsFixed: false, fixedDomain: 0),
+                     + "marking is actually applied. No documented fixed PTP domain. The CP850 "
+                     + "itself acts as PTP slave — it will not originate timing. Receive-only: "
+                     + "this driver may only add RX streams under this profile, up to 64 "
+                     + "channels total, the most the CP850 renders.",
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .receiveOnly, maxTotalChannels: 64),
         .init(id: "dac3202",
               name: "Dolby DAC3202 (Atmos Connect Interface)",
               caveats: "Receiving end of the same CP850 link — 32 analog outputs, so a full-width "
                      + "feed is 4 flows of 8 channels under this driver's flow splitter. Same "
-                     + "DSCP note as CP850: documented as EF/46 but not actually applied.",
-              domainIsFixed: false, fixedDomain: 0),
+                     + "DSCP note as CP850: documented as EF/46 but not actually applied. The "
+                     + "DAC3202 acts as PTP master on this link — this driver should expect to "
+                     + "sync as slave to it. Transmit-only: this driver may only create TX "
+                     + "streams under this profile, up to 32 channels total.",
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .transmitOnly, maxTotalChannels: 32),
     ]
 
     @Published var compatibilityProfileID: String = "aes67"

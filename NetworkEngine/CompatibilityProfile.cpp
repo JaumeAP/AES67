@@ -115,6 +115,11 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.requiresZeroRtpTimestampOffset = false;
         p.domainIsFixed = false; // no documented fixed domain; cinema installs set their own house PTP domain
         p.recommendedDscp = 46;  // EF — Dolby's documented value for AES67 traffic on this line
+        // From our driver's point of view: the CP850 renders and sends its
+        // feeds over AES67, it doesn't accept AES67 input. We can only
+        // receive from it — up to 64 channels, the most it can render.
+        p.direction = ProfileDirection::ReceiveOnly;
+        p.maxTotalChannels = 64;
         p.caveats =
             "The CP850 uses AES67 as its transport to Dolby Atmos Connect "
             "Interfaces (DAC3202), not the full Dante protocol. Dolby's own "
@@ -122,7 +127,12 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "than typical Dante configurations (EF/46) — this driver has a "
             "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
             "nothing calls it yet, so no marking is actually applied. No "
-            "documented fixed PTP domain; cinema installations set their own.";
+            "documented fixed PTP domain; cinema installations set their own. "
+            "The CP850 itself acts as PTP slave — it will not originate "
+            "timing, so something else on the network (or this driver, if "
+            "it wins BMCA) must be the grandmaster. Receive-only: this "
+            "driver may only add RX streams under this profile, up to 64 "
+            "channels total, the most the CP850 renders.";
         break;
 
     case CompatibilityProfileKind::DAC3202:
@@ -138,11 +148,21 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.requiresZeroRtpTimestampOffset = false;
         p.domainIsFixed = false;
         p.recommendedDscp = 46;
+        // From our driver's point of view: the DAC3202 only converts
+        // digital audio to analog outputs — it has no network input for
+        // audio to come back to us. We can only transmit to it.
+        p.direction = ProfileDirection::TransmitOnly;
+        p.maxTotalChannels = 32;
         p.caveats =
             "Same link as CP850 (above), receiving end — 32 analog outputs, "
             "so a full-width feed to one DAC3202 is 4 flows of 8 channels "
             "under this driver's flow splitter. Same DSCP note as CP850: "
-            "documented as EF/46 but not actually applied by this driver.";
+            "documented as EF/46 but not actually applied by this driver. "
+            "The DAC3202 acts as PTP master on this link — this driver "
+            "should expect to sync as slave to it, not contend for "
+            "grandmaster. Transmit-only: this driver may only create TX "
+            "streams under this profile, up to 32 channels total, its "
+            "full analog output count.";
         break;
     }
 
@@ -215,11 +235,18 @@ bool addressHasPrefix(const std::string& address, const std::string& prefix) {
 
 } // namespace
 
-bool CompatibilityProfile::validate(const SDPSession& sdp, std::string* errorOut) const {
+bool CompatibilityProfile::validate(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const {
     auto fail = [&](const std::string& reason) {
         if (errorOut) *errorOut = displayName + ": " + reason;
         return false;
     };
+
+    if (direction == ProfileDirection::ReceiveOnly && isTransmit) {
+        return fail("this device has no network audio input — this driver may only receive from it, not send to it");
+    }
+    if (direction == ProfileDirection::TransmitOnly && !isTransmit) {
+        return fail("this device has no network audio output — this driver may only send to it, not receive from it");
+    }
 
     if (!allowedSampleRates.empty()) {
         const bool ok = std::any_of(allowedSampleRates.begin(), allowedSampleRates.end(),

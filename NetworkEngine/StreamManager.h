@@ -148,11 +148,14 @@ public:
     // Validation
     //
 
-    // Check if stream can be added
-    bool canAddStream(const SDPSession& sdp, std::string* errorOut = nullptr) const;
+    // Check if stream can be added. isTransmit distinguishes an RX stream
+    // (addStream) from a TX one (createTxStream) — the active profile's
+    // direction/maxTotalChannels are checked per-direction. Defaults to
+    // false (RX) for callers that predate this distinction.
+    bool canAddStream(const SDPSession& sdp, bool isTransmit = false, std::string* errorOut = nullptr) const;
 
     // Get detailed error message for why stream can't be added
-    std::string getAddStreamError(const SDPSession& sdp) const;
+    std::string getAddStreamError(const SDPSession& sdp, bool isTransmit = false) const;
 
     //
     // Device State
@@ -254,6 +257,16 @@ private:
     // reads it both with streamsMutex_ held (via addStream) and without it
     // (via getAddStreamError), so it can't take the lock itself.
     std::atomic<CompatibilityProfileKind> profileKind_{CompatibilityProfileKind::AES67};
+
+    // Running totals for CompatibilityProfile::maxTotalChannels — atomic
+    // for the same reason profileKind_ is: canAddStream() must be callable
+    // both with streamsMutex_ held (addStream/createTxStream) and without
+    // it (getAddStreamError), so it can't take the lock to sum streams_
+    // itself. Kept in step by addStream/createTxStream on success and by
+    // removeStream/removeAllStreams on removal — see those for the actual
+    // increment/decrement.
+    std::atomic<uint32_t> rxChannelsInUse_{0};
+    std::atomic<uint32_t> txChannelsInUse_{0};
     std::map<StreamID, ManagedStream> streams_;
     mutable std::mutex streamsMutex_;
 
