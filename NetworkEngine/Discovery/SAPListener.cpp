@@ -81,11 +81,20 @@ public:
         }
         
         running_ = false;
-        
+
+        // Unblock the listen thread first. It's parked in a blocking
+        // recvfrom() that only wakes on a packet — on a quiet network that
+        // could be tens of seconds away, or never — so joining before
+        // waking it would hang stop() (and the driver shutdown that now
+        // calls it). shutdown() makes the in-flight recvfrom() return.
+        if (sockFd_ >= 0) {
+            ::shutdown(sockFd_, SHUT_RDWR);
+        }
+
         if (listenThread_.joinable()) {
             listenThread_.join();
         }
-        
+
         if (sockFd_ >= 0) {
             close(sockFd_);
             sockFd_ = -1;
@@ -115,6 +124,20 @@ public:
     }
     
 private:
+    // Two packets describe the same session when their SAP identity matches
+    // (Message ID Hash + originating source, present in announcements and
+    // deletions alike). Falls back to (sessionName, sourceAddress) only when
+    // the sender supplied no hash — never matches on an empty name, so an
+    // unnamed session can't be confused with another unnamed one.
+    static bool sameSession(const SAPAnnouncement& a, const SAPAnnouncement& b) {
+        if (a.msgIdHash != 0 && b.msgIdHash != 0) {
+            return a.msgIdHash == b.msgIdHash && a.originatingSource == b.originatingSource;
+        }
+        return !a.sessionName.empty() &&
+               a.sessionName == b.sessionName &&
+               a.sourceAddress == b.sourceAddress;
+    }
+
     void listenLoop() {
         char buffer[2048];
         
@@ -132,7 +155,9 @@ private:
                 SAPAnnouncement announcement = parseSAPAnnouncement(buffer, bytesRead, 
                                                                    inet_ntoa(srcAddr.sin_addr));
                 
-                if (!announcement.sessionDescription.empty()) {
+                // Act on real announcements (valid SDP) and on deletions
+                // (which carry no SDP but do carry identity).
+                if (!announcement.sessionDescription.empty() || announcement.isDeletion) {
                     const bool isDeletion = announcement.isDeletion;
                     bool isNew = false;
 
@@ -141,14 +166,10 @@ private:
 
                         auto existing = std::find_if(
                             discoveredStreams_.begin(), discoveredStreams_.end(),
-                            [&](const SAPAnnouncement& s) {
-                                return s.sessionName == announcement.sessionName &&
-                                       s.sourceAddress == announcement.sourceAddress;
-                            });
+                            [&](const SAPAnnouncement& s) { return sameSession(s, announcement); });
 
                         if (isDeletion) {
-                            // An explicit goodbye — the announcer is telling
-                            // us it's finished, so drop it now instead of
+                            // An explicit goodbye — drop it now instead of
                             // waiting out kSessionTimeout.
                             if (existing != discoveredStreams_.end()) {
                                 discoveredStreams_.erase(existing);
@@ -163,10 +184,18 @@ private:
                             isNew = true;
 
                             // Backstop against a flood of one-shot sessions.
-                            // Expiry is the real mechanism; this only bounds
-                            // memory if something announces pathologically.
+                            // Expiry is the real mechanism; when this does
+                            // trigger, drop the LEAST-recently-seen entry,
+                            // not the earliest-inserted — a live session that
+                            // keeps refreshing must never be evicted ahead of
+                            // a stale one.
                             if (discoveredStreams_.size() > 50) {
-                                discoveredStreams_.erase(discoveredStreams_.begin());
+                                auto oldest = std::min_element(
+                                    discoveredStreams_.begin(), discoveredStreams_.end(),
+                                    [](const SAPAnnouncement& a, const SAPAnnouncement& b) {
+                                        return a.lastSeen < b.lastSeen;
+                                    });
+                                discoveredStreams_.erase(oldest);
                             }
                         }
                     }
@@ -210,18 +239,36 @@ private:
             return announcement; // Unknown SAP version
         }
 
-        // Type bit: 0 = announcement, 1 = deletion. A deletion is parsed
-        // like any other packet — the caller needs its session name to know
-        // what to drop — and flagged rather than discarded, which is how
-        // this listener used to treat it (silently ignoring a sender's
-        // explicit goodbye and waiting for the timeout instead).
+        // Type bit: 0 = announcement, 1 = deletion.
         announcement.isDeletion = ((sapHeader >> 2) & 0x01) != 0;
+
+        // Stable identity, present in both announcements and deletions:
+        // Message ID Hash (bytes 2-3) and originating source (bytes 4-7).
+        // Needs the full 8-byte header; below the minimum we can't identify
+        // it, so leave the hash at 0 and let the name-based fallback apply.
+        if (length >= 8) {
+            const uint8_t* u = reinterpret_cast<const uint8_t*>(data);
+            announcement.msgIdHash = static_cast<uint16_t>((u[2] << 8) | u[3]);
+            announcement.originatingSource =
+                (static_cast<uint32_t>(u[4]) << 24) | (static_cast<uint32_t>(u[5]) << 16) |
+                (static_cast<uint32_t>(u[6]) << 8) | static_cast<uint32_t>(u[7]);
+        }
 
         // Check encryption and compression bits — we don't support them
         uint8_t encrypted = (sapHeader >> 1) & 0x01;
         uint8_t compressed = sapHeader & 0x01;
         if (encrypted || compressed) {
             return announcement; // Encrypted/compressed SAP not supported
+        }
+
+        // A deletion carries only enough to identify the session (often a
+        // shortened body, sometimes none), not a full SDP. Its identity is
+        // already set above, so return now rather than fall through to the
+        // SDP checks below, which would reject it for lacking "v=0" — which
+        // is how this listener used to drop deletions entirely, leaving the
+        // session to time out instead of going when told.
+        if (announcement.isDeletion) {
+            return announcement;
         }
 
         // Auth length (number of 32-bit words of authentication data)

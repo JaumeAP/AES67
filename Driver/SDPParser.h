@@ -61,7 +61,11 @@ struct SDPSession {
     // ST 2110-30 Levels B and C are 125 us. Holding this as integer
     // milliseconds silently truncated "a=ptime:0.125" to zero.
     uint32_t ptimeUs{1000};         // Packet time in MICROSECONDS
-    uint32_t framecount{48};        // Samples per packet
+    // Samples per packet (a=framecount, a RAVENNA extension). 0 = not
+    // specified in the SDP, in which case packet size is derived from
+    // ptimeUs. A nonzero default here would mask a sub-millisecond a=ptime
+    // that came without a framecount — see RTPTransmitter/RTPReceiver.
+    uint32_t framecount{0};          // 0 = derive from ptime
 
     // Source filter (a=source-filter)
     std::string sourceAddress;      // Unicast source IP

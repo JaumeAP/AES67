@@ -30,6 +30,17 @@ struct SAPAnnouncement {
     /// matching session instead of waiting out kSessionTimeout.
     bool isDeletion{false};
 
+    /// SAP session identity, straight from the packet header and present in
+    /// BOTH announcements and deletions (RFC 2974 §6): the 16-bit Message
+    /// ID Hash (bytes 2-3) and the 32-bit originating source (bytes 4-7).
+    /// This is the stable key the listener matches on, so a deletion — or a
+    /// session with no SDP `s=` name — is still identified exactly, rather
+    /// than by the optional, editable session name. 0/0 means the sender
+    /// didn't supply a hash, in which case the listener falls back to
+    /// (sessionName, sourceAddress).
+    uint16_t msgIdHash{0};
+    uint32_t originatingSource{0};
+
     SAPAnnouncement() : port(0), ptpDomain(0) {}
 };
 

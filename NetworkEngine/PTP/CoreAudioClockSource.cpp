@@ -75,12 +75,28 @@ uint64_t CoreAudioClockSource::currentTimeNs() const {
 
     ensureDeviceRunning();
 
+    // Never hand back a time earlier than one we've already emitted: a PTP
+    // master whose Sync origin timestamp goes backwards is a real protocol
+    // defect, and several paths below (fallback to the Mac clock, and every
+    // re-anchor) would otherwise do exactly that — the device-derived
+    // timeline runs ahead of (or behind) wall-clock by the accumulated
+    // frequency error, so switching between the two mid-stream jumps. This
+    // clamps every return through one point.
+    auto emit = [this](uint64_t ns) -> uint64_t {
+        if (ns < lastEmittedNs_) ns = lastEmittedNs_;
+        lastEmittedNs_ = ns;
+        return ns;
+    };
+
     // If the device won't run, there's nothing to lock to — be the Mac
-    // clock and say so (locked_ false => clockClass 248).
+    // clock and say so (locked_ false => clockClass 248). Clamped, so a
+    // device that was running ahead doesn't drag the timeline backwards
+    // when it drops out; it freezes until the Mac clock catches up or the
+    // device returns.
     if (!ioProcID_ || !startedDevice_) {
         locked_.store(false, std::memory_order_relaxed);
         haveAnchor_ = false;
-        return ptpSystemTimeNs();
+        return emit(ptpSystemTimeNs());
     }
 
     AudioTimeStamp ts{};
@@ -91,38 +107,47 @@ uint64_t CoreAudioClockSource::currentTimeNs() const {
         // and force a fresh anchor if it comes back.
         locked_.store(false, std::memory_order_relaxed);
         haveAnchor_ = false;
-        return ptpSystemTimeNs();
+        return emit(ptpSystemTimeNs());
     }
 
     const double sampleTime = ts.mSampleTime;
 
-    // (Re)anchor on first read, after a dropout, or if the device's nominal
-    // rate changed under us — the scale factor below depends on it.
     const double rate = readNominalSampleRate();
     if (rate <= 0.0) {
         locked_.store(false, std::memory_order_relaxed);
         haveAnchor_ = false;
-        return ptpSystemTimeNs();
+        return emit(ptpSystemTimeNs());
     }
 
-    if (!haveAnchor_ || rate != nominalRate_) {
+    // (Re)anchor on: first read, a nominal-rate change (the scale factor
+    // depends on it), or the device's sample counter going backwards
+    // (engine restart/reconfig that didn't surface an error). That last
+    // guard also keeps elapsedSamples below non-negative, so the cast to
+    // uint64_t can never see a negative double (UB).
+    if (!haveAnchor_ || rate != nominalRate_ || sampleTime < anchorSample_) {
         anchorSample_ = sampleTime;
-        anchorNs_ = ptpSystemTimeNs(); // tie to real time-of-day once
+        // Continue the timeline from where it left off rather than snapping
+        // to wall-clock — carrying lastEmittedNs_ forward preserves both
+        // monotonicity and the accumulated device offset across the
+        // re-anchor. Only the very first anchor (nothing emitted yet) ties
+        // to real time-of-day.
+        anchorNs_ = (lastEmittedNs_ != 0) ? lastEmittedNs_ : ptpSystemTimeNs();
         nominalRate_ = rate;
         haveAnchor_ = true;
         locked_.store(true, std::memory_order_relaxed);
-        return anchorNs_;
+        return emit(anchorNs_);
     }
 
     // Nanoseconds derived from the DEVICE's sample counter: this is the
-    // syntonization. (sampleTime - anchorSample) is device samples elapsed;
-    // divided by the nominal rate and scaled to ns, it advances at the
-    // device's real hardware rate, drifting from anchorNs_ by exactly the
-    // device-vs-Mac frequency error — which is the whole point.
+    // syntonization. (sampleTime - anchorSample) is device samples elapsed
+    // (>= 0, guaranteed by the re-anchor guard above); divided by the
+    // nominal rate and scaled to ns, it advances at the device's real
+    // hardware rate, drifting from anchorNs_ by exactly the device-vs-Mac
+    // frequency error — which is the whole point.
     const double elapsedSamples = sampleTime - anchorSample_;
     const double elapsedNs = (elapsedSamples / nominalRate_) * 1.0e9;
     locked_.store(true, std::memory_order_relaxed);
-    return anchorNs_ + static_cast<uint64_t>(elapsedNs + 0.5);
+    return emit(anchorNs_ + static_cast<uint64_t>(elapsedNs + 0.5));
 }
 
 } // namespace AES67
