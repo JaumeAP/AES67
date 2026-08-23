@@ -1,3 +1,0 @@
-[submodule "external/libASPL"]
-	path = external/libASPL
-	url = https://github.com/gavv/libASPL
