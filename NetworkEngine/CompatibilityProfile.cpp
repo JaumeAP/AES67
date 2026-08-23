@@ -166,7 +166,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         break;
 
     case CompatibilityProfileKind::DMA:
-        p.displayName = "DMA (spec pending)";
+        p.displayName = "Dolby DMA (spec pending)";
         // PLACEHOLDER: audio parameters copied from DAC3202 until the real
         // device/spec is looked up. What's actually fixed here isn't a
         // spec value at all — it's an explicit instruction: this driver is
