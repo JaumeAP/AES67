@@ -8,7 +8,11 @@ document is about why, and about the three arrangements that do work.
 
 ## Why not in software
 
-Three separate walls, any one of which is enough:
+Three separate walls, any one of which is enough. (The AudioServer bundle
+was taken apart to check — see
+`references/avid_hdx_clock_source_notes.md`, appendix. Notably, Pro Tools
+Audio Bridge, which *does* survive Pro Tools launching, was measured and
+reports clock domain 0: it moves audio, it does not lend a clock.)
 
 1. **DigiLink is a hardware link on the card.** The clock rides differential
    pairs into the HDX PCIe card. There is no software interface on the Mac
