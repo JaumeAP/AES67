@@ -240,8 +240,8 @@ struct AddStreamView: View {
                             // fixed domain (AES67's mandatory configuration
                             // is domain 0) — free 0...127 for profiles that
                             // don't pin one (RAVENNA, Dante, ST 2110-30,
-                            // CP850, DAC3202). See DriverManager's
-                            // CompatibilityProfileOption.
+                            // CP850, CP950/CP950A, DAC3202, DMA). See
+                            // DriverManager's CompatibilityProfileOption.
                             if driverManager.activeCompatibilityProfile.domainIsFixed {
                                 Text("\(driverManager.activeCompatibilityProfile.fixedDomain) (fixed by \(driverManager.activeCompatibilityProfile.name))")
                                     .foregroundColor(.secondary)
@@ -249,8 +249,22 @@ struct AddStreamView: View {
                                         ptpDomain = driverManager.activeCompatibilityProfile.fixedDomain
                                     }
                             } else {
+                                // Pre-filled with the profile's factory
+                                // default (e.g. 109 for the Dolby Atmos
+                                // Connect family) when it has one, but never
+                                // locked to it — installers routinely pick
+                                // a different domain per auditorium (109,
+                                // 110, 111, 112, ... across multiple
+                                // screens on one network), so this stays a
+                                // starting point, freely editable 0...127.
                                 Stepper("\(ptpDomain)", value: $ptpDomain, in: 0...127)
                                     .frame(width: 120)
+                                    .onAppear {
+                                        let recommended = driverManager.activeCompatibilityProfile.recommendedPtpDomain
+                                        if recommended >= 0 {
+                                            ptpDomain = recommended
+                                        }
+                                    }
                             }
                         }
                     }
