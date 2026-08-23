@@ -84,18 +84,40 @@ add_executable(TestPTPClock
     ../NetworkEngine/PTP/PTPClock.cpp
     ../NetworkEngine/PTP/PTPDInterface.cpp
     ../NetworkEngine/PTP/PTPSlave.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
     ../NetworkEngine/PTP/PhaseLockedLoop.cpp
     ../NetworkEngine/PTP/CustomSys.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
     ../Driver/SDPParser.cpp
+    ../Driver/AudioThreadPriority.cpp
     ../Shared/Types.cpp
 )
 
 target_include_directories(TestPTPClock PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
+# AudioClockDeviceList/CoreAudioClockSource (pulled in via PTPArbitrator)
+# call CoreAudio/CoreFoundation directly.
+target_link_libraries(TestPTPClock PRIVATE
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+)
 
 target_compile_features(TestPTPClock PRIVATE cxx_std_17)
+
+# Test: PTP Master / BMCA — offline only, see TestPTPMaster.cpp's own header
+# comment for why it doesn't touch sockets.
+add_executable(TestPTPMaster
+    TestPTPMaster.cpp
+)
+
+target_include_directories(TestPTPMaster PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
 
 # Test: Stream Manager
 add_executable(TestStreamManager
@@ -150,14 +172,23 @@ add_executable(TestMultiStream
     ../NetworkEngine/PTP/PTPClock.cpp
     ../NetworkEngine/PTP/PTPDInterface.cpp
     ../NetworkEngine/PTP/PTPSlave.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
     ../NetworkEngine/PTP/PhaseLockedLoop.cpp
     ../NetworkEngine/PTP/CustomSys.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
+    ../Driver/AudioThreadPriority.cpp
     ../Shared/Types.cpp
 )
 
 target_include_directories(TestMultiStream PRIVATE
     ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestMultiStream PRIVATE
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
 )
 
 target_compile_features(TestMultiStream PRIVATE cxx_std_17)
@@ -223,6 +254,7 @@ add_test(NAME RingBuffer COMMAND TestRingBuffer)
 add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
+add_test(NAME PTPMaster COMMAND TestPTPMaster)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME Resampling COMMAND TestResampling)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
@@ -236,6 +268,7 @@ message(STATUS "  - TestRingBuffer")
 message(STATUS "  - TestRTPReceiver")
 message(STATUS "  - TestRTPTransmitter")
 message(STATUS "  - TestPTPClock")
+message(STATUS "  - TestPTPMaster")
 message(STATUS "  - TestStreamManager")
 message(STATUS "  - TestResampling (NEW)")
 message(STATUS "  - TestStreamConfig (NEW)")
