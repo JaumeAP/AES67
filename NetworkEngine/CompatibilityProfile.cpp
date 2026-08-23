@@ -132,12 +132,18 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // describes for exactly that purpose — not Dolby's own factory
         // defaults, so they aren't adopted here (see that file for why).
         //
-        // Net effect: the parameters below remain inherited from the
+        // Net effect: most parameters below remain inherited from the
         // CP950/CP950A and DMA manuals' shared-family documentation
         // (CP950/CP950A being CP850's own confirmed successor line) rather
         // than confirmed by a CP850-specific Dolby AES67 configuration
         // guide — genuinely not published anywhere by Dolby for CP850,
-        // not merely not yet looked for.
+        // not merely not yet looked for. recommendedPtpDomain is the one
+        // exception: every Dolby product in this family that documents a
+        // PTP domain default (DMA, CP950/CP950A, DAC3202, all above) ships
+        // at 109, so it's recorded for CP850 too rather than left at -1 —
+        // still a factory default installers routinely override per
+        // auditorium (109, 110, 111, 112, ... across multiple screens on
+        // one network), never fixed.
         //
         // Digital cinema audio (DCI spec): 48 or 96 kHz, up to 24-bit PCM.
         // Not AES67's 44.1 kHz — cinema doesn't use it.
@@ -146,7 +152,8 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
-        p.domainIsFixed = false; // no documented fixed domain; cinema installs set their own house PTP domain
+        p.domainIsFixed = false; // no fixed domain; cinema installs set their own house PTP domain per auditorium
+        p.recommendedPtpDomain = 109; // same factory default as the rest of the Dolby Atmos Connect family (DMA/CP950A/DAC3202)
         p.recommendedDscp = 46;  // EF — Dolby's factory-default DSCP marking for AES67 traffic on this line
         // From our driver's point of view: the CP850 renders and sends its
         // feeds over AES67, it doesn't accept AES67 input. We can only
@@ -163,12 +170,14 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "factory-default DSCP marking is more traditional than "
             "typical Dante configurations (EF/46) — this driver has a "
             "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
-            "nothing calls it yet, so no marking is actually applied. No "
-            "documented fixed PTP domain; cinema installations set their "
-            "own house domain (factory default, not a requirement) — "
-            "unlike CP950/CP950A/DMA/DAC3202, no CP850-specific Dolby "
-            "manual documents its AES67 mode's own PTP/multicast "
-            "defaults (a third-party interop guide confirms the mode is "
+            "nothing calls it yet, so no marking is actually applied. PTP "
+            "domain ships at 109, the same factory default as the rest of "
+            "this Dolby family (not fixed — cinema installations "
+            "routinely set their own per auditorium, e.g. "
+            "109/110/111/112 across multiple screens). Otherwise, unlike "
+            "CP950/CP950A/DMA/DAC3202, no CP850-specific Dolby manual "
+            "documents its AES67 mode's own multicast address default "
+            "(a third-party interop guide confirms the mode is "
             "real and where to enable it, System > Network > Dolby Atmos "
             "Connect tab, but its example uses custom non-Dolby values, "
             "not Dolby's own factory defaults), so these parameters "
