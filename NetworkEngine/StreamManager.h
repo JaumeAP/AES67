@@ -85,6 +85,27 @@ public:
         txFlowPortOffset_.store(flows, std::memory_order_relaxed);
     }
 
+    /// Safety cushion, in samples, that a receiver accumulates before it
+    /// starts handing audio to Core Audio. Higher survives worse network
+    /// jitter; every sample of it is latency.
+    ///
+    /// 0 (default) keeps this receiver's own long-standing cushion of 6
+    /// packets. The AES67 Linux daemon calls this playout_delay and sets
+    /// it per sink; Dolby's DMA manual calls it Safety Buffer and
+    /// documents 0-50 samples for exactly the same symptom, brief dropouts
+    /// from network trouble. Two independent sources describing the same
+    /// control is why it's expressed in samples here rather than packets,
+    /// even though packets is what the receiver counts.
+    ///
+    /// Applied when a stream is created, so changing it affects streams
+    /// added afterwards.
+    void setPlayoutDelaySamples(uint32_t samples) {
+        playoutDelaySamples_.store(samples, std::memory_order_relaxed);
+    }
+    uint32_t getPlayoutDelaySamples() const {
+        return playoutDelaySamples_.load(std::memory_order_relaxed);
+    }
+
     /// Whether this driver runs a PTP clock at all.
     ///
     /// When enabled, adding a stream starts (or joins) a PTPClock for that
@@ -330,7 +351,7 @@ private:
         const ChannelMapping& mapping,
         size_t jitterBufferDepth = 0,
         const std::string& networkInterface = ""
-    );
+    );  // playout delay comes from the driver-wide setting, read inside
 
     std::unique_ptr<RTPTransmitter> createTransmitter(
         const SDPSession& sdp,
@@ -398,6 +419,7 @@ private:
     // profileKind_ is atomic: canAddStream() is called both with
     // streamsMutex_ held (addStream/createTxStream) and without it
     // (getAddStreamError), so it can't take that lock itself.
+    std::atomic<uint32_t> playoutDelaySamples_{0};
     std::atomic<bool> ptpEnabled_{false};
     std::atomic<bool> requirePTPLock_{false};
 

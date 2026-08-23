@@ -28,6 +28,15 @@
 
 namespace AES67 {
 
+/// Grouped with the amplifier unit only because both are small
+/// installation-level knobs read at startup; they are otherwise unrelated.
+/// See StreamManager::setPlayoutDelaySamples().
+struct PlayoutDelaySettings {
+    uint32_t samples{0}; // 0 = the receiver's own default cushion
+    static constexpr uint32_t kMaxSamples = 4800; // 100 ms at 48 kHz — beyond this it's a fault, not jitter
+    bool isValid() const { return samples <= kMaxSamples; }
+};
+
 struct AmplifierUnitSettings {
     /// 1-based. 1 = the first (or only) unit — the driver's behavior
     /// before this setting existed, and the only meaningful value for any
@@ -51,6 +60,10 @@ public:
     AmplifierUnitSettings load();
 
     bool save(const AmplifierUnitSettings& settings);
+
+    /// Playout delay, from the same file. Zero if absent or out of range.
+    PlayoutDelaySettings loadPlayoutDelay();
+    bool savePlayoutDelay(const PlayoutDelaySettings& settings);
 
     std::string getConfigPath() const;
 

@@ -98,6 +98,52 @@ AmplifierUnitSettings AmplifierUnitSettingsManager::load() {
     return parsed;
 }
 
+PlayoutDelaySettings AmplifierUnitSettingsManager::loadPlayoutDelay() {
+    PlayoutDelaySettings settings;
+
+    std::ifstream file(configPath_);
+    if (!file.is_open()) return settings;
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    const std::string json = buffer.str();
+
+    std::regex pattern("\"playoutDelaySamples\"\\s*:\\s*(\\d+)");
+    std::smatch match;
+    if (std::regex_search(json, match, pattern) && match.size() > 1) {
+        PlayoutDelaySettings parsed;
+        parsed.samples = static_cast<uint32_t>(std::stoul(match[1].str()));
+        if (!parsed.isValid()) {
+            AES67_LOGF("AmplifierUnitSettingsManager: playout delay %u samples is out of range "
+                       "(max %u) — using the receiver's own default instead",
+                       parsed.samples, PlayoutDelaySettings::kMaxSamples);
+            return settings;
+        }
+        return parsed;
+    }
+    return settings;
+}
+
+bool AmplifierUnitSettingsManager::savePlayoutDelay(const PlayoutDelaySettings& settings) {
+    if (!settings.isValid()) return false;
+    // Both values live in one file, so read the other one back before
+    // rewriting it rather than clobbering it.
+    const AmplifierUnitSettings unit = load();
+    if (!ensureConfigDirectoryExists()) return false;
+
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"version\": \"1.0\",\n";
+    json << "  \"unitIndex\": " << unit.unitIndex << ",\n";
+    json << "  \"playoutDelaySamples\": " << settings.samples << "\n";
+    json << "}\n";
+
+    std::ofstream file(configPath_);
+    if (!file.is_open()) return false;
+    file << json.str();
+    return true;
+}
+
 bool AmplifierUnitSettingsManager::save(const AmplifierUnitSettings& settings) {
     if (!settings.isValid()) {
         AES67_LOGF("AmplifierUnitSettingsManager: refusing to save out-of-range unit index %u",
@@ -109,10 +155,13 @@ bool AmplifierUnitSettingsManager::save(const AmplifierUnitSettings& settings) {
         return false;
     }
 
+    const PlayoutDelaySettings delay = loadPlayoutDelay(); // preserve the other value in this file
+
     std::ostringstream json;
     json << "{\n";
     json << "  \"version\": \"1.0\",\n";
-    json << "  \"unitIndex\": " << settings.unitIndex << "\n";
+    json << "  \"unitIndex\": " << settings.unitIndex << ",\n";
+    json << "  \"playoutDelaySamples\": " << delay.samples << "\n";
     json << "}\n";
 
     std::ofstream file(configPath_);
