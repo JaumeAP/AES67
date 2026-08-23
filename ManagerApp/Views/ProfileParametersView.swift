@@ -25,83 +25,258 @@ struct ProfileParametersView: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(24)
+
+            Divider()
+
+            TabView {
+                // Master first: what governs the whole link, and what the
+                // other two tabs inherit from.
+                tab { masterContent }
+                    .tabItem { Label("Master", systemImage: "clock") }
+
+                // Input before output, so the tabs read in signal order for
+                // this driver: what arrives, then what leaves.
+                tab { inputsContent }
+                    .tabItem { Label("Inputs", systemImage: "arrow.down.circle") }
+
+                tab { outputsContent }
+                    .tabItem { Label("Outputs", systemImage: "arrow.up.circle") }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+        }
+        .frame(minWidth: 660, minHeight: 600)
+    }
+
+    /// One tab's scrolling body — every tab has the same padding and
+    /// alignment, so the frame doesn't jump when switching between them.
+    private func tab<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                header
-
-                section("Synchronisation (PTP)") {
-                    ptpRoleRow
-                    ptpDomainRow
-                    parameterRow(
-                        "Clock source",
-                        value: driverManager.ptpMasterCapable
-                            ? (driverManager.ptpClockSourceKind == "internal"
-                               ? "Internal (this Mac)" : "Locked to another audio device")
-                            : "External (slave only)",
-                        locked: profile.ptpRole != .any,
-                        note: profile.ptpRole != .any
-                            ? "Follows the PTP role \(profile.name) fixes."
-                            : "Set in the PTP Diagnostics window."
-                    )
-                }
-
-                section("Connection") {
-                    parameterRow(
-                        "Destination multicast address",
-                        value: profile.recommendedMulticastAddress.isEmpty
-                            ? "Per stream (no factory default documented)"
-                            : "\(profile.recommendedMulticastAddress) (factory default)",
-                        locked: false,
-                        note: profile.requiredMulticastPrefix.isEmpty
-                            ? "Set per stream when adding one. Factory defaults are a starting "
-                              + "point — installations with more than one auditorium on a "
-                              + "network give each its own address."
-                            : "\(profile.name) requires addresses inside "
-                              + "\(profile.requiredMulticastPrefix).0.0/16 — streams outside it "
-                              + "are rejected."
-                    )
-                    flowAddressingRow
-                    amplifierUnitRow
-                    parameterRow(
-                        "DSCP marking",
-                        value: profile.recommendedDscp < 0
-                            ? "None documented"
-                            : "\(profile.recommendedDscp) (EF, factory default)",
-                        locked: true,
-                        note: "Informational only — this driver never sets a DSCP marking on "
-                            + "its own traffic, whatever the profile documents."
-                    )
-                }
-
-                section("Audio format") {
-                    parameterRow(
-                        "Sample rates",
-                        value: profile.allowedSampleRates
-                            .map { "\($0 / 1000) kHz" }
-                            .joined(separator: ", "),
-                        locked: true,
-                        note: "Streams at any other rate are rejected under this profile."
-                    )
-                    parameterRow(
-                        "Packet time",
-                        value: profile.allowedPtimesMs.map { "\($0) ms" }.joined(separator: ", "),
-                        locked: true,
-                        note: "This driver's transmitter emits 1 ms packets and can't be "
-                            + "reconfigured, so this is a hard limit either way."
-                    )
-                    parameterRow(
-                        "Encoding",
-                        value: profile.allowedEncodings.joined(separator: ", "),
-                        locked: true,
-                        note: "Chosen per stream from the encodings this profile accepts."
-                    )
-                    channelsRow
-                }
+                content()
             }
-            .padding(24)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minWidth: 620, minHeight: 560)
+    }
+
+    // MARK: - Master tab
+
+    @ViewBuilder
+    private var masterContent: some View {
+        section("Synchronisation (PTP)") {
+            ptpRoleRow
+            ptpDomainRow
+            parameterRow(
+                "Clock source",
+                value: driverManager.ptpMasterCapable
+                    ? (driverManager.ptpClockSourceKind == "internal"
+                       ? "Internal (this Mac)" : "Locked to another audio device")
+                    : "External (slave only)",
+                locked: profile.ptpRole != .any,
+                note: profile.ptpRole != .any
+                    ? "Follows the PTP role \(profile.name) fixes."
+                    : "Set in the PTP Diagnostics window."
+            )
+        }
+
+        section("Link") {
+            parameterRow(
+                "Direction",
+                value: {
+                    switch profile.direction {
+                    case .receiveOnly:  return "Receive only"
+                    case .transmitOnly: return "Transmit only"
+                    case .any:          return "Send and receive"
+                    }
+                }(),
+                locked: profile.direction != .any,
+                note: {
+                    switch profile.direction {
+                    case .receiveOnly:
+                        return "\(profile.name) sends to this driver and has no network audio "
+                            + "input — everything on the Outputs tab is locked."
+                    case .transmitOnly:
+                        return "\(profile.name) only receives from this driver and sends nothing "
+                            + "back — everything on the Inputs tab is locked."
+                    case .any:
+                        return "Both directions are available under this profile."
+                    }
+                }()
+            )
+            flowAddressingRow
+            parameterRow(
+                "DSCP marking",
+                value: profile.recommendedDscp < 0
+                    ? "None documented"
+                    : "\(profile.recommendedDscp) (EF, factory default)",
+                locked: true,
+                note: "Informational only — this driver never sets a DSCP marking on "
+                    + "its own traffic, whatever the profile documents."
+            )
+        }
+
+        section("Audio format (both directions)") {
+            parameterRow(
+                "Sample rates",
+                value: profile.allowedSampleRates
+                    .map { "\($0 / 1000) kHz" }
+                    .joined(separator: ", "),
+                locked: true,
+                note: "Streams at any other rate are rejected under this profile."
+            )
+            parameterRow(
+                "Packet time",
+                value: profile.allowedPtimesMs.map { "\($0) ms" }.joined(separator: ", "),
+                locked: true,
+                note: "This driver's transmitter emits 1 ms packets and can't be "
+                    + "reconfigured, so this is a hard limit either way."
+            )
+            parameterRow(
+                "Encoding",
+                value: profile.allowedEncodings.joined(separator: ", "),
+                locked: true,
+                note: "Chosen per stream from the encodings this profile accepts."
+            )
+        }
+    }
+
+    // MARK: - Inputs tab (RX: network -> Core Audio)
+
+    @ViewBuilder
+    private var inputsContent: some View {
+        let ruledOut = profile.direction == .transmitOnly
+
+        if ruledOut {
+            directionNotice(
+                "\(profile.name) is transmit-only — this driver never receives from it, so every "
+                + "input parameter below is locked."
+            )
+        }
+
+        section("Channels in") {
+            parameterRow(
+                "Input channels",
+                value: ruledOut ? "Unused" : "\(driverManager.totalRxChannelCount)"
+                    + (profile.maxTotalChannels > 0 && !ruledOut
+                       ? " (max \(profile.maxTotalChannels))" : ""),
+                locked: ruledOut,
+                note: ruledOut
+                    ? "The input selector on the main window is disabled under this profile."
+                    : "Set with the Input selector on the main window. The device always presents "
+                      + "128 channels to Core Audio; this caps how many streams may be assigned to."
+            )
+        }
+
+        section("Receiving streams") {
+            parameterRow(
+                "Source multicast address",
+                value: ruledOut
+                    ? "Unused"
+                    : (profile.recommendedMulticastAddress.isEmpty
+                       ? "Per stream"
+                       : "\(profile.recommendedMulticastAddress) (factory default)"),
+                locked: ruledOut,
+                note: ruledOut
+                    ? "No receive streams can be added under this profile."
+                    : (profile.requiredMulticastPrefix.isEmpty
+                       ? "Entered per stream when adding one, or taken from an imported SDP file. "
+                         + "A factory default is a starting point — installations with more than "
+                         + "one auditorium on a network give each its own address."
+                       : "\(profile.name) requires addresses inside "
+                         + "\(profile.requiredMulticastPrefix).0.0/16 — streams outside it are "
+                         + "rejected.")
+            )
+            parameterRow(
+                "Port",
+                value: ruledOut ? "Unused" : "Per stream (5004 by default)",
+                locked: ruledOut,
+                note: ruledOut
+                    ? "No receive streams can be added under this profile."
+                    : "Entered per stream when adding one; must match what the sending device uses."
+            )
+        }
+    }
+
+    // MARK: - Outputs tab (TX: Core Audio -> network)
+
+    @ViewBuilder
+    private var outputsContent: some View {
+        let ruledOut = profile.direction == .receiveOnly
+
+        if ruledOut {
+            directionNotice(
+                "\(profile.name) is receive-only — this driver never transmits to it, so every "
+                + "output parameter below is locked."
+            )
+        }
+
+        section("Channels out") {
+            parameterRow(
+                "Output channels",
+                value: ruledOut ? "Unused" : "\(driverManager.totalTxChannelCount)"
+                    + (profile.maxTotalChannels > 0 && !ruledOut
+                       ? " (max \(profile.maxTotalChannels))" : ""),
+                locked: ruledOut,
+                note: ruledOut
+                    ? "The output selector on the main window is disabled under this profile."
+                    : "Set with the Output selector on the main window. Split into flows of at "
+                      + "most 8 channels when transmitted."
+            )
+        }
+
+        section("Transmitting streams") {
+            parameterRow(
+                "Destination multicast address",
+                value: ruledOut
+                    ? "Unused"
+                    : (profile.recommendedMulticastAddress.isEmpty
+                       ? "Per stream"
+                       : "\(profile.recommendedMulticastAddress) (factory default)"),
+                locked: ruledOut,
+                note: ruledOut
+                    ? "No transmit streams can be created under this profile."
+                    : (profile.requiredMulticastPrefix.isEmpty
+                       ? "A factory default is a starting point — installations with more than "
+                         + "one auditorium on a network give each its own address."
+                       : "\(profile.name) requires addresses inside "
+                         + "\(profile.requiredMulticastPrefix).0.0/16.")
+            )
+            if !ruledOut {
+                amplifierUnitRow
+                sourcePortsRow
+            }
+        }
+    }
+
+    private func directionNotice(_ text: String) -> some View {
+        Label(text, systemImage: "lock.fill")
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.12))
+            .cornerRadius(8)
+    }
+
+    private var sourcePortsRow: some View {
+        let ports = driverManager.txSourcePorts(destinationPort: 6517)
+        return parameterRow(
+            "Source ports",
+            value: ports.isEmpty
+                ? "Assigned by the system"
+                : ports.map(String.init).joined(separator: ", "),
+            locked: true,
+            note: ports.isEmpty
+                ? "This profile tells flows apart by multicast address, so the source port "
+                  + "doesn't matter and is left to the system."
+                : "One per 8-channel flow, derived from the destination port (shown here for "
+                  + "Dolby's own default, 6517) and the selected unit."
+        )
     }
 
     // MARK: - Header
@@ -183,7 +358,6 @@ struct ProfileParametersView: View {
     @ViewBuilder
     private var amplifierUnitRow: some View {
         let multiUnit = profile.maxUnits > 1
-        let ports = driverManager.txSourcePorts(destinationPort: 6517)
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Amplifier unit")
@@ -213,35 +387,12 @@ struct ProfileParametersView: View {
             Text(multiUnit
                  ? "Up to \(profile.maxUnits) units chain in one auditorium, each carrying the "
                    + "next block of channels. Selecting a unit shifts this driver's flows to that "
-                   + "unit's source ports"
-                   + (ports.isEmpty ? "." : ": \(ports.map(String.init).joined(separator: ", ")) "
-                      + "(with 6517 as the destination port).")
+                   + "unit's own source ports — see below."
                  : "\(profile.name) is a single-unit profile — nothing to select.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private var channelsRow: some View {
-        parameterRow(
-            "Channels",
-            value: "\(driverManager.totalRxChannelCount) in / \(driverManager.totalTxChannelCount) out"
-                + (profile.maxTotalChannels > 0 ? " (max \(profile.maxTotalChannels))" : ""),
-            locked: false,
-            note: {
-                switch profile.direction {
-                case .receiveOnly:
-                    return "\(profile.name) is receive-only — the output selector is locked. "
-                        + "Set the input count on the main window."
-                case .transmitOnly:
-                    return "\(profile.name) is transmit-only — the input selector is locked. "
-                        + "Set the output count on the main window."
-                case .any:
-                    return "Set both counts on the main window."
-                }
-            }()
-        )
     }
 
     // MARK: - Building blocks
