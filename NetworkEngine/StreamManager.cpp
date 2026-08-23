@@ -841,8 +841,15 @@ std::unique_ptr<RTPTransmitter> StreamManager::createTransmitter(
     const std::string& networkInterface,
     uint16_t sourcePort
 ) {
+    // Mark outgoing audio with whatever DSCP the active profile documents
+    // for its gear (-1 = nothing documented, leave the socket unmarked).
+    // This is the one place the profiles' recommendedDscp actually reaches
+    // the wire — see CompatibilityProfile::recommendedDscp.
+    const auto profile = CompatibilityProfile::forKind(profileKind_.load(std::memory_order_relaxed));
+
     // Transmitters read audio from OUTPUT buffers (Core Audio → Network)
-    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface, sourcePort);
+    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface,
+                                            sourcePort, profile.recommendedDscp);
 }
 
 //

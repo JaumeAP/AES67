@@ -289,7 +289,7 @@ private:
         const ChannelMapping& mapping,
         const std::string& networkInterface = "",
         uint16_t sourcePort = 0
-    );
+    );  // dscp comes from the active profile, read inside
 
     // Callback invocation
     void notifyStreamAdded(const StreamInfo& info);

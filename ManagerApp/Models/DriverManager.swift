@@ -1082,7 +1082,8 @@ class DriverManager: ObservableObject {
                      + "has moved it should use the AES67 baseline profile instead. Dante marks "
                      + "audio DSCP EF/46 and PTP CS7/56, where standard AES67 gear marks PTP 46 "
                      + "— a documented QoS conflict to watch for on shared networks, though "
-                     + "this driver applies no marking of its own either way.",
+                     + "this driver marks its own transmit traffic with Dante's audio "
+                     + "value, 46.",
               domainIsFixed: true, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
@@ -1148,7 +1149,8 @@ class DriverManager: ObservableObject {
                      + "matches the real device (confirmed by the CP950/CP950A manual): one "
                      + "multicast address, fixed RTP destination port, source port stepped per "
                      + "8-channel flow — see StreamManager::createTxStreamFlows(). Same DSCP "
-                     + "note as CP850: factory default is EF/46 but not actually applied. PTP "
+                     + "note as CP850: factory default EF/46, which this driver applies to "
+                     + "its own transmit sockets. PTP "
                      + "domain ships at 109; factory-default destination multicast address "
                      + "239.81.83.67 — both commonly changed per auditorium in multi-screen "
                      + "installs, same as CP950/CP950A above. This driver is always PTP master "

@@ -19,13 +19,15 @@ RTPTransmitter::RTPTransmitter(
     const ChannelMapping& mapping,
     DeviceChannelBuffers& deviceChannels,
     const std::string& networkInterface,
-    uint16_t sourcePort
+    uint16_t sourcePort,
+    int dscp
 )
     : sdp_(sdp)
     , mapping_(mapping)
     , deviceChannels_(deviceChannels)
     , networkInterface_(networkInterface)
     , sourcePort_(sourcePort)
+    , dscp_(dscp)
 {
     std::memset(&stats_, 0, sizeof(stats_));
 
@@ -77,7 +79,7 @@ bool RTPTransmitter::start() {
 
     // Open RTP transmitter socket
     const char* ifaceIP = networkInterface_.empty() ? nullptr : networkInterface_.c_str();
-    if (!rtpSocket_.openTransmitter(sdp_.connectionAddress.c_str(), sdp_.port, ifaceIP, sourcePort_)) {
+    if (!rtpSocket_.openTransmitter(sdp_.connectionAddress.c_str(), sdp_.port, ifaceIP, sourcePort_, dscp_)) {
         AES67_LOGF("RTPTransmitter::start: socket open failed for %s:%u iface=%s (stream=%s)",
                    sdp_.connectionAddress.c_str(), sdp_.port,
                    networkInterface_.empty() ? "ANY" : networkInterface_.c_str(),
