@@ -393,16 +393,30 @@ struct ProfileParametersView: View {
                 Text("Device sample rate")
                     .frame(width: 220, alignment: .leading)
                 if lock == .free {
+                    // Always include the device's current rate as an option,
+                    // even if the profile wouldn't list it (e.g. the device
+                    // came up at 192 kHz from a prior session and no profile
+                    // permits it) — a SwiftUI Picker whose selection isn't
+                    // among its tags shows a blank and logs a warning.
+                    let options: [Double] = {
+                        var r = driverManager.selectableSampleRates
+                        if !r.contains(driverManager.currentDeviceSampleRate) {
+                            r.append(driverManager.currentDeviceSampleRate)
+                            r.sort()
+                        }
+                        return r
+                    }()
                     Picker("", selection: Binding(
                         get: { driverManager.currentDeviceSampleRate },
                         set: { _ = driverManager.setDeviceSampleRate($0) }
                     )) {
-                        ForEach(driverManager.selectableSampleRates, id: \.self) { rate in
-                            Text("\(Int(rate) / 1000) kHz").tag(rate)
+                        ForEach(options, id: \.self) { rate in
+                            let permitted = driverManager.selectableSampleRates.contains(rate)
+                            Text("\(Int(rate) / 1000) kHz" + (permitted ? "" : " (not in profile)")).tag(rate)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 140)
+                    .frame(width: 200)
                 } else {
                     Text("\(Int(driverManager.currentDeviceSampleRate) / 1000) kHz")
                         .foregroundColor(.secondary)
