@@ -45,6 +45,7 @@ target_compile_features(TestRingBuffer PRIVATE cxx_std_17)
 add_executable(TestRTPReceiver
     TestRTPReceiver.cpp
     ../NetworkEngine/RTP/RTPReceiver.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
     ../NetworkEngine/NetworkUtils.cpp
     ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
@@ -62,10 +63,13 @@ target_include_directories(TestRTPReceiver PRIVATE
 
 target_compile_features(TestRTPReceiver PRIVATE cxx_std_17)
 
+target_link_libraries(TestRTPReceiver PRIVATE "-framework Accelerate")
+
 # Test: RTP Transmitter
 add_executable(TestRTPTransmitter
     TestRTPTransmitter.cpp
     ../NetworkEngine/RTP/RTPTransmitter.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
     ../NetworkEngine/NetworkUtils.cpp
     ../Driver/SDPParser.cpp
@@ -79,6 +83,8 @@ target_include_directories(TestRTPTransmitter PRIVATE
 )
 
 target_compile_features(TestRTPTransmitter PRIVATE cxx_std_17)
+
+target_link_libraries(TestRTPTransmitter PRIVATE "-framework Accelerate")
 
 # Test: PTP Clock
 add_executable(TestPTPClock
@@ -250,6 +256,7 @@ add_executable(TestIntegrationAudioPath
     TestIntegrationAudioPath.cpp
     ../NetworkEngine/RTP/RTPReceiver.cpp
     ../NetworkEngine/RTP/RTPTransmitter.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
     ../NetworkEngine/NetworkUtils.cpp
     ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
@@ -267,6 +274,17 @@ target_include_directories(TestIntegrationAudioPath PRIVATE
 
 target_compile_features(TestIntegrationAudioPath PRIVATE cxx_std_17)
 
+target_link_libraries(TestIntegrationAudioPath PRIVATE "-framework Accelerate")
+
+# Test: PCM Codec (float<->L16/L24, interleave) — pins the DSP behaviour
+add_executable(TestPCMCodec
+    TestPCMCodec.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+)
+target_include_directories(TestPCMCodec PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_features(TestPCMCodec PRIVATE cxx_std_17)
+target_link_libraries(TestPCMCodec PRIVATE "-framework Accelerate")
+
 # Add tests to CTest
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
@@ -279,6 +297,7 @@ add_test(NAME PTPMaster COMMAND TestPTPMaster)
 add_test(NAME CompatibilityProfile COMMAND TestCompatibilityProfile)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME Resampling COMMAND TestResampling)
+add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)

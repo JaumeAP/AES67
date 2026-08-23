@@ -6,6 +6,7 @@
 
 #include "RTPTransmitter.h"
 #include "SimpleRTP.h"
+#include "PCMCodec.h"
 #include "../../Driver/DebugLog.h"
 #include <cstring>
 #include <random>
@@ -254,9 +255,8 @@ bool RTPTransmitter::readDeviceChannels(float* interleavedAudio, size_t frameCou
         }
 
         // Interleave this channel into output
-        for (size_t frame = 0; frame < frameCount; ++frame) {
-            interleavedAudio[frame * sdp_.numChannels + streamChannel] = channelBuffer[frame];
-        }
+        interleaveChannel(channelBuffer, interleavedAudio, frameCount,
+                          sdp_.numChannels, streamChannel);
     }
 
     // Return false if we had underrun (indicates audio not ready)
@@ -264,34 +264,13 @@ bool RTPTransmitter::readDeviceChannels(float* interleavedAudio, size_t frameCou
 }
 
 void RTPTransmitter::encodeL16(const float* audio, size_t frameCount, uint8_t* payload) {
-    // L16: 16-bit big-endian signed PCM
-    const size_t totalSamples = frameCount * sdp_.numChannels;
-
-    for (size_t i = 0; i < totalSamples; ++i) {
-        // Clamp to [-1.0, 1.0] and convert to int16
-        float value = std::max(-1.0f, std::min(1.0f, audio[i]));
-        int16_t pcmSample = static_cast<int16_t>(value * 32767.0f);
-
-        // Big-endian encoding
-        payload[i * 2 + 0] = (pcmSample >> 8) & 0xFF;
-        payload[i * 2 + 1] = pcmSample & 0xFF;
-    }
+    // vDSP-accelerated on Apple, scalar fallback elsewhere — identical
+    // bytes either way, pinned by TestPCMCodec. See PCMCodec.h.
+    encodeL16BE(audio, frameCount * sdp_.numChannels, payload);
 }
 
 void RTPTransmitter::encodeL24(const float* audio, size_t frameCount, uint8_t* payload) {
-    // L24: 24-bit big-endian signed PCM
-    const size_t totalSamples = frameCount * sdp_.numChannels;
-
-    for (size_t i = 0; i < totalSamples; ++i) {
-        // Clamp to [-1.0, 1.0] and convert to int32 (24-bit range)
-        float value = std::max(-1.0f, std::min(1.0f, audio[i]));
-        int32_t pcmSample = static_cast<int32_t>(value * 8388607.0f); // 2^23 - 1
-
-        // Big-endian 24-bit encoding (only write 3 bytes)
-        payload[i * 3 + 0] = (pcmSample >> 16) & 0xFF;
-        payload[i * 3 + 1] = (pcmSample >> 8) & 0xFF;
-        payload[i * 3 + 2] = pcmSample & 0xFF;
-    }
+    encodeL24BE(audio, frameCount * sdp_.numChannels, payload);
 }
 
 void RTPTransmitter::sendPacket(const uint8_t* payload, size_t payloadSize, uint32_t timestamp) {
