@@ -115,3 +115,85 @@ and Unknown accuracy instead of 13 and Within1Microsecond. The driver
 therefore advertises itself as a poor clock and BMCA lets a better one
 win, rather than continuing to claim a reference it no longer has. The UI
 warning was added so the user can see why.
+
+
+---
+
+# Appendix: taking the AudioServer bundle apart
+
+Asked to analyse `~/projects/Bundles/AUDIOSERVER_CONTENTS` properly and
+find where the clock comes out. Done; the conclusion above survives, but
+now with architectural evidence instead of a knowledge-base citation, and
+one new negative finding worth having.
+
+## The architecture
+
+    HDX card ──IOKit──▶ AvidAudioServer ──XPC──▶ com.avid.AvidAudioPlugin ──▶ CoreAudio
+              (FPGA)     (userspace daemon)       (HAL plug-in in coreaudiod)
+
+Evidence, all from the bundle itself:
+
+- `AvidAudioServer` links `IOKit`, `CoreAudio`, and Avid's own `DSI`,
+  `DHS`, `DirectIO` and `DFW` frameworks (`otool -L`).
+- `DSI` ("Digidesign System Interface") is where hardware register access
+  lives — its symbols name the actual FPGAs: `CRitzHal`, `CTophatHal`,
+  `IZetaTIDSP_HAL`, `BerlinRitzRegTypes`, plus firmware images shipped
+  alongside (`RitzFPGA_*.bin`, `TophatFPGA_*.bin`, `ZetaUnitImage.bin`).
+- The CoreAudio device is published by a *separate* bundle,
+  `com.avid.AvidAudioPlugin`, and the daemon talks to it over XPC
+  (`AvidCA_XPC`, `AvidXPC.mm`).
+
+So the CoreAudio device is a thin shim over a daemon that holds the
+hardware. When Pro Tools launches it takes the card directly through
+DAE/DirectIO, the daemon lets go, and the shim's device disappears. That
+is the mechanism behind the behaviour, not a policy someone could switch
+off.
+
+## Where the clock genuinely lives
+
+Inside `DSI`, as FPGA register state: `wordClockRateDetect`,
+`Sky_fpgaregs_WordClockRateDetect`, `userSyncOutRate`, `syncMode`,
+`ClockState`, and `eChangeClockSource` in the server binary.
+
+Unreachable, for two independent reasons: those are internal C++ symbols
+in a PACE-wrapped private framework with no headers, and while Pro Tools
+owns the card no other process can open the hardware anyway.
+
+Incidentally useful: `userSyncOutRate` and `wordClockRateDetect` are
+hardware-level confirmation that the sync-out path the word-clock routes
+depend on is real and rate-aware. See `../taking_clock_from_digilink.md`.
+
+## The one promising lead, measured and ruled out
+
+This machine has `ProToolsAudioBridge.driver` installed — Avid's virtual
+device for moving audio between Pro Tools and other applications *while
+Pro Tools is running*, which is exactly the window that's otherwise shut.
+Its binary contains `ProToolsAudioBridgeMasterClock_ModelUID` and
+`AAB_GetZeroTimeStamp`, which looked very much like a clock worth
+following.
+
+It isn't. Measured directly on this machine, all six Audio Bridge devices
+report:
+
+    kAudioDevicePropertyClockDomain = 0
+
+Zero is CoreAudio's own convention for "no independent hardware clock —
+this device rides on someone else's timing". The master-clock symbol is an
+internal timeline anchor for its own device, not a hardware reference it
+can lend out. (`Dolby Audio Bridge` reports 0 for the same reason.)
+
+Which means: audio can cross between Pro Tools and this driver through
+Audio Bridge while Pro Tools runs, but it crosses **unsynchronised** —
+whatever consumes it is rate-converting, not locking. For the room where
+the two sides sum, that is the drift problem, not a solution to it.
+
+Our clock source list already filters on a nonzero clock domain, so Audio
+Bridge is correctly absent from it. No code change came out of this
+analysis: the filter was right for reasons that now have a measurement
+behind them.
+
+## Verdict
+
+The bundle contains no way out. The clock leaves the HDX system through
+the interfaces' word clock and Loop Sync connectors, which is why the
+answer stays a hardware tap.
