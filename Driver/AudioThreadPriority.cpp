@@ -1,103 +1,103 @@
 #include "AudioThreadPriority.h"
 #include <mach/mach.h>
 #include <mach/mach_error.h>
+#include <mach/mach_time.h>
 #include <mach/thread_policy.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/resource.h>
-#include <errno.h>
-#include <cstring>
+#include <cstdint>
 #include <cstdio>
 
 namespace AES67 {
 
-bool AudioThreadPriority::configureForRealTime() {
-    return configureThreadForRealTime(pthread_self());
+namespace {
+
+// ns -> Mach absolute time. mach_timebase_info is a per-process constant;
+// cache it once instead of querying the kernel on every call.
+std::uint32_t millisToAbsolute(double ms) {
+    static mach_timebase_info_data_t tb = [] {
+        mach_timebase_info_data_t t{};
+        mach_timebase_info(&t);
+        return t;
+    }();
+    const double ns = ms * 1.0e6;
+    return static_cast<std::uint32_t>(ns * tb.denom / tb.numer);
 }
 
-bool AudioThreadPriority::configureThreadForRealTime(pthread_t thread) {
-    // On macOS, use mach thread policies for real-time audio
-    thread_extended_policy_data_t extendedPolicy;
-    thread_precedence_policy_data_t precedencePolicy;
-    thread_affinity_policy_data_t affinityPolicy;
+} // namespace
 
-    // Set extended policy for real-time constraints
-    extendedPolicy.timeshare = FALSE; // Don't timeshare - run at real-time priority
+bool AudioThreadPriority::configureForRealTime() {
+    // 1ms: what AES67 packets default to when the caller has no more
+    // specific figure (e.g. hasn't parsed an SDP yet).
+    return configureForRealTime(1.0);
+}
 
-    kern_return_t result = thread_policy_set(
+bool AudioThreadPriority::configureForRealTime(double periodMs) {
+    return configureThreadForRealTime(pthread_self(), periodMs);
+}
+
+bool AudioThreadPriority::configureThreadForRealTime(pthread_t thread, double periodMs) {
+    // THREAD_TIME_CONSTRAINT_POLICY: the Mach policy Apple documents for
+    // real-time audio work. It gives the scheduler an actual deadline
+    // (period/computation/constraint), unlike THREAD_EXTENDED_POLICY +
+    // THREAD_PRECEDENCE_POLICY, which only set a coarse priority hint.
+    // computation is a 50% budget of the period — the thread does network
+    // I/O and jitter-buffer bookkeeping, not just arithmetic, so leaving
+    // headroom matters more here than in a pure DSP callback.
+    thread_time_constraint_policy_data_t policy{};
+    policy.period      = millisToAbsolute(periodMs);
+    policy.computation = millisToAbsolute(periodMs * 0.5);
+    policy.constraint  = millisToAbsolute(periodMs);
+    policy.preemptible = 0; // kernel ignores this field, but it's the conventional value
+
+    const kern_return_t result = thread_policy_set(
         pthread_mach_thread_np(thread),
-        THREAD_EXTENDED_POLICY,
-        (thread_policy_t)&extendedPolicy,
-        THREAD_EXTENDED_POLICY_COUNT
+        THREAD_TIME_CONSTRAINT_POLICY,
+        (thread_policy_t)&policy,
+        THREAD_TIME_CONSTRAINT_POLICY_COUNT
     );
 
     if (result != KERN_SUCCESS) {
-        fprintf(stderr, "AES67 AudioThreadPriority: THREAD_EXTENDED_POLICY failed (kern_return=%d: %s), falling back to nice -20\n",
+        fprintf(stderr, "AES67 AudioThreadPriority: THREAD_TIME_CONSTRAINT_POLICY failed "
+                "(kern_return=%d: %s), falling back to nice -20\n",
                 result, mach_error_string(result));
-        // Fallback: try to set nice value
         setpriority(PRIO_PROCESS, 0, -20);
         return false;
     }
 
-    // Set precedence policy for priority
-    precedencePolicy.importance = 63; // High priority value (0-63)
+    // Deliberately not calling THREAD_AFFINITY_POLICY: Apple Silicon doesn't
+    // implement it (thread_policy_set returns KERN_NOT_SUPPORTED on every
+    // arm64 Mac) and it isn't part of Apple's real-time audio guidance
+    // anyway — THREAD_TIME_CONSTRAINT_POLICY above is what tells the
+    // scheduler this thread is real-time.
+    //
+    // Not joining a CoreAudio Audio Workgroup here either — that needs an
+    // os_workgroup_t obtained from the device's
+    // kAudioDevicePropertyIOThreadOSWorkgroup, which libASPL (this driver's
+    // AudioServerPlugIn wrapper) doesn't currently expose, and this class is
+    // also used by network-only threads with no device context at all (see
+    // Tools/AES67TestSender, AES67TestReceiver). Wiring it in would mean
+    // patching the libASPL submodule and threading a workgroup handle down
+    // from AES67IOHandler — real work, and not verifiable without a live
+    // AES67 device on real hardware. Tracked, not done here.
 
-    result = thread_policy_set(
-        pthread_mach_thread_np(thread),
-        THREAD_PRECEDENCE_POLICY,
-        (thread_policy_t)&precedencePolicy,
-        THREAD_PRECEDENCE_POLICY_COUNT
-    );
-
-    if (result != KERN_SUCCESS) {
-        fprintf(stderr, "AES67 AudioThreadPriority: THREAD_PRECEDENCE_POLICY failed (kern_return=%d: %s)\n",
-                result, mach_error_string(result));
-        return false;
-    }
-
-    // Optionally set affinity policy (could be used to pin to specific cores)
-    // This is optional and may not be needed for basic real-time audio
-    affinityPolicy.affinity_tag = 0; // Use default affinity
-
-    result = thread_policy_set(
-        pthread_mach_thread_np(thread),
-        THREAD_AFFINITY_POLICY,
-        (thread_policy_t)&affinityPolicy,
-        THREAD_AFFINITY_POLICY_COUNT
-    );
-
-    if (result != KERN_SUCCESS) {
-        fprintf(stderr, "AES67 AudioThreadPriority: THREAD_AFFINITY_POLICY failed (kern_return=%d: %s) - non-critical\n",
-                result, mach_error_string(result));
-    }
-
-    return result == KERN_SUCCESS;
+    return true;
 }
 
 void AudioThreadPriority::restoreNormalPriority() {
-    // Reset to normal scheduling
     thread_extended_policy_data_t extendedPolicy;
     extendedPolicy.timeshare = TRUE; // Timeshare - normal scheduling
-    
+
     thread_policy_set(
         mach_thread_self(),
         THREAD_EXTENDED_POLICY,
         (thread_policy_t)&extendedPolicy,
         THREAD_EXTENDED_POLICY_COUNT
     );
-    
+
     // Restore normal nice value
     setpriority(PRIO_PROCESS, 0, 0);
-}
-
-int AudioThreadPriority::getRecommendedSchedulingPolicy() {
-    // On macOS, we use Mach thread policies instead of POSIX scheduling
-    return SCHED_FIFO;  // This is for reference; actual implementation uses Mach
-}
-
-int AudioThreadPriority::getRecommendedPriority() {
-    // High priority for audio processing
-    return 63;  // Max priority for real-time audio on macOS
 }
 
 } // namespace AES67
