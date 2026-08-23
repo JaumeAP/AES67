@@ -3,7 +3,7 @@
 
 namespace AES67 {
 
-ClockAdjustmentController::ClockAdjustmentController(JitterBuffer& jitterBuffer,
+ClockAdjustmentController::ClockAdjustmentController(LockFreeCircularJitterBuffer& jitterBuffer,
                                                    Resampler& resampler,
                                                    double targetFillRatio,
                                                    double kp,
