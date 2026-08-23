@@ -49,7 +49,12 @@ void AES67IOHandler::OnReadClientInput(
     const UInt32 bytesPerFrame = cachedBytesPerFrame_;
     const UInt32 frameCount = (bytesPerFrame > 0) ? (bytesCount / bytesPerFrame) : 0;
 
-    if (frameCount == 0 || channelCount != kNumChannels) {
+    // kNumChannels is the ring buffer array's fixed capacity, not the
+    // device's channel count — that's configurable now
+    // (NetworkEngine/DeviceChannelSettings.h) and cached above as
+    // cachedChannelCount_. Anything within capacity is valid: processInput
+    // below only indexes inputBuffers[ch] for ch < channelCount.
+    if (frameCount == 0 || channelCount == 0 || channelCount > kNumChannels) {
         std::memset(bytes, 0, bytesCount);
         return;
     }
@@ -82,7 +87,9 @@ void AES67IOHandler::OnWriteClientOutput(
         return;
     }
 
-    if (channelCount != kNumChannels) {
+    // Same reasoning as OnReadClientInput above: capacity ceiling, not an
+    // exact match against a hardcoded device channel count.
+    if (channelCount == 0 || channelCount > kNumChannels) {
         return;
     }
 
