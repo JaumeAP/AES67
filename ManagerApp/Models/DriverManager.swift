@@ -151,15 +151,16 @@ class DriverManager: ObservableObject {
         }
     }
 
-    // MARK: - Driver Install / Uninstall (app-lifecycle bound)
+    // MARK: - Driver Install / Uninstall (switch-driven, not lifecycle-bound)
     //
     // This app carries its own copy of AES67Driver.driver, embedded at build
     // time into AES67Manager.app/Contents/Resources/ (see ManagerApp/build.sh).
-    // Installing/uninstalling on launch/quit means the driver is present in
-    // the HAL only while this app is actually running — there's no "leave it
-    // installed after quitting" mode. One admin-privileges prompt per launch,
-    // one per quit; that's the tradeoff of tying installation to app
-    // lifecycle rather than a persistent install step.
+    // Nothing here runs automatically on launch or quit: the main window has
+    // a switch (ContentView) bound to isDriverLoaded that calls
+    // setDriverInstalled() when the user flips it. Launch just reflects
+    // whatever's actually installed (checkDriverStatus(), called from
+    // init() below); quitting leaves the driver exactly as the last flip
+    // left it — no forced install or removal either way.
 
     private static let driverName = "AES67Driver.driver"
     private static let driverInstallPath = "/Library/Audio/Plug-Ins/HAL/\(driverName)"
@@ -175,9 +176,21 @@ class DriverManager: ObservableObject {
         return url
     }
 
+    /// Bound to the main window's install switch: true installs, false
+    /// uninstalls. isDriverLoaded is the source of truth for the switch's
+    /// position — this only triggers the side effect, checkDriverStatus()
+    /// afterwards is what actually moves the switch.
+    func setDriverInstalled(_ installed: Bool) {
+        if installed {
+            installDriver()
+        } else {
+            uninstallDriver()
+        }
+    }
+
     /// Installs this app's embedded driver into the HAL and restarts Core
-    /// Audio, replacing whatever was there before. Call once, at launch.
-    func installDriverOnLaunch() {
+    /// Audio, replacing whatever was there before.
+    func installDriver() {
         guard let source = embeddedDriverURL else {
             showAlert(title: "Driver Not Bundled",
                      message: "This build of AES67 Manager doesn't carry a driver to install — "
@@ -199,17 +212,16 @@ class DriverManager: ObservableObject {
         if let error = error {
             showAlert(title: "Install Failed",
                      message: "Could not install the AES67 driver: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.checkDriverStatus()
-            }
+        }
+        // Refresh either way: the switch should reflect what's actually
+        // there, not what we asked for.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.checkDriverStatus()
         }
     }
 
-    /// Removes the driver from the HAL and restarts Core Audio. Call once,
-    /// on quit — synchronous, so it finishes before the app actually
-    /// terminates (see AppDelegate.applicationWillTerminate).
-    func uninstallDriverOnQuit() {
+    /// Removes the driver from the HAL and restarts Core Audio.
+    func uninstallDriver() {
         let script = NSAppleScript(source: """
             do shell script "rm -rf '\(Self.driverInstallPath)' && \
             launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
@@ -218,9 +230,11 @@ class DriverManager: ObservableObject {
         script?.executeAndReturnError(&error)
 
         if let error = error {
-            // Best-effort: the app is quitting either way, but leave a
-            // record of why the driver may still be present.
-            NSLog("AES67 Manager: failed to uninstall driver on quit: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+            showAlert(title: "Uninstall Failed",
+                     message: "Could not remove the AES67 driver: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.checkDriverStatus()
         }
     }
 
