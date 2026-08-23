@@ -219,6 +219,11 @@ bool testCP850IsReceiveOnlyFromOurSide() {
     TEST_ASSERT(cp850.direction == ProfileDirection::ReceiveOnly,
                 "CP850 renders and sends over AES67, it doesn't accept AES67 input");
     TEST_ASSERT(cp850.maxTotalChannels == 64, "64 is the most the CP850 renders");
+    // Every profile in this family that documents a PTP domain default
+    // (DMA, CP950/CP950A, DAC3202) ships at 109 — CP850 shares it too.
+    TEST_ASSERT(cp850.recommendedPtpDomain == 109,
+                "CP850 should record the same factory-default PTP domain as the rest of the family (109)");
+    TEST_ASSERT(!cp850.domainIsFixed, "CP850's PTP domain isn't fixed — cinema installs set their own per auditorium");
 
     auto sdp = baselineSession();
     sdp.sampleRate = 96000.0; // DCI's higher rate, not part of AES67's own three

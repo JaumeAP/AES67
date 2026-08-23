@@ -981,6 +981,14 @@ class DriverManager: ObservableObject {
         /// that case, editable 0–127 otherwise.
         let domainIsFixed: Bool
         let fixedDomain: Int
+        /// Factory-default PTP domain this profile's real-world gear ships
+        /// with, or -1 if none is documented. Meaningless when
+        /// domainIsFixed is true. Unlike fixedDomain this is a starting
+        /// point, not a lock: AddStreamView's Stepper pre-fills with this
+        /// value but stays freely editable 0–127 — installers routinely
+        /// pick a different domain per auditorium (e.g. 109, 110, 111,
+        /// 112 for four screens on the same network) to avoid collisions.
+        let recommendedPtpDomain: Int
         /// Which way this driver may talk to the described gear. AddStreamView
         /// (RX only) disables itself under .transmitOnly.
         let direction: ProfileDirection
@@ -1004,7 +1012,7 @@ class DriverManager: ObservableObject {
               caveats: "Baseline. Accepts the three sample rates AES67 names; the device "
                      + "itself declares more (up to 384 kHz), which other AES67 gear may refuse. "
                      + "PTP domain fixed at 0.",
-              domainIsFixed: true, fixedDomain: 0,
+              domainIsFixed: true, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any),
         .init(id: "ravenna",
               name: "RAVENNA",
@@ -1013,7 +1021,7 @@ class DriverManager: ObservableObject {
                      + "configurable transmit packet time this driver doesn't have yet. "
                      + "RAVENNA's own additions — Bonjour discovery and stream redundancy — "
                      + "are not implemented.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any),
         .init(id: "st2110-30",
               name: "SMPTE ST 2110-30 (Level A)",
@@ -1022,7 +1030,7 @@ class DriverManager: ObservableObject {
                      + "stricter PTP than AES67, and this driver's PTP has never been verified "
                      + "against a real grandmaster. Enforces the parameters it can check; "
                      + "it is not a conformance claim.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any),
         .init(id: "dante",
               name: "Dante (AES67 mode)",
@@ -1031,7 +1039,7 @@ class DriverManager: ObservableObject {
                      + "(Dante Controller). Dante natively syncs with PTPv1; AES67 mode is what "
                      + "switches it to PTPv2, which is what this driver speaks. Enforces the "
                      + "239.69.0.0/16 multicast range Dante requires in AES67 mode.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any),
         .init(id: "cp850",
               name: "Dolby CP850 (Atmos Cinema Processor)",
@@ -1041,11 +1049,13 @@ class DriverManager: ObservableObject {
                      + "enablement to speak AES67 at all). Dolby's own documentation notes its "
                      + "factory-default DSCP marking is more traditional than typical Dante "
                      + "configs (EF/46) — this driver has a DSCP-setting function but nothing "
-                     + "calls it yet, so no marking is actually applied. No documented fixed "
-                     + "PTP domain; cinema installations set their own house domain (factory "
-                     + "default, not a requirement) — unlike CP950/CP950A/DMA/DAC3202, no "
-                     + "CP850-specific Dolby manual documents its AES67 mode's own PTP/"
-                     + "multicast defaults (a third-party interop guide confirms the mode is "
+                     + "calls it yet, so no marking is actually applied. PTP domain ships at "
+                     + "109, the same factory default as the rest of this Dolby family (not "
+                     + "fixed — cinema installations routinely set their own per auditorium, "
+                     + "e.g. 109/110/111/112 across multiple screens). Otherwise, unlike "
+                     + "CP950/CP950A/DMA/DAC3202, no CP850-specific Dolby manual documents "
+                     + "its AES67 mode's own multicast address default (a third-party "
+                     + "interop guide confirms the mode is "
                      + "real and where to enable it, System > Network > Dolby Atmos Connect "
                      + "tab, but its example uses custom non-Dolby values, not Dolby's own "
                      + "factory defaults), so these parameters remain inherited from that "
@@ -1054,7 +1064,7 @@ class DriverManager: ObservableObject {
                      + "under this profile — it never contends for grandmaster. Receive-only: "
                      + "this driver may only add RX streams under this profile, up to 64 "
                      + "channels total, the most the CP850 renders.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
         .init(id: "cp950",
               name: "Dolby CP950 / CP950A (Cinema Processor)",
@@ -1073,7 +1083,7 @@ class DriverManager: ObservableObject {
                      + "ships at the highest PTP priority in the chain and is meant to win "
                      + "grandmaster. Receive-only: this driver may only add RX streams under "
                      + "this profile, up to 64 channels total.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
         .init(id: "dac3202",
               name: "Dolby DAC3202 (Atmos Connect Interface)",
@@ -1088,7 +1098,7 @@ class DriverManager: ObservableObject {
                      + "installs, same as CP950/CP950A above. This driver is always PTP master "
                      + "under this profile. Transmit-only: this driver may only create TX "
                      + "streams under this profile, up to 32 channels total.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
         .init(id: "dma",
               name: "Dolby DMA (Multichannel Amplifier)",
@@ -1106,7 +1116,7 @@ class DriverManager: ObservableObject {
                      + "commonly set a different one per auditorium); factory-default "
                      + "destination multicast address 239.81.83.67. This driver is always PTP "
                      + "master under this profile, transmit-only.",
-              domainIsFixed: false, fixedDomain: 0,
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .transmitOnly, maxTotalChannels: 64, ptpRole: .forcedMaster),
     ]
 
