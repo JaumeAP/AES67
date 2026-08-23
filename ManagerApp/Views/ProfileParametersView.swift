@@ -174,6 +174,46 @@ struct ProfileParametersView: View {
             )
         }
 
+        section("Timing") {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Playout delay")
+                        .frame(width: 220, alignment: .leading)
+                    if ruledOut {
+                        Text("Unused")
+                            .foregroundColor(.secondary)
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Stepper(
+                            driverManager.playoutDelaySamples == 0
+                                ? "Default"
+                                : "\(driverManager.playoutDelaySamples) samples",
+                            value: Binding(
+                                get: { driverManager.playoutDelaySamples },
+                                set: { driverManager.playoutDelaySamples = $0; driverManager.saveAmplifierUnit() }
+                            ),
+                            in: 0...DriverManager.maxPlayoutDelaySamples,
+                            step: 48
+                        )
+                        .frame(width: 220)
+                    }
+                    Spacer()
+                }
+                Text(ruledOut
+                     ? "No receive streams under this profile."
+                     : "How much audio a receiver holds back before playing, as a cushion "
+                       + "against network jitter. Every sample of it is latency, so raise it "
+                       + "only as far as the dropouts need — 48 samples is 1 ms at 48 kHz. "
+                       + "Dolby calls the same control Safety Buffer. Applies to streams "
+                       + "added after the change.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+
         section("Receiving streams") {
             parameterRow(
                 "Source multicast address",
