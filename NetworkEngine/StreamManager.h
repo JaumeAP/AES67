@@ -85,6 +85,27 @@ public:
         txFlowPortOffset_.store(flows, std::memory_order_relaxed);
     }
 
+    /// Whether to allow streams locked to different PTP grandmasters to
+    /// coexist. Two streams disciplined by different grandmasters drift
+    /// against each other — slowly, and audibly long before anything looks
+    /// broken — so by default the second one is refused with the mismatch
+    /// named. The AES67 Linux daemon exposes the same escape hatch per
+    /// sink as `ignore_refclk_gmid`; this is driver-wide.
+    ///
+    /// Only streams that actually declare a grandmaster (SDP a=ts-refclk)
+    /// are compared. A stream that declares none is never refused on this
+    /// ground — silence isn't disagreement.
+    void setIgnoreRefClockMismatch(bool ignore) {
+        ignoreRefClockMismatch_.store(ignore, std::memory_order_relaxed);
+    }
+    bool getIgnoreRefClockMismatch() const {
+        return ignoreRefClockMismatch_.load(std::memory_order_relaxed);
+    }
+
+    /// The PTP grandmaster every current stream is locked to, or empty if
+    /// no stream has declared one. What canAddStream() compares against.
+    std::string getActiveGrandmaster() const;
+
     /// Which flavour of AoIP gear this driver is being pointed at. Every
     /// stream added from here on is validated against the profile's limits
     /// (canAddStream). Defaults to AES67, which imposes only AES67's own
@@ -296,6 +317,14 @@ private:
     void notifyStreamRemoved(const StreamInfo& info);
     void notifyStreamStatusChanged(const StreamInfo& info);
 
+    /// Records the grandmaster the first stream declares; later streams
+    /// are checked against it by canAddStream(). A stream declaring none
+    /// leaves it untouched.
+    void adoptGrandmaster(const std::string& grandmaster);
+
+    /// Clears it once no streams remain. Called with streamsMutex_ held.
+    void forgetGrandmasterIfNoStreams();
+
     // Configuration helpers
     void autoSaveIfEnabled();
     bool saveAllStreamsInternal();  // Internal version without locking
@@ -332,6 +361,15 @@ private:
     // setTxFlowPortOffset(). 0 = first (or only) unit, the behavior before
     // the selector existed.
     std::atomic<uint32_t> txFlowPortOffset_{0};
+
+    // Grandmaster of the streams currently open, and whether to police it.
+    // Its own mutex rather than streamsMutex_, for the same reason
+    // profileKind_ is atomic: canAddStream() is called both with
+    // streamsMutex_ held (addStream/createTxStream) and without it
+    // (getAddStreamError), so it can't take that lock itself.
+    mutable std::mutex refClockMutex_;
+    std::string activeGrandmaster_;
+    std::atomic<bool> ignoreRefClockMismatch_{false};
     std::map<StreamID, ManagedStream> streams_;
     mutable std::mutex streamsMutex_;
 
