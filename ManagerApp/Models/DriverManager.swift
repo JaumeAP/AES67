@@ -1419,6 +1419,48 @@ class DriverManager: ObservableObject {
 
     @Published var discoveredSessions: [DiscoveredSession] = []
 
+    // MARK: - Device sample rate selection
+    //
+    // Three states, because there are three genuinely different reasons the
+    // rate might not be the user's to pick:
+    //   - free: nothing constrains it
+    //   - fixed by profile: the active profile permits exactly one rate
+    //   - fixed by the stream: audio is already arriving, and the device
+    //     must match what it receives
+    // The third is why this is phrased as "follows what it receives" rather
+    // than "locked": nothing is refusing the change, the answer is simply
+    // already decided by the sender.
+
+    enum SampleRateLock: Equatable {
+        case free
+        case byProfile(String)   // profile name
+        case byStream(String)    // stream name
+    }
+
+    /// Rates this device could be set to under the active profile — the
+    /// device's own list narrowed by what the profile accepts.
+    var selectableSampleRates: [Double] {
+        let allowed = Set(activeCompatibilityProfile.allowedSampleRates.map(Double.init))
+        let rates = Self.supportedSampleRates.filter { allowed.contains($0) }
+        // A profile listing rates this device doesn't offer would otherwise
+        // leave nothing selectable at all; fall back to the device's own.
+        return rates.isEmpty ? Self.supportedSampleRates : rates
+    }
+
+    /// Why the sample rate can't be changed right now, if it can't.
+    var sampleRateLock: SampleRateLock {
+        // A running stream wins: the device has to match what's arriving,
+        // and changing it underneath would break the stream that's already
+        // working.
+        if let stream = streams.first(where: { $0.isActive }) {
+            return .byStream(stream.name)
+        }
+        if selectableSampleRates.count == 1 {
+            return .byProfile(activeCompatibilityProfile.name)
+        }
+        return .free
+    }
+
     /// Sessions currently announced, straight from the running driver.
     /// Empty when the driver isn't loaded, is an older build without this
     /// property, or simply hasn't heard any announcements yet — none of

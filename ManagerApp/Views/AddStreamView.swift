@@ -186,8 +186,15 @@ struct AddStreamView: View {
                         HStack {
                             Text("Sample Rate")
                             Spacer()
+                            // Only the rates the active profile accepts — a
+                            // stream at any other rate would be refused by
+                            // the driver anyway, so offering it here would
+                            // just be a longer route to the same rejection.
                             Picker("", selection: $sampleRate) {
-                                ForEach(sampleRates, id: \.self) { rate in
+                                ForEach(sampleRates.filter {
+                                    driverManager.activeCompatibilityProfile
+                                        .allowedSampleRates.contains($0)
+                                }, id: \.self) { rate in
                                     HStack {
                                         Text("\(rate) Hz")
                                         if rate != Int(driverManager.currentDeviceSampleRate) {
