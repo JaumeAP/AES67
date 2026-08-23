@@ -75,12 +75,20 @@ enum class CompatibilityProfileKind {
     /// channels. Same constraint set as CP850; they're two ends of one
     /// link, not two different networks.
     DAC3202,
-    /// PLACEHOLDER — exact device/spec not yet identified; audio parameters
-    /// (sample rates, ptime, encoding, DSCP) are copied from DAC3202 as a
-    /// stand-in until looked up. What's already fixed, per explicit
-    /// instruction rather than a spec: this driver is always PTP master
-    /// (like DAC3202) and transmits 32 channels total (also like DAC3202,
-    /// but under different — still to be researched — parameters).
+    /// Dolby Multichannel Amplifier — like DAC3202, another downstream
+    /// endpoint on a Dolby Atmos Connect link; this driver plays the
+    /// cinema-processor role sending to it, so transmit-only and always PTP
+    /// master, confirmed (not assumed) by its manual
+    /// (Docs/references/dolby_multichannel_amplifier_manual.pdf): the
+    /// amplifier's own PTP clock priority is fixed at 255 (lowest) and it
+    /// is documented as "strictly a downstream device" that never
+    /// originates timing. Its Atmos Connect port scheme also differs from
+    /// this driver's own flow splitter — see CompatibilityProfile.cpp's DMA
+    /// case for specifics. Covers every real model (DMA16301/16302,
+    /// DMA24300/24302, DMA32300/32301) as one profile: unlike CP850/
+    /// DAC3202, the output channel count isn't fixed here — it's whatever
+    /// the user picks with ManagerApp's Output channel-count selector, up
+    /// to this profile's own maxTotalChannels ceiling.
     DMA,
 };
 
@@ -136,6 +144,17 @@ struct CompatibilityProfile {
 
     /// Meaningful only when domainIsFixed — the one value streams must use.
     uint8_t fixedDomain{0};
+
+    /// PTP domain this profile's real-world gear defaults to when the
+    /// domain isn't fixed (domainIsFixed == false) — e.g. 109 for the Dolby
+    /// Multichannel Amplifier (DMA) family, confirmed by its manual
+    /// (Docs/references/dolby_multichannel_amplifier_manual.pdf, §3.2.4
+    /// "PTP Domain Number"). -1 means no documented recommendation; the
+    /// field is meaningless when domainIsFixed is true (fixedDomain is the
+    /// only value that matters then). Informational only, same as
+    /// recommendedDscp below — not applied by AddStreamView's Stepper,
+    /// which still starts free at 0 regardless.
+    int recommendedPtpDomain{-1};
 
     /// Which PTP role this driver must take while this profile is active.
     /// See PTPRoleConstraint. Not enforced here — informational for
