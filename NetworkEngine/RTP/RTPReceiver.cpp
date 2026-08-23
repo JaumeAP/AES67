@@ -38,8 +38,8 @@ RTPReceiver::RTPReceiver(
 
     // Calculate packet interval from SDP (mirrors RTPTransmitter constructor)
     // Priority: ptime field > framecount/sampleRate > 1ms fallback
-    if (sdp_.ptime > 0) {
-        packetInterval_ = std::chrono::microseconds(sdp_.ptime * 1000);
+    if (sdp_.ptimeUs > 0) {
+        packetInterval_ = std::chrono::microseconds(sdp_.ptimeUs);
     } else if (sdp_.framecount > 0 && sdp_.sampleRate > 0) {
         uint64_t intervalUs = (static_cast<uint64_t>(sdp_.framecount) * 1000000ULL) / sdp_.sampleRate;
         packetInterval_ = std::chrono::microseconds(intervalUs);
@@ -124,7 +124,7 @@ bool RTPReceiver::start() {
     running_ = true;
     receiveThread_ = std::thread([this]() {
         // Real cycle length is the stream's own packet time, not a guess.
-        if (!AudioThreadPriority::configureForRealTime(static_cast<double>(sdp_.ptime))) {
+        if (!AudioThreadPriority::configureForRealTime(sdp_.ptimeUs / 1000.0)) {
             AES67_LOGF("RTPReceiver: failed to set RT priority on receive thread (stream=%s)",
                        sdp_.sessionName.c_str());
         }
@@ -133,7 +133,7 @@ bool RTPReceiver::start() {
 
     // Start consume thread (consumer - reads from jitter buffer and writes to ring buffers)
     consumeThread_ = std::thread([this]() {
-        if (!AudioThreadPriority::configureForRealTime(static_cast<double>(sdp_.ptime))) {
+        if (!AudioThreadPriority::configureForRealTime(sdp_.ptimeUs / 1000.0)) {
             AES67_LOGF("RTPReceiver: failed to set RT priority on consume thread (stream=%s)",
                        sdp_.sessionName.c_str());
         }

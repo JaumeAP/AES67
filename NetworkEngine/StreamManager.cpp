@@ -144,7 +144,7 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     managed.info.payloadType = sdp.payloadType;
 
     // Timing
-    managed.info.ptime = sdp.ptime;
+    managed.info.ptime = sdp.ptimeUs;  // StreamInfo::ptime is microseconds
     managed.info.framecount = sdp.framecount;
 
     // PTP
@@ -990,7 +990,7 @@ bool StreamManager::loadSavedStreams() {
         managed.info.sampleRate = config.sdp.sampleRate;
         managed.info.numChannels = config.sdp.numChannels;
         managed.info.payloadType = config.sdp.payloadType;
-        managed.info.ptime = config.sdp.ptime;
+        managed.info.ptime = config.sdp.ptimeUs;
         managed.info.framecount = config.sdp.framecount;
         managed.info.ptp.domain = config.sdp.ptpDomain;
         managed.info.isActive = true;

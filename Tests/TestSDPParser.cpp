@@ -37,7 +37,7 @@ a=framecount:48
     assert(session->sampleRate == 48000);
     assert(session->numChannels == 8);
     assert(session->encoding == "L24");
-    assert(session->ptime == 1);
+    assert(session->ptimeUs == 1000);
     assert(session->framecount == 48);
 
     std::cout << "✓ PASSED\n";
@@ -112,6 +112,12 @@ a=framecount:48
     auto session96 = SDPParser::parseString(sdp96);
     assert(session96.has_value());
     assert(session96->sampleRate == 96000);
+    // a=ptime:0.5 — sub-millisecond, and legal SDP. This used to parse to
+    // zero: ptime was held as integer milliseconds and read with stoul,
+    // which stops at the decimal point. The test file has carried these
+    // fractional values since before that was noticed, but only ever
+    // asserted the sample rate.
+    assert(session96->ptimeUs == 500);
 
     // Test 192kHz
     std::string sdp192 = R"(v=0
@@ -128,6 +134,39 @@ a=framecount:48
     auto session192 = SDPParser::parseString(sdp192);
     assert(session192.has_value());
     assert(session192->sampleRate == 192000);
+    assert(session192->ptimeUs == 250);
+
+    // ST 2110-30 Levels B and C run at 125 us — the value this driver's
+    // transmitter can now express, and the reason packet time is held in
+    // microseconds at all.
+    std::string sdp125 = R"(v=0
+o=- 1729346400 0 IN IP4 192.168.1.100
+s=125us Test
+t=0 0
+m=audio 5004 RTP/AVP 96
+c=IN IP4 239.69.83.1/32
+a=rtpmap:96 L24/48000/8
+a=ptime:0.125
+a=framecount:6
+)";
+    auto session125 = SDPParser::parseString(sdp125);
+    assert(session125.has_value());
+    assert(session125->ptimeUs == 125);
+
+    // Round trip: a fractional packet time must survive being written back
+    // out as SDP, not be rounded to "0" or "1".
+    std::string regenerated = SDPParser::generate(*session125);
+    assert(regenerated.find("a=ptime:0.125") != std::string::npos);
+    auto reparsed = SDPParser::parseString(regenerated);
+    assert(reparsed.has_value());
+    assert(reparsed->ptimeUs == 125);
+
+    // A whole millisecond must still be written the plain way every other
+    // implementation writes it, not as "1.000".
+    auto whole = SDPParser::parseString(sdp96);
+    assert(whole.has_value());
+    whole->ptimeUs = 1000;
+    assert(SDPParser::generate(*whole).find("a=ptime:1\n") != std::string::npos);
 
     std::cout << "✓ PASSED\n";
 }
@@ -165,7 +204,7 @@ void testSDPGeneration() {
     session.sampleRate = 48000;
     session.numChannels = 8;
     session.encoding = "L24";
-    session.ptime = 1;
+    session.ptimeUs = 1000;
     session.framecount = 48;
     session.ptpDomain = 0;
 

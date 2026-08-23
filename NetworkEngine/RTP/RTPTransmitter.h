@@ -112,6 +112,9 @@ private:
     // Timing
     std::chrono::steady_clock::time_point startTime_;
     std::chrono::microseconds packetInterval_;
+    /// Samples per packet, derived alongside packetInterval_ so the two
+    /// always agree — see the constructor.
+    uint32_t samplesPerPacket_{48};
 
     // Audio buffer (reused to avoid allocations)
     std::vector<float> audioBuffer_;

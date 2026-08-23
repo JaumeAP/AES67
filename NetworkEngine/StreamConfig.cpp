@@ -258,7 +258,7 @@ std::string StreamConfigManager::sdpToJSON(const SDPSession& sdp) {
     json << "        \"encoding\": \"" << escapeJSON(sdp.encoding) << "\",\n";
     json << "        \"sampleRate\": " << sdp.sampleRate << ",\n";
     json << "        \"numChannels\": " << sdp.numChannels << ",\n";
-    json << "        \"ptime\": " << sdp.ptime << ",\n";
+    json << "        \"ptimeUs\": " << sdp.ptimeUs << ",\n";
     json << "        \"framecount\": " << sdp.framecount << ",\n";
     json << "        \"sourceAddress\": \"" << escapeJSON(sdp.sourceAddress) << "\",\n";
     json << "        \"ptpDomain\": " << sdp.ptpDomain << ",\n";
@@ -480,7 +480,15 @@ std::optional<SDPSession> StreamConfigManager::sdpFromJSON(const std::string& js
     if (auto val = extractStringField(json, "encoding")) sdp.encoding = *val;
     if (auto val = extractUInt32Field(json, "sampleRate")) sdp.sampleRate = static_cast<double>(*val);
     if (auto val = extractUInt16Field(json, "numChannels")) sdp.numChannels = *val;
-    if (auto val = extractUInt32Field(json, "ptime")) sdp.ptime = *val;
+    // "ptimeUs" is the current field. "ptime" is what files written
+    // before packet time moved to microseconds hold, in milliseconds —
+    // read it so an existing streams.json keeps working rather than
+    // silently loading a zero packet time.
+    if (auto val = extractUInt32Field(json, "ptimeUs")) {
+        sdp.ptimeUs = *val;
+    } else if (auto legacyMs = extractUInt32Field(json, "ptime")) {
+        sdp.ptimeUs = *legacyMs * 1000;
+    }
     if (auto val = extractUInt32Field(json, "framecount")) sdp.framecount = *val;
     if (auto val = extractStringField(json, "sourceAddress")) sdp.sourceAddress = *val;
     if (auto val = extractIntField(json, "ptpDomain")) sdp.ptpDomain = *val;
