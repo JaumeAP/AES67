@@ -54,15 +54,20 @@ struct ContentView: View {
 
                 Spacer()
 
-                // Status indicator
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(driverManager.isDriverLoaded ? Color.green : Color.red)
-                        .frame(width: 8, height: 8)
+                // Install switch: on installs the driver into the HAL, off
+                // removes it. Reflects isDriverLoaded, which
+                // checkDriverStatus() keeps in sync with what's actually on
+                // disk — not just whatever this switch was last set to.
+                Toggle(isOn: Binding(
+                    get: { driverManager.isDriverLoaded },
+                    set: { driverManager.setDriverInstalled($0) }
+                )) {
                     Text(driverManager.isDriverLoaded ? "Driver Active" : "Driver Not Found")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                .toggleStyle(.switch)
+                .help("Install or remove the AES67 driver from Core Audio")
             }
         }
         .sheet(isPresented: $driverManager.showAddStreamSheet) {
