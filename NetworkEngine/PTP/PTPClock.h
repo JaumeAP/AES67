@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../../Shared/Types.h"
+#include "PTPDiagnostics.h"
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -155,6 +156,12 @@ public:
     // Get master clock ID
     std::string getMasterClockID() const;
 
+    /// Full diagnostic snapshot — role, competitor, message counts, not just
+    /// the individual fields the getters above expose. What
+    /// AES67Device's custom property (Shared/CustomProperties.h) actually
+    /// serves to ManagerApp.
+    PTPDiagnostics getDiagnostics() const;
+
     // Get clock quality
     uint8_t getClockClass() const;
     uint8_t getClockAccuracy() const;
@@ -291,6 +298,10 @@ public:
      * @return Drift ratio (1.0 = no drift)
      */
     double getClockDriftRatio(int domain);
+
+    /// Full diagnostic snapshot for a domain, or a default (disconnected,
+    /// slave) PTPDiagnostics{} if that domain has no clock instance.
+    PTPDiagnostics getDiagnostics(int domain);
 
 private:
     PTPClockManager();
