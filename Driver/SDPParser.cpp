@@ -468,8 +468,11 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
     // ptime
     attributes.push_back("a=ptime:" + formatPTimeMs(session.ptimeUs));
 
-    // framecount
-    attributes.push_back("a=framecount:" + std::to_string(session.framecount));
+    // framecount — only when we actually have one; 0 means "derive from
+    // ptime", and emitting "a=framecount:0" would be a malformed line.
+    if (session.framecount > 0) {
+        attributes.push_back("a=framecount:" + std::to_string(session.framecount));
+    }
 
     // direction
     attributes.push_back("a=" + session.direction);

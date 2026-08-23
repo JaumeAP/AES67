@@ -30,12 +30,23 @@ RTPReceiver::RTPReceiver(
                                           : LockFreeCircularJitterBuffer::DEFAULT_BUFFER_SIZE)
     , networkInterface_(networkInterface)
 {
+    // Samples per packet, derived the SAME way RTPTransmitter does — this
+    // must match, or the receiver consumes at a different cadence than the
+    // sender produces and starves or overruns. Explicit a=framecount wins
+    // when present; otherwise derive from ptimeUs (a bare sub-millisecond
+    // a=ptime with no framecount — ST 2110-30 Level B's 125 us — landed on
+    // the wrong value while framecount defaulted to 48 and was treated as
+    // "present"). Never zero.
+    const uint64_t rate = std::max<uint32_t>(sdp_.sampleRate, 1);
+    uint32_t samplesPerPacket = sdp_.framecount > 0
+        ? sdp_.framecount
+        : static_cast<uint32_t>((rate * sdp_.ptimeUs) / 1000000ULL);
+    if (samplesPerPacket == 0) samplesPerPacket = 1;
+
     // Playout delay, expressed the way installers think about it (samples)
-    // and applied the way this receiver can actually honour it (packets of
-    // cushion before paced consumption begins). Converted here rather than
-    // stored, because the packet count is what the pre-fill loop compares.
+    // and applied the way this receiver can honour it (packets of cushion
+    // before paced consumption begins).
     if (playoutDelaySamples > 0) {
-        const uint32_t samplesPerPacket = sdp_.framecount > 0 ? sdp_.framecount : 48;
         const size_t packets = (playoutDelaySamples + samplesPerPacket - 1) / samplesPerPacket;
         prefillPacketCount_ = std::max<size_t>(packets, 1); // a zero cushion starves immediately
     }
@@ -48,16 +59,11 @@ RTPReceiver::RTPReceiver(
     const size_t maxSamples = maxFrames * sdp_.numChannels;
     audioBuffer_.resize(maxSamples);
 
-    // Calculate packet interval from SDP (mirrors RTPTransmitter constructor)
-    // Priority: ptime field > framecount/sampleRate > 1ms fallback
-    if (sdp_.ptimeUs > 0) {
-        packetInterval_ = std::chrono::microseconds(sdp_.ptimeUs);
-    } else if (sdp_.framecount > 0 && sdp_.sampleRate > 0) {
-        uint64_t intervalUs = (static_cast<uint64_t>(sdp_.framecount) * 1000000ULL) / sdp_.sampleRate;
-        packetInterval_ = std::chrono::microseconds(intervalUs);
-    } else {
-        packetInterval_ = std::chrono::microseconds(1000); // 1ms default for AES67
-    }
+    // Interval derived FROM samplesPerPacket so the two always agree, same
+    // as the transmitter — consume one packet's worth of samples per
+    // interval.
+    const uint64_t intervalUs = (static_cast<uint64_t>(samplesPerPacket) * 1000000ULL) / rate;
+    packetInterval_ = std::chrono::microseconds(std::max<uint64_t>(intervalUs, 1));
 
     // Resolve network interface name to IP address
     if (!networkInterface_.empty()) {

@@ -574,6 +574,15 @@ struct PTPDiagnosticView: View {
                                 ForEach(clockSources) { option in
                                     Text(option.name).tag(option.id)
                                 }
+                                // Keep the persisted selection representable
+                                // even when its device isn't present right
+                                // now (Pro Tools claiming HDX is the common
+                                // case) — otherwise the Picker's selection has
+                                // no matching tag and renders blank.
+                                if driverManager.selectedClockSourceMissing {
+                                    Text("\(driverManager.ptpLockToDeviceUID) (not connected)")
+                                        .tag(driverManager.ptpLockToDeviceUID)
+                                }
                             }
                             .disabled(clockSources.isEmpty)
 
