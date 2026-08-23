@@ -36,6 +36,19 @@ enum class CompatibilityProfileKind {
     /// SMPTE ST 2110-30 Level A: 48 kHz only, 1 ms packets, RTP timestamp
     /// offset must be zero.
     ST2110_30,
+    /// Dante in AES67 mode (Audinate). Requires multicast inside
+    /// 239.69.0.0/16 — that's Dante's own requirement, not AES67's.
+    Dante,
+    /// Dolby Atmos Cinema Processor CP850 (and CP950A/IMS3000): sends AES67
+    /// over Ethernet to a Dolby Atmos Connect Interface (DAC3202 profile,
+    /// below). Cinema audio, so 48/96 kHz per the DCI spec rather than
+    /// AES67's own three rates.
+    CP850,
+    /// Dolby Atmos Connect Interface DAC3202: the receiving end of the same
+    /// link a CP850 sends — 32 analog outputs, i.e. up to 4 flows of 8
+    /// channels. Same constraint set as CP850; they're two ends of one
+    /// link, not two different networks.
+    DAC3202,
 };
 
 struct CompatibilityProfile {
@@ -67,6 +80,22 @@ struct CompatibilityProfile {
     /// already starts at zero unconditionally, so nothing needs enforcing —
     /// but the flag records *why* that zero must not be randomised.
     bool requiresZeroRtpTimestampOffset{false};
+
+    /// True when this profile pins the PTP domain to a single value the
+    /// user can't change — AES67's own mandatory configuration is domain 0.
+    /// When false, the domain field is offered to the user (ManagerApp's
+    /// AddStreamView Stepper) rather than locked.
+    bool domainIsFixed{false};
+
+    /// Meaningful only when domainIsFixed — the one value streams must use.
+    uint8_t fixedDomain{0};
+
+    /// DSCP value this profile's real-world gear expects on the wire
+    /// (e.g. 46 = EF), or -1 if the profile doesn't have a documented one.
+    /// Informational only: NetworkUtils::setQoSTrafficClass() exists but
+    /// has no caller anywhere in this driver, so nothing currently applies
+    /// this. Recorded so it isn't lost, not because it's enforced.
+    int recommendedDscp{-1};
 
     /// Human-readable name for the UI.
     std::string displayName;

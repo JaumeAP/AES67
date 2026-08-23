@@ -31,10 +31,15 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false; // AES67 permits a random offset
+        // AES67's mandatory configuration is PTP domain 0 — not a default
+        // to override, part of what "AES67" means here. See
+        // PTPSlaveConfig's own "PTP domain 0 (default), per AES67" comment.
+        p.domainIsFixed = true;
+        p.fixedDomain = 0;
         p.caveats =
             "Baseline. Accepts the three sample rates AES67 names; the device "
             "itself declares more (up to 384 kHz), which other AES67 gear may "
-            "refuse.";
+            "refuse. PTP domain fixed at 0.";
         break;
 
     case CompatibilityProfileKind::RAVENNA:
@@ -74,6 +79,71 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "grandmaster. Selecting this profile enforces the parameters it "
             "can check; it is not a conformance claim.";
         break;
+
+    case CompatibilityProfileKind::Dante:
+        p.displayName = "Dante (AES67 mode)";
+        // Dante in AES67 mode conforms to AES67's own mandatory
+        // configuration — the difference is entirely in addressing, not
+        // sample rate/ptime/encoding.
+        p.allowedSampleRates = {44100.0, 48000.0, 96000.0};
+        p.allowedPtimesMs = {1};
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        // Dante Controller lets a network be split into domains (0-127) for
+        // isolating multiple Dante networks — not pinned to one value the
+        // way AES67's mandatory config is.
+        p.domainIsFixed = false;
+        p.requiredMulticastPrefix = "239.69";
+        p.caveats =
+            "Requires the Dante device to have AES67 mode explicitly enabled "
+            "— this driver can't do that remotely, it's a setting on the "
+            "Dante hardware itself (Dante Controller). Dante natively "
+            "syncs with PTPv1; AES67 mode is what switches it to PTPv2, "
+            "which is what this driver speaks. Enforces the "
+            "239.69.0.0/16 multicast range Dante requires in AES67 mode.";
+        break;
+
+    case CompatibilityProfileKind::CP850:
+        p.displayName = "Dolby CP850 (Atmos Cinema Processor)";
+        // Digital cinema audio (DCI spec): 48 or 96 kHz, up to 24-bit PCM.
+        // Not AES67's 44.1 kHz — cinema doesn't use it.
+        p.allowedSampleRates = {48000.0, 96000.0};
+        p.allowedPtimesMs = {1};
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.domainIsFixed = false; // no documented fixed domain; cinema installs set their own house PTP domain
+        p.recommendedDscp = 46;  // EF — Dolby's documented value for AES67 traffic on this line
+        p.caveats =
+            "The CP850 uses AES67 as its transport to Dolby Atmos Connect "
+            "Interfaces (DAC3202), not the full Dante protocol. Dolby's own "
+            "documentation notes it applies a more traditional DSCP marking "
+            "than typical Dante configurations (EF/46) — this driver has a "
+            "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
+            "nothing calls it yet, so no marking is actually applied. No "
+            "documented fixed PTP domain; cinema installations set their own.";
+        break;
+
+    case CompatibilityProfileKind::DAC3202:
+        p.displayName = "Dolby DAC3202 (Atmos Connect Interface)";
+        // Receiving end of the same CP850 link — same audio parameters.
+        p.allowedSampleRates = {48000.0, 96000.0};
+        p.allowedPtimesMs = {1};
+        p.allowedEncodings = {"L16", "L24"};
+        // 32 analog outputs per interface — exactly 4 flows at this
+        // driver's 8-channel-per-flow limit, not a coincidence: AES67
+        // itself is why the DAC3202 is organized that way.
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.domainIsFixed = false;
+        p.recommendedDscp = 46;
+        p.caveats =
+            "Same link as CP850 (above), receiving end — 32 analog outputs, "
+            "so a full-width feed to one DAC3202 is 4 flows of 8 channels "
+            "under this driver's flow splitter. Same DSCP note as CP850: "
+            "documented as EF/46 but not actually applied by this driver.";
+        break;
     }
 
     return p;
@@ -84,6 +154,9 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::AES67),
         forKind(CompatibilityProfileKind::RAVENNA),
         forKind(CompatibilityProfileKind::ST2110_30),
+        forKind(CompatibilityProfileKind::Dante),
+        forKind(CompatibilityProfileKind::CP850),
+        forKind(CompatibilityProfileKind::DAC3202),
     };
 }
 
@@ -92,6 +165,9 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
     case CompatibilityProfileKind::AES67:     return "aes67";
     case CompatibilityProfileKind::RAVENNA:   return "ravenna";
     case CompatibilityProfileKind::ST2110_30: return "st2110-30";
+    case CompatibilityProfileKind::Dante:     return "dante";
+    case CompatibilityProfileKind::CP850:     return "cp850";
+    case CompatibilityProfileKind::DAC3202:   return "dac3202";
     }
     return "aes67";
 }
@@ -99,6 +175,9 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
 CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string& s) {
     if (s == "ravenna")   return CompatibilityProfileKind::RAVENNA;
     if (s == "st2110-30") return CompatibilityProfileKind::ST2110_30;
+    if (s == "dante")     return CompatibilityProfileKind::Dante;
+    if (s == "cp850")     return CompatibilityProfileKind::CP850;
+    if (s == "dac3202")   return CompatibilityProfileKind::DAC3202;
     return CompatibilityProfileKind::AES67;
 }
 
@@ -184,6 +263,13 @@ bool CompatibilityProfile::validate(const SDPSession& sdp, std::string* errorOut
             return fail("multicast address " + sdp.connectionAddress +
                         " outside the required " + requiredMulticastPrefix + ".0.0/16 range");
         }
+    }
+
+    // -1 means "no PTP for this stream" — not a domain choice at all, so it
+    // isn't subject to a fixed-domain requirement.
+    if (domainIsFixed && sdp.ptpDomain != -1 && sdp.ptpDomain != static_cast<int>(fixedDomain)) {
+        return fail("PTP domain " + std::to_string(sdp.ptpDomain) + " not permitted — "
+                    "fixed at " + std::to_string(fixedDomain));
     }
 
     return true;

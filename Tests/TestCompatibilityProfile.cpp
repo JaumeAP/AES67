@@ -125,6 +125,99 @@ bool testST2110RequiresZeroRtpOffsetFlag() {
 }
 
 // ============================================================================
+// B2. Dante, CP850, DAC3202
+// ============================================================================
+
+bool testDanteRequiresItsMulticastRange() {
+    std::cout << "Test: B4 · Dante requires 239.69.0.0/16... ";
+    const auto dante = CompatibilityProfile::forKind(CompatibilityProfileKind::Dante);
+
+    auto sdp = baselineSession();
+    sdp.connectionAddress = "239.69.1.10";
+    std::string error;
+    TEST_ASSERT(dante.validate(sdp, &error), "239.69.x.x must be accepted: " + error);
+
+    sdp.connectionAddress = "239.1.1.10"; // valid AES67 multicast, wrong range for Dante
+    error.clear();
+    TEST_ASSERT(!dante.validate(sdp, &error), "Dante must reject an address outside 239.69.0.0/16");
+
+    // A near-miss prefix must not false-positive (239.6 is not 239.69).
+    sdp.connectionAddress = "239.6.1.10";
+    TEST_ASSERT(!dante.validate(sdp, nullptr), "239.6.x.x must not match the 239.69 prefix");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testDanteDomainIsConfigurable() {
+    std::cout << "Test: B5 · Dante's PTP domain is user-configurable, unlike AES67's... ";
+    const auto dante = CompatibilityProfile::forKind(CompatibilityProfileKind::Dante);
+    const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
+
+    TEST_ASSERT(!dante.domainIsFixed, "Dante Controller allows domain segmentation (0-127)");
+    TEST_ASSERT(aes67.domainIsFixed && aes67.fixedDomain == 0,
+                "AES67's mandatory configuration is domain 0");
+
+    // With domain free, any domain in a stream must be accepted.
+    auto sdp = baselineSession();
+    sdp.connectionAddress = "239.69.1.10";
+    sdp.ptpDomain = 42;
+    TEST_ASSERT(dante.validate(sdp, nullptr), "Dante must accept a non-zero domain");
+
+    // With domain fixed at 0, the same stream must be rejected.
+    sdp.connectionAddress = baselineSession().connectionAddress;
+    std::string error;
+    TEST_ASSERT(!aes67.validate(sdp, &error), "AES67 must reject a non-zero domain");
+    TEST_ASSERT(!error.empty(), "rejection must explain itself");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testAES67AcceptsNoPtpDomainSentinel() {
+    std::cout << "Test: B6 · domain -1 (\"no PTP\") is exempt from a fixed-domain requirement... ";
+    const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
+    auto sdp = baselineSession();
+    sdp.ptpDomain = -1; // SDPSession's own sentinel for "no PTP on this stream"
+    TEST_ASSERT(aes67.validate(sdp, nullptr),
+                "domain -1 means \"no PTP\", not \"domain -1\" — must not be rejected as a domain mismatch");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testCP850AndDAC3202ShareTheSameLink() {
+    std::cout << "Test: B7 · CP850 and DAC3202 accept the same stream (two ends of one link)... ";
+    const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
+    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
+
+    auto sdp = baselineSession();
+    sdp.sampleRate = 96000.0; // DCI's higher rate, not part of AES67's own three
+    std::string error;
+    TEST_ASSERT(cp850.validate(sdp, &error), "CP850 must accept 96 kHz (DCI spec): " + error);
+    TEST_ASSERT(dac3202.validate(sdp, &error), "DAC3202 must accept 96 kHz (DCI spec): " + error);
+
+    // Neither is cinema-only to the point of rejecting 44.1 kHz — no
+    // evidence found that they do, so don't assert a restriction the
+    // research didn't establish.
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testCinemaProfilesRecordDscpAsInformationalOnly() {
+    std::cout << "Test: B8 · CP850/DAC3202 record a DSCP value but this driver doesn't apply it... ";
+    const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
+    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
+    TEST_ASSERT(cp850.recommendedDscp == 46, "CP850 documents EF (46)");
+    TEST_ASSERT(dac3202.recommendedDscp == 46, "DAC3202 documents EF (46)");
+    // AES67 and RAVENNA have no documented DSCP requirement from either
+    // standard's own baseline — -1 means "none recorded", not "zero".
+    const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
+    TEST_ASSERT(aes67.recommendedDscp == -1, "AES67 baseline has no profile-specific DSCP");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+// ============================================================================
 // C. Limits shared by every profile
 // ============================================================================
 
@@ -194,6 +287,15 @@ int main() {
     testST2110RejectsNon48kHz();
     testAES67AcceptsRatesST2110Rejects();
     testST2110RequiresZeroRtpOffsetFlag();
+    std::cout << std::endl;
+
+    std::cout << "B2 · Dante, CP850, DAC3202" << std::endl;
+    std::cout << "--------------------------" << std::endl;
+    testDanteRequiresItsMulticastRange();
+    testDanteDomainIsConfigurable();
+    testAES67AcceptsNoPtpDomainSentinel();
+    testCP850AndDAC3202ShareTheSameLink();
+    testCinemaProfilesRecordDscpAsInformationalOnly();
     std::cout << std::endl;
 
     std::cout << "C · Limits shared by every profile" << std::endl;
