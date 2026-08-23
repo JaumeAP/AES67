@@ -286,9 +286,28 @@ class DriverManager: ObservableObject {
     }
 
     /// Whether Avid HD hardware is present as a clock source right now.
-    /// The extra option only appears when it's actually installed.
+    ///
+    /// "Right now" is load-bearing: Pro Tools takes the HDX/HD Native
+    /// hardware exclusively and does not go through CoreAudio, so the
+    /// device disappears from the system entirely the moment Pro Tools
+    /// launches, and comes back when it quits. This can be true and false
+    /// minutes apart on the same machine, without anything being wrong.
     var hasAvidHDClockSource: Bool {
         listAvailableClockSources().contains { $0.isAvidHD }
+    }
+
+    /// True when a specific device was chosen as the clock source and that
+    /// device isn't currently present — Pro Tools having claimed it being
+    /// the usual reason. The driver degrades honestly on its own
+    /// (CoreAudioClockSource reports clockClass 248 and Unknown accuracy
+    /// while the device is missing, so BMCA lets a better clock win); this
+    /// is so the UI can say what happened rather than leaving the user to
+    /// wonder why the clock quality dropped.
+    var selectedClockSourceMissing: Bool {
+        guard ptpClockSourceKind == "localAudioDevice", !ptpLockToDeviceUID.isEmpty else {
+            return false
+        }
+        return !listAvailableClockSources().contains { $0.id == ptpLockToDeviceUID }
     }
 
     @Published var ptpMasterCapable: Bool = false
@@ -398,18 +417,19 @@ class DriverManager: ObservableObject {
 
             options.append(PTPClockSourceOption(
                 id: uid,
-                name: isAvidHD ? "\(name) — Pro Tools hardware clock" : name,
+                name: isAvidHD ? "\(name) — Pro Tools hardware (gone while Pro Tools runs)" : name,
                 isInternal: false,
                 isAvidHD: isAvidHD
             ))
         }
 
-        // Avid HD first among the hardware devices: in a Pro Tools room it
-        // is the house clock everything else is already following, so it's
-        // the answer often enough to be worth putting where it'll be seen.
-        return [options[0]] + options.dropFirst().sorted { lhs, rhs in
-            if lhs.isAvidHD != rhs.isAvidHD { return lhs.isAvidHD }
-            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        // Plain alphabetical after Internal. An earlier version promoted
+        // Avid HD to the top as the recommended choice; that was wrong —
+        // Pro Tools takes the hardware exclusively and the device vanishes
+        // while it runs, so it is the one option that can't be relied on
+        // in the room it was meant for.
+        return [options[0]] + options.dropFirst().sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
     }
 
