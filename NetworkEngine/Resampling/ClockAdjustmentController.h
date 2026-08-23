@@ -1,7 +1,7 @@
 #ifndef CLOCK_ADJUSTMENT_CONTROLLER_H
 #define CLOCK_ADJUSTMENT_CONTROLLER_H
 
-#include "../RTP/JitterBuffer.h"
+#include "../RTP/LockFreeCircularJitterBuffer.h"
 #include "Resampler.h"
 #include "SmoothedPIController.h"
 #include <mutex>
@@ -11,7 +11,7 @@ namespace AES67 {
 
 class ClockAdjustmentController {
 public:
-    ClockAdjustmentController(JitterBuffer& jitterBuffer, Resampler& resampler,
+    ClockAdjustmentController(LockFreeCircularJitterBuffer& jitterBuffer, Resampler& resampler,
                             double targetFillRatio = 0.5, // Target 50% fill
                             double kp = 0.001,            // Proportional gain
                             double ki = 0.0001);          // Integral gain
@@ -29,7 +29,7 @@ public:
     SmoothedPIController& getPIController() { return piController_; }
 
 private:
-    JitterBuffer& jitterBuffer_;
+    LockFreeCircularJitterBuffer& jitterBuffer_;
     Resampler& resampler_;
     SmoothedPIController piController_;
 
