@@ -121,8 +121,15 @@ public:
     // ::useFixedMulticastWithPerFlowSourcePort existed. Nonzero is for gear
     // (the Dolby DMA profile) that identifies flows by source port rather
     // than by destination address.
+    //
+    // dscp marks outgoing packets with that DSCP codepoint (46 = EF, the
+    // value most AES67 gear expects for audio), via
+    // NetworkUtils::setQoSTrafficClass(). -1 (default) leaves the socket
+    // unmarked — this driver's behavior before the profiles' documented
+    // DSCP values were actually applied. Only transmitters mark: a
+    // receiver sends no audio to prioritise.
     bool openTransmitter(const char* multicastIP, uint16_t port, const char* interfaceIP = nullptr,
-                          uint16_t sourcePort = 0);
+                          uint16_t sourcePort = 0, int dscp = -1);
 
     // Send RTP packet
     ssize_t send(const RTPPacket& packet);
