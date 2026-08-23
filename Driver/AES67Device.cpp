@@ -10,7 +10,9 @@
 #include "DebugLog.h"
 #include "../Shared/CustomProperties.h"
 #include "../NetworkEngine/DeviceChannelSettings.h"
+#include "../NetworkEngine/AmplifierUnitSettings.h"
 #include <CoreAudio/AudioServerPlugIn.h>
+#include <algorithm>
 #include <utility>
 
 namespace AES67 {
@@ -137,6 +139,31 @@ void AES67Device::Initialize() {
         CompatibilityProfileManager profileManager;
         const CompatibilityProfileKind profileKind = profileManager.load();
         streamManager_->setCompatibilityProfile(profileKind);
+
+        // Which unit in a chained Dolby Atmos Connect installation this
+        // driver is feeding, translated into the flow-port offset that's
+        // the only way the choice shows up on the wire — see
+        // StreamManager::setTxFlowPortOffset() and
+        // NetworkEngine/AmplifierUnitSettings.h. Clamped to the active
+        // profile's own maxUnits so a selection left over from a
+        // different profile can't shift ports under one that only ever
+        // has a single unit.
+        AmplifierUnitSettingsManager unitSettingsManager;
+        const AmplifierUnitSettings unitSettings = unitSettingsManager.load();
+        const auto profile = CompatibilityProfile::forKind(profileKind);
+        const uint32_t unitIndex = std::min(unitSettings.unitIndex, profile.maxUnits);
+
+        // Each unit carries its own consecutive block of channels, so the
+        // preceding units account for (unitIndex - 1) blocks of however
+        // many flows one unit's worth of channels takes.
+        const uint32_t flowsPerUnit =
+            (usableTxChannelCount_ + StreamChannelMapper::kMaxChannelsPerFlow - 1) /
+            StreamChannelMapper::kMaxChannelsPerFlow;
+        const uint32_t flowOffset = (unitIndex - 1) * flowsPerUnit;
+        streamManager_->setTxFlowPortOffset(flowOffset);
+        AES67_LOGF("AES67Device: Amplifier unit %u of max %u -> TX flow port offset %u "
+                   "(%u flows per unit)",
+                   unitIndex, profile.maxUnits, flowOffset, flowsPerUnit);
     }
 
     // Set device sample rate in StreamManager

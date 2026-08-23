@@ -145,6 +145,24 @@ struct CompatibilityProfile {
     /// Read by StreamManager::createTxStreamFlows().
     bool useFixedMulticastWithPerFlowSourcePort{false};
 
+    /// How many physical units of this profile's gear may be chained in one
+    /// auditorium, each carrying its own consecutive "channel group" — 1
+    /// for everything except the Dolby Atmos Connect endpoints (DMA and
+    /// DAC3202), where the DMA manual (§2.3) documents up to three chained
+    /// directly: "you cannot interconnect more than three of these devices
+    /// unless you use a switch", each unit taking the next block of
+    /// channels and the next block of source UDP ports (unit 1 = channels
+    /// 1-32 / source 6518-6521, unit 2 = channels 33-64 / source
+    /// 6522-6525, and so on — §3.2.4's port table runs to channel 64).
+    ///
+    /// The user picks which unit this driver is feeding with ManagerApp's
+    /// amplifier-unit selector; that choice becomes a flow-port offset
+    /// applied by StreamManager::createTxStreamFlows() (see
+    /// StreamManager::setTxFlowPortOffset). Only meaningful alongside
+    /// useFixedMulticastWithPerFlowSourcePort — it's the source-port
+    /// stepping that distinguishes one unit's channel group from the next.
+    uint32_t maxUnits{1};
+
     /// Which way THIS driver may talk to the described gear. See
     /// ProfileDirection. Checked by validate(sdp, isTransmit, ...).
     ProfileDirection direction{ProfileDirection::Any};

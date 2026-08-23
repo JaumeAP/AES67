@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showChannelMapping = false
     @State private var showChannelDiagnostic = false
     @State private var showProfileCaveats = false
+    @State private var showProfileParameters = false
 
     /// One direction's channel-count selector — count picker, aux-pair
     /// toggle, running total. Used twice below (input/output), each wired to
@@ -147,6 +148,40 @@ struct ContentView: View {
                 .buttonStyle(.borderless)
                 .help("What this profile does and doesn't enforce")
 
+                Button("Parameters…") {
+                    showProfileParameters = true
+                }
+                .help("Every parameter this profile governs, and which of them it locks")
+
+                // Which unit in a chained Dolby Atmos Connect installation
+                // this driver is feeding — up to three chain directly, each
+                // carrying the next block of channels (and, on the wire, the
+                // next block of source ports). Hidden entirely rather than
+                // shown disabled for the profiles where a single unit is the
+                // only possibility, since there's nothing to explain there.
+                if driverManager.activeCompatibilityProfile.maxUnits > 1 {
+                    Divider()
+                        .frame(height: 18)
+
+                    Text("Unit:")
+                        .font(.callout)
+
+                    Picker("", selection: Binding(
+                        get: { driverManager.amplifierUnit },
+                        set: { driverManager.amplifierUnit = $0; driverManager.saveAmplifierUnit() }
+                    )) {
+                        ForEach(driverManager.amplifierUnitChoices, id: \.self) { unit in
+                            Text("\(unit)").tag(unit)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 120)
+                    .disabled(locked)
+                    .help("Which amplifier/interface in the chain this driver feeds — each unit "
+                        + "takes the next block of channels and source ports")
+                }
+
                 Spacer()
 
                 if locked {
@@ -178,6 +213,21 @@ struct ContentView: View {
             }
             .padding()
             .frame(width: 380)
+        }
+        .sheet(isPresented: $showProfileParameters) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Profile Parameters")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Button("Done") { showProfileParameters = false }
+                }
+                .padding()
+                Divider()
+                ProfileParametersView()
+                    .environmentObject(driverManager)
+            }
         }
     }
 
