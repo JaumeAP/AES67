@@ -133,7 +133,7 @@ struct ProfileParametersView: View {
             )
             parameterRow(
                 "Packet time",
-                value: profile.allowedPtimesMs.map { "\($0) ms" }.joined(separator: ", "),
+                value: profile.allowedPtimesUs.map { Self.formatPtime($0) }.joined(separator: ", "),
                 locked: true,
                 note: "This driver's transmitter emits 1 ms packets and can't be "
                     + "reconfigured, so this is a hard limit either way."
@@ -396,6 +396,13 @@ struct ProfileParametersView: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Microseconds as the millisecond figure people actually say: 1000
+    /// -> "1 ms", 125 -> "0.125 ms".
+    private static func formatPtime(_ us: Int) -> String {
+        let ms = Double(us) / 1000.0
+        return ms == ms.rounded() ? "\(Int(ms)) ms" : "\(ms) ms"
     }
 
     // MARK: - Building blocks

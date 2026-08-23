@@ -206,7 +206,7 @@ void AES67Device::Initialize() {
         testSDP.sampleRate = 48000.0;
         testSDP.encoding = "L24";
         testSDP.payloadType = 97;
-        testSDP.ptime = 1.0;  // 1ms packets (48 samples @ 48kHz)
+        testSDP.ptimeUs = 1000;  // 1 ms packets (48 samples @ 48kHz)
         testSDP.framecount = 48;
         testSDP.ptpDomain = 0;
         testSDP.sessionID = 123456;

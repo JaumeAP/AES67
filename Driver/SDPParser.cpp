@@ -5,6 +5,7 @@
 //
 
 #include "SDPParser.h"
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -12,6 +13,25 @@
 #include <ctime>
 
 namespace AES67 {
+
+namespace {
+
+/// Microseconds -> the decimal count of milliseconds SDP's a=ptime wants.
+/// 1000 -> "1", 125 -> "0.125", 333 -> "0.333". Trailing zeros trimmed so
+/// the common case stays the plain "1" every other implementation writes.
+std::string formatPTimeMs(uint32_t ptimeUs) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(ptimeUs) / 1000.0);
+    std::string out(buf);
+    if (out.find('.') != std::string::npos) {
+        out.erase(out.find_last_not_of('0') + 1);
+        if (!out.empty() && out.back() == '.') out.pop_back();
+    }
+    return out;
+}
+
+} // namespace
+
 
 // ============================================================================
 // Validation
@@ -298,8 +318,16 @@ bool SDPParser::parseRTPMapAttribute(const std::string& value, SDPSession& sessi
 }
 
 bool SDPParser::parsePTimeAttribute(const std::string& value, SDPSession& session) {
+    // a=ptime is a decimal count of MILLISECONDS ("1", "0.125", "0.25").
+    // Parsed with stod, not stoul: stoul("0.125") yields 0, which is how
+    // every sub-millisecond packet time — including ST 2110-30 Levels B
+    // and C at 125 us — used to be silently discarded here.
     try {
-        session.ptime = std::stoul(value);
+        const double ms = std::stod(value);
+        if (!(ms > 0.0) || ms > 1000.0) {
+            return false; // Zero, negative, NaN, or absurdly long
+        }
+        session.ptimeUs = static_cast<uint32_t>(ms * 1000.0 + 0.5);
         return true;
     } catch (...) {
         return false;
@@ -438,7 +466,7 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
     attributes.push_back(rtpmap.str());
 
     // ptime
-    attributes.push_back("a=ptime:" + std::to_string(session.ptime));
+    attributes.push_back("a=ptime:" + formatPTimeMs(session.ptimeUs));
 
     // framecount
     attributes.push_back("a=framecount:" + std::to_string(session.framecount));
@@ -548,7 +576,7 @@ SDPSession SDPParser::createDefaultTxSession(
     session.numChannels = numChannels;
 
     // Calculate ptime and framecount
-    session.ptime = 1;  // 1ms packets
+    session.ptimeUs = 1000;  // 1 ms packets
     session.framecount = sampleRate / 1000;  // Samples per 1ms
 
     session.sourceAddress = sourceIP;
@@ -589,7 +617,7 @@ StreamInfo SDPParser::toStreamInfo(const SDPSession& session) {
     info.payloadType = session.payloadType;
 
     // Timing
-    info.ptime = session.ptime;
+    info.ptime = session.ptimeUs;  // StreamInfo::ptime is microseconds too
     info.framecount = session.framecount;
 
     // PTP
@@ -627,7 +655,7 @@ SDPSession SDPParser::fromStreamInfo(const StreamInfo& info) {
     session.numChannels = info.numChannels;
     session.payloadType = info.payloadType;
 
-    session.ptime = info.ptime;
+    session.ptimeUs = info.ptime;  // both microseconds
     session.framecount = info.framecount;
 
     session.sourceAddress = info.source.ip;

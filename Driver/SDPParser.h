@@ -55,7 +55,12 @@ struct SDPSession {
     uint16_t numChannels{2};
 
     // Packet timing (a=ptime, a=framecount)
-    uint32_t ptime{1};              // Packet time in milliseconds
+    //
+    // Microseconds, not milliseconds: SDP's a=ptime is a DECIMAL number of
+    // milliseconds, and the values that matter below 1 ms are real —
+    // ST 2110-30 Levels B and C are 125 us. Holding this as integer
+    // milliseconds silently truncated "a=ptime:0.125" to zero.
+    uint32_t ptimeUs{1000};         // Packet time in MICROSECONDS
     uint32_t framecount{48};        // Samples per packet
 
     // Source filter (a=source-filter)

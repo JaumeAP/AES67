@@ -1012,8 +1012,11 @@ class DriverManager: ObservableObject {
         /// Sample rates this profile accepts, for display in the
         /// parameters window.
         let allowedSampleRates: [Int]
-        /// Packet times in ms this profile accepts.
-        let allowedPtimesMs: [Int]
+        /// Packet times this profile accepts, in MICROSECONDS — mirrors
+        /// CompatibilityProfile::allowedPtimesUs. Microseconds because
+        /// sub-millisecond values are real (ST 2110-30 Levels B and C are
+        /// 125 us) and can't be held as integer milliseconds.
+        let allowedPtimesUs: [Int]
         /// Encodings this profile accepts.
         let allowedEncodings: [String]
         /// True when this profile uses Dolby's fixed-multicast /
@@ -1040,7 +1043,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: true, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
-              allowedSampleRates: [44100, 48000, 96000], allowedPtimesMs: [1],
+              allowedSampleRates: [44100, 48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "ravenna",
@@ -1053,7 +1056,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
-              allowedSampleRates: [44100, 48000, 96000], allowedPtimesMs: [1],
+              allowedSampleRates: [44100, 48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "st2110-30",
@@ -1066,7 +1069,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
-              allowedSampleRates: [48000], allowedPtimesMs: [1],
+              allowedSampleRates: [48000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "dante",
@@ -1087,7 +1090,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: true, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
-              allowedSampleRates: [48000], allowedPtimesMs: [1],
+              allowedSampleRates: [48000], allowedPtimesUs: [1000],
               allowedEncodings: ["L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: "239.69"),
         .init(id: "cp850",
@@ -1116,7 +1119,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
-              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "cp950",
@@ -1139,7 +1142,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave,
               maxUnits: 1, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
-              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "dac3202",
@@ -1159,7 +1162,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster,
               maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
-              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
         .init(id: "dma",
@@ -1181,7 +1184,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .transmitOnly, maxTotalChannels: 64, ptpRole: .forcedMaster,
               maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
-              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
     ]
