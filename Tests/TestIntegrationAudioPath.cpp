@@ -86,7 +86,7 @@ static SDPSession createTestSDP(
     sdp.sampleRate = sampleRate;
     sdp.numChannels = channels;
     sdp.payloadType = (encoding == "L16") ? PT_AES67_L16 : PT_AES67_L24;
-    sdp.ptime = 1;
+    sdp.ptimeUs = 1000;
     sdp.framecount = framecount;
     sdp.originAddress = "127.0.0.1";
     sdp.ptpDomain = 0;

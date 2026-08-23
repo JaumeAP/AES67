@@ -53,7 +53,7 @@ SDPSession baselineSession() {
     sdp.numChannels = 8;
     sdp.sampleRate = 48000.0;
     sdp.encoding = "L24";
-    sdp.ptime = 1;
+    sdp.ptimeUs = 1000;
     return sdp;
 }
 

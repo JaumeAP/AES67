@@ -27,7 +27,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // AES67's mandatory configuration: 1-8 channels, 16/24-bit,
         // 44.1/48/96 kHz, 1 ms packets.
         p.allowedSampleRates = {44100.0, 48000.0, 96000.0};
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false; // AES67 permits a random offset
@@ -50,7 +50,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // transmitter only emits 1 ms packets, that extra freedom isn't
         // reachable, so the enforced constraint set is identical to AES67.
         p.allowedSampleRates = {44100.0, 48000.0, 96000.0};
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
@@ -67,7 +67,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // Level A: 48 kHz only, 1 ms packets, 1-8 channels, 16/24-bit.
         // See Docs/st2110_30_vs_aes67.md.
         p.allowedSampleRates = {48000.0};
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"}; // AM824 is ST 2110-31, not -30
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = true;
@@ -97,7 +97,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         //    as a fixed domain 0, and consequently can only be enabled for
         //    one domain at a time.
         p.allowedSampleRates = {48000.0};
-        p.allowedPtimesMs = {1}; // 48 samples per channel per frame, per Audinate
+        p.allowedPtimesUs = {1000}; // 1 ms = 48 samples per channel per frame, per Audinate
         p.allowedEncodings = {"L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
@@ -176,7 +176,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // Digital cinema audio (DCI spec): 48 or 96 kHz, up to 24-bit PCM.
         // Not AES67's 44.1 kHz — cinema doesn't use it.
         p.allowedSampleRates = {48000.0, 96000.0};
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
@@ -226,7 +226,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // driver's own point of view as CP850: it renders and sends, this
         // driver only ever receives.
         p.allowedSampleRates = {48000.0, 96000.0}; // same DCI parameters as CP850
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
@@ -271,7 +271,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // Receiving end of the same CP850/CP950/CP950A link — same audio
         // parameters.
         p.allowedSampleRates = {48000.0, 96000.0};
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"};
         // 32 analog outputs per interface — exactly 4 flows at this
         // driver's 8-channel-per-flow limit, not a coincidence: AES67
@@ -362,7 +362,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // which switches StreamManager::createTxStreamFlows() to Dolby's
         // scheme for this profile.
         p.allowedSampleRates = {48000.0, 96000.0};
-        p.allowedPtimesMs = {1};
+        p.allowedPtimesUs = {1000}; // 1 ms
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
@@ -506,12 +506,12 @@ bool CompatibilityProfile::validate(const SDPSession& sdp, bool isTransmit, std:
         }
     }
 
-    if (!allowedPtimesMs.empty() && sdp.ptime > 0) {
-        const bool ok = std::find(allowedPtimesMs.begin(), allowedPtimesMs.end(),
-                                   sdp.ptime) != allowedPtimesMs.end();
+    if (!allowedPtimesUs.empty() && sdp.ptimeUs > 0) {
+        const bool ok = std::find(allowedPtimesUs.begin(), allowedPtimesUs.end(),
+                                   sdp.ptimeUs) != allowedPtimesUs.end();
         if (!ok) {
-            return fail("packet time " + std::to_string(sdp.ptime) +
-                        " ms not permitted");
+            return fail("packet time " + std::to_string(sdp.ptimeUs) +
+                        " us not permitted");
         }
     }
 

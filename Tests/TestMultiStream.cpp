@@ -46,7 +46,7 @@ SDPSession createTestStream(const std::string& name,
     sdp.sampleRate = sampleRate;
     sdp.numChannels = channels;
     sdp.payloadType = 97;
-    sdp.ptime = 1;
+    sdp.ptimeUs = 1000;
     sdp.framecount = 48;
     sdp.originAddress = "192.168.1.100";
     sdp.ptpDomain = 0;

@@ -108,18 +108,34 @@ confirmed from a second direction.
 
 ## Things they have that we don't
 
-### Configurable transmit packet time
+### Configurable transmit packet time — **now done**
 
-Our receiver honours `sdp_.ptime`; our transmitter hardcodes 1 ms
-(`RTPTransmitter.cpp`: `const uint64_t intervalUs = 1000;`). The RAVENNA
-profile's caveats already state this. Theirs is configurable per source
-as `max_samples_per_packet` ∈ {12, 16, 48, 96, 192} — i.e. 0.25 / 0.33 /
-1 / 2 / 4 ms at 48 kHz — with a driver-side tick
-(`frame_size_at_1fs`, 32–192 samples).
+Our transmitter used to hardcode 1 ms while taking its sample count from
+`sdp_.framecount`, so the two could disagree — a 96 kHz stream with the
+default framecount of 48 transmitted at the wrong rate. Both are now
+derived together from `framecount` (authoritative when present) or
+`ptimeUs`, so they always agree.
 
-This is the single change that would most widen what gear we interoperate
-with: ST 2110-30 Levels B and C need 125 µs packets, which we currently
-can't emit at all.
+Getting there uncovered a bug that made sub-millisecond packet times
+impossible in the first place: `ptime` was held as **integer
+milliseconds** and parsed with `stoul`, so the perfectly legal
+`a=ptime:0.125` parsed to **zero**, silently. Packet time is now
+microseconds end to end (`SDPSession::ptimeUs`,
+`CompatibilityProfile::allowedPtimesUs`, `StreamInfo::ptime` — which had
+been documented as microseconds while being assigned milliseconds).
+`Tests/TestSDPParser.cpp` had carried `a=ptime:0.5` and `a=ptime:0.25`
+fixtures since before any of this was noticed, but only ever asserted the
+sample rate; it now asserts the packet times, 125 µs included, and that
+fractional values survive a round trip through `generate()`.
+
+Theirs is configurable per source as `max_samples_per_packet` ∈ {12, 16,
+48, 96, 192} — 0.25 / 0.33 / 1 / 2 / 4 ms at 48 kHz — with a driver-side
+tick (`frame_size_at_1fs`, 32–192 samples). Ours takes whatever the SDP
+says, which covers the same ground from the other direction.
+
+Still missing: an ST 2110-30 Level B/C profile. The driver can emit
+125 µs now; no profile asks it to, since the existing one is explicitly
+Level A.
 
 ### Playout delay as a user-facing setting
 
@@ -199,7 +215,8 @@ Ranked by value-for-effort, given how much is already written here:
    above.
 3. ~~**Call `setQoSTrafficClass()`** with each profile's documented DSCP~~
    — **done**, see above.
-4. **Make transmit ptime configurable**, unlocking ST 2110-30 Levels B/C.
+4. ~~**Make transmit ptime configurable**~~ — **done**, see above. A
+   Level B/C profile could now follow.
 5. **Expose playout delay**, matching both this daemon and Dolby's own
    Safety Buffer.
 6. **Compare grandmaster IDs** between sources and sinks.

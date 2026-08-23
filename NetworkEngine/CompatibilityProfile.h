@@ -110,9 +110,11 @@ struct CompatibilityProfile {
     /// matters if one is added that genuinely doesn't constrain rates.
     std::vector<double> allowedSampleRates;
 
-    /// Packet times in milliseconds. A stream whose ptime isn't listed is
-    /// rejected.
-    std::vector<uint32_t> allowedPtimesMs;
+    /// Packet times in MICROSECONDS. A stream whose ptime isn't listed is
+    /// rejected. Microseconds because the values that matter below 1 ms
+    /// are real — ST 2110-30 Levels B and C are 125 us — and integer
+    /// milliseconds can't hold them. 1000 = AES67's own 1 ms.
+    std::vector<uint32_t> allowedPtimesUs;
 
     /// Encodings accepted, as they appear in SDP ("L16", "L24", "AM824").
     std::vector<std::string> allowedEncodings;
