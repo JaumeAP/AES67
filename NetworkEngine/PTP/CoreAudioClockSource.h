@@ -1,27 +1,33 @@
 //
 // CoreAudioClockSource.h
 // AES67 macOS Driver
-// A PTPClockSource backed by another local CoreAudio device — "lock to this
-// audio interface's clock" rather than this Mac's own free-running crystal.
+// A PTPClockSource that genuinely disciplines to another local CoreAudio
+// device's hardware clock — "run on this interface's sample clock" rather
+// than this Mac's own free-running crystal.
 //
-// Honest about what this does and doesn't do: word-clock/sample-clock
-// devices give a stable SAMPLE RATE reference, not an absolute time-of-day —
-// there's no wall-clock epoch to read off a word clock. So currentTimeNs()
-// still returns this Mac's own CLOCK_REALTIME (there's nothing else to
-// return); what locking to the device buys is a *quality claim*, not a
-// different time value: while the device is confirmed present and exposing
-// its own clock domain, this source announces a tighter clockAccuracy than
-// InternalClockSource. If the device disappears (unplugged, sleep), the
-// claim automatically drops back to the internal-clock default — it never
-// asserts a quality it can't currently verify.
+// How it works: a word/sample clock has no wall-clock epoch to read, but
+// the device's SAMPLE COUNTER advances at exactly the device's hardware
+// rate. So this derives its nanoseconds from that counter —
 //
-// What this does NOT do (documented, not hidden): actual frequency
-// syntonization — steering the Mac's clock rate to track the device's
-// sample clock via a PLL. That's real additional work, and unverifiable
-// here without the reference hardware attached. See
-// aes67_driver_macos_platform_audit.md in new_renderer/docs for the same
-// kind of "written, not verified against real hardware" caveat already
-// carried by PTPSlave's own network sync path.
+//     ns = anchorNs + (deviceSampleTime - anchorSample) * 1e9 / nominalRate
+//
+// — which ticks at the device's real rate, not the Mac's. anchorNs ties it
+// to a real time-of-day once, so PTP origin timestamps stay sensible while
+// their RATE follows the device. If the device runs slightly fast, this
+// clock runs slightly fast with it. That is true frequency syntonization,
+// which earlier revisions of this class did not do (they returned
+// CLOCK_REALTIME and only changed the advertised quality bits).
+//
+// To read the counter the device has to be running, so this installs its
+// own no-op IOProc and starts the device — a deliberate side effect on the
+// chosen reference device, documented rather than hidden.
+//
+// Honest boundary, unchanged: none of this is verified against real
+// reference hardware here — the same "written, not hardware-verified"
+// caveat the whole PTP path carries, which is why the driver ships with
+// PTP off by default. If the device can't be read (absent, asleep, refuses
+// to run), the source falls back to the Mac clock AND drops its clockClass
+// to 248, so it never announces a lock it doesn't have.
 //
 #pragma once
 
@@ -29,26 +35,31 @@
 
 #include <CoreAudio/CoreAudio.h>
 
+#include <atomic>
+#include <mutex>
+
 namespace AES67 {
 
 class CoreAudioClockSource : public PTPClockSource {
 public:
-    explicit CoreAudioClockSource(AudioDeviceID deviceID, std::string deviceName)
-        : deviceID_(deviceID), deviceName_(std::move(deviceName)) {}
+    explicit CoreAudioClockSource(AudioDeviceID deviceID, std::string deviceName);
+    ~CoreAudioClockSource() override;
 
-    uint64_t currentTimeNs() const override { return ptpSystemTimeNs(); }
+    CoreAudioClockSource(const CoreAudioClockSource&) = delete;
+    CoreAudioClockSource& operator=(const CoreAudioClockSource&) = delete;
+
+    uint64_t currentTimeNs() const override;
 
     uint8_t clockClass() const override {
-        // §7.6.2.4 Table 5: 13 = "Application Specific" time source, locked
-        // to an accurate external source. Only while we can currently
-        // confirm the device is alive and has its own clock domain — see
-        // isDeviceLocked() below.
-        return isDeviceLocked() ? 13 : 248;
+        // §7.6.2.4 Table 5: 13 = locked to an accurate external source.
+        // Only claimed while we're actually deriving time from the device's
+        // counter (locked_), never merely because the device exists.
+        return locked_.load(std::memory_order_relaxed) ? 13 : 248;
     }
 
     PTPClockAccuracy clockAccuracy() const override {
-        return isDeviceLocked() ? PTPClockAccuracy::Within1Microsecond
-                                 : PTPClockAccuracy::Unknown;
+        return locked_.load(std::memory_order_relaxed) ? PTPClockAccuracy::Within1Microsecond
+                                                        : PTPClockAccuracy::Unknown;
     }
 
     std::string name() const override { return deviceName_ + " (local reference)"; }
@@ -56,38 +67,29 @@ public:
     AudioDeviceID deviceID() const { return deviceID_; }
 
 private:
-    /// True while the device is present, running, and reports a nonzero
-    /// clock domain (kAudioDevicePropertyClockDomain — zero means "no
-    /// independent hardware clock", per CoreAudio's own convention for
-    /// software-only devices; this driver's own AES67 device is one such
-    /// case, which is exactly why it's excluded from the candidate list —
-    /// see AudioClockDeviceList.h).
-    bool isDeviceLocked() const {
-        UInt32 isAlive = 0;
-        UInt32 size = sizeof(isAlive);
-        AudioObjectPropertyAddress aliveAddr{
-            kAudioDevicePropertyDeviceIsAlive,
-            kAudioObjectPropertyScopeGlobal,
-            kAudioObjectPropertyElementMain
-        };
-        OSStatus status = AudioObjectGetPropertyData(deviceID_, &aliveAddr, 0, nullptr,
-                                                       &size, &isAlive);
-        if (status != noErr || isAlive == 0) return false;
+    /// Installs a no-op IOProc and starts the device so its clock runs and
+    /// AudioDeviceGetCurrentTime works. Idempotent.
+    void ensureDeviceRunning() const;
 
-        UInt32 clockDomain = 0;
-        size = sizeof(clockDomain);
-        AudioObjectPropertyAddress domainAddr{
-            kAudioDevicePropertyClockDomain,
-            kAudioObjectPropertyScopeGlobal,
-            kAudioObjectPropertyElementMain
-        };
-        status = AudioObjectGetPropertyData(deviceID_, &domainAddr, 0, nullptr,
-                                             &size, &clockDomain);
-        return status == noErr && clockDomain != 0;
-    }
+    /// The device's nominal sample rate, or 0 on failure.
+    double readNominalSampleRate() const;
+
+    /// Keeps the device running; does nothing with the audio.
+    static OSStatus nullIOProc(AudioObjectID, const AudioTimeStamp*, const AudioBufferList*,
+                               const AudioTimeStamp*, AudioBufferList*, const AudioTimeStamp*, void*);
 
     AudioDeviceID deviceID_;
     std::string deviceName_;
+
+    // All mutable: currentTimeNs() is const but disciplines lazily.
+    mutable std::mutex mutex_;
+    mutable AudioDeviceIOProcID ioProcID_{nullptr};
+    mutable bool startedDevice_{false};
+    mutable bool haveAnchor_{false};
+    mutable double anchorSample_{0.0};
+    mutable uint64_t anchorNs_{0};
+    mutable double nominalRate_{0.0};
+    mutable std::atomic<bool> locked_{false};
 };
 
 } // namespace AES67
