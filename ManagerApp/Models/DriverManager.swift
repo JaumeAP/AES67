@@ -1055,6 +1055,16 @@ class DriverManager: ObservableObject {
                      + "total.",
               domainIsFixed: false, fixedDomain: 0,
               direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
+        .init(id: "dma",
+              name: "DMA (spec pending)",
+              caveats: "PLACEHOLDER PROFILE — the exact device and its real parameters haven't "
+                     + "been looked up yet. Sample rates, ptime, encoding, and PTP domain here "
+                     + "are copied from DAC3202 as a stand-in and will change once the real spec "
+                     + "is found. Only two things are fixed already, by instruction rather than "
+                     + "a spec: this driver is always PTP master under this profile, and "
+                     + "transmit-only, up to 32 channels total.",
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
     ]
 
     @Published var compatibilityProfileID: String = "aes67"
