@@ -114,7 +114,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
         p.domainIsFixed = false; // no documented fixed domain; cinema installs set their own house PTP domain
-        p.recommendedDscp = 46;  // EF — Dolby's documented value for AES67 traffic on this line
+        p.recommendedDscp = 46;  // EF — Dolby's factory-default DSCP marking for AES67 traffic on this line
         // From our driver's point of view: the CP850 renders and sends its
         // feeds over AES67, it doesn't accept AES67 input. We can only
         // receive from it — up to 64 channels, the most it can render.
@@ -124,15 +124,17 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.caveats =
             "The CP850 uses AES67 as its transport to Dolby Atmos Connect "
             "Interfaces (DAC3202), not the full Dante protocol. Dolby's own "
-            "documentation notes it applies a more traditional DSCP marking "
-            "than typical Dante configurations (EF/46) — this driver has a "
-            "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
-            "nothing calls it yet, so no marking is actually applied. No "
-            "documented fixed PTP domain; cinema installations set their own. "
-            "This driver is always PTP slave under this profile — it never "
-            "contends for grandmaster. Receive-only: this driver may only "
-            "add RX streams under this profile, up to 64 channels total, "
-            "the most the CP850 renders.";
+            "documentation notes its factory-default DSCP marking is more "
+            "traditional than typical Dante configurations (EF/46) — this "
+            "driver has a DSCP-setting function "
+            "(NetworkUtils::setQoSTrafficClass) but nothing calls it yet, "
+            "so no marking is actually applied. No documented fixed PTP "
+            "domain; cinema installations set their own house domain "
+            "(factory default, not a requirement). This driver is always "
+            "PTP slave under this profile — it never contends for "
+            "grandmaster. Receive-only: this driver may only add RX "
+            "streams under this profile, up to 64 channels total, the "
+            "most the CP850 renders.";
         break;
 
     case CompatibilityProfileKind::CP950:
@@ -170,12 +172,15 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "the Input selector rather than a separate profile per model. "
             "Atmos Connect can carry AES67 or BLU Link, mutually exclusive "
             "per installation (the unit reboots when switching between "
-            "them) — this profile assumes AES67 mode, the documented "
-            "default. PTP domain defaults to 109 (not fixed — must match "
-            "downstream devices); default destination multicast address "
-            "239.81.83.67, shared with Dolby Multichannel Amplifier and "
-            "DAC3202 installs. This driver is always PTP slave under this "
-            "profile — the CP950/CP950A defaults to the highest PTP "
+            "them) — this profile assumes AES67 mode, the factory default. "
+            "PTP domain ships at 109 (not fixed — installers commonly set "
+            "a different one per auditorium, e.g. 109/110/111, to keep "
+            "multiple screens on the same network from colliding); "
+            "factory-default destination multicast address 239.81.83.67, "
+            "shared out of the box with Dolby Multichannel Amplifier and "
+            "DAC3202 — likewise expected to be changed per auditorium in "
+            "multi-screen installs. This driver is always PTP slave under "
+            "this profile — the CP950/CP950A ships at the highest PTP "
             "priority in the chain and is meant to win grandmaster. "
             "Receive-only: this driver may only add RX streams under this "
             "profile, up to 64 channels total.";
@@ -218,11 +223,13 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "address, fixed RTP destination port (pass 6517 to match "
             "Dolby's own default), source port stepped per 8-channel flow "
             "— see StreamManager::createTxStreamFlows(). Same DSCP note as "
-            "CP850: documented as EF/46 but not actually applied by this "
-            "driver. PTP domain defaults to 109; default destination "
-            "multicast address 239.81.83.67. This driver is always PTP "
-            "master under this profile. Transmit-only: this driver may "
-            "only create TX streams under this profile, up to 32 channels "
+            "CP850: factory default is EF/46 but not actually applied by "
+            "this driver. PTP domain ships at 109; factory-default "
+            "destination multicast address 239.81.83.67 — both commonly "
+            "changed per auditorium in multi-screen installs, same as "
+            "CP950/CP950A above. This driver is always PTP master under "
+            "this profile. Transmit-only: this driver may only create TX "
+            "streams under this profile, up to 32 channels "
             "total, its full analog output count.";
         break;
 
@@ -248,10 +255,11 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // this profile, plays the cinema-processor role sending TO a DMA —
         // so it takes the complementary role: always PTP master.
         //
-        // PTP domain: same section documents the Dolby-recommended default
-        // as 109 (not 0) for a single-auditorium install; it must match the
-        // sending processor's domain, so it's not literally fixed —
-        // recorded as recommendedPtpDomain, not domainIsFixed.
+        // PTP domain: same section documents the factory default as 109
+        // (not 0) for a single-auditorium install; it must match the
+        // sending processor's domain and installers are expected to change
+        // it per auditorium, so it's not literally fixed — recorded as
+        // recommendedPtpDomain, not domainIsFixed.
         //
         // Sample rate/ptime/encoding: not stated in the manual — the DMA
         // just decodes whatever its Dolby Atmos Connect input carries, which
@@ -307,8 +315,9 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "+3, ...) — see StreamManager::createTxStreamFlows(). Sample "
             "rate/ptime/encoding are inherited from the same Atmos Connect "
             "chain as CP850/DAC3202 (not independently documented for the "
-            "DMA itself). PTP domain defaults to 109 for Dolby gear (not "
-            "fixed — must match the sending processor); default "
+            "DMA itself). PTP domain ships at 109 for Dolby gear (not "
+            "fixed — installers commonly set a different one per "
+            "auditorium in multi-screen installs); factory-default "
             "destination multicast address 239.81.83.67. This driver is "
             "always PTP master under this profile, transmit-only.";
         break;
