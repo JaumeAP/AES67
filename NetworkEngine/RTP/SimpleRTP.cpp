@@ -139,13 +139,38 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     return true;
 }
 
-bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const char* interfaceIP) {
+bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const char* interfaceIP,
+                                 uint16_t sourcePort) {
     // Create UDP socket
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
         fprintf(stderr, "AES67 RTP openTransmitter: socket() failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         return false;
+    }
+
+    // Bind to a specific local port when the caller needs one (Dolby Atmos
+    // Connect identifies flows by source port, not destination address —
+    // see CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort).
+    // Left unbound (kernel-assigned ephemeral source port) otherwise, this
+    // driver's behavior before that existed. SO_REUSEADDR so a lingering
+    // socket from a just-stopped stream doesn't block the rebind.
+    if (sourcePort != 0) {
+        int reuse = 1;
+        setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        struct sockaddr_in localAddr;
+        memset(&localAddr, 0, sizeof(localAddr));
+        localAddr.sin_family = AF_INET;
+        localAddr.sin_addr.s_addr = INADDR_ANY;
+        localAddr.sin_port = htons(sourcePort);
+        if (bind(sockfd_, reinterpret_cast<struct sockaddr*>(&localAddr), sizeof(localAddr)) < 0) {
+            fprintf(stderr, "AES67 RTP openTransmitter: bind() to source port %u failed for %s:%u (errno=%d: %s)\n",
+                    sourcePort, multicastIP, port, errno, strerror(errno));
+            ::close(sockfd_);
+            sockfd_ = -1;
+            return false;
+        }
     }
 
     // Set multicast TTL

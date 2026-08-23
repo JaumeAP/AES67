@@ -98,12 +98,16 @@ public:
     //
 
     /// Create a TX stream that reads from device output channels and sends RTP.
+    /// sourcePort binds the transmitter's local UDP port explicitly instead
+    /// of leaving it kernel-assigned — 0 (default) for every profile but
+    /// DMA. See CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort.
     StreamID createTxStream(
         const std::string& name,
         const std::string& multicastIP,
         uint16_t port,
         uint16_t numChannels,
-        const ChannelMapping& mapping
+        const ChannelMapping& mapping,
+        uint16_t sourcePort = 0
     );
 
     /// Creates a TX stream of any width as one or more AES67 flows, each
@@ -111,16 +115,28 @@ public:
     /// channels — the actual limit in the standard, and what Dante
     /// Controller does when you tick more than 8 channels.
     ///
-    /// Flow N gets `baseMulticastIP` with its last octet advanced by N (so
-    /// 239.69.1.10 with 24 channels becomes .10, .11, .12), the same port,
-    /// and the next 8 device channels starting from
-    /// `mapping.deviceChannelStart`. Each flow is a normal stream created
+    /// Addressing depends on the active profile's
+    /// CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort:
+    ///  - false (default — AES67/Dante convention): flow N gets
+    ///    `baseMulticastIP` with its last octet advanced by N (so
+    ///    239.69.1.10 with 24 channels becomes .10, .11, .12), all flows
+    ///    share `port` as both destination port and (kernel-assigned)
+    ///    source port.
+    ///  - true (the Dolby DMA profile's real wire scheme): every flow
+    ///    shares `baseMulticastIP` and `port` as a fixed RTP destination
+    ///    port; flow N instead binds source port `port + 1 + N` (so
+    ///    port 6517 with 24 channels becomes source ports 6518, 6519,
+    ///    6520 — matches the DMA's own documented defaults exactly when
+    ///    the caller passes 6517).
+    /// Either way, each flow gets the next 8 device channels starting from
+    /// `mapping.deviceChannelStart`, and each is a normal stream created
     /// through createTxStream(), so nothing downstream needs to know these
     /// were grouped.
     ///
     /// Returns every created StreamID, or an empty vector on failure —
-    /// partial flows are rolled back rather than left half-configured.
-    /// A base IP whose last octet would exceed 255 fails outright.
+    /// partial flows are rolled back rather than left half-configured. A
+    /// base IP whose last octet would exceed 255, or a source port that
+    /// would exceed 65535, fails outright.
     std::vector<StreamID> createTxStreamFlows(
         const std::string& baseName,
         const std::string& baseMulticastIP,
@@ -253,7 +269,8 @@ private:
     std::unique_ptr<RTPTransmitter> createTransmitter(
         const SDPSession& sdp,
         const ChannelMapping& mapping,
-        const std::string& networkInterface = ""
+        const std::string& networkInterface = "",
+        uint16_t sourcePort = 0
     );
 
     // Callback invocation

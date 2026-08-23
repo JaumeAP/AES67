@@ -14,7 +14,11 @@
 // (see TestStreamManager.cpp's own "without RTP instance creation" scope).
 // This file tests that the field itself carries the right value; the
 // aggregate enforcement is unverified by an automated test, same honesty as
-// everything else in this driver that hasn't been run end to end.
+// everything else in this driver that hasn't been run end to end. Same
+// applies to useFixedMulticastWithPerFlowSourcePort: this file confirms
+// only DMA sets it; the actual per-flow source-port arithmetic it drives
+// lives in StreamManager::createTxStreamFlows() and is untested here for
+// the same reason.
 //
 
 #include "../NetworkEngine/CompatibilityProfile.h"
@@ -318,6 +322,9 @@ bool testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount() {
                 "DMA should record Dolby's documented default PTP domain (109)");
     TEST_ASSERT(!dma.domainIsFixed,
                 "DMA's PTP domain must match the sending processor, so it isn't fixed here");
+    TEST_ASSERT(dma.useFixedMulticastWithPerFlowSourcePort,
+                "DMA must use the real Atmos Connect wire scheme — fixed multicast/port, "
+                "source port stepped per flow — not this driver's AES67/Dante default");
 
     auto sdp = baselineSession();
     std::string error;
@@ -325,6 +332,17 @@ bool testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount() {
                 "transmitting to DMA must be accepted: " + error);
     TEST_ASSERT(!dma.validate(sdp, /*isTransmit=*/false, &error),
                 "this driver must not be allowed to receive under DMA");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testOnlyDMAUsesTheFixedMulticastAddressingScheme() {
+    std::cout << "Test: B13 · only DMA uses the fixed-multicast/per-flow-source-port scheme... ";
+    for (const auto& profile : CompatibilityProfile::all()) {
+        if (profile.kind == CompatibilityProfileKind::DMA) continue;
+        TEST_ASSERT(!profile.useFixedMulticastWithPerFlowSourcePort,
+                    profile.displayName + " must keep the AES67/Dante default addressing scheme");
+    }
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -416,6 +434,7 @@ int main() {
     testCinemaProfilesRecordDscpAsInformationalOnly();
     testCP850AndDAC3202ForcePTPRole();
     testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount();
+    testOnlyDMAUsesTheFixedMulticastAddressingScheme();
     std::cout << std::endl;
 
     std::cout << "C · Limits shared by every profile" << std::endl;
