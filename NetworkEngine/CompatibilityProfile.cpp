@@ -135,9 +135,56 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "the most the CP850 renders.";
         break;
 
+    case CompatibilityProfileKind::CP950:
+        p.displayName = "Dolby CP950 / CP950A (Cinema Processor)";
+        // Source: Docs/references/dolby_cp950_cp950a_manual.pdf (Dolby
+        // Cinema Processor CP950 and Dolby Atmos Cinema Processor CP950A
+        // Manual, Issue 13). The manual states outright that a CP950/
+        // CP950A replaces CP850/CP750/CP650 installs — same role from this
+        // driver's own point of view as CP850: it renders and sends, this
+        // driver only ever receives.
+        p.allowedSampleRates = {48000.0, 96000.0}; // same DCI parameters as CP850
+        p.allowedPtimesMs = {1};
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.domainIsFixed = false; // no fixed domain — matches CP850's own installs-set-their-own-domain note
+        p.recommendedPtpDomain = 109; // confirmed default, §3.8 "PTP domain number"
+        p.recommendedMulticastAddress = "239.81.83.67"; // §3.8 "Destination multicast IP", shared with DMA/DAC3202
+        // From our driver's point of view: same as CP850, we only ever
+        // receive. CP950 outputs up to 16ch over Atmos Connect, CP950A up
+        // to 64ch — one profile covers both, the real unit's channel count
+        // is whatever the user picks with the Input selector, same
+        // treatment as the DMA profile's Output selector.
+        p.direction = ProfileDirection::ReceiveOnly;
+        p.maxTotalChannels = 64;
+        // §3.8 "PTP priority": the CP950/CP950A defaults to PTP priority 1
+        // = 127 (lower number wins BMCA), while other Dolby devices
+        // default to priority 128 — i.e. it wins grandmaster by default.
+        // This driver, receiving from it, takes the complementary role.
+        p.ptpRole = PTPRoleConstraint::ForcedSlave;
+        p.caveats =
+            "Current-generation replacement for CP850 (its own manual says "
+            "so). CP950 renders up to 16 channels over Atmos Connect, "
+            "CP950A up to 64 — pick your real unit's channel count with "
+            "the Input selector rather than a separate profile per model. "
+            "Atmos Connect can carry AES67 or BLU Link, mutually exclusive "
+            "per installation (the unit reboots when switching between "
+            "them) — this profile assumes AES67 mode, the documented "
+            "default. PTP domain defaults to 109 (not fixed — must match "
+            "downstream devices); default destination multicast address "
+            "239.81.83.67, shared with Dolby Multichannel Amplifier and "
+            "DAC3202 installs. This driver is always PTP slave under this "
+            "profile — the CP950/CP950A defaults to the highest PTP "
+            "priority in the chain and is meant to win grandmaster. "
+            "Receive-only: this driver may only add RX streams under this "
+            "profile, up to 64 channels total.";
+        break;
+
     case CompatibilityProfileKind::DAC3202:
         p.displayName = "Dolby DAC3202 (Atmos Connect Interface)";
-        // Receiving end of the same CP850 link — same audio parameters.
+        // Receiving end of the same CP850/CP950/CP950A link — same audio
+        // parameters.
         p.allowedSampleRates = {48000.0, 96000.0};
         p.allowedPtimesMs = {1};
         p.allowedEncodings = {"L16", "L24"};
@@ -148,6 +195,15 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.requiresZeroRtpTimestampOffset = false;
         p.domainIsFixed = false;
         p.recommendedDscp = 46;
+        // Confirmed (not assumed) by the CP950/CP950A manual, which names
+        // the DAC3202 explicitly alongside DMA for both: same 109 PTP
+        // domain default, same 239.81.83.67 destination multicast default,
+        // same fixed-port/stepped-source-port Atmos Connect wire scheme
+        // DMA already used — no longer DMA-only speculation extended here,
+        // it's the confirmed shared scheme.
+        p.recommendedPtpDomain = 109;
+        p.recommendedMulticastAddress = "239.81.83.67";
+        p.useFixedMulticastWithPerFlowSourcePort = true;
         // From our driver's point of view: the DAC3202 only converts
         // digital audio to analog outputs — it has no network input for
         // audio to come back to us. We can only transmit to it.
@@ -155,14 +211,19 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.maxTotalChannels = 32;
         p.ptpRole = PTPRoleConstraint::ForcedMaster;
         p.caveats =
-            "Same link as CP850 (above), receiving end — 32 analog outputs, "
-            "so a full-width feed to one DAC3202 is 4 flows of 8 channels "
-            "under this driver's flow splitter. Same DSCP note as CP850: "
-            "documented as EF/46 but not actually applied by this driver. "
-            "This driver is always PTP master under this profile. "
-            "Transmit-only: this driver may only create TX streams under "
-            "this profile, up to 32 channels total, its full analog output "
-            "count.";
+            "Same link as CP850/CP950/CP950A (above), receiving end — 32 "
+            "analog outputs, so a full-width feed to one DAC3202 is 4 "
+            "flows of 8 channels. Multi-flow addressing matches the real "
+            "device (confirmed by the CP950/CP950A manual): one multicast "
+            "address, fixed RTP destination port (pass 6517 to match "
+            "Dolby's own default), source port stepped per 8-channel flow "
+            "— see StreamManager::createTxStreamFlows(). Same DSCP note as "
+            "CP850: documented as EF/46 but not actually applied by this "
+            "driver. PTP domain defaults to 109; default destination "
+            "multicast address 239.81.83.67. This driver is always PTP "
+            "master under this profile. Transmit-only: this driver may "
+            "only create TX streams under this profile, up to 32 channels "
+            "total, its full analog output count.";
         break;
 
     case CompatibilityProfileKind::DMA:
@@ -218,6 +279,11 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.requiresZeroRtpTimestampOffset = false;
         p.domainIsFixed = false;
         p.recommendedPtpDomain = 109;
+        // Not stated in the DMA's own manual — confirmed instead by the
+        // CP950/CP950A manual, which names "Dolby Multichannel Amplifier"
+        // explicitly alongside CP950/CP950A and DAC3202 as sharing this
+        // default (see DAC3202's own case above for the same citation).
+        p.recommendedMulticastAddress = "239.81.83.67";
         p.recommendedDscp = -1; // manual recommends DiffServ QoS (4 queues, strict priority) on the switch, not one documented codepoint
         p.direction = ProfileDirection::TransmitOnly;
         p.maxTotalChannels = 64;
@@ -242,7 +308,8 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "rate/ptime/encoding are inherited from the same Atmos Connect "
             "chain as CP850/DAC3202 (not independently documented for the "
             "DMA itself). PTP domain defaults to 109 for Dolby gear (not "
-            "fixed — must match the sending processor). This driver is "
+            "fixed — must match the sending processor); default "
+            "destination multicast address 239.81.83.67. This driver is "
             "always PTP master under this profile, transmit-only.";
         break;
     }
@@ -257,6 +324,7 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::ST2110_30),
         forKind(CompatibilityProfileKind::Dante),
         forKind(CompatibilityProfileKind::CP850),
+        forKind(CompatibilityProfileKind::CP950),
         forKind(CompatibilityProfileKind::DAC3202),
         forKind(CompatibilityProfileKind::DMA),
     };
@@ -269,6 +337,7 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
     case CompatibilityProfileKind::ST2110_30: return "st2110-30";
     case CompatibilityProfileKind::Dante:     return "dante";
     case CompatibilityProfileKind::CP850:     return "cp850";
+    case CompatibilityProfileKind::CP950:     return "cp950";
     case CompatibilityProfileKind::DAC3202:   return "dac3202";
     case CompatibilityProfileKind::DMA:       return "dma";
     }
@@ -280,6 +349,7 @@ CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string&
     if (s == "st2110-30") return CompatibilityProfileKind::ST2110_30;
     if (s == "dante")     return CompatibilityProfileKind::Dante;
     if (s == "cp850")     return CompatibilityProfileKind::CP850;
+    if (s == "cp950")     return CompatibilityProfileKind::CP950;
     if (s == "dac3202")   return CompatibilityProfileKind::DAC3202;
     if (s == "dma")       return CompatibilityProfileKind::DMA;
     return CompatibilityProfileKind::AES67;
