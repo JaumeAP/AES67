@@ -76,6 +76,10 @@ bool testAllProfilesAcceptTheCommonBaseline() {
     std::cout << "Test: A1 · every profile accepts 48kHz/L24/1ms/8ch, each in its own direction... ";
     const auto sdp = baselineSession();
     for (const auto& profile : CompatibilityProfile::all()) {
+        // ST 2110-30 Level B is the one profile that rejects the baseline
+        // on purpose: it exists precisely to require 125 us packets where
+        // the baseline (and Level A) use 1 ms.
+        if (profile.kind == CompatibilityProfileKind::ST2110_30_LevelB) continue;
         std::string error;
         TEST_ASSERT(profile.validate(sdp, transmitDirectionFor(profile), &error),
                     profile.displayName + " rejected the common baseline: " + error);
@@ -116,6 +120,36 @@ bool testST2110RejectsNon48kHz() {
                     "ST 2110-30 Level A must reject " + std::to_string(static_cast<long>(rate)) + " Hz");
         TEST_ASSERT(!error.empty(), "rejection must explain itself");
     }
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testST2110LevelBRequires125us() {
+    std::cout << "Test: B1b · ST 2110-30 Level B requires 125 us where Level A requires 1 ms... ";
+    const auto levelA = CompatibilityProfile::forKind(CompatibilityProfileKind::ST2110_30);
+    const auto levelB = CompatibilityProfile::forKind(CompatibilityProfileKind::ST2110_30_LevelB);
+
+    TEST_ASSERT(levelA.allowedPtimesUs == std::vector<uint32_t>{1000}, "Level A is 1 ms");
+    TEST_ASSERT(levelB.allowedPtimesUs == std::vector<uint32_t>{125}, "Level B is 125 us");
+
+    // The levels are claims about what the *receiving* gear supports, so
+    // each must reject the other's packet time rather than quietly
+    // accepting both — a Level A device sent 125 us packets is exactly the
+    // failure this separation prevents.
+    auto sdp = baselineSession(); // 1 ms
+    std::string error;
+    TEST_ASSERT(levelA.validate(sdp, false, &error), "Level A must accept 1 ms: " + error);
+    TEST_ASSERT(!levelB.validate(sdp, false, &error), "Level B must reject 1 ms");
+
+    sdp.ptimeUs = 125;
+    TEST_ASSERT(levelB.validate(sdp, false, &error), "Level B must accept 125 us: " + error);
+    TEST_ASSERT(!levelA.validate(sdp, false, &error), "Level A must reject 125 us");
+
+    // Everything else is Level A's constraint set unchanged.
+    TEST_ASSERT(levelB.allowedSampleRates == levelA.allowedSampleRates, "same 48 kHz-only rate");
+    TEST_ASSERT(levelB.maxChannelsPerFlow == levelA.maxChannelsPerFlow, "same 8-channel flow limit");
+    TEST_ASSERT(levelB.requiresZeroRtpTimestampOffset, "Level B keeps the zero-RTP-offset requirement");
+
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -525,6 +559,7 @@ int main() {
     std::cout << "B · ST 2110-30 Level A restrictions" << std::endl;
     std::cout << "-----------------------------------" << std::endl;
     testST2110RejectsNon48kHz();
+    testST2110LevelBRequires125us();
     testAES67AcceptsRatesST2110Rejects();
     testST2110RequiresZeroRtpOffsetFlag();
     std::cout << std::endl;

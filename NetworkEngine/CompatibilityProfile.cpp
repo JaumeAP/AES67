@@ -72,12 +72,49 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = true;
         p.caveats =
-            "Level A only — Levels B and C need 125 us packets, which this "
-            "driver's transmitter can't emit (it is fixed at 1 ms). "
-            "ST 2110-30 also requires stricter PTP than AES67, and this "
-            "driver's PTP has never been verified against a real "
-            "grandmaster. Selecting this profile enforces the parameters it "
-            "can check; it is not a conformance claim.";
+            "The mandatory level, and the safe common ground: gear claiming "
+            "any higher level must support this one too. 48 kHz, 1 ms "
+            "packets, up to 8 channels per stream. Pick Level B instead for "
+            "125 us packets. ST 2110-30 also requires stricter PTP than "
+            "AES67, and this driver's PTP has never been verified against a "
+            "real grandmaster. Selecting this profile enforces the "
+            "parameters it can check; it is not a conformance claim.";
+        break;
+
+    case CompatibilityProfileKind::ST2110_30_LevelB:
+        p.displayName = "SMPTE ST 2110-30 (Level B)";
+        // Level B is Level A at 125 us instead of 1 ms — same 48 kHz, same
+        // 16/24-bit, same 1-8 channels per stream. Emitting 125 us packets
+        // is possible as of the commit that moved packet time to
+        // microseconds; before that this profile could not have been
+        // honoured on transmit at all.
+        //
+        // Levels C, AX, BX and CX are deliberately absent:
+        //  - C is Level B with up to 64 channels in ONE stream, which this
+        //    driver can't do — StreamChannelMapper::kMaxChannelsPerFlow
+        //    caps a flow at 8 and the flow splitter divides anything wider.
+        //    Offering it would be a claim this driver can't honour.
+        //  - AX/BX/CX are the 96 kHz variants with the channel counts
+        //    halved (4, 4, 32). Supportable in principle; not added
+        //    speculatively, since nothing has asked for them.
+        p.allowedSampleRates = {48000.0};
+        p.allowedPtimesUs = {125};
+        p.allowedEncodings = {"L16", "L24"}; // AM824 is ST 2110-31, not -30
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = true;
+        p.caveats =
+            "Level A's constraints at a 125 us packet time: 48 kHz, up to 8 "
+            "channels per stream. Only choose this if the receiving gear "
+            "actually claims Level B — a Level A device must not be sent "
+            "125 us packets, and Level A is what everything supports. This "
+            "driver's transmitter emits whatever packet time the stream "
+            "asks for, so 125 us is reachable, but it has never been tested "
+            "against real Level B gear. Levels C (64 channels in one "
+            "stream) and AX/BX/CX (96 kHz) are not offered — see the code "
+            "comment for why. Same PTP caveat as Level A: ST 2110-30 "
+            "requires stricter PTP than AES67 and this driver's has never "
+            "been verified against a real grandmaster. Not a conformance "
+            "claim.";
         break;
 
     case CompatibilityProfileKind::Dante:
@@ -413,6 +450,7 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::AES67),
         forKind(CompatibilityProfileKind::RAVENNA),
         forKind(CompatibilityProfileKind::ST2110_30),
+        forKind(CompatibilityProfileKind::ST2110_30_LevelB),
         forKind(CompatibilityProfileKind::Dante),
         forKind(CompatibilityProfileKind::CP850),
         forKind(CompatibilityProfileKind::CP950),
@@ -426,6 +464,7 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
     case CompatibilityProfileKind::AES67:     return "aes67";
     case CompatibilityProfileKind::RAVENNA:   return "ravenna";
     case CompatibilityProfileKind::ST2110_30: return "st2110-30";
+    case CompatibilityProfileKind::ST2110_30_LevelB: return "st2110-30-b";
     case CompatibilityProfileKind::Dante:     return "dante";
     case CompatibilityProfileKind::CP850:     return "cp850";
     case CompatibilityProfileKind::CP950:     return "cp950";
@@ -438,6 +477,7 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
 CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string& s) {
     if (s == "ravenna")   return CompatibilityProfileKind::RAVENNA;
     if (s == "st2110-30") return CompatibilityProfileKind::ST2110_30;
+    if (s == "st2110-30-b") return CompatibilityProfileKind::ST2110_30_LevelB;
     if (s == "dante")     return CompatibilityProfileKind::Dante;
     if (s == "cp850")     return CompatibilityProfileKind::CP850;
     if (s == "cp950")     return CompatibilityProfileKind::CP950;
