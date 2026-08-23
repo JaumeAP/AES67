@@ -42,7 +42,29 @@ struct PTPDiagnostics {
     // PTP domain info
     int currentDomain{0};
     int preferredDomain{0};
-    
+
+    // --- Role (PTPArbitrator only — plain PTPSlave leaves these at their
+    // defaults: role always "Slave", nothing ever competes) -------------
+    //
+    // "role" answers the question this driver's own UI needs to show:
+    // are we the grandmaster right now, or synced to a remote one?
+    enum class Role { Slave, Master };
+    Role role{Role::Slave};
+
+    // True once role has been Master at least once since this diagnostics
+    // struct started tracking — lets the UI distinguish "currently Slave,
+    // never tried" from "currently Slave, lost an election".
+    bool everWasMaster{false};
+
+    // BMCA competitor info, only meaningful while role == Slave and a
+    // foreign master has actually been heard (masterClockID / clockClass /
+    // clockAccuracy above already describe it in that case — these three
+    // add what bmcaCompare() actually decided on, for a UI that wants to
+    // show "why they won", not just "who they are").
+    bool hasCompetitor{false};
+    int competitorPriority1{0};
+    int competitorPriority2{0};
+
     PTPDiagnostics() {
         lastMessageTime = std::chrono::steady_clock::now();
     }

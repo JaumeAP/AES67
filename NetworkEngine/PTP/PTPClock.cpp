@@ -6,7 +6,9 @@
 //
 
 #include "PTPClock.h"
+#include "AudioClockDeviceList.h"
 #include "PTPDInterface.h"
+#include "PTPMasterSettings.h"
 #include "PhaseLockedLoop.h"
 #include "../NetworkInterfaceDetection.h"
 #include "../../Driver/SDPParser.h"
@@ -81,6 +83,34 @@ PTPClock::PTPClock(int domain)
     // PTPDInterface will automatically fall back to stub mode.
     ptpdInterface_ = std::make_unique<PTPDInterface>(/* useStub= */ false);
     ptpdInterface_->setDomain(domain);
+
+    // Master capability is opt-in, driven by whatever ManagerApp's clock
+    // source picker last saved — absent that file, masterCapable defaults
+    // to false and this is a no-op: identical to the driver's behavior
+    // before this feature existed.
+    PTPMasterSettingsManager settingsManager;
+    PTPMasterSettings masterSettings = settingsManager.load();
+    if (masterSettings.masterCapable) {
+        PTPClockSourceKind kind = PTPClockSourceKind::Internal;
+        AudioDeviceID lockToDevice = kAudioObjectUnknown;
+
+        if (masterSettings.clockSourceKind == "localAudioDevice" &&
+            !masterSettings.lockToDeviceUID.empty()) {
+            lockToDevice = resolveAudioDeviceUID(masterSettings.lockToDeviceUID);
+            if (lockToDevice == kAudioObjectUnknown) {
+                std::cerr << "[PTPClock] Configured clock source device (UID "
+                          << masterSettings.lockToDeviceUID
+                          << ") not found — falling back to internal clock" << std::endl;
+            } else {
+                kind = PTPClockSourceKind::LocalAudioDevice;
+            }
+        }
+
+        ptpdInterface_->enableMasterCapability(kind, lockToDevice);
+        std::cout << "[PTPClock] Master capability enabled, clock source kind="
+                  << (kind == PTPClockSourceKind::Internal ? "internal" : "localAudioDevice")
+                  << std::endl;
+    }
 
     // Initialize the Phase-Locked Loop for audio clock recovery
     pll_ = std::make_unique<PhaseLockedLoop>(1.0, 0.707); // 1Hz bandwidth, critical damping

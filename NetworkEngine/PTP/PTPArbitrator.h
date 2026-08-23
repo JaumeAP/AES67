@@ -91,6 +91,7 @@ private:
     std::thread monitorThread_;
     std::atomic<bool> running_{false};
     std::atomic<bool> slaveActive_{false};
+    mutable std::atomic<bool> everWasMaster_{false};
 
     mutable std::mutex callbackMutex_;
     PTPMeasurementCallback pendingCallback_; // set before slave_ exists yet, applied when it starts
