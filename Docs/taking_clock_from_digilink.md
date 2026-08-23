@@ -129,6 +129,66 @@ the loop in software.
 Hence: one box. It is the smallest change that makes the room correct, and
 there isn't a cheaper one that actually works.
 
+## The other direction: we are the clock, HDX follows us
+
+Everything above takes the clock *from* HDX. The reverse is just as valid,
+and in some rooms it's the only option: **we** are the grandmaster and the
+HDX rig slaves to us.
+
+Two things make this the right choice, not a fallback:
+
+- **A Dolby room forces it.** The DMA and DAC3202 are PTP slaves with
+  clock priority fixed at 255 — they will not originate timing for anyone.
+  Something on the AES67 side has to be master, and this driver can be
+  (the PTP master / BMCA path is already built — see
+  `references/avid_hdx_clock_source_notes.md` and the "Run a PTP clock"
+  switch).
+- **DigiLink can't be a software clock source anyway.** The DSI RE
+  (`../../Bundles/Protools/DSI_clock/DSI_Clock_RE_Analysis.md`) confirms
+  the HDX clock only leaves the card as a physical BNC signal. So if the
+  goal is one shared clock and software can't take HDX's, the answer is to
+  give HDX ours.
+
+The physics is mirrored, and so is the catch — **we still can't emit a
+word clock from software.** Our PTP grandmaster is a network timing
+source, not a BNC signal. The HDX rig needs to be told to follow it, and
+that handoff is hardware:
+
+### Cleanest: MTRX bridges it, no extra box
+
+    this driver (PTP grandmaster) ──PTPv2──▶ AES67 network ──▶ MTRX ──DigiLink──▶ HDX
+                                                                 (Dante clock slave)
+
+MTRX / MTRX Studio can be set as a **slave** to the network clock (its own
+docs describe both roles). Set it to follow, and the HDX rig it feeds over
+DigiLink runs on our clock. Mind the PTPv1/PTPv2 bridge direction, as
+always with Dante.
+
+### Without MTRX: word clock out of the grandmaster into HDX
+
+    this driver ──PTPv2──▶ PTP grandmaster w/ word clock OUT ──BNC──▶ HD I/O (sync = External)
+                                                                        or Sync X
+
+Set the HD interface's sync source to **External** (the DSI enum we found:
+`External` / `External 48k` / `External Super Clock`) and feed its word
+clock input from a grandmaster that has a word clock output driven by our
+PTPv2. The grandmaster is the one box that turns our network timing into
+the BNC signal HDX needs.
+
+### Driver settings for "we are the clock"
+
+- **Run a PTP clock**: on.
+- **Act as PTP master when eligible**: on — so BMCA can hand us
+  grandmaster. (Under a Dolby profile the driver is already forced master;
+  nothing to change.)
+- Clock source: **Internal**, or locked to whatever hardware reference the
+  Mac genuinely has — that's what we're then propagating to the room.
+
+The one combination to avoid is the confused middle: us trying to follow
+HDX (selecting the Avid CoreAudio device) *and* HDX set to follow us. That
+is two devices each waiting for the other, and it drifts or won't lock at
+all.
+
 ## What this driver needs in each case
 
 Nothing new. In all three the network gets a PTPv2 grandmaster that is
@@ -161,6 +221,8 @@ disappears the moment Pro Tools opens.
 | AAX plugin / DirectIO driver | software | Yes, but a different product |
 | Word-clock-input grandmaster (old rooms) | hardware, one box | Yes |
 | No shared clock at all | — | Only if the audio never sums |
+| **We are master**, MTRX slaves to network (Path D) | hardware, MTRX | Yes |
+| **We are master**, word clock out into HDX = External | hardware, one box | Yes |
 
 Untested against real HDX hardware here — as with everything in this
 driver that needs hardware to verify.
