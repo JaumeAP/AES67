@@ -123,8 +123,9 @@ struct ProfileParametersView: View {
         }
 
         section("Audio format (both directions)") {
+            sampleRateRow
             parameterRow(
-                "Sample rates",
+                "Rates this profile permits",
                 value: profile.allowedSampleRates
                     .map { "\($0 / 1000) kHz" }
                     .joined(separator: ", "),
@@ -381,6 +382,53 @@ struct ProfileParametersView: View {
                   + "Installations with several auditoriums on one network give each its own "
                   + "domain (109, 110, 111, …)."
         )
+    }
+
+    /// The device's own sample rate — selectable, or showing why it isn't.
+    @ViewBuilder
+    private var sampleRateRow: some View {
+        let lock = driverManager.sampleRateLock
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Device sample rate")
+                    .frame(width: 220, alignment: .leading)
+                if lock == .free {
+                    Picker("", selection: Binding(
+                        get: { driverManager.currentDeviceSampleRate },
+                        set: { _ = driverManager.setDeviceSampleRate($0) }
+                    )) {
+                        ForEach(driverManager.selectableSampleRates, id: \.self) { rate in
+                            Text("\(Int(rate) / 1000) kHz").tag(rate)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 140)
+                } else {
+                    Text("\(Int(driverManager.currentDeviceSampleRate) / 1000) kHz")
+                        .foregroundColor(.secondary)
+                    Image(systemName: "lock.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            Text({
+                switch lock {
+                case .free:
+                    return "What the device presents to Core Audio. Streams must match it — "
+                         + "one that doesn't is refused rather than resampled."
+                case .byProfile(let name):
+                    return "\(name) permits only this rate, so there is nothing to choose."
+                case .byStream(let stream):
+                    return "Following the stream that's already running (\(stream)). The device "
+                         + "has to match what it receives; changing it now would break that "
+                         + "stream. Stop it to choose a different rate."
+                }
+            }())
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var flowAddressingRow: some View {
