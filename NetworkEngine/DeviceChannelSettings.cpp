@@ -18,22 +18,27 @@ const std::vector<uint32_t>& DeviceChannelSettings::allowedChannelCounts() {
     return counts;
 }
 
-uint32_t DeviceChannelSettings::totalChannelCount() const {
+uint32_t DeviceChannelSelection::totalChannelCount() const {
     uint32_t total = channelCount;
-    if (auxChannelEnabled) total += kChannelGroupSize;
-    return std::min(total, kMaxDeviceChannels);
+    if (auxChannelEnabled) total += DeviceChannelSettings::kChannelGroupSize;
+    return std::min(total, DeviceChannelSettings::kMaxDeviceChannels);
 }
 
-bool DeviceChannelSettings::isValid() const {
-    const auto& allowed = allowedChannelCounts();
+bool DeviceChannelSelection::isValid() const {
+    const auto& allowed = DeviceChannelSettings::allowedChannelCounts();
     if (std::find(allowed.begin(), allowed.end(), channelCount) == allowed.end()) {
         return false;
     }
     // The auxiliary group must actually fit — at 128 it doesn't.
-    if (auxChannelEnabled && channelCount + kChannelGroupSize > kMaxDeviceChannels) {
+    if (auxChannelEnabled && channelCount + DeviceChannelSettings::kChannelGroupSize
+                                  > DeviceChannelSettings::kMaxDeviceChannels) {
         return false;
     }
     return true;
+}
+
+bool DeviceChannelSettings::isValid() const {
+    return rx.isValid() && tx.isValid();
 }
 
 DeviceChannelSettingsManager::DeviceChannelSettingsManager() {
@@ -118,7 +123,7 @@ bool extractBoolField(const std::string& json, const std::string& key, bool& out
 } // namespace
 
 DeviceChannelSettings DeviceChannelSettingsManager::load() {
-    DeviceChannelSettings settings; // defaults: 128 channels, no aux
+    DeviceChannelSettings settings; // defaults: 128 channels each direction, no aux
 
     std::ifstream file(configPath_);
     if (!file.is_open()) return settings;
@@ -128,20 +133,25 @@ DeviceChannelSettings DeviceChannelSettingsManager::load() {
     const std::string json = buffer.str();
 
     DeviceChannelSettings parsed;
-    extractUint32Field(json, "channelCount", parsed.channelCount);
-    extractBoolField(json, "auxChannelEnabled", parsed.auxChannelEnabled);
+    extractUint32Field(json, "rxChannelCount", parsed.rx.channelCount);
+    extractBoolField(json, "rxAuxChannelEnabled", parsed.rx.auxChannelEnabled);
+    extractUint32Field(json, "txChannelCount", parsed.tx.channelCount);
+    extractBoolField(json, "txAuxChannelEnabled", parsed.tx.auxChannelEnabled);
 
     if (!parsed.isValid()) {
         AES67_LOGF("DeviceChannelSettingsManager: %s holds an invalid combination "
-                   "(channelCount=%u, aux=%s) — using defaults instead",
-                   configPath_.c_str(), parsed.channelCount,
-                   parsed.auxChannelEnabled ? "true" : "false");
+                   "(rx=%u/aux=%s, tx=%u/aux=%s) — using defaults instead",
+                   configPath_.c_str(), parsed.rx.channelCount,
+                   parsed.rx.auxChannelEnabled ? "true" : "false",
+                   parsed.tx.channelCount,
+                   parsed.tx.auxChannelEnabled ? "true" : "false");
         return settings;
     }
 
-    AES67_LOGF("DeviceChannelSettingsManager: Loaded from %s (channelCount=%u, aux=%s, total=%u)",
-               configPath_.c_str(), parsed.channelCount,
-               parsed.auxChannelEnabled ? "true" : "false", parsed.totalChannelCount());
+    AES67_LOGF("DeviceChannelSettingsManager: Loaded from %s (rx=%u+%s=%u, tx=%u+%s=%u)",
+               configPath_.c_str(),
+               parsed.rx.channelCount, parsed.rx.auxChannelEnabled ? "8" : "0", parsed.rx.totalChannelCount(),
+               parsed.tx.channelCount, parsed.tx.auxChannelEnabled ? "8" : "0", parsed.tx.totalChannelCount());
     return parsed;
 }
 
@@ -158,8 +168,10 @@ bool DeviceChannelSettingsManager::save(const DeviceChannelSettings& settings) {
     std::ostringstream json;
     json << "{\n";
     json << "  \"version\": \"1.0\",\n";
-    json << "  \"channelCount\": " << settings.channelCount << ",\n";
-    json << "  \"auxChannelEnabled\": " << (settings.auxChannelEnabled ? "true" : "false") << "\n";
+    json << "  \"rxChannelCount\": " << settings.rx.channelCount << ",\n";
+    json << "  \"rxAuxChannelEnabled\": " << (settings.rx.auxChannelEnabled ? "true" : "false") << ",\n";
+    json << "  \"txChannelCount\": " << settings.tx.channelCount << ",\n";
+    json << "  \"txAuxChannelEnabled\": " << (settings.tx.auxChannelEnabled ? "true" : "false") << "\n";
     json << "}\n";
 
     std::ofstream file(configPath_);

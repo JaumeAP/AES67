@@ -16,23 +16,24 @@ struct ContentView: View {
     @State private var showChannelDiagnostic = false
     @State private var showProfileCaveats = false
 
-    /// Connection channel count — input and output alike — plus the
-    /// auxiliary pair. The device always presents all 128 channels to Core
-    /// Audio; this caps how many of them streams may actually be assigned.
-    /// Only editable while the driver is uninstalled: the driver reads it
-    /// once when Core Audio constructs the device.
+    /// One direction's channel-count selector — count picker, aux-pair
+    /// toggle, running total. Used twice below (input/output), each wired to
+    /// its own DriverManager state and its own disabled reason.
     @ViewBuilder
-    private var channelCountBar: some View {
-        let locked = driverManager.isDriverLoaded
-
+    private func channelSelector(
+        label: String,
+        countBinding: Binding<Int>,
+        auxBinding: Binding<Bool>,
+        auxFits: Bool,
+        total: Int,
+        disabled: Bool,
+        disabledHelp: String?
+    ) -> some View {
         HStack(spacing: 12) {
-            Text("Channels:")
+            Text(label)
                 .font(.callout)
 
-            Picker("", selection: Binding(
-                get: { driverManager.deviceChannelCount },
-                set: { driverManager.deviceChannelCount = $0; driverManager.saveDeviceChannelSettings() }
-            )) {
+            Picker("", selection: countBinding) {
                 ForEach(DriverManager.allowedChannelCounts, id: \.self) { count in
                     Text("\(count)").tag(count)
                 }
@@ -40,64 +41,123 @@ struct ContentView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 260)
-            .disabled(locked)
+            .disabled(disabled)
 
-            Toggle("Aux pair (+2)", isOn: Binding(
-                get: { driverManager.auxChannelEnabled },
-                set: { driverManager.auxChannelEnabled = $0; driverManager.saveDeviceChannelSettings() }
-            ))
-            .toggleStyle(.checkbox)
-            .disabled(locked || !driverManager.auxChannelFitsAtCurrentCount)
-            .help(driverManager.auxChannelFitsAtCurrentCount
-                  ? "Adds a group of 8 carrying a 2-channel auxiliary pair (6 reserved), keeping the total a multiple of 8"
-                  : "No room for the auxiliary group at 128 channels — the device's buffers are fixed at 128")
+            Toggle("Aux pair (+2)", isOn: auxBinding)
+                .toggleStyle(.checkbox)
+                .disabled(disabled || !auxFits)
+                .help(!auxFits
+                      ? "No room for the auxiliary group at 128 channels — the device's buffers are fixed at 128"
+                      : (disabledHelp ?? "Adds a group of 8 carrying a 2-channel auxiliary pair (6 reserved), keeping the total a multiple of 8"))
 
-            Text("= \(driverManager.totalDeviceChannelCount) usable")
+            Text("= \(total) usable")
                 .font(.callout)
                 .foregroundColor(.secondary)
-                .help("The device always presents 128 channels to Core Audio; "
-                    + "this caps how many streams may be assigned to")
+        }
+        .help(disabledHelp ?? "")
+    }
 
-            Divider()
-                .frame(height: 18)
+    /// Input (RX, network -> Core Audio) and output (TX, Core Audio ->
+    /// network) channel counts, as two independent selectors — same options
+    /// and group-of-8/aux-pair semantics on each side. The device always
+    /// presents all 128 channels to Core Audio in both directions; this only
+    /// caps how many of them streams may actually be assigned. Only editable
+    /// while the driver is uninstalled: the driver reads both once when Core
+    /// Audio constructs the device.
+    ///
+    /// A selector is additionally disabled when the active compatibility
+    /// profile rules its direction out entirely (CP850 = receive-only, so
+    /// the output selector is locked; DAC3202 = transmit-only, so the input
+    /// selector is locked). A hypothetical future profile fixed in both
+    /// directions would simply lock both — this is a general rule, not a
+    /// special case for any one profile.
+    @ViewBuilder
+    private var channelCountBar: some View {
+        let locked = driverManager.isDriverLoaded
+        let direction = driverManager.activeCompatibilityProfile.direction
+        let rxRuledOut = direction == .transmitOnly
+        let txRuledOut = direction == .receiveOnly
+        let profileName = driverManager.activeCompatibilityProfile.name
 
-            // Compatibility profile: which flavour of AoIP gear this driver
-            // is pointed at. Narrows what streams are accepted; never a
-            // conformance claim — hence the caveats in the tooltip.
-            Text("Compatible with:")
-                .font(.callout)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                channelSelector(
+                    label: "Input:",
+                    countBinding: Binding(
+                        get: { driverManager.rxChannelCount },
+                        set: { driverManager.rxChannelCount = $0; driverManager.saveDeviceChannelSettings() }
+                    ),
+                    auxBinding: Binding(
+                        get: { driverManager.rxAuxChannelEnabled },
+                        set: { driverManager.rxAuxChannelEnabled = $0; driverManager.saveDeviceChannelSettings() }
+                    ),
+                    auxFits: driverManager.rxAuxChannelFitsAtCurrentCount,
+                    total: driverManager.totalRxChannelCount,
+                    disabled: locked || rxRuledOut,
+                    disabledHelp: rxRuledOut ? "\(profileName) is transmit-only from this driver — input is unused" : nil
+                )
 
-            Picker("", selection: Binding(
-                get: { driverManager.compatibilityProfileID },
-                set: { driverManager.compatibilityProfileID = $0; driverManager.saveCompatibilityProfile() }
-            )) {
-                ForEach(DriverManager.compatibilityProfiles) { profile in
-                    Text(profile.name).tag(profile.id)
+                Divider()
+                    .frame(height: 18)
+
+                channelSelector(
+                    label: "Output:",
+                    countBinding: Binding(
+                        get: { driverManager.txChannelCount },
+                        set: { driverManager.txChannelCount = $0; driverManager.saveDeviceChannelSettings() }
+                    ),
+                    auxBinding: Binding(
+                        get: { driverManager.txAuxChannelEnabled },
+                        set: { driverManager.txAuxChannelEnabled = $0; driverManager.saveDeviceChannelSettings() }
+                    ),
+                    auxFits: driverManager.txAuxChannelFitsAtCurrentCount,
+                    total: driverManager.totalTxChannelCount,
+                    disabled: locked || txRuledOut,
+                    disabledHelp: txRuledOut ? "\(profileName) is receive-only from this driver — output is unused" : nil
+                )
+
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                // Compatibility profile: which flavour of AoIP gear this driver
+                // is pointed at. Narrows what streams are accepted; never a
+                // conformance claim — hence the caveats in the tooltip.
+                Text("Compatible with:")
+                    .font(.callout)
+
+                Picker("", selection: Binding(
+                    get: { driverManager.compatibilityProfileID },
+                    set: { driverManager.compatibilityProfileID = $0; driverManager.saveCompatibilityProfile() }
+                )) {
+                    ForEach(DriverManager.compatibilityProfiles) { profile in
+                        Text(profile.name).tag(profile.id)
+                    }
                 }
-            }
-            .labelsHidden()
-            .frame(width: 220)
-            .disabled(locked)
-            .help(driverManager.activeCompatibilityProfile.caveats)
+                .labelsHidden()
+                .frame(width: 220)
+                .disabled(locked)
+                .help(driverManager.activeCompatibilityProfile.caveats)
 
-            Button {
-                showProfileCaveats = true
-            } label: {
-                Image(systemName: "info.circle")
-            }
-            .buttonStyle(.borderless)
-            .help("What this profile does and doesn't enforce")
+                Button {
+                    showProfileCaveats = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("What this profile does and doesn't enforce")
 
-            Spacer()
+                Spacer()
 
-            if locked {
-                Label("Turn the driver off to change", systemImage: "lock.fill")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                Text("Applies when the driver is next installed")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if locked {
+                    Label("Turn the driver off to change", systemImage: "lock.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Applies when the driver is next installed")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
         .padding(.horizontal, 12)
