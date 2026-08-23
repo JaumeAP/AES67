@@ -27,11 +27,16 @@ public:
     /// @param mapping Channel mapping from device channels to stream channels.
     /// @param deviceChannels Reference to device output ring buffers.
     /// @param networkInterface Interface name ("en0") or IP to bind multicast. Empty = default.
+    /// @param sourcePort Explicit local UDP port to bind before sending, or
+    ///   0 (default) for the kernel-assigned ephemeral one every profile
+    ///   but DMA uses. See CompatibilityProfile::
+    ///   useFixedMulticastWithPerFlowSourcePort and RTPSocket::openTransmitter.
     RTPTransmitter(
         const SDPSession& sdp,
         const ChannelMapping& mapping,
         DeviceChannelBuffers& deviceChannels,
-        const std::string& networkInterface = ""
+        const std::string& networkInterface = "",
+        uint16_t sourcePort = 0
     );
 
     ~RTPTransmitter();
@@ -82,6 +87,7 @@ private:
     ChannelMapping mapping_;
     DeviceChannelBuffers& deviceChannels_;
     std::string networkInterface_;
+    uint16_t sourcePort_{0};
 
     // RTP socket
     RTP::RTPSocket rtpSocket_;

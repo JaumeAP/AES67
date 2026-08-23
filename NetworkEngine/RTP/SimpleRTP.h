@@ -115,8 +115,14 @@ public:
     // Receiver setup
     bool openReceiver(const char* multicastIP, uint16_t port, const char* interfaceIP = nullptr);
 
-    // Transmitter setup
-    bool openTransmitter(const char* multicastIP, uint16_t port, const char* interfaceIP = nullptr);
+    // Transmitter setup. sourcePort binds the socket to that specific local
+    // (source) UDP port before sending — 0 (default) leaves it kernel-
+    // assigned/ephemeral, this driver's behavior before CompatibilityProfile
+    // ::useFixedMulticastWithPerFlowSourcePort existed. Nonzero is for gear
+    // (the Dolby DMA profile) that identifies flows by source port rather
+    // than by destination address.
+    bool openTransmitter(const char* multicastIP, uint16_t port, const char* interfaceIP = nullptr,
+                          uint16_t sourcePort = 0);
 
     // Send RTP packet
     ssize_t send(const RTPPacket& packet);

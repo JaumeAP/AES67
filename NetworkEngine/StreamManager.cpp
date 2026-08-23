@@ -257,7 +257,8 @@ StreamID StreamManager::createTxStream(
     const std::string& multicastIP,
     uint16_t port,
     uint16_t numChannels,
-    const ChannelMapping& mapping
+    const ChannelMapping& mapping,
+    uint16_t sourcePort
 ) {
     std::lock_guard<std::mutex> lock(streamsMutex_);
 
@@ -305,7 +306,7 @@ StreamID StreamManager::createTxStream(
     managed.isTransmit = true;
 
     // Create RTP transmitter
-    managed.transmitter = createTransmitter(sdp, completeMapping);
+    managed.transmitter = createTransmitter(sdp, completeMapping, /*networkInterface=*/"", sourcePort);
     if (!managed.transmitter) {
         AES67_LOGF("StreamManager::createTxStream: failed to create RTP transmitter for '%s'",
                    name.c_str());
@@ -388,12 +389,37 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
     std::vector<StreamID> created;
     if (numChannels == 0) return created;
 
+    // See CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort's
+    // doc comment: true for the Dolby DMA profile's real Atmos Connect
+    // wire scheme (one multicast address, fixed destination port, source
+    // port stepped per flow); false is every other profile's AES67/Dante
+    // convention (multicast address stepped per flow, fixed port).
+    const auto profile = CompatibilityProfile::forKind(profileKind_.load(std::memory_order_relaxed));
+    const bool dolbyScheme = profile.useFixedMulticastWithPerFlowSourcePort;
+
     constexpr uint16_t kPerFlow = StreamChannelMapper::kMaxChannelsPerFlow;
     const unsigned flowCount = (numChannels + kPerFlow - 1) / kPerFlow;
 
     for (unsigned flow = 0; flow < flowCount; ++flow) {
-        std::string flowIP;
-        if (!advanceLastOctet(baseMulticastIP, flow, flowIP)) {
+        std::string flowIP = baseMulticastIP;
+        uint16_t flowSourcePort = 0;
+
+        if (dolbyScheme) {
+            // Fixed address, fixed destination port (both == baseMulticastIP/
+            // port for every flow, set above/below); only the source port
+            // steps, matching the DMA's own documented defaults (6517 fixed
+            // destination, 6518/6519/6520/... source) when the caller passes
+            // 6517 as `port`.
+            const unsigned candidate = static_cast<unsigned>(port) + 1 + flow;
+            if (candidate > 0xFFFF) {
+                AES67_LOGF("StreamManager::createTxStreamFlows: '%s' needs %u flows but "
+                           "source port %u + 1 + %u overruns 65535 — rolling back",
+                           baseName.c_str(), flowCount, port, flow);
+                for (const auto& id : created) removeStream(id);
+                return {};
+            }
+            flowSourcePort = static_cast<uint16_t>(candidate);
+        } else if (!advanceLastOctet(baseMulticastIP, flow, flowIP)) {
             AES67_LOGF("StreamManager::createTxStreamFlows: '%s' needs %u flows but "
                        "%s + %u overruns the subnet — rolling back",
                        baseName.c_str(), flowCount, baseMulticastIP.c_str(), flow);
@@ -419,7 +445,7 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
             : baseName + " (flow " + std::to_string(flow + 1) +
               "/" + std::to_string(flowCount) + ")";
 
-        const StreamID id = createTxStream(flowName, flowIP, port, flowChannels, flowMapping);
+        const StreamID id = createTxStream(flowName, flowIP, port, flowChannels, flowMapping, flowSourcePort);
         if (id.isNull()) {
             AES67_LOGF("StreamManager::createTxStreamFlows: flow %u/%u of '%s' failed "
                        "— rolling back %zu already created",
@@ -801,10 +827,11 @@ std::unique_ptr<RTPReceiver> StreamManager::createReceiver(
 std::unique_ptr<RTPTransmitter> StreamManager::createTransmitter(
     const SDPSession& sdp,
     const ChannelMapping& mapping,
-    const std::string& networkInterface
+    const std::string& networkInterface,
+    uint16_t sourcePort
 ) {
     // Transmitters read audio from OUTPUT buffers (Core Audio → Network)
-    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface);
+    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface, sourcePort);
 }
 
 //
