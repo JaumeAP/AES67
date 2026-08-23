@@ -168,6 +168,7 @@ if(ASPL_FOUND)
         BenchmarkIOHandler.cpp
         ../Driver/AES67IOHandler.cpp
         ../Shared/Types.cpp
+        ${ASPL_SOURCES}
     )
 
     target_include_directories(BenchmarkIOHandler PRIVATE
@@ -177,10 +178,20 @@ if(ASPL_FOUND)
 
     target_compile_features(BenchmarkIOHandler PRIVATE cxx_std_17)
 
-    # Link libASPL for benchmark
+    # Link libASPL for benchmark (system install case; the submodule case
+    # compiles ASPL_SOURCES directly into the target above instead)
     if(ASPL_LIBRARY)
         target_link_libraries(BenchmarkIOHandler PRIVATE ${ASPL_LIBRARY})
     endif()
+
+    # aspl::Convert and aspl::Driver call into CoreFoundation/CoreAudio
+    # directly (CFURL, CFUUID...); the AES67Driver target links these, this
+    # one didn't.
+    target_link_libraries(BenchmarkIOHandler PRIVATE
+        "-framework CoreAudio"
+        "-framework CoreFoundation"
+        "-framework AudioToolbox"
+    )
 endif()
 
 # Integration Test: Full Audio Path
