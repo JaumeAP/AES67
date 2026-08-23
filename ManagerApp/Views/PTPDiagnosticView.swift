@@ -18,6 +18,7 @@ struct PTPDiagnosticView: View {
     @State private var isTestingConnectivity: Bool = false
     @State private var connectivityTestResult: ConnectivityTestResult?
     @State private var clockSources: [DriverManager.PTPClockSourceOption] = []
+    @State private var isLiveData: Bool = false
 
     // Binding for the clock source Picker: maps the two persisted fields
     // (ptpClockSourceKind/ptpLockToDeviceUID) to a single selection ID
@@ -481,9 +482,25 @@ struct PTPDiagnosticView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("PTP Diagnostic Information")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                HStack {
+                    Text("PTP Diagnostic Information")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    if ptpDiagnostics != nil {
+                        Text(isLiveData ? "Live" : "Simulated")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(isLiveData ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
+                            .foregroundColor(isLiveData ? .green : .orange)
+                            .cornerRadius(4)
+                            .help(isLiveData
+                                  ? "Reading the running driver's actual state"
+                                  : "Driver not reachable — showing simulated data")
+                    }
+                }
 
                 // Health Indicator at the top
                 healthIndicator
@@ -626,6 +643,9 @@ struct PTPDiagnosticView: View {
             .padding()
         }
         .frame(minWidth: 550, minHeight: 700)
+        .onAppear {
+            refreshDiagnostics()
+        }
     }
     
     private var isConnected: Bool {
@@ -733,8 +753,22 @@ struct PTPDiagnosticView: View {
     }
 
     private func refreshDiagnostics() {
-        // In a real implementation, this would fetch updated diagnostics from the driver
-        // For now, we'll simulate with mock data
+        // The gateway: DriverManager.fetchLivePTPDiagnostics() queries the
+        // custom property AES67Device registers on itself
+        // (Driver/AES67Device.cpp, Shared/CustomProperties.h) — real data
+        // from the actual running driver process, not this file's old mock.
+        // Only falls through to the mock below if that query fails (driver
+        // not loaded, older build without the property, etc.), so the
+        // screen still shows *something* rather than going blank.
+        if let live = driverManager.fetchLivePTPDiagnostics() {
+            ptpDiagnostics = live
+            isLiveData = true
+            return
+        }
+        isLiveData = false
+
+        // Fallback: simulated data, same as this screen showed before the
+        // gateway existed.
         ptpDiagnostics = PTPDiagnostics(
             isConnected: true,
             isLocked: true,

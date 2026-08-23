@@ -21,6 +21,22 @@ StreamManager::StreamManager(DeviceChannelBuffers& inputChannels, DeviceChannelB
 {
 }
 
+PTPDiagnostics StreamManager::getPTPDiagnostics(int domain) {
+    // ptpManager_ (the member) is never assigned anywhere in this class —
+    // StreamManager doesn't actually own a PTP clock instance. Going
+    // through the singleton directly here rather than fixing that: whether
+    // a PTPClock is actually running for `domain` (and therefore whether
+    // this returns real data or just PTPDiagnostics{}'s disconnected
+    // defaults) depends on something calling
+    // PTPClockManager::getInstance().getClockForDomain(domain) somewhere —
+    // which nothing in the real driver path does today either. That's a
+    // separate decision (starting PTP sockets/threads at driver startup is
+    // a real behavior change, not just wiring a read-only query) — this
+    // function reports whatever's actually there, honestly, rather than
+    // silently starting something new.
+    return PTPClockManager::getInstance().getDiagnostics(domain);
+}
+
 StreamManager::~StreamManager() {
     removeAllStreams();
 }
