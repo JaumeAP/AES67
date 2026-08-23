@@ -68,7 +68,10 @@ void PTPArbitrator::setMeasurementCallback(PTPMeasurementCallback cb) {
 }
 
 void PTPArbitrator::updateDiagnostics(PTPDiagnostics& diag) const {
-    if (master_->isActive()) {
+    const bool weAreMaster = master_->isActive();
+    if (weAreMaster) everWasMaster_.store(true, std::memory_order_relaxed);
+
+    if (weAreMaster) {
         // We're the grandmaster: no offset to report (we ARE the reference),
         // but the rest of the diagnostic surface should reflect that state
         // honestly rather than showing stale slave numbers.
@@ -77,8 +80,26 @@ void PTPArbitrator::updateDiagnostics(PTPDiagnostics& diag) const {
         diag.masterClockID = "SELF (acting as grandmaster)";
         diag.offsetNs = 0;
         diag.currentOffset = 0.0;
+        diag.role = PTPDiagnostics::Role::Master;
+        diag.hasCompetitor = false;
     } else {
         slave_->updateDiagnostics(diag);
+        diag.role = PTPDiagnostics::Role::Slave;
+    }
+
+    diag.everWasMaster = everWasMaster_.load(std::memory_order_relaxed);
+
+    // Who we lost BMCA to (or are still listening for) — meaningful in
+    // either PTPMasterRole::Listening or ::Passive, i.e. whenever we're not
+    // the active master ourselves.
+    if (!weAreMaster) {
+        if (auto competitor = master_->currentCompetitor()) {
+            diag.hasCompetitor = true;
+            diag.competitorPriority1 = competitor->grandmasterPriority1;
+            diag.competitorPriority2 = competitor->grandmasterPriority2;
+        } else {
+            diag.hasCompetitor = false;
+        }
     }
 }
 

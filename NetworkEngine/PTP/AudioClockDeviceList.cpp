@@ -101,4 +101,29 @@ std::vector<AudioClockDeviceInfo> listClockCapableAudioDevices(AudioDeviceID exc
     return result;
 }
 
+AudioDeviceID resolveAudioDeviceUID(const std::string& uid) {
+    if (uid.empty()) return kAudioObjectUnknown;
+
+    CFStringRef uidRef = CFStringCreateWithCString(kCFAllocatorDefault, uid.c_str(), kCFStringEncodingUTF8);
+    if (!uidRef) return kAudioObjectUnknown;
+
+    AudioDeviceID deviceID = kAudioObjectUnknown;
+    AudioValueTranslation translation{};
+    translation.mInputData = &uidRef;
+    translation.mInputDataSize = sizeof(uidRef);
+    translation.mOutputData = &deviceID;
+    translation.mOutputDataSize = sizeof(deviceID);
+
+    UInt32 size = sizeof(translation);
+    AudioObjectPropertyAddress addr{
+        kAudioHardwarePropertyDeviceForUID,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &addr, 0, nullptr, &size, &translation);
+
+    CFRelease(uidRef);
+    return deviceID; // stays kAudioObjectUnknown if the lookup failed or found nothing
+}
+
 } // namespace AES67

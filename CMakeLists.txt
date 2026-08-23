@@ -153,6 +153,7 @@ set(NETWORK_SOURCES
     NetworkEngine/PTP/PTPSlave.cpp
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPArbitrator.cpp
+    NetworkEngine/PTP/PTPMasterSettings.cpp
     NetworkEngine/PTP/AudioClockDeviceList.cpp
     NetworkEngine/PTP/CustomSys.cpp
     NetworkEngine/PTP/PhaseLockedLoop.cpp
