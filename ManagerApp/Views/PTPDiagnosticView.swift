@@ -576,6 +576,20 @@ struct PTPDiagnosticView: View {
                                 }
                             }
                             .disabled(clockSources.isEmpty)
+
+                            // Only shown when Avid HD hardware is actually
+                            // present — there's nothing useful to say about
+                            // it on a machine that doesn't have any.
+                            if clockSources.contains(where: { $0.isAvidHD }) {
+                                Label("Pro Tools hardware found. In an HDX room it is usually the "
+                                    + "house clock everything else already follows, so locking to "
+                                    + "it keeps this driver in step with the rest of the studio "
+                                    + "rather than competing with it.",
+                                      systemImage: "waveform.badge.magnifyingglass")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Text("Changes apply the next time Core Audio restarts, not immediately.")

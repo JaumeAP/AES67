@@ -109,3 +109,12 @@ belongs to the original publisher (Dolby Laboratories).
   the integrator's own choices for a specific non-Dolby receiver via
   "advanced mode," not Dolby's factory defaults; see the file itself for
   the full reasoning.
+
+- `avid_hdx_clock_source_notes.md` — why the PTP clock source list offers
+  Avid HD hardware (Pro Tools HDX / HD Native) as a named option, and why
+  it does so through CoreAudio rather than DigiLink. Records the
+  investigation that ruled DigiLink out — proprietary, handshake gated on
+  an ID chip in genuine Avid interfaces, no open implementation to build
+  on, and the Avid frameworks present on this machine are PACE-wrapped
+  binaries without headers — so the question doesn't get reopened from
+  scratch later.
