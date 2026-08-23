@@ -1072,6 +1072,23 @@ class DriverManager: ObservableObject {
               allowedSampleRates: [48000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
+        .init(id: "st2110-30-b",
+              name: "SMPTE ST 2110-30 (Level B)",
+              caveats: "Level A's constraints at a 125 µs packet time: 48 kHz, up to 8 channels "
+                     + "per stream. Only choose this if the receiving gear actually claims "
+                     + "Level B — a Level A device must not be sent 125 µs packets, and Level A "
+                     + "is what everything supports. This driver's transmitter emits whatever "
+                     + "packet time the stream asks for, so 125 µs is reachable, but it has "
+                     + "never been tested against real Level B gear. Levels C (64 channels in "
+                     + "one stream, more than this driver's 8-channel flow limit) and AX/BX/CX "
+                     + "(96 kHz) are not offered. Same PTP caveat as Level A. Not a conformance "
+                     + "claim.",
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
+              allowedSampleRates: [48000], allowedPtimesUs: [125],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "dante",
               name: "Dante (AES67 mode)",
               caveats: "Requires the Dante device to have AES67 mode explicitly enabled — this "
