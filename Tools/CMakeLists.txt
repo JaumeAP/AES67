@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.15)
 add_executable(AES67TestSender
     AES67TestSender.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/NetworkUtils.cpp
 )
 
 target_include_directories(AES67TestSender PRIVATE
@@ -19,6 +20,7 @@ target_compile_features(AES67TestSender PRIVATE cxx_std_17)
 add_executable(AES67TestReceiver
     AES67TestReceiver.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/NetworkUtils.cpp
 )
 
 target_include_directories(AES67TestReceiver PRIVATE

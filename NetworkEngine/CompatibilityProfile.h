@@ -233,12 +233,17 @@ struct CompatibilityProfile {
 
     /// FACTORY default DSCP marking this profile's real-world gear ships
     /// with on the wire (e.g. 46 = EF), or -1 if the profile doesn't have
-    /// a documented one. A network-switch setting, not something this
-    /// hardware enforces end to end — sites commonly adjust QoS marking to
-    /// fit their own switch configuration. Informational only:
-    /// NetworkUtils::setQoSTrafficClass() exists but has no caller
-    /// anywhere in this driver, so nothing currently applies this.
-    /// Recorded so it isn't lost, not because it's enforced or mandatory.
+    /// a documented one. A network-switch setting as much as a device one
+    /// — sites commonly adjust QoS marking to fit their own switch
+    /// configuration.
+    ///
+    /// APPLIED: every transmitter this driver opens marks its outgoing
+    /// packets with the active profile's value, via
+    /// StreamManager::createTransmitter() -> RTPSocket::openTransmitter()
+    /// -> NetworkUtils::setQoSTrafficClass(). -1 leaves the socket
+    /// unmarked. Receivers are never marked — they send no audio to
+    /// prioritise. Best-effort: a socket that refuses the codepoint logs
+    /// and carries on unmarked rather than failing the stream.
     int recommendedDscp{-1};
 
     /// Human-readable name for the UI.

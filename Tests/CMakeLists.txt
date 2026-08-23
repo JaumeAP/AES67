@@ -46,6 +46,7 @@ add_executable(TestRTPReceiver
     TestRTPReceiver.cpp
     ../NetworkEngine/RTP/RTPReceiver.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/NetworkUtils.cpp
     ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
     ../NetworkEngine/RTP/LockFreePacketPool.cpp
     ../Driver/SDPParser.cpp
@@ -66,6 +67,7 @@ add_executable(TestRTPTransmitter
     TestRTPTransmitter.cpp
     ../NetworkEngine/RTP/RTPTransmitter.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/NetworkUtils.cpp
     ../Driver/SDPParser.cpp
     ../Driver/AudioThreadPriority.cpp
     ../NetworkEngine/StreamChannelMapper.cpp
@@ -247,6 +249,7 @@ add_executable(TestIntegrationAudioPath
     ../NetworkEngine/RTP/RTPReceiver.cpp
     ../NetworkEngine/RTP/RTPTransmitter.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/NetworkUtils.cpp
     ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
     ../NetworkEngine/RTP/LockFreePacketPool.cpp
     ../Driver/SDPParser.cpp

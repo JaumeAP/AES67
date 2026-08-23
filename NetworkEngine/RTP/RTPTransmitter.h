@@ -31,12 +31,16 @@ public:
     ///   0 (default) for the kernel-assigned ephemeral one every profile
     ///   but DMA uses. See CompatibilityProfile::
     ///   useFixedMulticastWithPerFlowSourcePort and RTPSocket::openTransmitter.
+    /// @param dscp DSCP codepoint to mark outgoing packets with, or -1
+    ///   (default) to leave them unmarked. Comes from the active profile's
+    ///   CompatibilityProfile::recommendedDscp.
     RTPTransmitter(
         const SDPSession& sdp,
         const ChannelMapping& mapping,
         DeviceChannelBuffers& deviceChannels,
         const std::string& networkInterface = "",
-        uint16_t sourcePort = 0
+        uint16_t sourcePort = 0,
+        int dscp = -1
     );
 
     ~RTPTransmitter();
@@ -88,6 +92,7 @@ private:
     DeviceChannelBuffers& deviceChannels_;
     std::string networkInterface_;
     uint16_t sourcePort_{0};
+    int dscp_{-1};
 
     // RTP socket
     RTP::RTPSocket rtpSocket_;

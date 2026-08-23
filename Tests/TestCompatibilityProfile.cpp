@@ -331,8 +331,8 @@ bool testOnlyCP850AndDAC3202RestrictDirection() {
     return true;
 }
 
-bool testCinemaProfilesRecordDscpAsInformationalOnly() {
-    std::cout << "Test: B10 · CP850/DAC3202 record a DSCP value but this driver doesn't apply it... ";
+bool testProfilesRecordTheDscpTheirGearExpects() {
+    std::cout << "Test: B10 · profiles carry the DSCP their gear expects (applied to TX sockets)... ";
     const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
     const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
     TEST_ASSERT(cp850.recommendedDscp == 46, "CP850 documents EF (46)");
@@ -345,6 +345,18 @@ bool testCinemaProfilesRecordDscpAsInformationalOnly() {
     // does — -1 here is honest, not an oversight.
     const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
     TEST_ASSERT(cp950.recommendedDscp == -1, "CP950/CP950A has no documented DSCP — must not be assumed from CP850");
+    // Dante's own audio marking, from Audinate's documentation. Notable
+    // because Dante marks PTP CS7/56 where standard AES67 gear marks 46.
+    const auto dante = CompatibilityProfile::forKind(CompatibilityProfileKind::Dante);
+    TEST_ASSERT(dante.recommendedDscp == 46, "Dante marks audio EF (46)");
+    // -1 must stay distinguishable from 0: it means "leave the socket
+    // unmarked", not "mark with codepoint 0" (which is a real DSCP value).
+    for (const auto& profile : CompatibilityProfile::all()) {
+        TEST_ASSERT(profile.recommendedDscp == -1 || profile.recommendedDscp > 0,
+                    profile.displayName + ": DSCP must be -1 (unmarked) or a real codepoint");
+        TEST_ASSERT(profile.recommendedDscp <= 63,
+                    profile.displayName + ": DSCP is a 6-bit field");
+    }
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -530,7 +542,7 @@ int main() {
     testDAC3202IsTransmitOnlyFromOurSide();
     testCP950IsReceiveOnlyFromOurSideWithSelectableChannelCount();
     testOnlyCP850AndDAC3202RestrictDirection();
-    testCinemaProfilesRecordDscpAsInformationalOnly();
+    testProfilesRecordTheDscpTheirGearExpects();
     testCP850AndDAC3202ForcePTPRole();
     testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount();
     testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme();

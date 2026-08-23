@@ -64,10 +64,19 @@ close to what our diagnostics gateway already carries:
 Plus `ptp_status_script`, a hook run whenever slave lock status changes —
 a cheap idea for making lock loss visible to an installer.
 
-### 3. DSCP marking
+### 3. DSCP marking — **now done**
 
-`NetworkUtils::setQoSTrafficClass()` has no callers, so this driver marks
-nothing, whatever the profiles document. The daemon makes DSCP a
+`NetworkUtils::setQoSTrafficClass()` had no callers, so this driver marked
+nothing whatever the profiles documented. Wired up since this comparison
+was written: every transmitter now marks its outgoing packets with the
+active profile's `recommendedDscp` (`StreamManager::createTransmitter()`
+→ `RTPSocket::openTransmitter()` → `setQoSTrafficClass()`), best-effort —
+a socket that refuses the codepoint logs and carries on unmarked rather
+than failing the stream. Receivers stay unmarked: they send no audio to
+prioritise.
+
+Still missing versus theirs: a *per-source* override (ours is per
+profile), and any marking of our own PTP traffic. The daemon makes DSCP a
 first-class setting in two places:
 
 - `ptp_dscp`, default **46**, valid 48 or 46
@@ -168,8 +177,8 @@ Ranked by value-for-effort, given how much is already written here:
    lock the way they do. The code exists; nothing calls it.
 2. **Turn on `SAPListener`**, with their expiry rule (drop a source after
    10 missed announcements). Again — the code exists.
-3. **Call `setQoSTrafficClass()`** with each profile's documented DSCP,
-   making the values the profiles already carry actually do something.
+3. ~~**Call `setQoSTrafficClass()`** with each profile's documented DSCP~~
+   — **done**, see above.
 4. **Make transmit ptime configurable**, unlocking ST 2110-30 Levels B/C.
 5. **Expose playout delay**, matching both this daemon and Dolby's own
    Safety Buffer.
@@ -179,3 +188,8 @@ The first three change nothing about the driver's design — they connect
 things already built. That's the headline: this driver's gap to the
 reference implementation is smaller than it looks, and most of it is
 wiring, not missing subsystems.
+
+PTP is deliberately last despite being the highest-impact: it's the only
+one of these that changes clocking behaviour on the one path verified
+against real hardware, and it can't be verified here. The others are
+checkable with a build and the test suite.
