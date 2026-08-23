@@ -114,8 +114,11 @@ struct ProfileParametersView: View {
                     ? "None documented"
                     : "\(profile.recommendedDscp) (EF, factory default)",
                 locked: true,
-                note: "Informational only — this driver never sets a DSCP marking on "
-                    + "its own traffic, whatever the profile documents."
+                note: profile.recommendedDscp < 0
+                    ? "Nothing documented for this profile, so this driver leaves its own "
+                      + "transmit traffic unmarked."
+                    : "Applied — every stream this driver transmits marks its packets with "
+                      + "this codepoint. Received traffic is marked by the sender, not here."
             )
         }
 

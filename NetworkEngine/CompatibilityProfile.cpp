@@ -128,7 +128,8 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "baseline profile instead. Dante marks audio DSCP EF/46 and PTP "
             "CS7/56, where standard AES67 gear marks PTP 46 — a documented "
             "QoS conflict to watch for on shared networks, though this "
-            "driver applies no marking of its own either way.";
+            "driver marks its own transmit traffic with Dante's audio "
+            "value, 46.";
         break;
 
     case CompatibilityProfileKind::CP850:
@@ -197,7 +198,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "factory-default DSCP marking is more traditional than "
             "typical Dante configurations (EF/46) — this driver has a "
             "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
-            "nothing calls it yet, so no marking is actually applied. PTP "
+            "which this driver now applies to its own transmit sockets. PTP "
             "domain ships at 109, the same factory default as the rest of "
             "this Dolby family (not fixed — cinema installations "
             "routinely set their own per auditorium, e.g. "
@@ -303,8 +304,8 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "address, fixed RTP destination port (pass 6517 to match "
             "Dolby's own default), source port stepped per 8-channel flow "
             "— see StreamManager::createTxStreamFlows(). Same DSCP note as "
-            "CP850: factory default is EF/46 but not actually applied by "
-            "this driver. PTP domain ships at 109; factory-default "
+            "CP850: factory default EF/46, which this driver applies to its "
+            "own transmit sockets. PTP domain ships at 109; factory-default "
             "destination multicast address 239.81.83.67 — both commonly "
             "changed per auditorium in multi-screen installs, same as "
             "CP950/CP950A above. This driver is always PTP master under "

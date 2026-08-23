@@ -5,6 +5,7 @@
 //
 
 #include "SimpleRTP.h"
+#include "../NetworkUtils.h"
 #include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
@@ -140,7 +141,7 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
 }
 
 bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const char* interfaceIP,
-                                 uint16_t sourcePort) {
+                                 uint16_t sourcePort, int dscp) {
     // Create UDP socket
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
@@ -199,6 +200,16 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
     // Increase send buffer size
     int sndbuf = 4 * 1024 * 1024;
     setsockopt(sockfd_, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+
+    // Mark the traffic if the active profile documents a codepoint. Not
+    // fatal on failure: a stream that plays unmarked is better than no
+    // stream, and the switch may well be classifying by port anyway.
+    if (dscp >= 0) {
+        if (!NetworkUtils::setQoSTrafficClass(sockfd_, dscp)) {
+            fprintf(stderr, "AES67 RTP openTransmitter: DSCP %d not applied for %s:%u "
+                            "— continuing unmarked\n", dscp, multicastIP, port);
+        }
+    }
 
     isReceiver_ = false;
 
