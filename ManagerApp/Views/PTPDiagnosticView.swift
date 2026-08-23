@@ -601,9 +601,13 @@ struct PTPDiagnosticView: View {
                                     + "exclusively and doesn't go through Core Audio, so this "
                                     + "device disappears the moment Pro Tools launches. It is "
                                     + "only usable as a clock reference while Pro Tools is "
-                                    + "closed. For a room where both run, clock both sides from "
-                                    + "one source instead: a PTP grandmaster on the network, "
-                                    + "with word clock to the HDX rig.",
+                                    + "closed.\n\nTo actually run the network on the HDX clock, "
+                                    + "the tap has to be hardware: MTRX taking DigiLink and "
+                                    + "leading the audio network, or word clock out of an HD "
+                                    + "interface (or Sync X) into the network's PTP "
+                                    + "grandmaster. Then leave this driver on Internal and let "
+                                    + "it follow that grandmaster as a slave. See "
+                                    + "Docs/taking_clock_from_digilink.md.",
                                       systemImage: "exclamationmark.triangle")
                                     .font(.caption)
                                     .foregroundColor(.orange)
