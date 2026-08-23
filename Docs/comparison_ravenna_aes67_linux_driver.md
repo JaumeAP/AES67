@@ -164,16 +164,24 @@ so offering it would be a claim this driver can't honour. AX/BX/CX (the
 96 kHz variants, channel counts halved) are supportable in principle but
 weren't added speculatively.
 
-### Playout delay as a user-facing setting
+### Playout delay as a user-facing setting — **now done**
 
 Per-sink `playout_delay` in samples (minimum: the source's
-`max_samples_per_packet`), plus a global default. We have a jitter buffer
-(`LockFreeCircularJitterBuffer`) but expose no equivalent knob.
+`max_samples_per_packet`), plus a global default.
 
 Converging evidence this is expected by installers rather than a nicety:
 Dolby's DMA manual has the same control under a different name — "Safety
 Buffer", 0–50 samples, documented for exactly the same symptom (brief
 audio dropouts from network trouble).
+
+This looked like it would need an RT-path restructure, and the earlier
+draft of this document said so. It didn't: `RTPReceiver` already had a
+pre-fill phase that waits for the jitter buffer to reach
+`kPrefillPacketCount` before paced consumption starts, and *that cushion
+is the playout delay* — it was simply a hardcoded 6. It's now derived from
+a configured delay in samples, expressed in samples (as both the daemon
+and Dolby express it) and converted to packets where the pre-fill loop
+counts them, never below one packet. Driver-wide rather than per sink.
 
 ### Reference-clock checking — **now done**
 
@@ -255,15 +263,10 @@ Ranked by value-for-effort, given how much is already written here:
    — **done**, see above.
 4. ~~**Make transmit ptime configurable**~~ — **done**, see above. A
    Level B/C profile could now follow.
-5. **Expose playout delay**, matching both this daemon and Dolby's own
-   Safety Buffer. Worth being precise about the cost: this is *not* a
-   wire-up job like the three above. `LockFreeCircularJitterBuffer` is
-   packet-slot capacity with no notion of holding audio back, and
-   `jitterBufferDepth` — which is persisted and honoured on restore, but
-   left at its default for newly added streams — is capacity, not
-   latency. A real playout delay means changing the RT read path, which
-   puts it in the same "can't verify without hardware" bucket as PTP
-   rather than alongside DSCP and SAP.
+5. ~~**Expose playout delay**~~ — **done**, see above. The earlier
+   pessimism about it was wrong: `jitterBufferDepth` is indeed capacity
+   rather than latency, but the pre-fill cushion beside it was exactly
+   the right knob and only needed to stop being a constant.
 6. ~~**Compare grandmaster IDs** between sources and sinks~~ — **done**,
    see above.
 
@@ -272,8 +275,8 @@ things already built. That's the headline: this driver's gap to the
 reference implementation is smaller than it looks, and most of it is
 wiring, not missing subsystems.
 
-Every item above is now done except playout delay. PTP and playout delay
-were left for last for the same reason, and it still stands: they are the
-two that touch the path verified against real hardware, and neither can be
-checked by building and running the tests. PTP is therefore shipped off by
-default rather than assumed good.
+Every item above is now done. The two that touch the path verified
+against real hardware — PTP and playout delay — are the two a build and a
+test run cannot check. PTP is therefore shipped off by default rather
+than assumed good; playout delay defaults to the cushion this receiver
+has always used, so leaving it alone changes nothing.

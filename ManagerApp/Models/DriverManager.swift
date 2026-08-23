@@ -1273,6 +1273,13 @@ class DriverManager: ObservableObject {
 
     @Published var amplifierUnit: Int = 1
 
+    /// Safety cushion in samples before a receiver starts handing audio to
+    /// Core Audio. 0 = the receiver's own default. Higher survives worse
+    /// network jitter and costs exactly that much latency. Stored in the
+    /// same file as the amplifier unit.
+    @Published var playoutDelaySamples: Int = 0
+    static let maxPlayoutDelaySamples = 4800 // 100 ms at 48 kHz
+
     /// Units the active profile allows, as a range for the picker.
     var amplifierUnitChoices: [Int] {
         Array(1...max(1, activeCompatibilityProfile.maxUnits))
@@ -1289,16 +1296,23 @@ class DriverManager: ObservableObject {
               let unit = obj["unitIndex"] as? Int,
               (1...3).contains(unit) else {
             amplifierUnit = 1
+            playoutDelaySamples = 0
             return
         }
         amplifierUnit = unit
+        let delay = obj["playoutDelaySamples"] as? Int ?? 0
+        playoutDelaySamples = (0...Self.maxPlayoutDelaySamples).contains(delay) ? delay : 0
     }
 
     func saveAmplifierUnit() {
         let dir = amplifierUnitConfigURL.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let obj: [String: Any] = ["version": "1.0", "unitIndex": amplifierUnit]
+            let obj: [String: Any] = [
+                "version": "1.0",
+                "unitIndex": amplifierUnit,
+                "playoutDelaySamples": playoutDelaySamples,
+            ]
             let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
             try data.write(to: amplifierUnitConfigURL, options: .atomic)
         } catch {
