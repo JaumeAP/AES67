@@ -28,6 +28,7 @@ let package = Package(
                 "Views/AudioStatusView.swift",
                 "Views/QuickStartView.swift",
                 "Views/PTPDiagnosticView.swift",
+                "Views/ProfileParametersView.swift",
                 "Views/ChannelMappingView.swift",
                 "Views/ChannelMapDiagnosticView.swift",
                 "Models/StreamInfo.swift",

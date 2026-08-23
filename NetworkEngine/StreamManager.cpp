@@ -397,6 +397,14 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
     const auto profile = CompatibilityProfile::forKind(profileKind_.load(std::memory_order_relaxed));
     const bool dolbyScheme = profile.useFixedMulticastWithPerFlowSourcePort;
 
+    // Which unit in the chain we're feeding, as a flow-port offset. Only
+    // the Dolby scheme distinguishes units by source port, so this is
+    // deliberately not applied to the address-stepping scheme — there it
+    // would silently mean nothing.
+    const unsigned unitOffset = dolbyScheme
+        ? txFlowPortOffset_.load(std::memory_order_relaxed)
+        : 0u;
+
     constexpr uint16_t kPerFlow = StreamChannelMapper::kMaxChannelsPerFlow;
     const unsigned flowCount = (numChannels + kPerFlow - 1) / kPerFlow;
 
@@ -409,12 +417,15 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
             // port for every flow, set above/below); only the source port
             // steps, matching the DMA's own documented defaults (6517 fixed
             // destination, 6518/6519/6520/... source) when the caller passes
-            // 6517 as `port`.
-            const unsigned candidate = static_cast<unsigned>(port) + 1 + flow;
+            // 6517 as `port`. unitOffset shifts the whole walk to the
+            // selected amplifier unit's own channel group — see
+            // setTxFlowPortOffset().
+            const unsigned candidate = static_cast<unsigned>(port) + 1 + unitOffset + flow;
             if (candidate > 0xFFFF) {
                 AES67_LOGF("StreamManager::createTxStreamFlows: '%s' needs %u flows but "
-                           "source port %u + 1 + %u overruns 65535 — rolling back",
-                           baseName.c_str(), flowCount, port, flow);
+                           "source port %u + 1 + %u (unit offset) + %u overruns 65535 "
+                           "— rolling back",
+                           baseName.c_str(), flowCount, port, unitOffset, flow);
                 for (const auto& id : created) removeStream(id);
                 return {};
             }

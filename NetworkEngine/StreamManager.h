@@ -67,6 +67,24 @@ public:
         usableTxChannelCount_.store(static_cast<uint32_t>(count), std::memory_order_relaxed);
     }
 
+    /// How many 8-channel flows this driver's TX flows should be shifted
+    /// by on the wire — the amplifier-unit selection, expressed the only
+    /// way it actually shows up in the protocol. Under the Dolby Atmos
+    /// Connect scheme (CompatibilityProfile::useFixedMulticastWith
+    /// PerFlowSourcePort) consecutive units take consecutive source-port
+    /// blocks: unit 1 sends from 6518+, unit 2 (32 channels later) from
+    /// 6522+, and so on. Feeding "unit 2" therefore means starting the
+    /// source-port walk 4 flows in, which is exactly what this offset
+    /// does. AES67Device computes it from the persisted
+    /// AmplifierUnitSettings and the selected TX channel count.
+    ///
+    /// Ignored entirely under any profile that doesn't use per-flow
+    /// source ports — those distinguish flows by multicast address, where
+    /// a port offset would mean nothing.
+    void setTxFlowPortOffset(uint32_t flows) {
+        txFlowPortOffset_.store(flows, std::memory_order_relaxed);
+    }
+
     /// Which flavour of AoIP gear this driver is being pointed at. Every
     /// stream added from here on is validated against the profile's limits
     /// (canAddStream). Defaults to AES67, which imposes only AES67's own
@@ -309,6 +327,11 @@ private:
     // driver's behavior before this setting existed.
     std::atomic<uint32_t> usableRxChannelCount_{128};
     std::atomic<uint32_t> usableTxChannelCount_{128};
+
+    // Amplifier-unit selection as a flow-port offset — see
+    // setTxFlowPortOffset(). 0 = first (or only) unit, the behavior before
+    // the selector existed.
+    std::atomic<uint32_t> txFlowPortOffset_{0};
     std::map<StreamID, ManagedStream> streams_;
     mutable std::mutex streamsMutex_;
 
