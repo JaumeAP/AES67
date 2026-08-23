@@ -4,6 +4,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include "PTPArbitrator.h"
 #include "PTPDiagnostics.h"
 
 namespace AES67 {
@@ -48,6 +49,26 @@ public:
     void setDomain(int domain) { domain_ = domain; }
     int getDomain() const { return domain_; }
 
+    // --- Master capability (opt-in) ---------------------------------------
+    //
+    // By default this class is exactly what it always was: a slave-only
+    // PTPSlave wrapper. Calling this before init() switches it to a
+    // PTPArbitrator instead — BMCA-driven, capable of becoming grandmaster
+    // when nothing better is on the wire, falling back to slave when there
+    // is. See PTPArbitrator.h.
+
+    /// Must be called before init(). clockSourceKind/lockToDeviceID pick
+    /// what a Master role would advertise as its own clock (see
+    /// PTPArbitratorConfig) — irrelevant if BMCA never elects us master.
+    void enableMasterCapability(PTPClockSourceKind clockSourceKind,
+                                 AudioDeviceID lockToDeviceID = kAudioObjectUnknown);
+
+    bool isMasterCapable() const { return masterCapable_; }
+
+    /// Valid once running: Master or Slave. Meaningless in stub mode or
+    /// before start().
+    PTPRole getRole() const;
+
 private:
     // Called by PTPSlave when new measurements arrive
     void onPTPMeasurement(int64_t offsetNs, int64_t pathDelayNs,
@@ -62,8 +83,14 @@ private:
     int domain_{0};
     std::string interfaceName_;
 
-    // Real PTP slave instance (null in stub mode)
+    // Real PTP slave instance (null in stub mode, and null when master-capable)
     std::unique_ptr<PTPSlave> ptpSlave_;
+
+    // Master-capable path (null unless enableMasterCapability() was called)
+    bool masterCapable_{false};
+    PTPClockSourceKind masterClockSourceKind_{PTPClockSourceKind::Internal};
+    AudioDeviceID masterLockToDeviceID_{kAudioObjectUnknown};
+    std::unique_ptr<PTPArbitrator> ptpArbitrator_;
 };
 
 } // namespace AES67
