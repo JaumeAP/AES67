@@ -120,6 +120,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // receive from it — up to 64 channels, the most it can render.
         p.direction = ProfileDirection::ReceiveOnly;
         p.maxTotalChannels = 64;
+        p.ptpRole = PTPRoleConstraint::ForcedSlave;
         p.caveats =
             "The CP850 uses AES67 as its transport to Dolby Atmos Connect "
             "Interfaces (DAC3202), not the full Dante protocol. Dolby's own "
@@ -128,11 +129,10 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
             "nothing calls it yet, so no marking is actually applied. No "
             "documented fixed PTP domain; cinema installations set their own. "
-            "The CP850 itself acts as PTP slave — it will not originate "
-            "timing, so something else on the network (or this driver, if "
-            "it wins BMCA) must be the grandmaster. Receive-only: this "
-            "driver may only add RX streams under this profile, up to 64 "
-            "channels total, the most the CP850 renders.";
+            "This driver is always PTP slave under this profile — it never "
+            "contends for grandmaster. Receive-only: this driver may only "
+            "add RX streams under this profile, up to 64 channels total, "
+            "the most the CP850 renders.";
         break;
 
     case CompatibilityProfileKind::DAC3202:
@@ -153,16 +153,16 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // audio to come back to us. We can only transmit to it.
         p.direction = ProfileDirection::TransmitOnly;
         p.maxTotalChannels = 32;
+        p.ptpRole = PTPRoleConstraint::ForcedMaster;
         p.caveats =
             "Same link as CP850 (above), receiving end — 32 analog outputs, "
             "so a full-width feed to one DAC3202 is 4 flows of 8 channels "
             "under this driver's flow splitter. Same DSCP note as CP850: "
             "documented as EF/46 but not actually applied by this driver. "
-            "The DAC3202 acts as PTP master on this link — this driver "
-            "should expect to sync as slave to it, not contend for "
-            "grandmaster. Transmit-only: this driver may only create TX "
-            "streams under this profile, up to 32 channels total, its "
-            "full analog output count.";
+            "This driver is always PTP master under this profile. "
+            "Transmit-only: this driver may only create TX streams under "
+            "this profile, up to 32 channels total, its full analog output "
+            "count.";
         break;
     }
 

@@ -36,6 +36,21 @@ enum class ProfileDirection {
                   ///< DAC3202: it converts digital in to analog out, nothing comes back.
 };
 
+/// Which PTP role THIS driver must take when talking to the gear a profile
+/// describes. Always from our own point of view, same as ProfileDirection.
+/// Unlike ProfileDirection this isn't enforced by StreamManager — the PTP
+/// arbitrator (PTPArbitrator/PTPDInterface) isn't wired into the real
+/// driver path yet (see NetworkEngine/PTP/PTPArbitrator.h), so today this is
+/// consulted by ManagerApp only, to lock the "Act as PTP master" toggle
+/// (PTPDiagnosticView) to the right value and grey it out.
+enum class PTPRoleConstraint {
+    Any,           ///< No restriction — BMCA decides (AES67, RAVENNA, ST2110-30, Dante).
+    ForcedSlave,   ///< This driver must always be PTP slave under this profile.
+                   ///< CP850.
+    ForcedMaster,  ///< This driver must always be PTP master under this profile.
+                   ///< DAC3202.
+};
+
 enum class CompatibilityProfileKind {
     /// AES67's own mandatory configuration and nothing narrower. The
     /// default, and what the driver did before profiles existed.
@@ -114,6 +129,11 @@ struct CompatibilityProfile {
 
     /// Meaningful only when domainIsFixed — the one value streams must use.
     uint8_t fixedDomain{0};
+
+    /// Which PTP role this driver must take while this profile is active.
+    /// See PTPRoleConstraint. Not enforced here — informational for
+    /// ManagerApp, which locks its "Act as PTP master" toggle accordingly.
+    PTPRoleConstraint ptpRole{PTPRoleConstraint::Any};
 
     /// DSCP value this profile's real-world gear expects on the wire
     /// (e.g. 46 = EF), or -1 if the profile doesn't have a documented one.

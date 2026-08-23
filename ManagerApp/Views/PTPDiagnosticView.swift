@@ -512,10 +512,35 @@ struct PTPDiagnosticView: View {
                 // ptp_master.json, read by the driver at its next start.
                 GroupBox("PTP Clock Source") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Toggle("Act as PTP master when eligible (BMCA decides)", isOn: Binding(
-                            get: { driverManager.ptpMasterCapable },
-                            set: { driverManager.ptpMasterCapable = $0; driverManager.savePTPMasterSettings() }
-                        ))
+                        // Locked to the active compatibility profile's PTP
+                        // role (CP850 = always slave, DAC3202 = always
+                        // master) — free otherwise, same fixed/free pattern
+                        // as AddStreamView's PTP Domain Stepper. See
+                        // DriverManager's CompatibilityProfileOption.
+                        let ptpRole = driverManager.activeCompatibilityProfile.ptpRole
+                        if ptpRole != .any {
+                            let forcedMaster = (ptpRole == .forcedMaster)
+                            HStack {
+                                Image(systemName: "lock.fill")
+                                    .foregroundColor(.secondary)
+                                Text((forcedMaster
+                                      ? "Always PTP master (fixed by "
+                                      : "Always PTP slave (fixed by ")
+                                     + driverManager.activeCompatibilityProfile.name + ")")
+                                    .foregroundColor(.secondary)
+                            }
+                            .onAppear {
+                                if driverManager.ptpMasterCapable != forcedMaster {
+                                    driverManager.ptpMasterCapable = forcedMaster
+                                    driverManager.savePTPMasterSettings()
+                                }
+                            }
+                        } else {
+                            Toggle("Act as PTP master when eligible (BMCA decides)", isOn: Binding(
+                                get: { driverManager.ptpMasterCapable },
+                                set: { driverManager.ptpMasterCapable = $0; driverManager.savePTPMasterSettings() }
+                            ))
+                        }
 
                         if driverManager.ptpMasterCapable {
                             Picker("Clock source:", selection: selectedClockSourceID) {
