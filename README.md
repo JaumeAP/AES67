@@ -168,6 +168,16 @@ cd ManagerApp
 open AES67Manager.app
 ```
 
+## Standards Research
+
+Notes in `Docs/` on what this driver interoperates with, and where it
+actually stands against each standard:
+
+| Document | Topic |
+|---|---|
+| `audio_over_ip_standards_landscape.md` | Which AoIP standards exist alongside AES67 (Dante, RAVENNA, Livewire+, Q-LAN, WheatNet-IP), which are reachable by implementing AES67, and which — AVB/TSN and Milan — are a different family entirely and are not |
+| `st2110_30_vs_aes67.md` | SMPTE ST 2110-30 as a constrained subset of AES67: its six conformance levels, the RTP timestamp offset rule, where this driver already meets Level A, and what a configurable transmit packet time would unlock |
+
 ## Why No Kernel Extension Required
 
 This driver uses Apple's AudioServerPlugIn architecture:
