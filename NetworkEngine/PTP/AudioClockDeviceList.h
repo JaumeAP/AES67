@@ -29,4 +29,12 @@ struct AudioClockDeviceInfo {
 std::vector<AudioClockDeviceInfo> listClockCapableAudioDevices(
     AudioDeviceID excludeDeviceID = kAudioObjectUnknown);
 
+/// Resolves a persisted device UID (PTPMasterSettings::lockToDeviceUID) back
+/// to a live AudioDeviceID — UIDs are stable across reboots/replugs,
+/// AudioDeviceIDs aren't, so that's what gets saved to disk; this is the
+/// other half, done once at driver startup. Returns kAudioObjectUnknown if
+/// the UID doesn't currently resolve to any connected device (unplugged,
+/// or the setting predates whatever's attached now).
+AudioDeviceID resolveAudioDeviceUID(const std::string& uid);
+
 } // namespace AES67
