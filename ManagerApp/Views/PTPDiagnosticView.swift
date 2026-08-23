@@ -577,17 +577,36 @@ struct PTPDiagnosticView: View {
                             }
                             .disabled(clockSources.isEmpty)
 
+                            // The selected device is gone. Most often this
+                            // is Pro Tools having claimed HDX, which is
+                            // normal rather than a fault — say so, since
+                            // the clock quality drops at the same moment
+                            // and the cause isn't otherwise visible.
+                            if driverManager.selectedClockSourceMissing {
+                                Label("The selected clock device isn't available right now, so "
+                                    + "this driver has fallen back to its own clock and is "
+                                    + "advertising itself as a poor one. If it's Avid hardware, "
+                                    + "Pro Tools has it — see below.",
+                                      systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
                             // Only shown when Avid HD hardware is actually
                             // present — there's nothing useful to say about
                             // it on a machine that doesn't have any.
                             if clockSources.contains(where: { $0.isAvidHD }) {
-                                Label("Pro Tools hardware found. In an HDX room it is usually the "
-                                    + "house clock everything else already follows, so locking to "
-                                    + "it keeps this driver in step with the rest of the studio "
-                                    + "rather than competing with it.",
-                                      systemImage: "waveform.badge.magnifyingglass")
+                                Label("Pro Tools hardware found — but Pro Tools takes it "
+                                    + "exclusively and doesn't go through Core Audio, so this "
+                                    + "device disappears the moment Pro Tools launches. It is "
+                                    + "only usable as a clock reference while Pro Tools is "
+                                    + "closed. For a room where both run, clock both sides from "
+                                    + "one source instead: a PTP grandmaster on the network, "
+                                    + "with word clock to the HDX rig.",
+                                      systemImage: "exclamationmark.triangle")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(.orange)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
