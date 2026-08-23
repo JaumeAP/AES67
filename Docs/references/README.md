@@ -33,13 +33,37 @@ belongs to the original publisher (Dolby Laboratories).
 - `dolby_cp950_cp950a_manual.pdf` — Dolby Cinema Processor CP950 and
   Dolby Atmos Cinema Processor CP950A Manual, Issue 13 (15 August 2024),
   part number 8800298. CP950/CP950A are the current-generation
-  equivalents of the CP850 CompatibilityProfileKind covers — same Dolby
-  Atmos Connect/AES67 sending role. §3.8 "Modifying the network settings"
+  replacement line for CP850 (the manual says so explicitly) — same Dolby
+  Atmos Connect/AES67 sending role. Source for the "CP950"
+  CompatibilityProfileKind and for upgrading DAC3202 (and DMA) from
+  assumption to confirmation. §3.8 "Modifying the network settings"
   documents the processor (sending) side of the same AES67 link the DMA
-  manual documents from the receiving side: the Dolby Atmos Connect tab's
-  static source IP address and AES67 settings used to reach "a Dolby
-  Multichannel Amplifier or Dolby DAC3202 using AES67". Not yet mined for
-  profile-affecting specifics beyond confirming the shared protocol —
-  kept for whenever CP850/DAC3202's own constraints need the same level
-  of verification the DMA profile now has. Retrieved from
+  manual documents from the receiving side: same RTP source/destination
+  port table (fixed destination 6517, source stepped 6518/6519/6520/...,
+  explicitly shared by "a Dolby Multichannel Amplifier or Dolby DAC3202"),
+  factory-default PTP domain 109, factory-default destination multicast
+  address 239.81.83.67 (named as shared out of the box by CP950/CP950A,
+  DMA, and DAC3202), and PTP priority defaulting to 127 vs. downstream
+  devices' 128 — confirming the processor wins grandmaster by default,
+  the CP850/CP950/CP950A profiles' ForcedSlave role. §3.8 also notes
+  installers routinely override the PTP domain and multicast address per
+  auditorium in multi-screen installs — these are factory defaults, not
+  requirements. Retrieved from
   <https://professional.dolby.com/siteassets/products/cp950a/dolby_cp950-cp950a_manual_issue_13.pdf>.
+
+- `dolby_cp850_base_product_sheet.pdf`, `dolby_cp850_line_product_sheet.pdf`
+  — official CP850 product sheets (2 pages each, March/August 2020). Same
+  situation as DAC3202: Dolby doesn't publicly host a standalone CP850
+  installation/user manual (its product page only lists these sheets and
+  an EULA) — likely because CP950/CP950A has superseded it. No AES67/PTP/
+  network specifics in either sheet, only feature/physical/power specs.
+  One real fact worth noting: "A Dolby Atmos Cinema Processor CP850
+  together with a single Dolby Atmos Connect Interface can support up to
+  48 speaker feeds" (CP850's own 16 built-in analog outputs + one
+  DAC3202's 32) — a real-installation total, not a change to either
+  profile's own maxTotalChannels (CP850's 64ch render cap and DAC3202's
+  32ch output cap are each independently correct and unaffected).
+  Retrieved from
+  <https://professional.dolby.com/siteassets/cinema-products---documents/dolby_cp850_base_product_sheet.pdf>
+  and
+  <https://professional.dolby.com/siteassets/products/cp850/dolby_cp850_line_product_sheet.pdf>.

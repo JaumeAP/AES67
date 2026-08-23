@@ -178,25 +178,34 @@ struct CompatibilityProfile {
     /// Meaningful only when domainIsFixed — the one value streams must use.
     uint8_t fixedDomain{0};
 
-    /// PTP domain this profile's real-world gear defaults to when the
-    /// domain isn't fixed (domainIsFixed == false) — e.g. 109 for the Dolby
-    /// Multichannel Amplifier (DMA) family, confirmed by its manual
-    /// (Docs/references/dolby_multichannel_amplifier_manual.pdf, §3.2.4
-    /// "PTP Domain Number"). -1 means no documented recommendation; the
-    /// field is meaningless when domainIsFixed is true (fixedDomain is the
-    /// only value that matters then). Informational only, same as
+    /// FACTORY default PTP domain this profile's real-world gear ships
+    /// with when the domain isn't fixed (domainIsFixed == false) — e.g.
+    /// 109 for the Dolby Multichannel Amplifier (DMA) family, confirmed by
+    /// its manual (Docs/references/dolby_multichannel_amplifier_manual.pdf,
+    /// §3.2.4 "PTP Domain Number"). This is what the hardware comes with
+    /// out of the box, not a requirement: both DMA's manual and the
+    /// CP950/CP950A one (Docs/references/dolby_cp950_cp950a_manual.pdf,
+    /// §3.8) explicitly expect installers to change it per auditorium —
+    /// e.g. "you can set one auditorium to 109, the next auditorium to
+    /// 110, and so on" — to keep multiple screens on the same network
+    /// from colliding. -1 means no documented factory default; the field
+    /// is meaningless when domainIsFixed is true (fixedDomain is the only
+    /// value that matters then). Informational only, same as
     /// recommendedDscp below — not applied by AddStreamView's Stepper,
     /// which still starts free at 0 regardless.
     int recommendedPtpDomain{-1};
 
-    /// Destination multicast address this profile's real-world gear
-    /// defaults to — confirmed by the CP950/CP950A manual
+    /// FACTORY default destination multicast address this profile's real-
+    /// world gear ships with — confirmed by the CP950/CP950A manual
     /// (Docs/references/dolby_cp950_cp950a_manual.pdf, "Destination
-    /// multicast IP"): 239.81.83.67, explicitly documented as shared by
-    /// "the Dolby CP950/CP950A, Dolby Multichannel Amplifier, and Dolby
-    /// DAC3202". Empty means no documented default. Informational only,
-    /// same as recommendedPtpDomain — nothing here picks a stream's
-    /// connection address for the user.
+    /// multicast IP"): 239.81.83.67, explicitly documented as shared out
+    /// of the box by "the Dolby CP950/CP950A, Dolby Multichannel
+    /// Amplifier, and Dolby DAC3202". Same "ships with, not required"
+    /// caveat as recommendedPtpDomain: the same manual section says
+    /// installations with more than one auditorium on the same network
+    /// must each get a different address instead. Empty means no
+    /// documented factory default. Informational only — nothing here
+    /// picks a stream's connection address for the user.
     std::string recommendedMulticastAddress;
 
     /// Which PTP role this driver must take while this profile is active.
@@ -204,11 +213,14 @@ struct CompatibilityProfile {
     /// ManagerApp, which locks its "Act as PTP master" toggle accordingly.
     PTPRoleConstraint ptpRole{PTPRoleConstraint::Any};
 
-    /// DSCP value this profile's real-world gear expects on the wire
-    /// (e.g. 46 = EF), or -1 if the profile doesn't have a documented one.
-    /// Informational only: NetworkUtils::setQoSTrafficClass() exists but
-    /// has no caller anywhere in this driver, so nothing currently applies
-    /// this. Recorded so it isn't lost, not because it's enforced.
+    /// FACTORY default DSCP marking this profile's real-world gear ships
+    /// with on the wire (e.g. 46 = EF), or -1 if the profile doesn't have
+    /// a documented one. A network-switch setting, not something this
+    /// hardware enforces end to end — sites commonly adjust QoS marking to
+    /// fit their own switch configuration. Informational only:
+    /// NetworkUtils::setQoSTrafficClass() exists but has no caller
+    /// anywhere in this driver, so nothing currently applies this.
+    /// Recorded so it isn't lost, not because it's enforced or mandatory.
     int recommendedDscp{-1};
 
     /// Human-readable name for the UI.
