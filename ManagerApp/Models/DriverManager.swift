@@ -271,6 +271,24 @@ class DriverManager: ObservableObject {
         let id: String       // "internal", or the device's UID
         let name: String
         let isInternal: Bool
+        /// True for Avid HD hardware (Pro Tools HDX / HD Native).
+        ///
+        /// Nothing here talks DigiLink or reads the card's clock directly —
+        /// that protocol is proprietary and its handshake is gated on an ID
+        /// chip in genuine Avid interfaces. What makes this work is that
+        /// Avid's own AudioServer publishes HDX/HD Native to CoreAudio as
+        /// an ordinary device with its own hardware clock domain, so the
+        /// existing "lock to a local audio device" path already reaches it.
+        /// All this flag adds is recognising which device that is, so it
+        /// can be offered by name and recommended, rather than sitting in
+        /// the list as one more opaque entry.
+        var isAvidHD: Bool = false
+    }
+
+    /// Whether Avid HD hardware is present as a clock source right now.
+    /// The extra option only appears when it's actually installed.
+    var hasAvidHDClockSource: Bool {
+        listAvailableClockSources().contains { $0.isAvidHD }
     }
 
     @Published var ptpMasterCapable: Bool = false
@@ -359,10 +377,40 @@ class DriverManager: ObservableObject {
                 name = "(unnamed device)"
             }
 
-            options.append(PTPClockSourceOption(id: uid, name: name, isInternal: false))
+            // Manufacturer rather than name: a user can rename a device in
+            // Audio MIDI Setup, and "HDX" appearing in some other vendor's
+            // product name shouldn't be enough to claim it's Avid hardware.
+            var manufacturerAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyManufacturer,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var manufacturerRef: CFString? = nil
+            var manufacturerSize = UInt32(MemoryLayout<CFString?>.size)
+            var manufacturer = ""
+            if AudioObjectGetPropertyData(device, &manufacturerAddr, 0, nil,
+                                          &manufacturerSize, &manufacturerRef) == noErr,
+               let m = manufacturerRef as String? {
+                manufacturer = m
+            }
+            let isAvidHD = manufacturer.localizedCaseInsensitiveContains("avid")
+                || manufacturer.localizedCaseInsensitiveContains("digidesign")
+
+            options.append(PTPClockSourceOption(
+                id: uid,
+                name: isAvidHD ? "\(name) — Pro Tools hardware clock" : name,
+                isInternal: false,
+                isAvidHD: isAvidHD
+            ))
         }
 
-        return options
+        // Avid HD first among the hardware devices: in a Pro Tools room it
+        // is the house clock everything else is already following, so it's
+        // the answer often enough to be worth putting where it'll be seen.
+        return [options[0]] + options.dropFirst().sorted { lhs, rhs in
+            if lhs.isAvidHD != rhs.isAvidHD { return lhs.isAvidHD }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
     }
 
     /// Loads the persisted choice, defaulting to master capability off
