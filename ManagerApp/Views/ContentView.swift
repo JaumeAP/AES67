@@ -5,9 +5,12 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @EnvironmentObject var driverManager: DriverManager
+    @EnvironmentObject var menuBarManager: MenuBarManager
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedStream: StreamInfo?
     @State private var showChannelMapping = false
     @State private var showChannelDiagnostic = false
@@ -82,6 +85,22 @@ struct ContentView: View {
             ChannelMapDiagnosticView()
                 .environmentObject(driverManager)
         }
+        // "Open Manager" from the menu bar (MenuBarManager.openMainWindow)
+        // sets showMainWindow — nothing was observing it before, so it did
+        // nothing once the window had actually been closed (NSApp.activate
+        // alone doesn't recreate a closed WindowGroup window). If a window
+        // is already visible, just bring it forward instead of opening a
+        // second one.
+        .onChange(of: menuBarManager.showMainWindow) { isRequested in
+            guard isRequested else { return }
+            if let existing = NSApp.windows.first(where: { $0.isVisible && $0.contentViewController != nil }) {
+                existing.makeKeyAndOrderFront(nil)
+            } else {
+                openWindow(id: "main")
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            menuBarManager.showMainWindow = false
+        }
     }
 }
 
@@ -119,6 +138,8 @@ struct EmptyStateView: View {
 }
 
 #Preview {
+    let driverManager = DriverManager()
     ContentView()
-        .environmentObject(DriverManager())
+        .environmentObject(driverManager)
+        .environmentObject(MenuBarManager(driverManager: driverManager))
 }

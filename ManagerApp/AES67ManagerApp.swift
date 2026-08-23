@@ -28,7 +28,11 @@ struct AES67ManagerApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        // Explicit id: openWindow(id:) in ContentView (re-opening after the
+        // menu bar's "Open Manager" while the window was closed) needs a
+        // concrete target — this SDK's OpenWindowAction has no id-less
+        // overload.
+        WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(driverManager)
                 .environmentObject(menuBarManager)
