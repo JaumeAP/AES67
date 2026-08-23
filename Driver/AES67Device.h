@@ -82,11 +82,16 @@ public:
     std::string GetDeviceManufacturer() const;
     std::string GetDeviceUID() const override;
 
-    // Get channel count actually exposed to Core Audio. Read once at
-    // construction from DeviceChannelSettings — NOT kNumChannels, which is
-    // only the fixed capacity of the RT ring buffer arrays below.
-    UInt32 GetInputChannelCount() const { return activeChannelCount_; }
-    UInt32 GetOutputChannelCount() const { return activeChannelCount_; }
+    // Channels exposed to Core Audio: always all of them. What the user's
+    // channel-count setting narrows is usableChannelCount_ below, i.e. how
+    // many the stream mapper will actually hand out.
+    UInt32 GetInputChannelCount() const { return kNumChannels; }
+    UInt32 GetOutputChannelCount() const { return kNumChannels; }
+
+    /// Channels the mapper may assign to streams, from the persisted
+    /// DeviceChannelSettings. <= kNumChannels; the rest stay advertised but
+    /// unused.
+    UInt32 GetUsableChannelCount() const { return usableChannelCount_; }
 
     //
     // Stream Access
@@ -180,12 +185,12 @@ private:
     // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
     std::unique_ptr<RTSafeStreamInterface> rtInterface_;
 
-    // Channels advertised to Core Audio. Set once in the constructor from
-    // the persisted DeviceChannelSettings and never changed afterwards —
-    // selecting a different count only takes effect the next time Core
-    // Audio starts this driver, which is why ManagerApp disables the
-    // selector while IO is running.
-    UInt32 activeChannelCount_{static_cast<UInt32>(kNumChannels)};
+    // Channels the mapper may hand out to streams. Set once in the
+    // constructor from the persisted DeviceChannelSettings and never
+    // changed afterwards — selecting a different count only takes effect
+    // the next time Core Audio starts this driver, which is why ManagerApp
+    // disables the selector while the driver is installed.
+    UInt32 usableChannelCount_{static_cast<UInt32>(kNumChannels)};
 
     // Current configuration
     std::atomic<Float64> currentSampleRate_{48000.0};

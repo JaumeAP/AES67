@@ -16,10 +16,10 @@ struct ContentView: View {
     @State private var showChannelDiagnostic = false
 
     /// Connection channel count — input and output alike — plus the
-    /// auxiliary pair. Only editable while the driver is uninstalled: the
-    /// driver reads this once when Core Audio constructs the device, and
-    /// its real-time ring buffers are fixed-size, so changing it under a
-    /// running device would be meaningless at best.
+    /// auxiliary pair. The device always presents all 128 channels to Core
+    /// Audio; this caps how many of them streams may actually be assigned.
+    /// Only editable while the driver is uninstalled: the driver reads it
+    /// once when Core Audio constructs the device.
     @ViewBuilder
     private var channelCountBar: some View {
         let locked = driverManager.isDriverLoaded
@@ -51,9 +51,11 @@ struct ContentView: View {
                   ? "Adds a group of 8 carrying a 2-channel auxiliary pair (6 reserved), keeping the total a multiple of 8"
                   : "No room for the auxiliary group at 128 channels — the device's buffers are fixed at 128")
 
-            Text("= \(driverManager.totalDeviceChannelCount) in / \(driverManager.totalDeviceChannelCount) out")
+            Text("= \(driverManager.totalDeviceChannelCount) usable")
                 .font(.callout)
                 .foregroundColor(.secondary)
+                .help("The device always presents 128 channels to Core Audio; "
+                    + "this caps how many streams may be assigned to")
 
             Spacer()
 

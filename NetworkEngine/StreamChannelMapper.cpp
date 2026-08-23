@@ -280,13 +280,26 @@ bool StreamChannelMapper::isChannelAssigned(int deviceCh) const {
     return !deviceChannelOwners_[deviceCh].isNull();
 }
 
+void StreamChannelMapper::setUsableChannelCount(size_t count) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    usableChannelCount_ = std::min(count, kMaxDeviceChannels);
+}
+
+size_t StreamChannelMapper::getUsableChannelCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return usableChannelCount_;
+}
+
 std::optional<int> StreamChannelMapper::findContiguousBlock(size_t numChannels) const {
     // Note: Caller must hold lock
 
     int consecutiveCount = 0;
     int blockStart = -1;
 
-    for (size_t i = 0; i < kMaxDeviceChannels; i++) {
+    // Stops at usableChannelCount_, not kMaxDeviceChannels: channels above
+    // the user's selected count stay advertised to Core Audio but are never
+    // handed out to a stream.
+    for (size_t i = 0; i < usableChannelCount_; i++) {
         if (deviceChannelOwners_[i].isNull()) {
             if (blockStart == -1) {
                 blockStart = static_cast<int>(i);

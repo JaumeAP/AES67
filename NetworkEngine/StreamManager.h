@@ -43,6 +43,11 @@ public:
     /// (Shared/CustomProperties.h) serves to ManagerApp.
     PTPDiagnostics getPTPDiagnostics(int domain = 0);
 
+    /// Caps how many device channels streams may be assigned — see
+    /// StreamChannelMapper::setUsableChannelCount(). AES67Device passes the
+    /// user's persisted setting here at startup.
+    void setUsableChannelCount(size_t count) { mapper_.setUsableChannelCount(count); }
+
     //
     // Stream Management - RX
     //
@@ -70,6 +75,29 @@ public:
     StreamID createTxStream(
         const std::string& name,
         const std::string& multicastIP,
+        uint16_t port,
+        uint16_t numChannels,
+        const ChannelMapping& mapping
+    );
+
+    /// Creates a TX stream of any width as one or more AES67 flows, each
+    /// carrying at most StreamChannelMapper::kMaxChannelsPerFlow (8)
+    /// channels — the actual limit in the standard, and what Dante
+    /// Controller does when you tick more than 8 channels.
+    ///
+    /// Flow N gets `baseMulticastIP` with its last octet advanced by N (so
+    /// 239.69.1.10 with 24 channels becomes .10, .11, .12), the same port,
+    /// and the next 8 device channels starting from
+    /// `mapping.deviceChannelStart`. Each flow is a normal stream created
+    /// through createTxStream(), so nothing downstream needs to know these
+    /// were grouped.
+    ///
+    /// Returns every created StreamID, or an empty vector on failure —
+    /// partial flows are rolled back rather than left half-configured.
+    /// A base IP whose last octet would exceed 255 fails outright.
+    std::vector<StreamID> createTxStreamFlows(
+        const std::string& baseName,
+        const std::string& baseMulticastIP,
         uint16_t port,
         uint16_t numChannels,
         const ChannelMapping& mapping

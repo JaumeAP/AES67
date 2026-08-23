@@ -341,6 +341,92 @@ StreamID StreamManager::createTxStream(
     return id;
 }
 
+namespace {
+
+/// Advances a dotted-quad's last octet by `offset`. Returns false if the
+/// result would exceed 255 (or the input isn't a dotted quad) — callers
+/// must not silently wrap into a different /24.
+bool advanceLastOctet(const std::string& ip, unsigned offset, std::string& out) {
+    const size_t lastDot = ip.find_last_of('.');
+    if (lastDot == std::string::npos || lastDot + 1 >= ip.size()) return false;
+
+    const std::string prefix = ip.substr(0, lastDot + 1);
+    const std::string lastPart = ip.substr(lastDot + 1);
+    if (lastPart.empty() ||
+        lastPart.find_first_not_of("0123456789") != std::string::npos) {
+        return false;
+    }
+
+    const unsigned long base = std::stoul(lastPart);
+    const unsigned long advanced = base + offset;
+    if (advanced > 255) return false;
+
+    out = prefix + std::to_string(advanced);
+    return true;
+}
+
+} // namespace
+
+std::vector<StreamID> StreamManager::createTxStreamFlows(
+    const std::string& baseName,
+    const std::string& baseMulticastIP,
+    uint16_t port,
+    uint16_t numChannels,
+    const ChannelMapping& mapping
+) {
+    // Note: deliberately NOT holding streamsMutex_ here — createTxStream()
+    // and removeStream() below each take it themselves.
+
+    std::vector<StreamID> created;
+    if (numChannels == 0) return created;
+
+    constexpr uint16_t kPerFlow = StreamChannelMapper::kMaxChannelsPerFlow;
+    const unsigned flowCount = (numChannels + kPerFlow - 1) / kPerFlow;
+
+    for (unsigned flow = 0; flow < flowCount; ++flow) {
+        std::string flowIP;
+        if (!advanceLastOctet(baseMulticastIP, flow, flowIP)) {
+            AES67_LOGF("StreamManager::createTxStreamFlows: '%s' needs %u flows but "
+                       "%s + %u overruns the subnet — rolling back",
+                       baseName.c_str(), flowCount, baseMulticastIP.c_str(), flow);
+            for (const auto& id : created) removeStream(id);
+            return {};
+        }
+
+        // Last flow carries the remainder, which may be fewer than 8.
+        const uint16_t remaining = numChannels - static_cast<uint16_t>(flow * kPerFlow);
+        const uint16_t flowChannels = std::min<uint16_t>(remaining, kPerFlow);
+
+        ChannelMapping flowMapping = mapping;
+        flowMapping.deviceChannelStart =
+            static_cast<uint16_t>(mapping.deviceChannelStart + flow * kPerFlow);
+        flowMapping.streamChannelCount = flowChannels;
+        flowMapping.deviceChannelCount = flowChannels;
+        flowMapping.channelMap.clear(); // sequential within the flow; a custom
+                                        // map for the whole group wouldn't
+                                        // carry over meaningfully per-flow
+
+        const std::string flowName = (flowCount == 1)
+            ? baseName
+            : baseName + " (flow " + std::to_string(flow + 1) +
+              "/" + std::to_string(flowCount) + ")";
+
+        const StreamID id = createTxStream(flowName, flowIP, port, flowChannels, flowMapping);
+        if (id.isNull()) {
+            AES67_LOGF("StreamManager::createTxStreamFlows: flow %u/%u of '%s' failed "
+                       "— rolling back %zu already created",
+                       flow + 1, flowCount, baseName.c_str(), created.size());
+            for (const auto& previous : created) removeStream(previous);
+            return {};
+        }
+        created.push_back(id);
+    }
+
+    AES67_LOGF("StreamManager::createTxStreamFlows: '%s' created as %u flow(s) of up to %u channels",
+               baseName.c_str(), flowCount, kPerFlow);
+    return created;
+}
+
 bool StreamManager::exportSDPFile(const StreamID& id, const std::string& filepath) {
     std::lock_guard<std::mutex> lock(streamsMutex_);
 
