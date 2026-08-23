@@ -88,6 +88,7 @@ add_executable(TestPTPClock
     ../NetworkEngine/PTP/PTPSlave.cpp
     ../NetworkEngine/PTP/PTPMaster.cpp
     ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
     ../NetworkEngine/PTP/AudioClockDeviceList.cpp
     ../NetworkEngine/PTP/PTPMasterSettings.cpp
     ../NetworkEngine/PTP/PhaseLockedLoop.cpp
@@ -191,6 +192,7 @@ add_executable(TestMultiStream
     ../NetworkEngine/PTP/PTPSlave.cpp
     ../NetworkEngine/PTP/PTPMaster.cpp
     ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
     ../NetworkEngine/PTP/AudioClockDeviceList.cpp
     ../NetworkEngine/PTP/PTPMasterSettings.cpp
     ../NetworkEngine/PTP/PhaseLockedLoop.cpp
