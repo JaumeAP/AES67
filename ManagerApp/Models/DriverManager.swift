@@ -1045,14 +1045,33 @@ class DriverManager: ObservableObject {
                      + "this profile, up to 64 channels total, the most the CP850 renders.",
               domainIsFixed: false, fixedDomain: 0,
               direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
+        .init(id: "cp950",
+              name: "Dolby CP950 / CP950A (Cinema Processor)",
+              caveats: "Current-generation replacement for CP850 (its own manual says so). CP950 "
+                     + "renders up to 16 channels over Atmos Connect, CP950A up to 64 — pick your "
+                     + "real unit's channel count with the Input selector rather than a separate "
+                     + "profile per model. Atmos Connect can carry AES67 or BLU Link, mutually "
+                     + "exclusive per installation (the unit reboots when switching) — this "
+                     + "profile assumes AES67 mode, the documented default. PTP domain defaults "
+                     + "to 109 (not fixed — must match downstream devices); default destination "
+                     + "multicast address 239.81.83.67, shared with Dolby Multichannel Amplifier "
+                     + "and DAC3202 installs. This driver is always PTP slave under this profile "
+                     + "— the CP950/CP950A defaults to the highest PTP priority in the chain and "
+                     + "is meant to win grandmaster. Receive-only: this driver may only add RX "
+                     + "streams under this profile, up to 64 channels total.",
+              domainIsFixed: false, fixedDomain: 0,
+              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
         .init(id: "dac3202",
               name: "Dolby DAC3202 (Atmos Connect Interface)",
-              caveats: "Receiving end of the same CP850 link — 32 analog outputs, so a full-width "
-                     + "feed is 4 flows of 8 channels under this driver's flow splitter. Same "
-                     + "DSCP note as CP850: documented as EF/46 but not actually applied. This "
-                     + "driver is always PTP master under this profile. Transmit-only: this "
-                     + "driver may only create TX streams under this profile, up to 32 channels "
-                     + "total.",
+              caveats: "Receiving end of the same CP850/CP950/CP950A link — 32 analog outputs, "
+                     + "so a full-width feed is 4 flows of 8 channels. Multi-flow addressing "
+                     + "matches the real device (confirmed by the CP950/CP950A manual): one "
+                     + "multicast address, fixed RTP destination port, source port stepped per "
+                     + "8-channel flow. Same DSCP note as CP850: documented as EF/46 but not "
+                     + "actually applied. PTP domain defaults to 109; default destination "
+                     + "multicast address 239.81.83.67. This driver is always PTP master under "
+                     + "this profile. Transmit-only: this driver may only create TX streams "
+                     + "under this profile, up to 32 channels total.",
               domainIsFixed: false, fixedDomain: 0,
               direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
         .init(id: "dma",

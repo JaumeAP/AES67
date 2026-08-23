@@ -65,15 +65,25 @@ enum class CompatibilityProfileKind {
     /// Dante in AES67 mode (Audinate). Requires multicast inside
     /// 239.69.0.0/16 — that's Dante's own requirement, not AES67's.
     Dante,
-    /// Dolby Atmos Cinema Processor CP850 (and CP950A/IMS3000): sends AES67
+    /// Dolby Atmos Cinema Processor CP850 (and IMS3000): sends AES67
     /// over Ethernet to a Dolby Atmos Connect Interface (DAC3202 profile,
     /// below). Cinema audio, so 48/96 kHz per the DCI spec rather than
     /// AES67's own three rates.
     CP850,
+    /// Dolby Cinema Processor CP950 / Atmos Cinema Processor CP950A — the
+    /// current-generation replacement line for CP850 (its own manual says
+    /// so explicitly). Same role as CP850 from this driver's point of
+    /// view: it renders and sends, this driver only ever receives.
+    /// CP950 outputs up to 16 channels over Atmos Connect, CP950A up to
+    /// 64 — covered as one profile the same way DMA covers its whole
+    /// model range, since it's the same protocol either way: pick the
+    /// real unit's channel count with ManagerApp's Input selector rather
+    /// than picking a separate profile per model.
+    CP950,
     /// Dolby Atmos Connect Interface DAC3202: the receiving end of the same
-    /// link a CP850 sends — 32 analog outputs, i.e. up to 4 flows of 8
-    /// channels. Same constraint set as CP850; they're two ends of one
-    /// link, not two different networks.
+    /// link a CP850/CP950/CP950A sends — 32 analog outputs, i.e. up to 4
+    /// flows of 8 channels. Same constraint set as CP850; they're two ends
+    /// of one link, not two different networks.
     DAC3202,
     /// Dolby Multichannel Amplifier — like DAC3202, another downstream
     /// endpoint on a Dolby Atmos Connect link; this driver plays the
@@ -112,20 +122,27 @@ struct CompatibilityProfile {
     /// splits anything wider regardless.
     uint16_t maxChannelsPerFlow{8};
 
-    /// True for the Dolby Atmos Connect wire scheme confirmed in the DMA's
-    /// manual (Docs/references/dolby_multichannel_amplifier_manual.pdf,
-    /// §3.2.4 "Source UDP and RTP Destination Ports"): one multicast
-    /// address and a FIXED RTP destination port shared by every flow, with
-    /// each flow's SOURCE port stepped instead (base port +1, +2, +3, ... —
-    /// e.g. 6517 fixed destination, 6518/6519/6520/... source per
-    /// 8-channel block). The default (false) is every other profile's
-    /// scheme: one multicast address PER flow (last octet advanced),
-    /// shared port, kernel-assigned ephemeral source port — the AES67/
-    /// Dante convention. Only DMA sets this; DAC3202 is the same physical
-    /// Atmos Connect protocol and likely shares it, but that isn't
-    /// confirmed by a source for DAC3202 specifically, so it's left at the
-    /// AES67 default rather than assumed. Read by
-    /// StreamManager::createTxStreamFlows().
+    /// True for the Dolby Atmos Connect wire scheme, confirmed by two
+    /// independent manuals — the DMA's own
+    /// (Docs/references/dolby_multichannel_amplifier_manual.pdf, §3.2.4)
+    /// and, from the sending side, the CP950/CP950A's
+    /// (Docs/references/dolby_cp950_cp950a_manual.pdf, "RTP source and RTP
+    /// destination UDP ports", same port table): one multicast address and
+    /// a FIXED RTP destination port shared by every flow, with each flow's
+    /// SOURCE port stepped instead (base port +1, +2, +3, ... — e.g. 6517
+    /// fixed destination, 6518/6519/6520/... source per 8-channel block).
+    /// The default (false) is every other profile's scheme: one multicast
+    /// address PER flow (last octet advanced), shared port, kernel-assigned
+    /// ephemeral source port — the AES67/Dante convention. Set for DMA and
+    /// DAC3202 — the CP950/CP950A manual's port table and shared default
+    /// multicast address (see recommendedMulticastAddress) are both
+    /// documented as applying to "a Dolby Multichannel Amplifier, Dolby
+    /// DAC3202, or another compatible device" equally, so this is no
+    /// longer DMA-only speculation extended to DAC3202, it's the confirmed
+    /// shared scheme. CP850/CP950/CP950A don't set it: they're always the
+    /// SENDING side under this driver's profiles (ReceiveOnly), so this
+    /// driver never runs createTxStreamFlows() under them regardless.
+    /// Read by StreamManager::createTxStreamFlows().
     bool useFixedMulticastWithPerFlowSourcePort{false};
 
     /// Which way THIS driver may talk to the described gear. See
@@ -171,6 +188,16 @@ struct CompatibilityProfile {
     /// recommendedDscp below — not applied by AddStreamView's Stepper,
     /// which still starts free at 0 regardless.
     int recommendedPtpDomain{-1};
+
+    /// Destination multicast address this profile's real-world gear
+    /// defaults to — confirmed by the CP950/CP950A manual
+    /// (Docs/references/dolby_cp950_cp950a_manual.pdf, "Destination
+    /// multicast IP"): 239.81.83.67, explicitly documented as shared by
+    /// "the Dolby CP950/CP950A, Dolby Multichannel Amplifier, and Dolby
+    /// DAC3202". Empty means no documented default. Informational only,
+    /// same as recommendedPtpDomain — nothing here picks a stream's
+    /// connection address for the user.
+    std::string recommendedMulticastAddress;
 
     /// Which PTP role this driver must take while this profile is active.
     /// See PTPRoleConstraint. Not enforced here — informational for
