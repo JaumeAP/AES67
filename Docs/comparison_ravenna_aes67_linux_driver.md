@@ -67,12 +67,30 @@ ever-growing pile of stale entries.
 It also does mDNS (Avahi) for RAVENNA-style discovery, which our RAVENNA
 profile's caveats already admit we don't implement.
 
-### 2. PTP
+### 2. PTP — **now startable, off by default**
 
-`StreamManager::ptpManager_` is declared and never assigned; the
-`PTPArbitrator`/`PTPMaster`/`PTPSlave` work in this repo isn't started
-from the real driver path. The daemon makes PTP mandatory: "audio
-operations require the PTP slave to achieve locked status."
+`StreamManager::ptpManager_` was declared and never assigned; nothing in
+the driver path ever called `PTPClockManager::getClockForDomain()`, so the
+whole subsystem — slave, master, BMCA, arbitrator — was compiled and never
+run, and `getPTPDiagnostics()` could only ever return the disconnected
+defaults.
+
+Adding a stream now starts (or joins) a clock for that stream's PTP
+domain, so several streams on one domain share a clock rather than each
+starting its own, and diagnostics report something real.
+
+Two switches, both **off by default**, in the PTP Diagnostics window:
+
+- *Run a PTP clock* — the master switch. Off because every build before
+  this carried audio with no PTP at all, and starting it opens multicast
+  sockets and threads on the one path that has been verified against real
+  hardware. This is the single change in this whole comparison that a
+  build and a test run cannot check.
+- *Refuse audio until the clock locks* — the daemon does this
+  unconditionally ("audio operations require the PTP slave to achieve
+  locked status"). Here it is opt-in and depends on the first switch,
+  because on a system carrying audio today it can only ever take audio
+  away.
 
 Their exposed status is a good model for what ours should report, and is
 close to what our diagnostics gateway already carries:
@@ -227,8 +245,10 @@ has, on a different OS:
 
 Ranked by value-for-effort, given how much is already written here:
 
-1. **Start the PTP subsystem** in the real driver path, and gate audio on
-   lock the way they do. The code exists; nothing calls it.
+1. ~~**Start the PTP subsystem** in the real driver path, and gate audio
+   on lock the way they do~~ — **done**, both behind opt-in switches; see
+   above. Still unverified against real hardware, which is exactly why
+   the defaults are off.
 2. ~~**Turn on `SAPListener`**, with their expiry rule~~ — **done**, see
    above.
 3. ~~**Call `setQoSTrafficClass()`** with each profile's documented DSCP~~
@@ -252,7 +272,8 @@ things already built. That's the headline: this driver's gap to the
 reference implementation is smaller than it looks, and most of it is
 wiring, not missing subsystems.
 
-PTP is deliberately last despite being the highest-impact: it's the only
-one of these that changes clocking behaviour on the one path verified
-against real hardware, and it can't be verified here. The others are
-checkable with a build and the test suite.
+Every item above is now done except playout delay. PTP and playout delay
+were left for last for the same reason, and it still stands: they are the
+two that touch the path verified against real hardware, and neither can be
+checked by building and running the tests. PTP is therefore shipped off by
+default rather than assumed good.

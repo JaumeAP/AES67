@@ -11,6 +11,7 @@
 #include "../Shared/CustomProperties.h"
 #include "../NetworkEngine/DeviceChannelSettings.h"
 #include "../NetworkEngine/AmplifierUnitSettings.h"
+#include "../NetworkEngine/PTP/PTPMasterSettings.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <algorithm>
 #include <utility>
@@ -183,6 +184,18 @@ void AES67Device::Initialize() {
     } else {
         AES67_LOG("AES67Device: SAP discovery unavailable — continuing without it");
         sapListener_.reset();
+    }
+
+    // PTP. Off unless the installation has asked for it — see
+    // StreamManager::setPTPEnabled() for why that default is what it is.
+    {
+        PTPMasterSettingsManager ptpSettingsManager;
+        const PTPMasterSettings ptpSettings = ptpSettingsManager.load();
+        streamManager_->setRequirePTPLock(ptpSettings.requireLock);
+        streamManager_->setPTPEnabled(ptpSettings.ptpEnabled);
+        AES67_LOGF("AES67Device: PTP %s (require lock: %s)",
+                   ptpSettings.ptpEnabled ? "enabled" : "disabled",
+                   ptpSettings.requireLock ? "yes" : "no");
     }
 
     // Set device sample rate in StreamManager

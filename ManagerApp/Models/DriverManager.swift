@@ -274,6 +274,15 @@ class DriverManager: ObservableObject {
     }
 
     @Published var ptpMasterCapable: Bool = false
+    /// Whether the driver runs a PTP clock at all. Off by default — the
+    /// PTP subsystem was compiled and never started in every build before
+    /// this, and starting it opens sockets and threads on a path verified
+    /// against hardware without them.
+    @Published var ptpEnabled: Bool = false
+    /// Whether to refuse audio until the clock locks. Only meaningful with
+    /// ptpEnabled; off by default because on a system carrying audio
+    /// today it can only take audio away.
+    @Published var ptpRequireLock: Bool = false
     @Published var ptpClockSourceKind: String = "internal" // "internal" | "localAudioDevice"
     @Published var ptpLockToDeviceUID: String = ""
 
@@ -369,6 +378,8 @@ class DriverManager: ObservableObject {
         }
         ptpMasterCapable = obj["masterCapable"] as? Bool ?? false
         ptpClockSourceKind = obj["clockSourceKind"] as? String ?? "internal"
+        ptpEnabled = obj["ptpEnabled"] as? Bool ?? false
+        ptpRequireLock = obj["requireLock"] as? Bool ?? false
         ptpLockToDeviceUID = obj["lockToDeviceUID"] as? String ?? ""
     }
 
@@ -384,6 +395,8 @@ class DriverManager: ObservableObject {
                 "version": "1.0",
                 "masterCapable": ptpMasterCapable,
                 "clockSourceKind": ptpClockSourceKind,
+                "ptpEnabled": ptpEnabled,
+                "requireLock": ptpRequireLock,
                 "lockToDeviceUID": ptpLockToDeviceUID,
             ]
             let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])

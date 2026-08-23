@@ -23,19 +23,46 @@ StreamManager::StreamManager(DeviceChannelBuffers& inputChannels, DeviceChannelB
 }
 
 PTPDiagnostics StreamManager::getPTPDiagnostics(int domain) {
-    // ptpManager_ (the member) is never assigned anywhere in this class —
-    // StreamManager doesn't actually own a PTP clock instance. Going
-    // through the singleton directly here rather than fixing that: whether
-    // a PTPClock is actually running for `domain` (and therefore whether
-    // this returns real data or just PTPDiagnostics{}'s disconnected
-    // defaults) depends on something calling
-    // PTPClockManager::getInstance().getClockForDomain(domain) somewhere —
-    // which nothing in the real driver path does today either. That's a
-    // separate decision (starting PTP sockets/threads at driver startup is
-    // a real behavior change, not just wiring a read-only query) — this
-    // function reports whatever's actually there, honestly, rather than
-    // silently starting something new.
+    // Reports whatever is actually running — which, unless setPTPEnabled(true)
+    // has been called, is nothing, and the disconnected defaults are the
+    // honest answer. ptpManager_ (the member) stays unused: clocks are
+    // owned by PTPClockManager's singleton, keyed by domain, because
+    // several streams on the same domain must share one clock rather than
+    // each starting its own.
     return PTPClockManager::getInstance().getDiagnostics(domain);
+}
+
+void StreamManager::setPTPEnabled(bool enabled) {
+    ptpEnabled_.store(enabled, std::memory_order_relaxed);
+    PTPClockManager::getInstance().setPTPEnabled(enabled);
+
+    if (enabled) {
+        // Start clocks for the domains already in use, so enabling PTP
+        // after streams exist behaves the same as enabling it before.
+        std::vector<int> domains;
+        {
+            std::lock_guard<std::mutex> lock(streamsMutex_);
+            for (const auto& [id, managed] : streams_) {
+                domains.push_back(managed.sdp.ptpDomain);
+            }
+        }
+        for (int domain : domains) {
+            ensurePTPClockForDomain(domain);
+        }
+    }
+    AES67_LOGF("StreamManager: PTP %s", enabled ? "enabled" : "disabled");
+}
+
+void StreamManager::ensurePTPClockForDomain(int domain) {
+    if (!ptpEnabled_.load(std::memory_order_relaxed)) return;
+    if (domain < 0) return; // -1 is SDP's "no PTP on this stream"
+
+    // getClockForDomain() creates and starts the clock if this domain
+    // doesn't have one yet, and returns the existing one otherwise — so
+    // calling it per stream is safe and is what makes streams on the same
+    // domain share a single clock.
+    PTPClockManager::getInstance().getClockForDomain(domain);
+    AES67_LOGF("StreamManager: PTP clock active for domain %d", domain);
 }
 
 StreamManager::~StreamManager() {
@@ -160,6 +187,7 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     streams_[id] = std::move(managed);
     rxChannelsInUse_.fetch_add(sdp.numChannels, std::memory_order_relaxed);
     adoptGrandmaster(sdp.ptpMasterMAC);
+    ensurePTPClockForDomain(sdp.ptpDomain);
 
     // Notify callback
     notifyStreamAdded(streams_[id].info);
@@ -348,6 +376,7 @@ StreamID StreamManager::createTxStream(
     streams_[id] = std::move(managed);
     txChannelsInUse_.fetch_add(numChannels, std::memory_order_relaxed);
     adoptGrandmaster(sdp.ptpMasterMAC);
+    ensurePTPClockForDomain(sdp.ptpDomain);
 
     // Notify callback
     notifyStreamAdded(streams_[id].info);
@@ -717,6 +746,25 @@ bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::st
         }
     }
 
+    // PTP lock, when the installation has asked for it. The AES67 Linux
+    // daemon makes this unconditional ("audio operations require the PTP
+    // slave to achieve locked status"); here it is opt-in, because this
+    // driver has carried audio without any PTP at all and switching it on
+    // by default could only ever take audio away from a working system.
+    if (requirePTPLock_.load(std::memory_order_relaxed) &&
+        ptpEnabled_.load(std::memory_order_relaxed) &&
+        sdp.ptpDomain >= 0) {
+        const auto diag = PTPClockManager::getInstance().getDiagnostics(sdp.ptpDomain);
+        if (!diag.isLocked) {
+            if (errorOut) {
+                *errorOut = "PTP clock for domain " + std::to_string(sdp.ptpDomain) +
+                            " is not locked yet — this installation is set to require lock "
+                            "before carrying audio";
+            }
+            return false;
+        }
+    }
+
     // Reference clock last: everything above is about whether the stream
     // is well-formed for this profile; this is about whether it can share
     // a clock with what's already running. Two streams on different
@@ -1072,6 +1120,7 @@ bool StreamManager::loadSavedStreams() {
         // canAddStream() call above this block.
         rxChannelsInUse_.fetch_add(config.sdp.numChannels, std::memory_order_relaxed);
         adoptGrandmaster(config.sdp.ptpMasterMAC);
+        ensurePTPClockForDomain(config.sdp.ptpDomain);
 
         // Notify callback
         notifyStreamAdded(streams_[id].info);
