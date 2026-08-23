@@ -6,6 +6,7 @@
 
 #include "RTPReceiver.h"
 #include "SimpleRTP.h"
+#include "PCMCodec.h"
 #include "../../Driver/DebugLog.h"
 #include <algorithm>
 #include <cstring>
@@ -509,19 +510,11 @@ void RTPReceiver::decodeL16(const uint8_t* payload, size_t payloadSize) {
         return;
     }
 
-    // Decode: big-endian int16 → float [-1.0, 1.0)
-    for (size_t i = 0; i < totalSamples; ++i) {
-        const size_t offset = i * bytesPerSample;
-        if (offset + bytesPerSample > payloadSize) break;
-
-        // Big-endian 16-bit signed (assemble as unsigned to avoid
-        // implementation-defined narrowing from promoted int to int16_t)
-        uint16_t rawSample = (static_cast<uint16_t>(payload[offset]) << 8) | payload[offset + 1];
-        int16_t pcmSample = static_cast<int16_t>(rawSample);
-
-        // Convert to float: divide by 32768 (2^15)
-        audioBuffer_[i] = pcmSample / 32768.0f;
-    }
+    // Decode big-endian int16 -> float. vDSP-accelerated on Apple, scalar
+    // fallback elsewhere, identical result either way (TestPCMCodec).
+    // frameCount is derived from payloadSize and bounded above, so
+    // totalSamples samples are fully present in the payload.
+    decodeL16BE(payload, totalSamples, audioBuffer_.data());
 
     // Map to device channels
     mapChannelsToDevice(audioBuffer_.data(), frameCount);
@@ -544,23 +537,10 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
         return;
     }
 
-    // Decode: big-endian int24 → float [-1.0, 1.0)
-    for (size_t i = 0; i < totalSamples; ++i) {
-        const size_t offset = i * bytesPerSample;
-        if (offset + bytesPerSample > payloadSize) break;
-
-        // Big-endian 24-bit signed (sign-extend to 32-bit)
-        // Cast to uint32_t before shifting to avoid undefined behavior
-        // when high byte >= 128 causes signed int overflow on << 24
-        uint32_t rawSample = (static_cast<uint32_t>(payload[offset]) << 24) |
-                             (static_cast<uint32_t>(payload[offset + 1]) << 16) |
-                             (static_cast<uint32_t>(payload[offset + 2]) << 8);
-        int32_t pcmSample = static_cast<int32_t>(rawSample);
-        pcmSample >>= 8; // Arithmetic right shift preserves sign
-
-        // Convert to float: divide by 8388608 (2^23)
-        audioBuffer_[i] = pcmSample / 8388608.0f;
-    }
+    // Decode big-endian 24-bit -> float. See decodeL16 above; same split of
+    // vectorised arithmetic (vDSP) and scalar byte unpacking, pinned by
+    // TestPCMCodec.
+    decodeL24BE(payload, totalSamples, audioBuffer_.data());
 
     // Map to device channels
     mapChannelsToDevice(audioBuffer_.data(), frameCount);
@@ -591,10 +571,9 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
     for (size_t streamChannel = 0; streamChannel < sdp_.numChannels; ++streamChannel) {
         const size_t deviceChannel = mapping_.deviceChannelStart + streamChannel;
 
-        // Extract this channel from interleaved stream
-        for (size_t frame = 0; frame < frameCount; ++frame) {
-            channelBuffer[frame] = interleavedAudio[frame * sdp_.numChannels + streamChannel];
-        }
+        // Extract this channel from the interleaved stream (deinterleave).
+        deinterleaveChannel(interleavedAudio, channelBuffer, frameCount,
+                            sdp_.numChannels, streamChannel);
 
         // Write to device ring buffer (batch write)
         const size_t written = deviceChannels_[deviceChannel].write(channelBuffer, frameCount);
