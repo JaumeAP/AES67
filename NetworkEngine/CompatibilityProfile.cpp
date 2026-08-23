@@ -261,6 +261,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.recommendedPtpDomain = 109;
         p.recommendedMulticastAddress = "239.81.83.67";
         p.useFixedMulticastWithPerFlowSourcePort = true;
+        p.maxUnits = 3; // DMA manual §2.3: at most three chained without a switch
         // From our driver's point of view: the DAC3202 only converts
         // digital audio to analog outputs — it has no network input for
         // audio to come back to us. We can only transmit to it.
@@ -354,6 +355,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // one multicast address and the fixed destination port across every
         // flow, stepping the source port instead.
         p.useFixedMulticastWithPerFlowSourcePort = true;
+        p.maxUnits = 3; // §2.3: at most three chained without a switch
         p.caveats =
             "Covers the whole Dolby Multichannel Amplifier family "
             "(DMA16301/16302, DMA24300/24302, DMA32300/32301) — pick your "
