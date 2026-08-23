@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <cctype>
 #include <ctime>
 
 namespace AES67 {
@@ -158,6 +159,7 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     // Store stream
     streams_[id] = std::move(managed);
     rxChannelsInUse_.fetch_add(sdp.numChannels, std::memory_order_relaxed);
+    adoptGrandmaster(sdp.ptpMasterMAC);
 
     // Notify callback
     notifyStreamAdded(streams_[id].info);
@@ -218,6 +220,10 @@ bool StreamManager::removeStream(const StreamID& id) {
     // Remove from map
     streams_.erase(it);
 
+    // With nothing running there's no clock to agree with any more, so the
+    // next stream — whatever grandmaster it names — sets the new one.
+    forgetGrandmasterIfNoStreams();
+
     // Notify callback
     notifyStreamRemoved(info);
 
@@ -246,6 +252,7 @@ void StreamManager::removeAllStreams() {
     mapper_.clearAll();
     rxChannelsInUse_.store(0, std::memory_order_relaxed);
     txChannelsInUse_.store(0, std::memory_order_relaxed);
+    forgetGrandmasterIfNoStreams();
 }
 
 //
@@ -340,6 +347,7 @@ StreamID StreamManager::createTxStream(
     // Store stream
     streams_[id] = std::move(managed);
     txChannelsInUse_.fetch_add(numChannels, std::memory_order_relaxed);
+    adoptGrandmaster(sdp.ptpMasterMAC);
 
     // Notify callback
     notifyStreamAdded(streams_[id].info);
@@ -349,6 +357,25 @@ StreamID StreamManager::createTxStream(
 
     return id;
 }
+
+namespace {
+
+/// PTP grandmaster identifiers arrive written every which way —
+/// "00-1B-21-AC-B5-4F", "00:1b:21:ac:b5:4f" — so compare them stripped of
+/// separators and case. Two spellings of the same clock are the same
+/// clock, and refusing a stream over punctuation would be worse than not
+/// checking at all.
+std::string normalizeGrandmaster(const std::string& id) {
+    std::string out;
+    out.reserve(id.size());
+    for (char c : id) {
+        if (c == '-' || c == ':' || c == '.') continue;
+        out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+} // namespace
 
 namespace {
 
@@ -608,6 +635,26 @@ CompatibilityProfileKind StreamManager::getCompatibilityProfileKind() const {
     return profileKind_.load(std::memory_order_relaxed);
 }
 
+void StreamManager::adoptGrandmaster(const std::string& grandmaster) {
+    if (grandmaster.empty()) return; // A stream that declares none says nothing
+    std::lock_guard<std::mutex> lock(refClockMutex_);
+    if (activeGrandmaster_.empty()) {
+        activeGrandmaster_ = grandmaster;
+    }
+}
+
+void StreamManager::forgetGrandmasterIfNoStreams() {
+    // Called with streamsMutex_ already held by the remove paths.
+    if (!streams_.empty()) return;
+    std::lock_guard<std::mutex> lock(refClockMutex_);
+    activeGrandmaster_.clear();
+}
+
+std::string StreamManager::getActiveGrandmaster() const {
+    std::lock_guard<std::mutex> lock(refClockMutex_);
+    return activeGrandmaster_;
+}
+
 bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const {
     if (!validateSampleRate(sdp, errorOut)) {
         return false;
@@ -665,6 +712,28 @@ bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::st
                            ", over the " + std::to_string(usableCount) +
                            " channels selected for " + (isTransmit ? "output" : "input") +
                            " in ManagerApp";
+            }
+            return false;
+        }
+    }
+
+    // Reference clock last: everything above is about whether the stream
+    // is well-formed for this profile; this is about whether it can share
+    // a clock with what's already running. Two streams on different
+    // grandmasters drift, and drift is the kind of fault that sounds like
+    // "something is subtly wrong" for hours before anyone finds it.
+    if (!ignoreRefClockMismatch_.load(std::memory_order_relaxed) && !sdp.ptpMasterMAC.empty()) {
+        std::string active;
+        {
+            std::lock_guard<std::mutex> lock(refClockMutex_);
+            active = activeGrandmaster_;
+        }
+        if (!active.empty() &&
+            normalizeGrandmaster(active) != normalizeGrandmaster(sdp.ptpMasterMAC)) {
+            if (errorOut) {
+                *errorOut = "PTP grandmaster " + sdp.ptpMasterMAC +
+                            " differs from the one every current stream uses (" + active +
+                            ") — streams on different grandmasters drift against each other";
             }
             return false;
         }
@@ -1002,6 +1071,7 @@ bool StreamManager::loadSavedStreams() {
         // loadSavedStreams() only ever restores RX streams — see the
         // canAddStream() call above this block.
         rxChannelsInUse_.fetch_add(config.sdp.numChannels, std::memory_order_relaxed);
+        adoptGrandmaster(config.sdp.ptpMasterMAC);
 
         // Notify callback
         notifyStreamAdded(streams_[id].info);
