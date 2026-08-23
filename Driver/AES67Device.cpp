@@ -48,18 +48,20 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
 {
     AES67_LOG("AES67Device constructor: Starting initialization");
 
-    // How many channels to advertise. Defaults to kNumChannels (128) if no
-    // setting has been saved — i.e. exactly the behavior before this
-    // setting existed. The RT ring buffers above are already allocated at
-    // full 128 capacity regardless; this only narrows what Core Audio sees.
+    // How many channels are USABLE — not how many are advertised. The
+    // device always presents all kNumChannels (128) to Core Audio, both
+    // here and in InitializeStreams(); this setting caps how many of them
+    // StreamChannelMapper will hand out to streams. Declaring all and using
+    // the selected subset avoids reconfiguring the device's stream format,
+    // which would only take effect across a Core Audio restart anyway.
     {
         DeviceChannelSettingsManager channelSettingsManager;
         const DeviceChannelSettings channelSettings = channelSettingsManager.load();
-        activeChannelCount_ = channelSettings.totalChannelCount();
-        AES67_LOGF("AES67Device: Channel setting = %u + %s = %u advertised (buffers hold %zu)",
+        usableChannelCount_ = channelSettings.totalChannelCount();
+        AES67_LOGF("AES67Device: Channel setting = %u + %s = %u usable (%zu always advertised)",
                    channelSettings.channelCount,
                    channelSettings.auxChannelEnabled ? "8 (aux group)" : "0 (no aux)",
-                   activeChannelCount_,
+                   usableChannelCount_,
                    kNumChannels);
     }
 
@@ -113,6 +115,12 @@ void AES67Device::Initialize() {
     AES67_LOG("AES67Device: Creating StreamManager");
     streamManager_ = std::make_unique<StreamManager>(inputBuffers_, outputBuffers_);
     AES67_LOG("AES67Device: StreamManager created successfully");
+
+    // Apply the channel-count setting read in the constructor. Must happen
+    // before loadSavedStreams() below, so restored streams are validated
+    // against the same ceiling new ones will be.
+    streamManager_->setUsableChannelCount(usableChannelCount_);
+    AES67_LOGF("AES67Device: StreamManager usable channels set to %u", usableChannelCount_);
 
     // Set device sample rate in StreamManager
     streamManager_->setDeviceSampleRate(currentSampleRate_.load());
@@ -198,13 +206,13 @@ void AES67Device::InitializeStreams() {
     inputParams.Format.mFormatID = kAudioFormatLinearPCM;
     inputParams.Format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
     inputParams.Format.mBitsPerChannel = 32;
-    inputParams.Format.mChannelsPerFrame = activeChannelCount_;
-    inputParams.Format.mBytesPerFrame = activeChannelCount_ * sizeof(float);
+    inputParams.Format.mChannelsPerFrame = kNumChannels;
+    inputParams.Format.mBytesPerFrame = kNumChannels * sizeof(float);
     inputParams.Format.mFramesPerPacket = 1;
     inputParams.Format.mBytesPerPacket = inputParams.Format.mBytesPerFrame;
 
     AES67_LOGF("InitializeStreams: Input stream - %u channels @ %.0f Hz",
-               activeChannelCount_, currentSampleRate_.load());
+               kNumChannels, currentSampleRate_.load());
 
     inputStream_ = std::make_shared<aspl::Stream>(
         GetContext(),
@@ -224,13 +232,13 @@ void AES67Device::InitializeStreams() {
     outputParams.Format.mFormatID = kAudioFormatLinearPCM;
     outputParams.Format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
     outputParams.Format.mBitsPerChannel = 32;
-    outputParams.Format.mChannelsPerFrame = activeChannelCount_;
-    outputParams.Format.mBytesPerFrame = activeChannelCount_ * sizeof(float);
+    outputParams.Format.mChannelsPerFrame = kNumChannels;
+    outputParams.Format.mBytesPerFrame = kNumChannels * sizeof(float);
     outputParams.Format.mFramesPerPacket = 1;
     outputParams.Format.mBytesPerPacket = outputParams.Format.mBytesPerFrame;
 
     AES67_LOGF("InitializeStreams: Output stream - %u channels @ %.0f Hz",
-               activeChannelCount_, currentSampleRate_.load());
+               kNumChannels, currentSampleRate_.load());
 
     outputStream_ = std::make_shared<aspl::Stream>(
         GetContext(),
@@ -248,7 +256,7 @@ void AES67Device::InitializeIOHandler() {
     AES67_LOG("InitializeIOHandler: Creating AES67IOHandler with RTSafeStreamInterface");
     ioHandler_ = std::make_shared<AES67IOHandler>(
         *rtInterface_,
-        activeChannelCount_,    // Cache channel count for RT-safe access
+        kNumChannels,           // Cache channel count for RT-safe access
         sizeof(Float32)         // Cache bytes per sample for RT-safe access
     );
     AES67_LOG("InitializeIOHandler: IOHandler created successfully");

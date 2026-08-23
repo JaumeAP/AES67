@@ -840,9 +840,13 @@ class DriverManager: ObservableObject {
     //
     // Mirrors NetworkEngine/DeviceChannelSettings.h, same file both
     // processes read/write (device_channels.json, alongside ptp_master.json).
+    //
+    // This does NOT change what the device advertises: Core Audio always
+    // sees all 128 channels. It caps how many of them StreamChannelMapper
+    // will assign to streams — declare them all, use the selected subset.
     // The driver reads it once when Core Audio constructs the device, so a
-    // change only takes effect on the next start — which is why the UI
-    // disables the selector while the driver is loaded and running.
+    // change only takes effect on the next start, which is why the UI
+    // disables the selector while the driver is installed.
 
     /// Selectable totals. Matches DeviceChannelSettings::allowedChannelCounts().
     static let allowedChannelCounts: [Int] = [8, 16, 32, 64, 128]

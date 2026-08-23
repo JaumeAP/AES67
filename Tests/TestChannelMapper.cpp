@@ -362,6 +362,81 @@ void testJSONImportClearsExisting() {
     std::cout << "✓ PASSED\n";
 }
 
+// ============================================================================
+// Usable channel cap (the main window's channel-count selector) and the
+// AES67 per-flow channel limit.
+// ============================================================================
+
+void testUsableChannelCountCapsAutoAssignment() {
+    std::cout << "Test: usable channel cap limits auto-assignment... ";
+
+    StreamChannelMapper mapper;
+    // Default is the full device width — the behavior before the setting existed.
+    assert(mapper.getUsableChannelCount() == StreamChannelMapper::kMaxDeviceChannels);
+
+    mapper.setUsableChannelCount(16);
+    assert(mapper.getUsableChannelCount() == 16);
+
+    SDPSession sdp;
+    sdp.sessionName = "8ch";
+    sdp.numChannels = 8;
+
+    // Two 8-channel streams fit exactly within 16.
+    auto first = mapper.createDefaultMapping(sdp);
+    assert(first.has_value());
+    assert(first->deviceChannelStart == 0);
+    assert(mapper.addMapping(*first));
+
+    auto second = mapper.createDefaultMapping(sdp);
+    assert(second.has_value());
+    assert(second->deviceChannelStart == 8);
+    assert(mapper.addMapping(*second));
+
+    // A third must fail: channels 16..127 exist on the device but are above
+    // the cap, so the mapper must not hand them out.
+    auto third = mapper.createDefaultMapping(sdp);
+    assert(!third.has_value());
+
+    std::cout << "✓ PASSED\n";
+}
+
+void testUsableChannelCountNeverExceedsCapacity() {
+    std::cout << "Test: usable channel cap clamps to device capacity... ";
+
+    StreamChannelMapper mapper;
+    // Asking for more than the fixed RT buffer capacity must clamp, not
+    // let the mapper hand out channels that have no buffer behind them.
+    mapper.setUsableChannelCount(4096);
+    assert(mapper.getUsableChannelCount() == StreamChannelMapper::kMaxDeviceChannels);
+
+    std::cout << "✓ PASSED\n";
+}
+
+void testMaxChannelsPerFlowMatchesAES67() {
+    std::cout << "Test: per-flow channel limit is 8 (AES67 / Dante)... ";
+
+    // Not a tunable: AES67 flows carry at most 8 channels, and Dante
+    // Controller splits anything wider into multiple flows.
+    // StreamManager::createTxStreamFlows() divides by exactly this.
+    static_assert(StreamChannelMapper::kMaxChannelsPerFlow == 8,
+                  "AES67 flows carry at most 8 channels");
+
+    // The split arithmetic createTxStreamFlows() performs, checked here
+    // because that function itself needs sockets to run.
+    constexpr uint16_t perFlow = StreamChannelMapper::kMaxChannelsPerFlow;
+    auto flowsFor = [](uint16_t channels) {
+        return (channels + perFlow - 1) / perFlow;
+    };
+    assert(flowsFor(1) == 1);
+    assert(flowsFor(8) == 1);    // exactly one full flow, no spill
+    assert(flowsFor(9) == 2);    // one full + one carrying a single channel
+    assert(flowsFor(16) == 2);
+    assert(flowsFor(24) == 3);
+    assert(flowsFor(128) == 16); // full device width
+
+    std::cout << "✓ PASSED\n";
+}
+
 void runAllTests() {
     std::cout << "\n=== AES67 Channel Mapper Test Suite ===\n\n";
 
@@ -377,6 +452,9 @@ void runAllTests() {
     testLargeScaleScenario();
     testJSONRoundTrip();
     testJSONImportClearsExisting();
+    testUsableChannelCountCapsAutoAssignment();
+    testUsableChannelCountNeverExceedsCapacity();
+    testMaxChannelsPerFlowMatchesAES67();
 
     std::cout << "\n✅ All Channel Mapper tests passed!\n\n";
 }

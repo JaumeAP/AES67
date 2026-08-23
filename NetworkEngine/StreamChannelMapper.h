@@ -50,8 +50,20 @@ class StreamChannelMapper {
 public:
     static constexpr size_t kMaxDeviceChannels = 128;  ///< Device channel limit
 
+    /// AES67 flow limit: a single RTP stream carries at most 8 channels.
+    /// Not a convention — Dante Controller splits anything wider into
+    /// multiple flows, and interoperating with it depends on doing the same.
+    static constexpr uint16_t kMaxChannelsPerFlow = 8;
+
     StreamChannelMapper();
     ~StreamChannelMapper();
+
+    /// Caps how many device channels auto-assignment may hand out. Defaults
+    /// to kMaxDeviceChannels; AES67Device narrows it from the user's
+    /// persisted channel-count setting. Channels above the cap stay
+    /// advertised to Core Audio but are never assigned to a stream.
+    void setUsableChannelCount(size_t count);
+    size_t getUsableChannelCount() const;
 
     //
     // Mapping Management
@@ -147,6 +159,9 @@ private:
     // Fast lookup: deviceChannel → streamID
     // Uses StreamID::null() for unassigned channels
     std::array<StreamID, kMaxDeviceChannels> deviceChannelOwners_;
+
+    // Ceiling for auto-assignment; see setUsableChannelCount().
+    size_t usableChannelCount_{kMaxDeviceChannels};
 
     // Thread safety for concurrent access
     mutable std::mutex mutex_;
