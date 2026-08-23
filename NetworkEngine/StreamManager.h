@@ -6,6 +6,7 @@
 #include "../Shared/Types.h"
 #include "../Shared/RingBuffer.hpp"
 #include "../Driver/SDPParser.h"
+#include "CompatibilityProfile.h"
 #include "StreamChannelMapper.h"
 #include "StreamConfig.h"
 #include "RTP/RTPReceiver.h"
@@ -13,6 +14,7 @@
 #include "PTP/PTPClock.h"
 #include <map>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <functional>
 
@@ -47,6 +49,13 @@ public:
     /// StreamChannelMapper::setUsableChannelCount(). AES67Device passes the
     /// user's persisted setting here at startup.
     void setUsableChannelCount(size_t count) { mapper_.setUsableChannelCount(count); }
+
+    /// Which flavour of AoIP gear this driver is being pointed at. Every
+    /// stream added from here on is validated against the profile's limits
+    /// (canAddStream). Defaults to AES67, which imposes only AES67's own
+    /// mandatory configuration. See CompatibilityProfile.h.
+    void setCompatibilityProfile(CompatibilityProfileKind kind);
+    CompatibilityProfileKind getCompatibilityProfileKind() const;
 
     //
     // Stream Management - RX
@@ -240,6 +249,11 @@ private:
     DeviceChannelBuffers& inputChannels_;   // RTP receivers write here (Network → Core Audio)
     DeviceChannelBuffers& outputChannels_;  // RTP transmitters read here (Core Audio → Network)
     StreamChannelMapper mapper_;
+
+    // Active compatibility profile. Atomic, not mutex-guarded: canAddStream()
+    // reads it both with streamsMutex_ held (via addStream) and without it
+    // (via getAddStreamError), so it can't take the lock itself.
+    std::atomic<CompatibilityProfileKind> profileKind_{CompatibilityProfileKind::AES67};
     std::map<StreamID, ManagedStream> streams_;
     mutable std::mutex streamsMutex_;
 

@@ -122,6 +122,15 @@ void AES67Device::Initialize() {
     streamManager_->setUsableChannelCount(usableChannelCount_);
     AES67_LOGF("AES67Device: StreamManager usable channels set to %u", usableChannelCount_);
 
+    // Compatibility profile, likewise before loadSavedStreams(): restored
+    // streams face the same profile limits new ones will. Defaults to AES67
+    // (no extra restrictions) when nothing has been selected.
+    {
+        CompatibilityProfileManager profileManager;
+        const CompatibilityProfileKind profileKind = profileManager.load();
+        streamManager_->setCompatibilityProfile(profileKind);
+    }
+
     // Set device sample rate in StreamManager
     streamManager_->setDeviceSampleRate(currentSampleRate_.load());
     AES67_LOGF("AES67Device: StreamManager sample rate set to %.0f Hz", currentSampleRate_.load());

@@ -103,6 +103,7 @@ class DriverManager: ObservableObject {
         loadDeviceSampleRate()
         loadPTPMasterSettings()
         loadDeviceChannelSettings()
+        loadCompatibilityProfile()
         startAutoRefresh()
     }
 
@@ -911,6 +912,85 @@ class DriverManager: ObservableObject {
         } catch {
             showAlert(title: "Save Failed",
                      message: "Could not save the channel count setting: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Compatibility Profile
+    //
+    // Which flavour of AoIP gear the driver is being pointed at. Mirrors
+    // NetworkEngine/CompatibilityProfile.h — same file both processes
+    // read/write (compatibility_profile.json). The driver reads it when
+    // Core Audio constructs the device and applies it to every stream added
+    // from then on, so a change takes effect on the next start.
+    //
+    // Selecting a profile only ever NARROWS what the driver accepts. It is
+    // not a conformance claim: each profile carries its own caveats, shown
+    // in the UI, about what it can't enforce.
+
+    struct CompatibilityProfileOption: Identifiable, Equatable {
+        let id: String       // matches CompatibilityProfile::kindToString()
+        let name: String
+        let caveats: String
+    }
+
+    /// Must stay in step with CompatibilityProfile::all() on the C++ side —
+    /// there's no shared header across the language boundary.
+    static let compatibilityProfiles: [CompatibilityProfileOption] = [
+        .init(id: "aes67",
+              name: "AES67",
+              caveats: "Baseline. Accepts the three sample rates AES67 names; the device "
+                     + "itself declares more (up to 384 kHz), which other AES67 gear may refuse."),
+        .init(id: "ravenna",
+              name: "RAVENNA",
+              caveats: "Constraints are currently identical to AES67: RAVENNA is more permissive, "
+                     + "not less, and the extra freedom (1–192 samples per packet) needs a "
+                     + "configurable transmit packet time this driver doesn't have yet. "
+                     + "RAVENNA's own additions — Bonjour discovery and stream redundancy — "
+                     + "are not implemented."),
+        .init(id: "st2110-30",
+              name: "SMPTE ST 2110-30 (Level A)",
+              caveats: "Level A only — Levels B and C need 125 µs packets, which this driver's "
+                     + "transmitter can't emit (it is fixed at 1 ms). ST 2110-30 also requires "
+                     + "stricter PTP than AES67, and this driver's PTP has never been verified "
+                     + "against a real grandmaster. Enforces the parameters it can check; "
+                     + "it is not a conformance claim."),
+    ]
+
+    @Published var compatibilityProfileID: String = "aes67"
+
+    var activeCompatibilityProfile: CompatibilityProfileOption {
+        Self.compatibilityProfiles.first { $0.id == compatibilityProfileID }
+            ?? Self.compatibilityProfiles[0]
+    }
+
+    private var compatibilityProfileConfigURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/AES67Driver/compatibility_profile.json")
+    }
+
+    func loadCompatibilityProfile() {
+        guard let data = try? Data(contentsOf: compatibilityProfileConfigURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = obj["profile"] as? String,
+              Self.compatibilityProfiles.contains(where: { $0.id == id }) else {
+            // Unknown or missing falls back to the unrestricted baseline —
+            // never to a profile that would start rejecting working streams.
+            compatibilityProfileID = "aes67"
+            return
+        }
+        compatibilityProfileID = id
+    }
+
+    func saveCompatibilityProfile() {
+        let dir = compatibilityProfileConfigURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let obj: [String: Any] = ["version": "1.0", "profile": compatibilityProfileID]
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
+            try data.write(to: compatibilityProfileConfigURL, options: .atomic)
+        } catch {
+            showAlert(title: "Save Failed",
+                     message: "Could not save the compatibility profile: \(error.localizedDescription)")
         }
     }
 
