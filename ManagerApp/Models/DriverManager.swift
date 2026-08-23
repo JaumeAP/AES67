@@ -1359,17 +1359,26 @@ class DriverManager: ObservableObject {
     }
 
     func loadAmplifierUnit() {
-        guard let data = try? Data(contentsOf: amplifierUnitConfigURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let unit = obj["unitIndex"] as? Int,
-              (1...3).contains(unit) else {
+        // Read the two values independently — they share this file but are
+        // unrelated, and a bad/absent unit index must not throw away a valid
+        // playout delay (which is what a single guard covering both did).
+        // Mirrors the C++ side, where loadPlayoutDelay() reads its field
+        // without regard to the unit index.
+        let obj = (try? Data(contentsOf: amplifierUnitConfigURL))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+
+        if let unit = obj["unitIndex"] as? Int, (1...3).contains(unit) {
+            amplifierUnit = unit
+        } else {
             amplifierUnit = 1
-            playoutDelaySamples = 0
-            return
         }
-        amplifierUnit = unit
-        let delay = obj["playoutDelaySamples"] as? Int ?? 0
-        playoutDelaySamples = (0...Self.maxPlayoutDelaySamples).contains(delay) ? delay : 0
+
+        if let delay = obj["playoutDelaySamples"] as? Int,
+           (0...Self.maxPlayoutDelaySamples).contains(delay) {
+            playoutDelaySamples = delay
+        } else {
+            playoutDelaySamples = 0
+        }
     }
 
     func saveAmplifierUnit() {
@@ -1401,7 +1410,12 @@ class DriverManager: ObservableObject {
         let channels = totalTxChannelCount
         let flowsPerUnit = (channels + 7) / 8
         let offset = (min(amplifierUnit, profile.maxUnits) - 1) * flowsPerUnit
-        return (0..<flowsPerUnit).map { destinationPort + 1 + offset + $0 }
+        // Only ports the driver would actually use — it rolls back a flow
+        // whose source port would exceed 65535 (createTxStreamFlows), so
+        // showing higher ones here would misrepresent what goes on the wire.
+        return (0..<flowsPerUnit)
+            .map { destinationPort + 1 + offset + $0 }
+            .filter { $0 <= 0xFFFF }
     }
 
     // MARK: - PTP Diagnostics Gateway

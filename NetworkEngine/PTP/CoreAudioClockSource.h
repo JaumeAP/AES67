@@ -89,6 +89,10 @@ private:
     mutable double anchorSample_{0.0};
     mutable uint64_t anchorNs_{0};
     mutable double nominalRate_{0.0};
+    // Last value currentTimeNs() returned. The clamp point that keeps the
+    // emitted timeline monotonic across dropouts and re-anchors — see the
+    // `emit` lambda in currentTimeNs().
+    mutable uint64_t lastEmittedNs_{0};
     mutable std::atomic<bool> locked_{false};
 };
 

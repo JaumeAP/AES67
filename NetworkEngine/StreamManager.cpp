@@ -250,7 +250,7 @@ bool StreamManager::removeStream(const StreamID& id) {
 
     // With nothing running there's no clock to agree with any more, so the
     // next stream — whatever grandmaster it names — sets the new one.
-    forgetGrandmasterIfNoStreams();
+    recomputeActiveGrandmaster();
 
     // Notify callback
     notifyStreamRemoved(info);
@@ -280,7 +280,7 @@ void StreamManager::removeAllStreams() {
     mapper_.clearAll();
     rxChannelsInUse_.store(0, std::memory_order_relaxed);
     txChannelsInUse_.store(0, std::memory_order_relaxed);
-    forgetGrandmasterIfNoStreams();
+    recomputeActiveGrandmaster();
 }
 
 //
@@ -672,11 +672,25 @@ void StreamManager::adoptGrandmaster(const std::string& grandmaster) {
     }
 }
 
-void StreamManager::forgetGrandmasterIfNoStreams() {
+void StreamManager::recomputeActiveGrandmaster() {
     // Called with streamsMutex_ already held by the remove paths.
-    if (!streams_.empty()) return;
+    //
+    // Recompute from the streams that REMAIN rather than only clearing when
+    // none are left: the grandmaster was adopted from the first stream that
+    // declared one, so removing THAT stream while others (which may declare
+    // none, or the same one) keep running has to re-derive it — otherwise a
+    // stale grandmaster lingers and wrongly rejects the next stream that
+    // names a different one. First remaining declarer wins, same rule as
+    // adoption; empty if nothing left declares one.
+    std::string next;
+    for (const auto& [id, managed] : streams_) {
+        if (!managed.sdp.ptpMasterMAC.empty()) {
+            next = managed.sdp.ptpMasterMAC;
+            break;
+        }
+    }
     std::lock_guard<std::mutex> lock(refClockMutex_);
-    activeGrandmaster_.clear();
+    activeGrandmaster_ = next;
 }
 
 std::string StreamManager::getActiveGrandmaster() const {
@@ -1116,11 +1130,18 @@ bool StreamManager::loadSavedStreams() {
         managed.info.isConnected = false;
         managed.info.startTime = std::chrono::steady_clock::now();
 
+        // Count it toward the direction it actually is. A persisted
+        // sendonly/sendrecv stream is restored as a TX transmitter above,
+        // so it belongs in the TX total; counting every restored stream as
+        // RX (as this once did) meant removeStream() later decremented
+        // txChannelsInUse_ for a stream that was never added to it, wrapping
+        // the unsigned counter and jamming the TX cap.
+        const bool restoredIsTransmit = managed.isTransmit;
+
         // Store stream
         streams_[id] = std::move(managed);
-        // loadSavedStreams() only ever restores RX streams — see the
-        // canAddStream() call above this block.
-        rxChannelsInUse_.fetch_add(config.sdp.numChannels, std::memory_order_relaxed);
+        (restoredIsTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+            .fetch_add(config.sdp.numChannels, std::memory_order_relaxed);
         adoptGrandmaster(config.sdp.ptpMasterMAC);
         ensurePTPClockForDomain(config.sdp.ptpDomain);
 

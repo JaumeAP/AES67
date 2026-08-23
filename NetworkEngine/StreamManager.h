@@ -375,7 +375,7 @@ private:
     void adoptGrandmaster(const std::string& grandmaster);
 
     /// Clears it once no streams remain. Called with streamsMutex_ held.
-    void forgetGrandmasterIfNoStreams();
+    void recomputeActiveGrandmaster();
 
     // Configuration helpers
     void autoSaveIfEnabled();
