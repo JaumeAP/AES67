@@ -20,6 +20,26 @@ struct AES67ManagerApp: App {
         let driverMgr = DriverManager()
         _driverManager = StateObject(wrappedValue: driverMgr)
         _menuBarManager = StateObject(wrappedValue: MenuBarManager(driverManager: driverMgr))
+
+        // Install the driver as soon as the app is up, remove it right
+        // before it quits — the driver is only present in the HAL while
+        // this app is running. Observing NSApplication's own notifications
+        // rather than routing through AppDelegate: both fire synchronously
+        // on the main thread at the right point in the lifecycle, and
+        // driverMgr is already at hand here without needing to thread it
+        // through the delegate adaptor's own init order.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didFinishLaunchingNotification,
+            object: nil, queue: .main
+        ) { _ in
+            driverMgr.installDriverOnLaunch()
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { _ in
+            driverMgr.uninstallDriverOnQuit()
+        }
     }
 
     var body: some Scene {

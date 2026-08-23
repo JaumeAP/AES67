@@ -58,6 +58,22 @@ mv AES67Manager AES67Manager.app/Contents/MacOS/
 # Copy Info.plist
 cp Resources/Info.plist AES67Manager.app/Contents/
 
+# Embed the driver bundle so this app can install/remove itself on
+# launch/quit (see DriverManager.installDriverOnLaunch/uninstallDriverOnQuit)
+# without depending on the .pkg installer having run first. Sourced from the
+# sibling CMake build/ dir — not fatal if it's missing (e.g. AES67Driver
+# wasn't built, or libASPL isn't available): the app still builds, it just
+# won't have anything to install until rebuilt with the driver present.
+DRIVER_BUNDLE="../build/AES67Driver.driver"
+if [ -d "$DRIVER_BUNDLE" ]; then
+    echo "Embedding AES67Driver.driver..."
+    rm -rf "AES67Manager.app/Contents/Resources/AES67Driver.driver"
+    ditto "$DRIVER_BUNDLE" "AES67Manager.app/Contents/Resources/AES67Driver.driver"
+else
+    echo "WARNING: $DRIVER_BUNDLE not found — building without an embedded driver."
+    echo "         Build AES67Driver first (needs libASPL), then rebuild this app, to install/uninstall on launch/quit."
+fi
+
 # Sign the app
 echo "Signing app..."
 codesign --force --deep --sign - --options runtime AES67Manager.app
