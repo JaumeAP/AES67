@@ -61,13 +61,21 @@ endif()
 # Dependencies
 # ============================================================================
 
-# Check if ASPL submodule exists and has the required headers
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/aspl/Device.hpp")
-    set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL")
+# Check if ASPL submodule exists and has the required headers. Headers live
+# under include/aspl/, not aspl/ directly — the submodule ships a normal
+# include/ layout, it isn't flattened at the repo root.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/include/aspl/Device.hpp")
+    set(ASPL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/include")
     message(STATUS "Using ASPL from submodule: ${ASPL_INCLUDE_DIR}")
     set(ASPL_FOUND TRUE)
-    # Treat as header-only, don't add_subdirectory to avoid CMakeLists.txt issues
     set(ASPL_LIBRARY "")
+    # Not header-only: it ships 23 .cpp files under src/ that any target using
+    # aspl::Device/aspl::Plugin (virtual classes) must compile in directly, or
+    # linking fails on missing vtables. Globbed into ASPL_SOURCES rather than
+    # add_subdirectory() — the submodule's own CMakeLists.txt runs
+    # `git describe` for its version tag and pulls in its own tests/docs
+    # options, which don't apply here.
+    file(GLOB ASPL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/libASPL/src/*.cpp")
 else()
     # Find libASPL (header-only library) in system locations
     find_path(ASPL_INCLUDE_DIR aspl/Plugin.hpp
@@ -161,6 +169,7 @@ if(APPLE AND ASPL_FOUND)
     # Create driver bundle
     add_library(AES67Driver MODULE
         ${ALL_CPP_SOURCES}
+        ${ASPL_SOURCES}
         Driver/PlugInMain.cpp  # AudioServerPlugIn entry point
     )
 
