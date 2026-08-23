@@ -37,6 +37,12 @@ public:
     StreamManager(const StreamManager&) = delete;
     StreamManager& operator=(const StreamManager&) = delete;
 
+    /// Full PTP diagnostic snapshot for a domain (default 0 — every stream
+    /// this driver serves defaults to domain 0 unless its SDP says
+    /// otherwise). What AES67Device's custom property
+    /// (Shared/CustomProperties.h) serves to ManagerApp.
+    PTPDiagnostics getPTPDiagnostics(int domain = 0);
+
     //
     // Stream Management - RX
     //

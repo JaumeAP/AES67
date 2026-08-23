@@ -835,6 +835,64 @@ class DriverManager: ObservableObject {
         showSampleRateMismatchAlert = false
     }
 
+    // MARK: - PTP Diagnostics Gateway
+    //
+    // Reads AES67Device's custom property — Shared/CustomProperties.h,
+    // kPTPDiagnosticsPropertySelector — the live bridge from the running
+    // driver process (inside coreaudiod) to this app. AudioObjectGetPropertyData
+    // is already cross-process, so this needed no XPC or shared files: the
+    // driver registers the property (RegisterCustomProperty in
+    // Driver/AES67Device.cpp), any client queries it.
+    //
+    // Must match Shared/CustomProperties.h's kPTPDiagnosticsPropertySelector
+    // exactly — there's no shared header across the C++/Swift boundary, so
+    // this is kept in sync by hand.
+    private static let kPTPDiagnosticsPropertySelector: AudioObjectPropertySelector = 0x61363764 // 'a67d'
+
+    /// Live diagnostics from the running driver, or nil if the driver isn't
+    /// loaded, doesn't expose this property (e.g. an older build without
+    /// this gateway), or the query otherwise fails. Callers should fall
+    /// back to something else — see PTPDiagnosticView.refreshDiagnostics().
+    func fetchLivePTPDiagnostics() -> PTPDiagnostics? {
+        guard let deviceID = findAES67DeviceID() else { return nil }
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: Self.kPTPDiagnosticsPropertySelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else { return nil }
+
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else {
+            return nil
+        }
+
+        var cfDict: CFDictionary? = nil
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfDict) == noErr,
+              let dict = cfDict as? [String: Any] else {
+            return nil
+        }
+
+        var diag = PTPDiagnostics()
+        diag.isConnected = dict["isConnected"] as? Bool ?? false
+        diag.isLocked = dict["isLocked"] as? Bool ?? false
+        diag.masterClockID = dict["masterClockID"] as? String
+        diag.clockClass = (dict["clockClass"] as? Int64).map(Int.init) ?? 248
+        diag.clockAccuracy = (dict["clockAccuracy"] as? Int64).map(Int.init) ?? 254
+        diag.offsetNs = dict["offsetNs"] as? Int64 ?? 0
+        diag.currentDomain = (dict["currentDomain"] as? Int64).map(Int.init) ?? 0
+        diag.role = (dict["role"] as? String) == "master" ? .master : .slave
+        diag.everWasMaster = dict["everWasMaster"] as? Bool ?? false
+        diag.hasCompetitor = dict["hasCompetitor"] as? Bool ?? false
+        diag.competitorPriority1 = (dict["competitorPriority1"] as? Int64).map(Int.init) ?? 0
+        diag.competitorPriority2 = (dict["competitorPriority2"] as? Int64).map(Int.init) ?? 0
+        diag.syncMessagesReceived = (dict["syncMessagesReceived"] as? Int64).map(Int.init) ?? 0
+        diag.announceMessagesReceived = (dict["announceMessagesReceived"] as? Int64).map(Int.init) ?? 0
+        diag.currentOffset = Double(diag.offsetNs)
+        return diag
+    }
+
     /// Finds the AES67 virtual audio device ID
     private func findAES67DeviceID() -> AudioDeviceID? {
         var propertyAddress = AudioObjectPropertyAddress(

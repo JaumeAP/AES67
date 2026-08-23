@@ -225,6 +225,13 @@ int64_t PTPClock::getOffsetNs() const {
     return 0;
 }
 
+PTPDiagnostics PTPClock::getDiagnostics() const {
+    if (ptpdInterface_) {
+        return ptpdInterface_->getDiagnostics();
+    }
+    return PTPDiagnostics{};
+}
+
 //
 // Media Clock Recovery Implementation (AES67-2018 Section 8.2)
 //
@@ -637,6 +644,17 @@ double PTPClockManager::getClockDriftRatio(int domain) {
 
     // Domain not found, return nominal ratio
     return 1.0;
+}
+
+PTPDiagnostics PTPClockManager::getDiagnostics(int domain) {
+    std::lock_guard<std::mutex> lock(clocksMutex_);
+
+    auto it = clocks_.find(domain);
+    if (it != clocks_.end()) {
+        return it->second->getDiagnostics();
+    }
+
+    return PTPDiagnostics{};
 }
 
 } // namespace AES67

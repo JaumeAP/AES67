@@ -8,6 +8,7 @@
 #include "AES67IOHandler.h"
 #include "SDPParser.h"
 #include "DebugLog.h"
+#include "../Shared/CustomProperties.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <utility>
 
@@ -57,6 +58,13 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
     // NOTE: Cannot call InitializeStreams() here because shared_from_this()
     // won't work until the shared_ptr is fully constructed
     // InitializeStreams() will be called from Initialize() method
+
+    // The gateway: safe to register now even though streamManager_ doesn't
+    // exist until Initialize() runs — the getter lambda below is only
+    // invoked later, when a client actually queries the property, and it
+    // guards against a null streamManager_ itself.
+    RegisterCustomProperty(kPTPDiagnosticsPropertySelector,
+        [this]() { return GetPTPDiagnosticsProperty(); });
 
     AES67_LOG("AES67Device constructor: Basic initialization complete");
 }
@@ -397,6 +405,65 @@ OSStatus AES67Device::StopIOImpl(UInt32 clientID, UInt32 startCount) {
 void AES67Device::ResetStatistics() {
     inputUnderruns_.store(0);
     outputUnderruns_.store(0);
+}
+
+namespace {
+
+void SetCFString(CFMutableDictionaryRef dict, const char* key, const std::string& value) {
+    CFStringRef keyRef = CFStringCreateWithCString(kCFAllocatorDefault, key, kCFStringEncodingUTF8);
+    CFStringRef valueRef = CFStringCreateWithCString(kCFAllocatorDefault, value.c_str(), kCFStringEncodingUTF8);
+    if (keyRef && valueRef) CFDictionarySetValue(dict, keyRef, valueRef);
+    if (keyRef) CFRelease(keyRef);
+    if (valueRef) CFRelease(valueRef);
+}
+
+void SetCFInt64(CFMutableDictionaryRef dict, const char* key, int64_t value) {
+    CFStringRef keyRef = CFStringCreateWithCString(kCFAllocatorDefault, key, kCFStringEncodingUTF8);
+    CFNumberRef valueRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &value);
+    if (keyRef && valueRef) CFDictionarySetValue(dict, keyRef, valueRef);
+    if (keyRef) CFRelease(keyRef);
+    if (valueRef) CFRelease(valueRef);
+}
+
+void SetCFBool(CFMutableDictionaryRef dict, const char* key, bool value) {
+    CFStringRef keyRef = CFStringCreateWithCString(kCFAllocatorDefault, key, kCFStringEncodingUTF8);
+    if (keyRef) CFDictionarySetValue(dict, keyRef, value ? kCFBooleanTrue : kCFBooleanFalse);
+    if (keyRef) CFRelease(keyRef);
+}
+
+} // namespace
+
+CFPropertyListRef AES67Device::GetPTPDiagnosticsProperty() const {
+    // Queried off the real-time thread (custom properties are non-RT,
+    // "Invoked by HAL on non-realtime thread" per aspl::Object) — safe to
+    // go through StreamManager/PTPClockManager's own mutexes here.
+    PTPDiagnostics diag;
+    if (streamManager_) {
+        diag = streamManager_->getPTPDiagnostics();
+    }
+    // else: streamManager_ not created yet (queried before Initialize()) —
+    // diag stays at PTPDiagnostics{}'s honest defaults (disconnected).
+
+    CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
+        kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    if (!dict) return nullptr;
+
+    SetCFBool(dict, kPTPDiagKeyIsConnected, diag.isConnected);
+    SetCFBool(dict, kPTPDiagKeyIsLocked, diag.isLocked);
+    SetCFString(dict, kPTPDiagKeyMasterClockID, diag.masterClockID);
+    SetCFInt64(dict, kPTPDiagKeyClockClass, diag.clockClass);
+    SetCFInt64(dict, kPTPDiagKeyClockAccuracy, diag.clockAccuracy);
+    SetCFInt64(dict, kPTPDiagKeyOffsetNs, diag.offsetNs);
+    SetCFInt64(dict, kPTPDiagKeyCurrentDomain, diag.currentDomain);
+    SetCFString(dict, kPTPDiagKeyRole, diag.role == PTPDiagnostics::Role::Master ? "master" : "slave");
+    SetCFBool(dict, kPTPDiagKeyEverWasMaster, diag.everWasMaster);
+    SetCFBool(dict, kPTPDiagKeyHasCompetitor, diag.hasCompetitor);
+    SetCFInt64(dict, kPTPDiagKeyCompetitorPriority1, diag.competitorPriority1);
+    SetCFInt64(dict, kPTPDiagKeyCompetitorPriority2, diag.competitorPriority2);
+    SetCFInt64(dict, kPTPDiagKeySyncMessagesReceived, diag.syncMessagesReceived);
+    SetCFInt64(dict, kPTPDiagKeyAnnounceMessagesReceived, diag.announceMessagesReceived);
+
+    return dict; // +1 from CFDictionaryCreateMutable — caller CFReleases, per RegisterCustomProperty's contract
 }
 
 OSStatus AES67Device::OnSetSampleRate(Float64 sampleRate) {

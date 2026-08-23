@@ -137,6 +137,14 @@ private:
     OSStatus OnSetSampleRate(Float64 sampleRate);
     OSStatus OnSetBufferSize(UInt32 bufferSize);
 
+    // The gateway: backs the kPTPDiagnosticsPropertySelector custom
+    // property (Shared/CustomProperties.h), registered on `this` in the
+    // constructor via RegisterCustomProperty(). Any process — ManagerApp,
+    // in practice — can AudioObjectGetPropertyData() this device's ID and
+    // read live PTP state, no other channel needed: that's what a custom
+    // AudioObject property already is, cross-process, for free.
+    CFPropertyListRef GetPTPDiagnosticsProperty() const;
+
     // Initialize streams and IO handler
     void InitializeStreams();
     void InitializeIOHandler();
