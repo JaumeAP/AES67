@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedStream: StreamInfo?
     @State private var showChannelMapping = false
     @State private var showChannelDiagnostic = false
+    @State private var showProfileCaveats = false
 
     /// Connection channel count — input and output alike — plus the
     /// auxiliary pair. The device always presents all 128 channels to Core
@@ -57,6 +58,36 @@ struct ContentView: View {
                 .help("The device always presents 128 channels to Core Audio; "
                     + "this caps how many streams may be assigned to")
 
+            Divider()
+                .frame(height: 18)
+
+            // Compatibility profile: which flavour of AoIP gear this driver
+            // is pointed at. Narrows what streams are accepted; never a
+            // conformance claim — hence the caveats in the tooltip.
+            Text("Compatible with:")
+                .font(.callout)
+
+            Picker("", selection: Binding(
+                get: { driverManager.compatibilityProfileID },
+                set: { driverManager.compatibilityProfileID = $0; driverManager.saveCompatibilityProfile() }
+            )) {
+                ForEach(DriverManager.compatibilityProfiles) { profile in
+                    Text(profile.name).tag(profile.id)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 220)
+            .disabled(locked)
+            .help(driverManager.activeCompatibilityProfile.caveats)
+
+            Button {
+                showProfileCaveats = true
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("What this profile does and doesn't enforce")
+
             Spacer()
 
             if locked {
@@ -72,6 +103,22 @@ struct ContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
+        .popover(isPresented: $showProfileCaveats) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(driverManager.activeCompatibilityProfile.name)
+                    .font(.headline)
+                Text(driverManager.activeCompatibilityProfile.caveats)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Selecting a profile only narrows what the driver accepts. "
+                   + "It is not a conformance claim.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding()
+            .frame(width: 380)
+        }
     }
 
     var body: some View {

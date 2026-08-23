@@ -120,6 +120,20 @@ target_include_directories(TestPTPMaster PRIVATE
 
 target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
 
+# Test: Compatibility profiles — pure constraint validation, no sockets.
+add_executable(TestCompatibilityProfile
+    TestCompatibilityProfile.cpp
+    ../NetworkEngine/CompatibilityProfile.cpp
+    ../Driver/SDPParser.cpp
+    ../Shared/Types.cpp
+)
+
+target_include_directories(TestCompatibilityProfile PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(TestCompatibilityProfile PRIVATE cxx_std_17)
+
 # Test: Stream Manager
 add_executable(TestStreamManager
     TestStreamManager.cpp
@@ -257,6 +271,7 @@ add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME PTPMaster COMMAND TestPTPMaster)
+add_test(NAME CompatibilityProfile COMMAND TestCompatibilityProfile)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME Resampling COMMAND TestResampling)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
@@ -271,6 +286,7 @@ message(STATUS "  - TestRTPReceiver")
 message(STATUS "  - TestRTPTransmitter")
 message(STATUS "  - TestPTPClock")
 message(STATUS "  - TestPTPMaster")
+message(STATUS "  - TestCompatibilityProfile")
 message(STATUS "  - TestStreamManager")
 message(STATUS "  - TestResampling (NEW)")
 message(STATUS "  - TestStreamConfig (NEW)")

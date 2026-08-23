@@ -546,6 +546,23 @@ size_t StreamManager::getStreamCount() const {
 // Validation
 //
 
+void StreamManager::setCompatibilityProfile(CompatibilityProfileKind kind) {
+    // Atomic rather than mutex-guarded: canAddStream() reads this, and it
+    // is already called with streamsMutex_ held (from addStream) as well as
+    // without it (from getAddStreamError) — so it can neither take the lock
+    // itself nor rely on callers having taken it.
+    profileKind_.store(kind, std::memory_order_relaxed);
+    AES67_LOGF("StreamManager: compatibility profile set to '%s'",
+               CompatibilityProfile::forKind(kind).displayName.c_str());
+    // Deliberately does NOT re-validate streams already added: tightening
+    // the profile shouldn't silently tear down running audio. It applies to
+    // everything added from here on.
+}
+
+CompatibilityProfileKind StreamManager::getCompatibilityProfileKind() const {
+    return profileKind_.load(std::memory_order_relaxed);
+}
+
 bool StreamManager::canAddStream(const SDPSession& sdp, std::string* errorOut) const {
     if (!validateSampleRate(sdp, errorOut)) {
         return false;
@@ -556,6 +573,15 @@ bool StreamManager::canAddStream(const SDPSession& sdp, std::string* errorOut) c
     }
 
     if (!validateNetworkConfig(sdp, errorOut)) {
+        return false;
+    }
+
+    // Profile limits last: the checks above are about whether this driver
+    // can carry the stream at all, this one is about whether the gear we're
+    // pointed at would accept it.
+    const auto profile = CompatibilityProfile::forKind(
+        profileKind_.load(std::memory_order_relaxed));
+    if (!profile.validate(sdp, errorOut)) {
         return false;
     }
 
