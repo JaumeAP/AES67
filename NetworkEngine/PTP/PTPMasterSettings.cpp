@@ -117,6 +117,8 @@ PTPMasterSettings PTPMasterSettingsManager::load() {
     const std::string json = buffer.str();
 
     if (auto v = extractBoolField(json, "masterCapable")) settings.masterCapable = *v;
+    if (auto v = extractBoolField(json, "ptpEnabled")) settings.ptpEnabled = *v;
+    if (auto v = extractBoolField(json, "requireLock")) settings.requireLock = *v;
     if (auto v = extractStringField(json, "clockSourceKind")) settings.clockSourceKind = *v;
     if (auto v = extractStringField(json, "lockToDeviceUID")) settings.lockToDeviceUID = *v;
 
@@ -136,6 +138,8 @@ bool PTPMasterSettingsManager::save(const PTPMasterSettings& settings) {
     json << "{\n";
     json << "  \"version\": \"1.0\",\n";
     json << "  \"masterCapable\": " << (settings.masterCapable ? "true" : "false") << ",\n";
+    json << "  \"ptpEnabled\": " << (settings.ptpEnabled ? "true" : "false") << ",\n";
+    json << "  \"requireLock\": " << (settings.requireLock ? "true" : "false") << ",\n";
     json << "  \"clockSourceKind\": \"" << jsonEscape(settings.clockSourceKind) << "\",\n";
     json << "  \"lockToDeviceUID\": \"" << jsonEscape(settings.lockToDeviceUID) << "\"\n";
     json << "}\n";

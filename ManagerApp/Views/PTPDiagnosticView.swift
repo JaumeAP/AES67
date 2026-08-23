@@ -512,6 +512,33 @@ struct PTPDiagnosticView: View {
                 // ptp_master.json, read by the driver at its next start.
                 GroupBox("PTP Clock Source") {
                     VStack(alignment: .leading, spacing: 8) {
+                        // The master switch for the whole subsystem. Until
+                        // this is on, the driver runs no PTP clock at all
+                        // and everything below (and every figure on this
+                        // screen) is inert.
+                        Toggle("Run a PTP clock", isOn: Binding(
+                            get: { driverManager.ptpEnabled },
+                            set: { driverManager.ptpEnabled = $0; driverManager.savePTPMasterSettings() }
+                        ))
+                        Text("Off by default: earlier builds compiled the PTP subsystem without "
+                           + "ever starting it, so turning this on is a real change to a driver "
+                           + "that has been carrying audio without it. Takes effect the next "
+                           + "time Core Audio starts the driver.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Toggle("Refuse audio until the clock locks", isOn: Binding(
+                            get: { driverManager.ptpRequireLock },
+                            set: { driverManager.ptpRequireLock = $0; driverManager.savePTPMasterSettings() }
+                        ))
+                        .disabled(!driverManager.ptpEnabled)
+                        .help("Streams are rejected while the PTP clock is unlocked. Stricter, "
+                            + "and what the AES67 Linux daemon does unconditionally — but on a "
+                            + "working system this can only ever take audio away.")
+
+                        Divider()
+
                         // Locked to the active compatibility profile's PTP
                         // role (CP850 = always slave, DAC3202 = always
                         // master) — free otherwise, same fixed/free pattern

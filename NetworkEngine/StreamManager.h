@@ -85,6 +85,33 @@ public:
         txFlowPortOffset_.store(flows, std::memory_order_relaxed);
     }
 
+    /// Whether this driver runs a PTP clock at all.
+    ///
+    /// When enabled, adding a stream starts (or joins) a PTPClock for that
+    /// stream's PTP domain, so the clock disciplines against the network's
+    /// grandmaster and getPTPDiagnostics() reports something real instead
+    /// of PTPDiagnostics{}'s disconnected defaults. Before this existed,
+    /// nothing in the driver path ever called
+    /// PTPClockManager::getClockForDomain(), so the whole PTP subsystem —
+    /// slave, master, BMCA, arbitrator — was compiled and never run.
+    ///
+    /// Off by default, deliberately. Starting PTP opens multicast sockets
+    /// and threads on a path that has been verified against real hardware
+    /// without them; this is the one change here that can't be checked by
+    /// building and running the tests. Turn it on knowingly.
+    void setPTPEnabled(bool enabled);
+    bool isPTPEnabled() const { return ptpEnabled_.load(std::memory_order_relaxed); }
+
+    /// Whether to refuse audio until the PTP clock has locked, the way the
+    /// AES67 Linux daemon does. Off by default even when PTP is enabled:
+    /// on a system that currently carries audio without any PTP at all,
+    /// switching this on can only ever take audio away. Meaningless unless
+    /// setPTPEnabled(true).
+    void setRequirePTPLock(bool require) {
+        requirePTPLock_.store(require, std::memory_order_relaxed);
+    }
+    bool getRequirePTPLock() const { return requirePTPLock_.load(std::memory_order_relaxed); }
+
     /// Whether to allow streams locked to different PTP grandmasters to
     /// coexist. Two streams disciplined by different grandmasters drift
     /// against each other — slowly, and audibly long before anything looks
@@ -317,6 +344,10 @@ private:
     void notifyStreamRemoved(const StreamInfo& info);
     void notifyStreamStatusChanged(const StreamInfo& info);
 
+    /// Starts (or joins) a PTP clock for this stream's domain when PTP is
+    /// enabled. No-op when it isn't, or for a stream that declares no PTP.
+    void ensurePTPClockForDomain(int domain);
+
     /// Records the grandmaster the first stream declares; later streams
     /// are checked against it by canAddStream(). A stream declaring none
     /// leaves it untouched.
@@ -367,6 +398,9 @@ private:
     // profileKind_ is atomic: canAddStream() is called both with
     // streamsMutex_ held (addStream/createTxStream) and without it
     // (getAddStreamError), so it can't take that lock itself.
+    std::atomic<bool> ptpEnabled_{false};
+    std::atomic<bool> requirePTPLock_{false};
+
     mutable std::mutex refClockMutex_;
     std::string activeGrandmaster_;
     std::atomic<bool> ignoreRefClockMismatch_{false};
