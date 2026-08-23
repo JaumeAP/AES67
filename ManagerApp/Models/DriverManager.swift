@@ -857,55 +857,84 @@ class DriverManager: ObservableObject {
     /// Fixed capacity of the driver's RT ring buffers — the hard ceiling.
     static let maxDeviceChannels = 128
 
-    @Published var deviceChannelCount: Int = 128
-    @Published var auxChannelEnabled: Bool = false
+    // Two independent selections — input (RX, network -> Core Audio) and
+    // output (TX, Core Audio -> network) — because direction isn't symmetric
+    // once a compatibility profile restricts it: CP850 is receive-only from
+    // this driver's own point of view, DAC3202 is transmit-only. ContentView
+    // disables whichever selector the active profile rules out, alongside
+    // the existing "disabled while installed" lock. Mirrors
+    // NetworkEngine/DeviceChannelSettings.h's rx/tx split.
+    @Published var rxChannelCount: Int = 128
+    @Published var rxAuxChannelEnabled: Bool = false
+    @Published var txChannelCount: Int = 128
+    @Published var txAuxChannelEnabled: Bool = false
 
     private var deviceChannelsConfigURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/AES67Driver/device_channels.json")
     }
 
-    /// Channels the device will actually expose: the selection plus the
-    /// auxiliary group when enabled. Mirrors
-    /// DeviceChannelSettings::totalChannelCount().
-    var totalDeviceChannelCount: Int {
-        let total = deviceChannelCount + (auxChannelEnabled ? Self.channelGroupSize : 0)
+    /// Channels the device will actually expose on input: the RX selection
+    /// plus its auxiliary group when enabled. Mirrors
+    /// DeviceChannelSelection::totalChannelCount().
+    var totalRxChannelCount: Int {
+        let total = rxChannelCount + (rxAuxChannelEnabled ? Self.channelGroupSize : 0)
+        return min(total, Self.maxDeviceChannels)
+    }
+
+    /// Same as totalRxChannelCount, for output.
+    var totalTxChannelCount: Int {
+        let total = txChannelCount + (txAuxChannelEnabled ? Self.channelGroupSize : 0)
         return min(total, Self.maxDeviceChannels)
     }
 
     /// The auxiliary group can't fit on top of 128 — the RT buffers are
     /// fixed at that size. The UI uses this to disable the checkbox rather
     /// than let the driver silently drop the request.
-    var auxChannelFitsAtCurrentCount: Bool {
-        deviceChannelCount + Self.channelGroupSize <= Self.maxDeviceChannels
+    var rxAuxChannelFitsAtCurrentCount: Bool {
+        rxChannelCount + Self.channelGroupSize <= Self.maxDeviceChannels
+    }
+
+    /// Same as rxAuxChannelFitsAtCurrentCount, for output.
+    var txAuxChannelFitsAtCurrentCount: Bool {
+        txChannelCount + Self.channelGroupSize <= Self.maxDeviceChannels
     }
 
     func loadDeviceChannelSettings() {
         guard let data = try? Data(contentsOf: deviceChannelsConfigURL),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            deviceChannelCount = 128
-            auxChannelEnabled = false
+            rxChannelCount = 128
+            rxAuxChannelEnabled = false
+            txChannelCount = 128
+            txAuxChannelEnabled = false
             return
         }
-        let count = obj["channelCount"] as? Int ?? 128
-        deviceChannelCount = Self.allowedChannelCounts.contains(count) ? count : 128
-        auxChannelEnabled = (obj["auxChannelEnabled"] as? Bool ?? false) && auxChannelFitsAtCurrentCount
+        let rxCount = obj["rxChannelCount"] as? Int ?? 128
+        rxChannelCount = Self.allowedChannelCounts.contains(rxCount) ? rxCount : 128
+        rxAuxChannelEnabled = (obj["rxAuxChannelEnabled"] as? Bool ?? false) && rxAuxChannelFitsAtCurrentCount
+
+        let txCount = obj["txChannelCount"] as? Int ?? 128
+        txChannelCount = Self.allowedChannelCounts.contains(txCount) ? txCount : 128
+        txAuxChannelEnabled = (obj["txAuxChannelEnabled"] as? Bool ?? false) && txAuxChannelFitsAtCurrentCount
     }
 
     func saveDeviceChannelSettings() {
-        // Keep the two fields consistent before writing: the driver's
-        // DeviceChannelSettings::isValid() rejects aux-at-128 outright, and
+        // Keep the fields consistent before writing: the driver's
+        // DeviceChannelSelection::isValid() rejects aux-at-128 outright, and
         // a rejected file silently falls back to defaults — worse than
         // correcting it here.
-        if !auxChannelFitsAtCurrentCount { auxChannelEnabled = false }
+        if !rxAuxChannelFitsAtCurrentCount { rxAuxChannelEnabled = false }
+        if !txAuxChannelFitsAtCurrentCount { txAuxChannelEnabled = false }
 
         let dir = deviceChannelsConfigURL.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let obj: [String: Any] = [
                 "version": "1.0",
-                "channelCount": deviceChannelCount,
-                "auxChannelEnabled": auxChannelEnabled,
+                "rxChannelCount": rxChannelCount,
+                "rxAuxChannelEnabled": rxAuxChannelEnabled,
+                "txChannelCount": txChannelCount,
+                "txAuxChannelEnabled": txAuxChannelEnabled,
             ]
             let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
             try data.write(to: deviceChannelsConfigURL, options: .atomic)
