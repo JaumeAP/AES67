@@ -112,6 +112,22 @@ struct CompatibilityProfile {
     /// splits anything wider regardless.
     uint16_t maxChannelsPerFlow{8};
 
+    /// True for the Dolby Atmos Connect wire scheme confirmed in the DMA's
+    /// manual (Docs/references/dolby_multichannel_amplifier_manual.pdf,
+    /// §3.2.4 "Source UDP and RTP Destination Ports"): one multicast
+    /// address and a FIXED RTP destination port shared by every flow, with
+    /// each flow's SOURCE port stepped instead (base port +1, +2, +3, ... —
+    /// e.g. 6517 fixed destination, 6518/6519/6520/... source per
+    /// 8-channel block). The default (false) is every other profile's
+    /// scheme: one multicast address PER flow (last octet advanced),
+    /// shared port, kernel-assigned ephemeral source port — the AES67/
+    /// Dante convention. Only DMA sets this; DAC3202 is the same physical
+    /// Atmos Connect protocol and likely shares it, but that isn't
+    /// confirmed by a source for DAC3202 specifically, so it's left at the
+    /// AES67 default rather than assumed. Read by
+    /// StreamManager::createTxStreamFlows().
+    bool useFixedMulticastWithPerFlowSourcePort{false};
+
     /// Which way THIS driver may talk to the described gear. See
     /// ProfileDirection. Checked by validate(sdp, isTransmit, ...).
     ProfileDirection direction{ProfileDirection::Any};

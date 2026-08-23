@@ -205,12 +205,12 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // Port scheme: §3.2.4 "Source UDP and RTP Destination Ports"
         // documents a FIXED RTP destination port (6517) with the SOURCE UDP
         // port stepped per 8-channel block (6518, 6519, 6520, 6521, ...) —
-        // one multicast address, ports distinguish the flows. This driver's
-        // own StreamManager::createTxStreamFlows() instead steps the
-        // destination multicast IP's last octet per flow and keeps ports
-        // fixed. That's a real mismatch, not enforced or worked around by
-        // anything here — multi-flow (>8ch) interop with a real DMA is
-        // unverified until this driver's flow addressing matches Dolby's.
+        // one multicast address, ports distinguish the flows. Every other
+        // profile's flow splitter instead steps the destination multicast
+        // IP's last octet per flow and keeps ports fixed (the AES67/Dante
+        // convention) — see useFixedMulticastWithPerFlowSourcePort below,
+        // which switches StreamManager::createTxStreamFlows() to Dolby's
+        // scheme for this profile.
         p.allowedSampleRates = {48000.0, 96000.0};
         p.allowedPtimesMs = {1};
         p.allowedEncodings = {"L16", "L24"};
@@ -222,23 +222,28 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.direction = ProfileDirection::TransmitOnly;
         p.maxTotalChannels = 64;
         p.ptpRole = PTPRoleConstraint::ForcedMaster;
+        // Real Atmos Connect wire scheme, not this driver's default AES67/
+        // Dante one — see useFixedMulticastWithPerFlowSourcePort's own doc
+        // comment. StreamManager::createTxStreamFlows() reads this to keep
+        // one multicast address and the fixed destination port across every
+        // flow, stepping the source port instead.
+        p.useFixedMulticastWithPerFlowSourcePort = true;
         p.caveats =
             "Covers the whole Dolby Multichannel Amplifier family "
             "(DMA16301/16302, DMA24300/24302, DMA32300/32301) — pick your "
             "real amplifier's channel count with the Output selector on the "
             "main window rather than a separate profile per model; 64 is "
             "the outer ceiling (the Atmos Connect chain's own limit), not a "
-            "specific model's count. This driver's flow splitter steps the "
-            "destination multicast IP's last octet per 8-channel flow; the "
-            "real DMA instead keeps one multicast address and steps the "
-            "source UDP port per flow (fixed RTP destination port 6517). "
-            "Multi-flow interop with a real unit is unverified until that's "
-            "reconciled. Sample rate/ptime/encoding are inherited from the "
-            "same Atmos Connect chain as CP850/DAC3202 (not independently "
-            "documented for the DMA itself). PTP domain defaults to 109 for "
-            "Dolby gear (not fixed — must match the sending processor). "
-            "This driver is always PTP master under this profile, "
-            "transmit-only.";
+            "specific model's count. Multi-flow addressing matches the real "
+            "device: one multicast address, fixed RTP destination port "
+            "(pass 6517 as the stream's port to match Dolby's own default), "
+            "source port stepped per 8-channel flow (destination+1, +2, "
+            "+3, ...) — see StreamManager::createTxStreamFlows(). Sample "
+            "rate/ptime/encoding are inherited from the same Atmos Connect "
+            "chain as CP850/DAC3202 (not independently documented for the "
+            "DMA itself). PTP domain defaults to 109 for Dolby gear (not "
+            "fixed — must match the sending processor). This driver is "
+            "always PTP master under this profile, transmit-only.";
         break;
     }
 
