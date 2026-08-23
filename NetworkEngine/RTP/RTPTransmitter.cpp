@@ -93,7 +93,8 @@ bool RTPTransmitter::start() {
     // Start transmit thread (elevated priority to prevent audio dropouts)
     running_ = true;
     transmitThread_ = std::thread([this]() {
-        if (!AudioThreadPriority::configureForRealTime()) {
+        // Real cycle length is the stream's own packet time, not a guess.
+        if (!AudioThreadPriority::configureForRealTime(static_cast<double>(sdp_.ptime))) {
             AES67_LOGF("RTPTransmitter: failed to set RT priority on transmit thread (stream=%s)",
                        sdp_.sessionName.c_str());
         }

@@ -123,7 +123,8 @@ bool RTPReceiver::start() {
     // Start receive thread (producer - adds packets to jitter buffer)
     running_ = true;
     receiveThread_ = std::thread([this]() {
-        if (!AudioThreadPriority::configureForRealTime()) {
+        // Real cycle length is the stream's own packet time, not a guess.
+        if (!AudioThreadPriority::configureForRealTime(static_cast<double>(sdp_.ptime))) {
             AES67_LOGF("RTPReceiver: failed to set RT priority on receive thread (stream=%s)",
                        sdp_.sessionName.c_str());
         }
@@ -132,7 +133,7 @@ bool RTPReceiver::start() {
 
     // Start consume thread (consumer - reads from jitter buffer and writes to ring buffers)
     consumeThread_ = std::thread([this]() {
-        if (!AudioThreadPriority::configureForRealTime()) {
+        if (!AudioThreadPriority::configureForRealTime(static_cast<double>(sdp_.ptime))) {
             AES67_LOGF("RTPReceiver: failed to set RT priority on consume thread (stream=%s)",
                        sdp_.sessionName.c_str());
         }

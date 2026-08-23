@@ -4,6 +4,19 @@
 
 cmake_minimum_required(VERSION 3.20)
 
+# CMAKE_OSX_ARCHITECTURES and CMAKE_OSX_DEPLOYMENT_TARGET only take effect if
+# set before the first project()/enable_language() call — that's when CMake
+# runs compiler/ABI detection for this platform. Set after, as these used to
+# be, they're silently ignored: every target built arm64-only (the host's
+# native architecture) targeting whatever macOS the build machine runs, not
+# the "12.0" this project intends. CMAKE_HOST_SYSTEM_NAME rather than APPLE:
+# the APPLE variable itself isn't set until after that same first project()
+# call.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
+endif()
+
 # Read version from VERSION.txt
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" VERSION_STRING)
 string(STRIP "${VERSION_STRING}" VERSION_STRING)
@@ -31,11 +44,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# macOS specific settings
+# macOS specific settings (architectures/deployment target are set above,
+# before project() — see the comment there)
 if(APPLE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
-    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
-
     # Enable Hardened Runtime for notarization
     set(CMAKE_XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME YES)
 
