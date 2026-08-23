@@ -148,6 +148,7 @@ set(NETWORK_SOURCES
     NetworkEngine/RTP/SimpleRTP.cpp
     NetworkEngine/RTP/RTPReceiver.cpp
     NetworkEngine/RTP/RTPTransmitter.cpp
+    NetworkEngine/RTP/PCMCodec.cpp
     NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
     NetworkEngine/RTP/LockFreePacketPool.cpp
     NetworkEngine/RTP/BufferStatusMonitor.cpp
@@ -203,6 +204,7 @@ if(APPLE AND ASPL_FOUND)
         "-framework CoreAudio"
         "-framework CoreFoundation"
         "-framework AudioToolbox"
+        "-framework Accelerate"
     )
 
     # Bundle properties
