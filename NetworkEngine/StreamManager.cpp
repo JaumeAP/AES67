@@ -62,7 +62,7 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
 
     // Validate stream can be added
     std::string error;
-    if (!canAddStream(sdp, &error)) {
+    if (!canAddStream(sdp, /*isTransmit=*/false, &error)) {
         AES67_LOGF("StreamManager::addStream: validation failed for '%s': %s",
                    sdp.sessionName.c_str(), error.c_str());
         return StreamID::null();
@@ -157,6 +157,7 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
 
     // Store stream
     streams_[id] = std::move(managed);
+    rxChannelsInUse_.fetch_add(sdp.numChannels, std::memory_order_relaxed);
 
     // Notify callback
     notifyStreamAdded(streams_[id].info);
@@ -210,6 +211,10 @@ bool StreamManager::removeStream(const StreamID& id) {
     // Remove from mapper
     mapper_.removeMapping(id);
 
+    // Keep the running totals in step with what's actually still open.
+    (it->second.isTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+        .fetch_sub(it->second.sdp.numChannels, std::memory_order_relaxed);
+
     // Remove from map
     streams_.erase(it);
 
@@ -239,6 +244,8 @@ void StreamManager::removeAllStreams() {
 
     streams_.clear();
     mapper_.clearAll();
+    rxChannelsInUse_.store(0, std::memory_order_relaxed);
+    txChannelsInUse_.store(0, std::memory_order_relaxed);
 }
 
 //
@@ -268,7 +275,7 @@ StreamID StreamManager::createTxStream(
 
     // Validate
     std::string error;
-    if (!canAddStream(sdp, &error)) {
+    if (!canAddStream(sdp, /*isTransmit=*/true, &error)) {
         AES67_LOGF("StreamManager::createTxStream: validation failed for '%s': %s",
                    name.c_str(), error.c_str());
         return StreamID::null();
@@ -331,6 +338,7 @@ StreamID StreamManager::createTxStream(
 
     // Store stream
     streams_[id] = std::move(managed);
+    txChannelsInUse_.fetch_add(numChannels, std::memory_order_relaxed);
 
     // Notify callback
     notifyStreamAdded(streams_[id].info);
@@ -563,7 +571,7 @@ CompatibilityProfileKind StreamManager::getCompatibilityProfileKind() const {
     return profileKind_.load(std::memory_order_relaxed);
 }
 
-bool StreamManager::canAddStream(const SDPSession& sdp, std::string* errorOut) const {
+bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const {
     if (!validateSampleRate(sdp, errorOut)) {
         return false;
     }
@@ -581,16 +589,33 @@ bool StreamManager::canAddStream(const SDPSession& sdp, std::string* errorOut) c
     // pointed at would accept it.
     const auto profile = CompatibilityProfile::forKind(
         profileKind_.load(std::memory_order_relaxed));
-    if (!profile.validate(sdp, errorOut)) {
+    if (!profile.validate(sdp, isTransmit, errorOut)) {
         return false;
+    }
+
+    // maxTotalChannels is cumulative across every stream in this direction
+    // while the profile is active — CompatibilityProfile::validate() can't
+    // check it, it only ever sees one SDPSession at a time.
+    if (profile.maxTotalChannels > 0) {
+        const uint32_t inUse = (isTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+                                    .load(std::memory_order_relaxed);
+        if (inUse + sdp.numChannels > profile.maxTotalChannels) {
+            if (errorOut) {
+                *errorOut = profile.displayName + ": " + std::to_string(sdp.numChannels) +
+                           " more channels would bring total " + (isTransmit ? "TX" : "RX") +
+                           " usage to " + std::to_string(inUse + sdp.numChannels) +
+                           ", over its " + std::to_string(profile.maxTotalChannels) + "-channel limit";
+            }
+            return false;
+        }
     }
 
     return true;
 }
 
-std::string StreamManager::getAddStreamError(const SDPSession& sdp) const {
+std::string StreamManager::getAddStreamError(const SDPSession& sdp, bool isTransmit) const {
     std::string error;
-    canAddStream(sdp, &error);
+    canAddStream(sdp, isTransmit, &error);
     return error;
 }
 
@@ -816,8 +841,9 @@ bool StreamManager::loadSavedStreams() {
         }
 
         // Check if stream can be added (validate sample rate, channels, etc.)
+        // loadSavedStreams() only ever restores RX streams.
         std::string error;
-        if (!canAddStream(config.sdp, &error)) {
+        if (!canAddStream(config.sdp, /*isTransmit=*/false, &error)) {
             AES67_LOGF("StreamManager: Cannot add stream '%s': %s",
                       config.sdp.sessionName.c_str(), error.c_str());
             failedCount++;
@@ -905,6 +931,9 @@ bool StreamManager::loadSavedStreams() {
 
         // Store stream
         streams_[id] = std::move(managed);
+        // loadSavedStreams() only ever restores RX streams — see the
+        // canAddStream() call above this block.
+        rxChannelsInUse_.fetch_add(config.sdp.numChannels, std::memory_order_relaxed);
 
         // Notify callback
         notifyStreamAdded(streams_[id].info);

@@ -6,6 +6,16 @@
 // Pure validation logic — no sockets, no driver, no persistence of the
 // user's actual selection. Safe in the standard suite.
 //
+// What this file does NOT cover: CompatibilityProfile::maxTotalChannels
+// (CP850's 64ch / DAC3202's 32ch aggregate caps) is enforced by
+// StreamManager::canAddStream(), which sums channels across every stream
+// currently open — that needs a real StreamManager instance (ring buffers,
+// sockets), which this file's test suites deliberately avoid constructing
+// (see TestStreamManager.cpp's own "without RTP instance creation" scope).
+// This file tests that the field itself carries the right value; the
+// aggregate enforcement is unverified by an automated test, same honesty as
+// everything else in this driver that hasn't been run end to end.
+//
 
 #include "../NetworkEngine/CompatibilityProfile.h"
 
@@ -27,7 +37,9 @@ static int testsFailed = 0;
 
 namespace {
 
-/// A stream every profile here should accept: 48 kHz, L24, 1 ms, 8 channels.
+/// A stream every profile here should accept in its own permitted
+/// direction: 48 kHz, L24, 1 ms, 8 channels, Dante's multicast range (which
+/// also happens to be a perfectly ordinary AES67 address), domain 0.
 SDPSession baselineSession() {
     SDPSession sdp;
     sdp.sessionName = "test";
@@ -40,6 +52,15 @@ SDPSession baselineSession() {
     return sdp;
 }
 
+/// Whether THIS driver would be transmitting when talking to the gear a
+/// profile describes — false for everything except a TransmitOnly profile
+/// (DAC3202). Lets the shared/loop tests exercise each profile in the one
+/// direction it actually allows, so a rejection they check for is caused by
+/// the thing under test, not a direction mismatch on top of it.
+bool transmitDirectionFor(const CompatibilityProfile& profile) {
+    return profile.direction == ProfileDirection::TransmitOnly;
+}
+
 } // namespace
 
 // ============================================================================
@@ -47,11 +68,11 @@ SDPSession baselineSession() {
 // ============================================================================
 
 bool testAllProfilesAcceptTheCommonBaseline() {
-    std::cout << "Test: A1 · every profile accepts 48kHz/L24/1ms/8ch... ";
+    std::cout << "Test: A1 · every profile accepts 48kHz/L24/1ms/8ch, each in its own direction... ";
     const auto sdp = baselineSession();
     for (const auto& profile : CompatibilityProfile::all()) {
         std::string error;
-        TEST_ASSERT(profile.validate(sdp, &error),
+        TEST_ASSERT(profile.validate(sdp, transmitDirectionFor(profile), &error),
                     profile.displayName + " rejected the common baseline: " + error);
     }
     std::cout << "PASS" << std::endl;
@@ -80,13 +101,13 @@ bool testST2110RejectsNon48kHz() {
 
     auto sdp = baselineSession();
     std::string error;
-    TEST_ASSERT(profile.validate(sdp, &error), "48 kHz must be accepted");
+    TEST_ASSERT(profile.validate(sdp, false, &error), "48 kHz must be accepted");
 
     // 44.1 and 96 kHz are valid AES67 but outside ST 2110-30 Level A.
     for (double rate : {44100.0, 96000.0, 192000.0}) {
         sdp.sampleRate = rate;
         error.clear();
-        TEST_ASSERT(!profile.validate(sdp, &error),
+        TEST_ASSERT(!profile.validate(sdp, false, &error),
                     "ST 2110-30 Level A must reject " + std::to_string(static_cast<long>(rate)) + " Hz");
         TEST_ASSERT(!error.empty(), "rejection must explain itself");
     }
@@ -104,8 +125,8 @@ bool testAES67AcceptsRatesST2110Rejects() {
 
     // This is the whole point of having separate profiles: the same stream
     // is fine for one target and not the other.
-    TEST_ASSERT(aes67.validate(sdp, nullptr), "96 kHz is valid AES67");
-    TEST_ASSERT(!st2110.validate(sdp, nullptr), "96 kHz is outside ST 2110-30 Level A");
+    TEST_ASSERT(aes67.validate(sdp, false, nullptr), "96 kHz is valid AES67");
+    TEST_ASSERT(!st2110.validate(sdp, false, nullptr), "96 kHz is outside ST 2110-30 Level A");
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -125,7 +146,7 @@ bool testST2110RequiresZeroRtpOffsetFlag() {
 }
 
 // ============================================================================
-// B2. Dante, CP850, DAC3202
+// B2. Dante
 // ============================================================================
 
 bool testDanteRequiresItsMulticastRange() {
@@ -135,15 +156,15 @@ bool testDanteRequiresItsMulticastRange() {
     auto sdp = baselineSession();
     sdp.connectionAddress = "239.69.1.10";
     std::string error;
-    TEST_ASSERT(dante.validate(sdp, &error), "239.69.x.x must be accepted: " + error);
+    TEST_ASSERT(dante.validate(sdp, false, &error), "239.69.x.x must be accepted: " + error);
 
     sdp.connectionAddress = "239.1.1.10"; // valid AES67 multicast, wrong range for Dante
     error.clear();
-    TEST_ASSERT(!dante.validate(sdp, &error), "Dante must reject an address outside 239.69.0.0/16");
+    TEST_ASSERT(!dante.validate(sdp, false, &error), "Dante must reject an address outside 239.69.0.0/16");
 
     // A near-miss prefix must not false-positive (239.6 is not 239.69).
     sdp.connectionAddress = "239.6.1.10";
-    TEST_ASSERT(!dante.validate(sdp, nullptr), "239.6.x.x must not match the 239.69 prefix");
+    TEST_ASSERT(!dante.validate(sdp, false, nullptr), "239.6.x.x must not match the 239.69 prefix");
 
     std::cout << "PASS" << std::endl;
     return true;
@@ -162,12 +183,11 @@ bool testDanteDomainIsConfigurable() {
     auto sdp = baselineSession();
     sdp.connectionAddress = "239.69.1.10";
     sdp.ptpDomain = 42;
-    TEST_ASSERT(dante.validate(sdp, nullptr), "Dante must accept a non-zero domain");
+    TEST_ASSERT(dante.validate(sdp, false, nullptr), "Dante must accept a non-zero domain");
 
     // With domain fixed at 0, the same stream must be rejected.
-    sdp.connectionAddress = baselineSession().connectionAddress;
     std::string error;
-    TEST_ASSERT(!aes67.validate(sdp, &error), "AES67 must reject a non-zero domain");
+    TEST_ASSERT(!aes67.validate(sdp, false, &error), "AES67 must reject a non-zero domain");
     TEST_ASSERT(!error.empty(), "rejection must explain itself");
 
     std::cout << "PASS" << std::endl;
@@ -179,32 +199,72 @@ bool testAES67AcceptsNoPtpDomainSentinel() {
     const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
     auto sdp = baselineSession();
     sdp.ptpDomain = -1; // SDPSession's own sentinel for "no PTP on this stream"
-    TEST_ASSERT(aes67.validate(sdp, nullptr),
+    TEST_ASSERT(aes67.validate(sdp, false, nullptr),
                 "domain -1 means \"no PTP\", not \"domain -1\" — must not be rejected as a domain mismatch");
     std::cout << "PASS" << std::endl;
     return true;
 }
 
-bool testCP850AndDAC3202ShareTheSameLink() {
-    std::cout << "Test: B7 · CP850 and DAC3202 accept the same stream (two ends of one link)... ";
+// ============================================================================
+// B3. CP850 / DAC3202 — direction, from OUR driver's point of view
+// ============================================================================
+
+bool testCP850IsReceiveOnlyFromOurSide() {
+    std::cout << "Test: B7 · CP850: this driver may only receive from it, up to 64 channels... ";
     const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
-    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
+    TEST_ASSERT(cp850.direction == ProfileDirection::ReceiveOnly,
+                "CP850 renders and sends over AES67, it doesn't accept AES67 input");
+    TEST_ASSERT(cp850.maxTotalChannels == 64, "64 is the most the CP850 renders");
 
     auto sdp = baselineSession();
     sdp.sampleRate = 96000.0; // DCI's higher rate, not part of AES67's own three
     std::string error;
-    TEST_ASSERT(cp850.validate(sdp, &error), "CP850 must accept 96 kHz (DCI spec): " + error);
-    TEST_ASSERT(dac3202.validate(sdp, &error), "DAC3202 must accept 96 kHz (DCI spec): " + error);
+    TEST_ASSERT(cp850.validate(sdp, /*isTransmit=*/false, &error),
+                "receiving from a CP850 at 96 kHz (DCI spec) must be accepted: " + error);
+    TEST_ASSERT(!cp850.validate(sdp, /*isTransmit=*/true, &error),
+                "this driver must not be allowed to transmit to a CP850");
+    TEST_ASSERT(!error.empty(), "rejection must explain itself");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
 
-    // Neither is cinema-only to the point of rejecting 44.1 kHz — no
-    // evidence found that they do, so don't assert a restriction the
-    // research didn't establish.
+bool testDAC3202IsTransmitOnlyFromOurSide() {
+    std::cout << "Test: B8 · DAC3202: this driver may only transmit to it, up to 32 channels... ";
+    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
+    TEST_ASSERT(dac3202.direction == ProfileDirection::TransmitOnly,
+                "DAC3202 only converts digital-in to analog-out, nothing returns to the network");
+    TEST_ASSERT(dac3202.maxTotalChannels == 32, "32 is its full analog output count");
+
+    auto sdp = baselineSession();
+    sdp.sampleRate = 96000.0;
+    std::string error;
+    TEST_ASSERT(dac3202.validate(sdp, /*isTransmit=*/true, &error),
+                "transmitting to a DAC3202 at 96 kHz (DCI spec) must be accepted: " + error);
+    TEST_ASSERT(!dac3202.validate(sdp, /*isTransmit=*/false, &error),
+                "this driver must not be allowed to receive from a DAC3202");
+    TEST_ASSERT(!error.empty(), "rejection must explain itself");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testOnlyCP850AndDAC3202RestrictDirection() {
+    std::cout << "Test: B9 · every other profile leaves direction unrestricted... ";
+    for (const auto& profile : CompatibilityProfile::all()) {
+        if (profile.kind == CompatibilityProfileKind::CP850 ||
+            profile.kind == CompatibilityProfileKind::DAC3202) {
+            continue;
+        }
+        TEST_ASSERT(profile.direction == ProfileDirection::Any,
+                    profile.displayName + " should not restrict direction");
+        TEST_ASSERT(profile.maxTotalChannels == 0,
+                    profile.displayName + " should not have an aggregate channel cap");
+    }
     std::cout << "PASS" << std::endl;
     return true;
 }
 
 bool testCinemaProfilesRecordDscpAsInformationalOnly() {
-    std::cout << "Test: B8 · CP850/DAC3202 record a DSCP value but this driver doesn't apply it... ";
+    std::cout << "Test: B10 · CP850/DAC3202 record a DSCP value but this driver doesn't apply it... ";
     const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
     const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
     TEST_ASSERT(cp850.recommendedDscp == 46, "CP850 documents EF (46)");
@@ -231,7 +291,7 @@ bool testNoProfileRaisesTheFlowChannelLimit() {
     for (const auto& profile : CompatibilityProfile::all()) {
         TEST_ASSERT(profile.maxChannelsPerFlow <= 8,
                     profile.displayName + " must not raise the 8-channel flow limit");
-        TEST_ASSERT(!profile.validate(sdp, nullptr),
+        TEST_ASSERT(!profile.validate(sdp, transmitDirectionFor(profile), nullptr),
                     profile.displayName + " must reject a 16-channel flow");
     }
     std::cout << "PASS" << std::endl;
@@ -243,7 +303,7 @@ bool testNoProfileAcceptsAM824() {
     auto sdp = baselineSession();
     sdp.encoding = "AM824";
     for (const auto& profile : CompatibilityProfile::all()) {
-        TEST_ASSERT(!profile.validate(sdp, nullptr),
+        TEST_ASSERT(!profile.validate(sdp, transmitDirectionFor(profile), nullptr),
                     profile.displayName + " must reject AM824");
     }
     std::cout << "PASS" << std::endl;
@@ -289,12 +349,18 @@ int main() {
     testST2110RequiresZeroRtpOffsetFlag();
     std::cout << std::endl;
 
-    std::cout << "B2 · Dante, CP850, DAC3202" << std::endl;
-    std::cout << "--------------------------" << std::endl;
+    std::cout << "B2 · Dante" << std::endl;
+    std::cout << "----------" << std::endl;
     testDanteRequiresItsMulticastRange();
     testDanteDomainIsConfigurable();
     testAES67AcceptsNoPtpDomainSentinel();
-    testCP850AndDAC3202ShareTheSameLink();
+    std::cout << std::endl;
+
+    std::cout << "B3 · CP850 / DAC3202 direction (always from our own point of view)" << std::endl;
+    std::cout << "--------------------------------------------------------------------" << std::endl;
+    testCP850IsReceiveOnlyFromOurSide();
+    testDAC3202IsTransmitOnlyFromOurSide();
+    testOnlyCP850AndDAC3202RestrictDirection();
     testCinemaProfilesRecordDscpAsInformationalOnly();
     std::cout << std::endl;
 

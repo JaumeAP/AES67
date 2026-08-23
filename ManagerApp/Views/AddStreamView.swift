@@ -116,6 +116,25 @@ struct AddStreamView: View {
                 }
                 .padding()
 
+                // "Add Stream" only ever creates a receive (RX) stream —
+                // under a transmit-only profile (DAC3202: no network input
+                // to receive from), that's not something the driver will
+                // accept. Warn before the user fills in a form the driver
+                // will reject rather than let canAddStream() be the first
+                // place they find out.
+                if driverManager.activeCompatibilityProfile.direction == .transmitOnly {
+                    Label(
+                        "\(driverManager.activeCompatibilityProfile.name) is transmit-only — "
+                        + "this driver can't receive from it. Switch the compatibility profile "
+                        + "to add a receive stream.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+                }
+
                 Divider()
 
                 // Form
@@ -344,7 +363,8 @@ struct AddStreamView: View {
         !port.isEmpty &&
         multicastIPError == nil &&
         portError == nil &&
-        driverManager.totalChannelsUsed + numChannels <= 128
+        driverManager.totalChannelsUsed + numChannels <= 128 &&
+        driverManager.activeCompatibilityProfile.direction != .transmitOnly
     }
 
     private var validationFailureReason: String? {
@@ -354,6 +374,11 @@ struct AddStreamView: View {
         if let err = multicastIPError { return err }
         if let err = portError { return err }
         if driverManager.totalChannelsUsed + numChannels > 128 { return "Channel limit exceeded" }
+        // This view only ever creates a receive stream — a transmit-only
+        // profile (DAC3202) has no network input to receive from.
+        if driverManager.activeCompatibilityProfile.direction == .transmitOnly {
+            return "\(driverManager.activeCompatibilityProfile.name) is transmit-only"
+        }
         return nil
     }
 

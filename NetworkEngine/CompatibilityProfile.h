@@ -25,6 +25,17 @@
 
 namespace AES67 {
 
+/// Which direction THIS driver may use when talking to the gear a profile
+/// describes. Always from our own point of view — ReceiveOnly means we may
+/// receive from the remote device (add an RX stream), never transmit to it.
+enum class ProfileDirection {
+    Any,          ///< No direction restriction (AES67, RAVENNA, ST2110-30, Dante)
+    ReceiveOnly,  ///< We may only receive — the remote device has no network input.
+                  ///< CP850: it renders and sends via AES67, it doesn't accept it.
+    TransmitOnly, ///< We may only transmit — the remote device has no network output.
+                  ///< DAC3202: it converts digital in to analog out, nothing comes back.
+};
+
 enum class CompatibilityProfileKind {
     /// AES67's own mandatory configuration and nothing narrower. The
     /// default, and what the driver did before profiles existed.
@@ -71,6 +82,20 @@ struct CompatibilityProfile {
     /// splits anything wider regardless.
     uint16_t maxChannelsPerFlow{8};
 
+    /// Which way THIS driver may talk to the described gear. See
+    /// ProfileDirection. Checked by validate(sdp, isTransmit, ...).
+    ProfileDirection direction{ProfileDirection::Any};
+
+    /// Ceiling on TOTAL channels in the relevant direction while this
+    /// profile is active — not per-flow, cumulative across every RX (or
+    /// every TX) stream at once. 0 means unlimited. CP850: 64 (its own
+    /// rendered feed count); DAC3202: 32 (its analog output count).
+    /// Enforced by StreamManager::canAddStream(), which is the one place
+    /// that can see every stream currently open — CompatibilityProfile
+    /// itself only ever sees one SDPSession at a time and can't total
+    /// anything on its own.
+    uint32_t maxTotalChannels{0};
+
     /// When set, connection addresses must fall inside this /16 (as
     /// "239.69" for Dante). Empty means any valid multicast address.
     std::string requiredMulticastPrefix;
@@ -105,9 +130,14 @@ struct CompatibilityProfile {
     /// so selecting a profile never reads as a conformance claim.
     std::string caveats;
 
-    /// Rejects a stream that violates this profile. Returns true if
-    /// acceptable; otherwise false with a reason in `errorOut` (if given).
-    bool validate(const SDPSession& sdp, std::string* errorOut) const;
+    /// Rejects a stream that violates this profile. `isTransmit` is true
+    /// for a stream THIS driver would send (StreamManager::createTxStream),
+    /// false for one it would receive (StreamManager::addStream) — needed
+    /// to check `direction`; everything else here is direction-agnostic.
+    /// Returns true if acceptable; otherwise false with a reason in
+    /// `errorOut` (if given). Does NOT check maxTotalChannels — that needs
+    /// to see every stream at once, which only StreamManager can.
+    bool validate(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const;
 
     static CompatibilityProfile forKind(CompatibilityProfileKind kind);
 
