@@ -157,14 +157,23 @@ Dolby's DMA manual has the same control under a different name — "Safety
 Buffer", 0–50 samples, documented for exactly the same symptom (brief
 audio dropouts from network trouble).
 
-### Reference-clock checking
+### Reference-clock checking — **now done**
 
 - Source: `refclk_ptp_traceable` — whether the PTP reference clock is traceable
 - Sink: `ignore_refclk_gmid` — whether the grandmaster ID must match
 
-We parse SDP but do nothing with reference-clock identity. This is a real
-interop safety check: two streams locked to *different* grandmasters will
-drift, and comparing gmid catches it before the audio does.
+We parsed SDP's `a=ts-refclk` and did nothing with the identity in it.
+`StreamManager::canAddStream()` now compares a new stream's grandmaster
+against the one every current stream is using and refuses a mismatch,
+naming both. Comparison is separator- and case-insensitive, so
+`00-1B-21-…` and `00:1b:21:…` are recognised as the same clock; a stream
+that declares no grandmaster is never refused on this ground.
+`setIgnoreRefClockMismatch()` is the escape hatch, driver-wide where
+theirs is per sink.
+
+Still missing: `refclk_ptp_traceable`, which is about whether the clock
+chain reaches a traceable source at all rather than whether two streams
+agree.
 
 ### Wider format support
 
@@ -235,7 +244,8 @@ Ranked by value-for-effort, given how much is already written here:
    latency. A real playout delay means changing the RT read path, which
    puts it in the same "can't verify without hardware" bucket as PTP
    rather than alongside DSCP and SAP.
-6. **Compare grandmaster IDs** between sources and sinks.
+6. ~~**Compare grandmaster IDs** between sources and sinks~~ — **done**,
+   see above.
 
 The first three change nothing about the driver's design — they connect
 things already built. That's the headline: this driver's gap to the
