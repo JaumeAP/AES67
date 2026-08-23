@@ -29,12 +29,32 @@ The most useful finding, and the least flattering: three subsystems exist
 in this repo, compile, and have **zero callers**. The Linux driver treats
 all three as core functionality.
 
-### 1. SAP discovery
+### 1. SAP discovery — **now done**
 
-`NetworkEngine/Discovery/SAPListener.{h,cpp}` is built (it's in
-`CMakeLists.txt`) and referenced by nothing outside its own files and a
-comment in `Tools/AES67TestSender.cpp`. Streams can only be added by hand
-or by importing an SDP file.
+`NetworkEngine/Discovery/SAPListener.{h,cpp}` was built (it's in
+`CMakeLists.txt`) and referenced by nothing outside its own files.
+Streams could only be added by hand or by importing an SDP file. Wired up
+since this comparison was written:
+
+- `AES67Device` owns and starts the listener; failing to start is
+  non-fatal (discovery is a convenience, carrying audio is not).
+- Sessions reach ManagerApp through a second custom property on the
+  existing gateway (`kDiscoveredSessionsPropertySelector`, 'a67s'),
+  alongside the PTP diagnostics one.
+- New "Discover" toolbar button and `DiscoveredSessionsView` — pick a
+  session, add it as a stream, no retyping.
+
+The listener itself gained the two things it lacked: sessions now carry a
+`lastSeen` stamp and expire (`kSessionTimeout`, 300 s — their
+ten-missed-announcements rule at the usual 30 s interval), and SAP
+**deletion** packets are honoured instead of silently discarded, so an
+announcer's explicit goodbye takes effect immediately rather than after
+the timeout. Repeats refresh the entry rather than being treated as new
+discoveries.
+
+Still missing versus theirs: we listen but never *announce* our own
+sources, there's no mDNS/RAVENNA discovery, and no `auto_sinks_update`
+equivalent.
 
 The daemon announces its own sources over SAP *and* browses for remote
 ones, on `sap_mcast_addr` (default 239.255.255.255) every `sap_interval`
@@ -175,8 +195,8 @@ Ranked by value-for-effort, given how much is already written here:
 
 1. **Start the PTP subsystem** in the real driver path, and gate audio on
    lock the way they do. The code exists; nothing calls it.
-2. **Turn on `SAPListener`**, with their expiry rule (drop a source after
-   10 missed announcements). Again — the code exists.
+2. ~~**Turn on `SAPListener`**, with their expiry rule~~ — **done**, see
+   above.
 3. ~~**Call `setQoSTrafficClass()`** with each profile's documented DSCP~~
    — **done**, see above.
 4. **Make transmit ptime configurable**, unlocking ST 2110-30 Levels B/C.

@@ -29,6 +29,7 @@ let package = Package(
                 "Views/QuickStartView.swift",
                 "Views/PTPDiagnosticView.swift",
                 "Views/ProfileParametersView.swift",
+                "Views/DiscoveredSessionsView.swift",
                 "Views/ChannelMappingView.swift",
                 "Views/ChannelMapDiagnosticView.swift",
                 "Models/StreamInfo.swift",

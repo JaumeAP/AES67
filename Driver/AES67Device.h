@@ -10,6 +10,7 @@
 #include "../Shared/Types.h"
 #include "../Shared/RingBuffer.hpp"
 #include "../NetworkEngine/StreamManager.h"
+#include "../NetworkEngine/Discovery/SAPListener.h"
 #include "../NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
 #include <aspl/Stream.hpp>
@@ -160,6 +161,11 @@ private:
     // AudioObject property already is, cross-process, for free.
     CFPropertyListRef GetPTPDiagnosticsProperty() const;
 
+    /// Sessions currently being announced over SAP, as a CFArray of
+    /// CFDictionaries — see Shared/CustomProperties.h. Same gateway
+    /// mechanism as the diagnostics property above.
+    CFPropertyListRef GetDiscoveredSessionsProperty() const;
+
     // Initialize streams and IO handler
     void InitializeStreams();
     void InitializeIOHandler();
@@ -188,6 +194,10 @@ private:
     // RT-safe interface (compile-time boundary for IO handler)
     // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
     std::unique_ptr<RTSafeStreamInterface> rtInterface_;
+
+    // SAP discovery. Runs for the driver's whole life once Initialize()
+    // starts it — passive listening only, it announces nothing.
+    std::unique_ptr<SAPListener> sapListener_;
 
     // Channels the mapper may hand out to streams, per direction. Set once
     // in the constructor from the persisted DeviceChannelSettings.rx/.tx and
