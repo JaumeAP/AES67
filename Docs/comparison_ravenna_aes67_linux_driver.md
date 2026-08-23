@@ -133,9 +133,18 @@ Theirs is configurable per source as `max_samples_per_packet` ∈ {12, 16,
 tick (`frame_size_at_1fs`, 32–192 samples). Ours takes whatever the SDP
 says, which covers the same ground from the other direction.
 
-Still missing: an ST 2110-30 Level B/C profile. The driver can emit
-125 µs now; no profile asks it to, since the existing one is explicitly
-Level A.
+A **Level B** profile now exists to ask for it (48 kHz, 125 µs, ≤8
+channels — Level A's constraints at the shorter packet time). It's a
+separate profile rather than a widening of Level A, because the levels are
+claims about what the *receiving* gear supports: a Level A device must not
+be sent 125 µs packets just because this driver can emit them, so each
+profile rejects the other's packet time.
+
+Level C is deliberately absent — it allows 64 channels in a single
+stream, and `StreamChannelMapper::kMaxChannelsPerFlow` caps a flow at 8,
+so offering it would be a claim this driver can't honour. AX/BX/CX (the
+96 kHz variants, channel counts halved) are supportable in principle but
+weren't added speculatively.
 
 ### Playout delay as a user-facing setting
 
@@ -218,7 +227,14 @@ Ranked by value-for-effort, given how much is already written here:
 4. ~~**Make transmit ptime configurable**~~ — **done**, see above. A
    Level B/C profile could now follow.
 5. **Expose playout delay**, matching both this daemon and Dolby's own
-   Safety Buffer.
+   Safety Buffer. Worth being precise about the cost: this is *not* a
+   wire-up job like the three above. `LockFreeCircularJitterBuffer` is
+   packet-slot capacity with no notion of holding audio back, and
+   `jitterBufferDepth` — which is persisted and honoured on restore, but
+   left at its default for newly added streams — is capacity, not
+   latency. A real playout delay means changing the RT read path, which
+   puts it in the same "can't verify without hardware" bucket as PTP
+   rather than alongside DSCP and SAP.
 6. **Compare grandmaster IDs** between sources and sinks.
 
 The first three change nothing about the driver's design — they connect
