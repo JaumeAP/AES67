@@ -30,6 +30,10 @@ class AES67IOHandler;
 //
 class AES67Device : public aspl::Device {
 public:
+    /// Capacity of the RT ring buffer arrays — fixed at compile time, never
+    /// resized. The number of channels actually advertised to Core Audio is
+    /// activeChannelCount_ (see GetInputChannelCount), which is <= this and
+    /// comes from DeviceChannelSettings.
     static constexpr size_t kNumChannels = 128;
 
     // Supported sample rates
@@ -78,9 +82,11 @@ public:
     std::string GetDeviceManufacturer() const;
     std::string GetDeviceUID() const override;
 
-    // Get channel count
-    UInt32 GetInputChannelCount() const { return kNumChannels; }
-    UInt32 GetOutputChannelCount() const { return kNumChannels; }
+    // Get channel count actually exposed to Core Audio. Read once at
+    // construction from DeviceChannelSettings — NOT kNumChannels, which is
+    // only the fixed capacity of the RT ring buffer arrays below.
+    UInt32 GetInputChannelCount() const { return activeChannelCount_; }
+    UInt32 GetOutputChannelCount() const { return activeChannelCount_; }
 
     //
     // Stream Access
@@ -173,6 +179,13 @@ private:
     // RT-safe interface (compile-time boundary for IO handler)
     // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
     std::unique_ptr<RTSafeStreamInterface> rtInterface_;
+
+    // Channels advertised to Core Audio. Set once in the constructor from
+    // the persisted DeviceChannelSettings and never changed afterwards —
+    // selecting a different count only takes effect the next time Core
+    // Audio starts this driver, which is why ManagerApp disables the
+    // selector while IO is running.
+    UInt32 activeChannelCount_{static_cast<UInt32>(kNumChannels)};
 
     // Current configuration
     std::atomic<Float64> currentSampleRate_{48000.0};

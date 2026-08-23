@@ -102,6 +102,7 @@ class DriverManager: ObservableObject {
         loadConfiguration()
         loadDeviceSampleRate()
         loadPTPMasterSettings()
+        loadDeviceChannelSettings()
         startAutoRefresh()
     }
 
@@ -833,6 +834,80 @@ class DriverManager: ObservableObject {
         }
 
         showSampleRateMismatchAlert = false
+    }
+
+    // MARK: - Device Channel Count
+    //
+    // Mirrors NetworkEngine/DeviceChannelSettings.h, same file both
+    // processes read/write (device_channels.json, alongside ptp_master.json).
+    // The driver reads it once when Core Audio constructs the device, so a
+    // change only takes effect on the next start — which is why the UI
+    // disables the selector while the driver is loaded and running.
+
+    /// Selectable totals. Matches DeviceChannelSettings::allowedChannelCounts().
+    static let allowedChannelCounts: [Int] = [8, 16, 32, 64, 128]
+
+    /// Everything is a multiple of this; the aux pair gets a whole group.
+    static let channelGroupSize = 8
+    /// Fixed capacity of the driver's RT ring buffers — the hard ceiling.
+    static let maxDeviceChannels = 128
+
+    @Published var deviceChannelCount: Int = 128
+    @Published var auxChannelEnabled: Bool = false
+
+    private var deviceChannelsConfigURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/AES67Driver/device_channels.json")
+    }
+
+    /// Channels the device will actually expose: the selection plus the
+    /// auxiliary group when enabled. Mirrors
+    /// DeviceChannelSettings::totalChannelCount().
+    var totalDeviceChannelCount: Int {
+        let total = deviceChannelCount + (auxChannelEnabled ? Self.channelGroupSize : 0)
+        return min(total, Self.maxDeviceChannels)
+    }
+
+    /// The auxiliary group can't fit on top of 128 — the RT buffers are
+    /// fixed at that size. The UI uses this to disable the checkbox rather
+    /// than let the driver silently drop the request.
+    var auxChannelFitsAtCurrentCount: Bool {
+        deviceChannelCount + Self.channelGroupSize <= Self.maxDeviceChannels
+    }
+
+    func loadDeviceChannelSettings() {
+        guard let data = try? Data(contentsOf: deviceChannelsConfigURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            deviceChannelCount = 128
+            auxChannelEnabled = false
+            return
+        }
+        let count = obj["channelCount"] as? Int ?? 128
+        deviceChannelCount = Self.allowedChannelCounts.contains(count) ? count : 128
+        auxChannelEnabled = (obj["auxChannelEnabled"] as? Bool ?? false) && auxChannelFitsAtCurrentCount
+    }
+
+    func saveDeviceChannelSettings() {
+        // Keep the two fields consistent before writing: the driver's
+        // DeviceChannelSettings::isValid() rejects aux-at-128 outright, and
+        // a rejected file silently falls back to defaults — worse than
+        // correcting it here.
+        if !auxChannelFitsAtCurrentCount { auxChannelEnabled = false }
+
+        let dir = deviceChannelsConfigURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let obj: [String: Any] = [
+                "version": "1.0",
+                "channelCount": deviceChannelCount,
+                "auxChannelEnabled": auxChannelEnabled,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
+            try data.write(to: deviceChannelsConfigURL, options: .atomic)
+        } catch {
+            showAlert(title: "Save Failed",
+                     message: "Could not save the channel count setting: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - PTP Diagnostics Gateway

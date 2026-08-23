@@ -15,6 +15,63 @@ struct ContentView: View {
     @State private var showChannelMapping = false
     @State private var showChannelDiagnostic = false
 
+    /// Connection channel count — input and output alike — plus the
+    /// auxiliary pair. Only editable while the driver is uninstalled: the
+    /// driver reads this once when Core Audio constructs the device, and
+    /// its real-time ring buffers are fixed-size, so changing it under a
+    /// running device would be meaningless at best.
+    @ViewBuilder
+    private var channelCountBar: some View {
+        let locked = driverManager.isDriverLoaded
+
+        HStack(spacing: 12) {
+            Text("Channels:")
+                .font(.callout)
+
+            Picker("", selection: Binding(
+                get: { driverManager.deviceChannelCount },
+                set: { driverManager.deviceChannelCount = $0; driverManager.saveDeviceChannelSettings() }
+            )) {
+                ForEach(DriverManager.allowedChannelCounts, id: \.self) { count in
+                    Text("\(count)").tag(count)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 260)
+            .disabled(locked)
+
+            Toggle("Aux pair (+2)", isOn: Binding(
+                get: { driverManager.auxChannelEnabled },
+                set: { driverManager.auxChannelEnabled = $0; driverManager.saveDeviceChannelSettings() }
+            ))
+            .toggleStyle(.checkbox)
+            .disabled(locked || !driverManager.auxChannelFitsAtCurrentCount)
+            .help(driverManager.auxChannelFitsAtCurrentCount
+                  ? "Adds a group of 8 carrying a 2-channel auxiliary pair (6 reserved), keeping the total a multiple of 8"
+                  : "No room for the auxiliary group at 128 channels — the device's buffers are fixed at 128")
+
+            Text("= \(driverManager.totalDeviceChannelCount) in / \(driverManager.totalDeviceChannelCount) out")
+                .font(.callout)
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            if locked {
+                Label("Turn the driver off to change", systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Applies when the driver is next installed")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
     var body: some View {
         NavigationSplitView {
             // Sidebar - Stream List
@@ -27,6 +84,9 @@ struct ContentView: View {
             } else {
                 EmptyStateView()
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            channelCountBar
         }
         .navigationTitle("AES67 Audio Driver")
         .toolbar {

@@ -9,6 +9,7 @@
 #include "SDPParser.h"
 #include "DebugLog.h"
 #include "../Shared/CustomProperties.h"
+#include "../NetworkEngine/DeviceChannelSettings.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <utility>
 
@@ -46,6 +47,22 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
           CalculateRingBufferSize(384000.0)))  // Max sample rate
 {
     AES67_LOG("AES67Device constructor: Starting initialization");
+
+    // How many channels to advertise. Defaults to kNumChannels (128) if no
+    // setting has been saved — i.e. exactly the behavior before this
+    // setting existed. The RT ring buffers above are already allocated at
+    // full 128 capacity regardless; this only narrows what Core Audio sees.
+    {
+        DeviceChannelSettingsManager channelSettingsManager;
+        const DeviceChannelSettings channelSettings = channelSettingsManager.load();
+        activeChannelCount_ = channelSettings.totalChannelCount();
+        AES67_LOGF("AES67Device: Channel setting = %u + %s = %u advertised (buffers hold %zu)",
+                   channelSettings.channelCount,
+                   channelSettings.auxChannelEnabled ? "8 (aux group)" : "0 (no aux)",
+                   activeChannelCount_,
+                   kNumChannels);
+    }
+
     const Float64 initialSampleRate = currentSampleRate_.load();
     const size_t ringBufferSize = CalculateRingBufferSize(384000.0);
     AES67_LOGF("AES67Device: Initial sample rate = %.0f Hz", initialSampleRate);
@@ -181,13 +198,13 @@ void AES67Device::InitializeStreams() {
     inputParams.Format.mFormatID = kAudioFormatLinearPCM;
     inputParams.Format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
     inputParams.Format.mBitsPerChannel = 32;
-    inputParams.Format.mChannelsPerFrame = kNumChannels;
-    inputParams.Format.mBytesPerFrame = kNumChannels * sizeof(float);
+    inputParams.Format.mChannelsPerFrame = activeChannelCount_;
+    inputParams.Format.mBytesPerFrame = activeChannelCount_ * sizeof(float);
     inputParams.Format.mFramesPerPacket = 1;
     inputParams.Format.mBytesPerPacket = inputParams.Format.mBytesPerFrame;
 
     AES67_LOGF("InitializeStreams: Input stream - %u channels @ %.0f Hz",
-               kNumChannels, currentSampleRate_.load());
+               activeChannelCount_, currentSampleRate_.load());
 
     inputStream_ = std::make_shared<aspl::Stream>(
         GetContext(),
@@ -207,13 +224,13 @@ void AES67Device::InitializeStreams() {
     outputParams.Format.mFormatID = kAudioFormatLinearPCM;
     outputParams.Format.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
     outputParams.Format.mBitsPerChannel = 32;
-    outputParams.Format.mChannelsPerFrame = kNumChannels;
-    outputParams.Format.mBytesPerFrame = kNumChannels * sizeof(float);
+    outputParams.Format.mChannelsPerFrame = activeChannelCount_;
+    outputParams.Format.mBytesPerFrame = activeChannelCount_ * sizeof(float);
     outputParams.Format.mFramesPerPacket = 1;
     outputParams.Format.mBytesPerPacket = outputParams.Format.mBytesPerFrame;
 
     AES67_LOGF("InitializeStreams: Output stream - %u channels @ %.0f Hz",
-               kNumChannels, currentSampleRate_.load());
+               activeChannelCount_, currentSampleRate_.load());
 
     outputStream_ = std::make_shared<aspl::Stream>(
         GetContext(),
@@ -231,7 +248,7 @@ void AES67Device::InitializeIOHandler() {
     AES67_LOG("InitializeIOHandler: Creating AES67IOHandler with RTSafeStreamInterface");
     ioHandler_ = std::make_shared<AES67IOHandler>(
         *rtInterface_,
-        kNumChannels,           // Cache channel count for RT-safe access
+        activeChannelCount_,    // Cache channel count for RT-safe access
         sizeof(Float32)         // Cache bytes per sample for RT-safe access
     );
     AES67_LOG("InitializeIOHandler: IOHandler created successfully");
