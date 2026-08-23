@@ -45,10 +45,27 @@ public:
     /// (Shared/CustomProperties.h) serves to ManagerApp.
     PTPDiagnostics getPTPDiagnostics(int domain = 0);
 
-    /// Caps how many device channels streams may be assigned — see
-    /// StreamChannelMapper::setUsableChannelCount(). AES67Device passes the
-    /// user's persisted setting here at startup.
-    void setUsableChannelCount(size_t count) { mapper_.setUsableChannelCount(count); }
+    /// Caps how many device channels RX streams may be assigned. Feeds
+    /// StreamChannelMapper::setUsableChannelCount() (restricts the index
+    /// range addStream()'s auto-assignment searches) AND the aggregate RX
+    /// total canAddStream() checks (covers explicit-mapping RX too, which
+    /// bypasses auto-assignment). AES67Device passes the user's persisted
+    /// DeviceChannelSettings.rx here at startup.
+    void setUsableChannelCount(size_t count) {
+        mapper_.setUsableChannelCount(count);
+        usableRxChannelCount_.store(static_cast<uint32_t>(count), std::memory_order_relaxed);
+    }
+
+    /// Caps how many device channels TX streams may be assigned, in total
+    /// across every createTxStream()/createTxStreamFlows() call while this
+    /// setting is active. TX streams always specify their own device
+    /// channels explicitly (no auto-assignment to restrict the index range
+    /// of), so this is purely the aggregate check — same mechanism as
+    /// CompatibilityProfile::maxTotalChannels, just user-driven instead of
+    /// profile-driven. AES67Device passes DeviceChannelSettings.tx here.
+    void setUsableTxChannelCount(size_t count) {
+        usableTxChannelCount_.store(static_cast<uint32_t>(count), std::memory_order_relaxed);
+    }
 
     /// Which flavour of AoIP gear this driver is being pointed at. Every
     /// stream added from here on is validated against the profile's limits
@@ -267,6 +284,14 @@ private:
     // increment/decrement.
     std::atomic<uint32_t> rxChannelsInUse_{0};
     std::atomic<uint32_t> txChannelsInUse_{0};
+
+    // User-configured per-direction channel caps (DeviceChannelSettings.rx/tx,
+    // see setUsableChannelCount/setUsableTxChannelCount above). Same atomic
+    // reasoning as profileKind_: checked from canAddStream() without the lock.
+    // Default 128 = no restriction (every channel usable), matching the
+    // driver's behavior before this setting existed.
+    std::atomic<uint32_t> usableRxChannelCount_{128};
+    std::atomic<uint32_t> usableTxChannelCount_{128};
     std::map<StreamID, ManagedStream> streams_;
     mutable std::mutex streamsMutex_;
 

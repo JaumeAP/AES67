@@ -57,11 +57,17 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
     {
         DeviceChannelSettingsManager channelSettingsManager;
         const DeviceChannelSettings channelSettings = channelSettingsManager.load();
-        usableChannelCount_ = channelSettings.totalChannelCount();
-        AES67_LOGF("AES67Device: Channel setting = %u + %s = %u usable (%zu always advertised)",
-                   channelSettings.channelCount,
-                   channelSettings.auxChannelEnabled ? "8 (aux group)" : "0 (no aux)",
-                   usableChannelCount_,
+        usableRxChannelCount_ = channelSettings.rx.totalChannelCount();
+        usableTxChannelCount_ = channelSettings.tx.totalChannelCount();
+        AES67_LOGF("AES67Device: RX channel setting = %u + %s = %u usable (%zu always advertised)",
+                   channelSettings.rx.channelCount,
+                   channelSettings.rx.auxChannelEnabled ? "8 (aux group)" : "0 (no aux)",
+                   usableRxChannelCount_,
+                   kNumChannels);
+        AES67_LOGF("AES67Device: TX channel setting = %u + %s = %u usable (%zu always advertised)",
+                   channelSettings.tx.channelCount,
+                   channelSettings.tx.auxChannelEnabled ? "8 (aux group)" : "0 (no aux)",
+                   usableTxChannelCount_,
                    kNumChannels);
     }
 
@@ -119,8 +125,10 @@ void AES67Device::Initialize() {
     // Apply the channel-count setting read in the constructor. Must happen
     // before loadSavedStreams() below, so restored streams are validated
     // against the same ceiling new ones will be.
-    streamManager_->setUsableChannelCount(usableChannelCount_);
-    AES67_LOGF("AES67Device: StreamManager usable channels set to %u", usableChannelCount_);
+    streamManager_->setUsableChannelCount(usableRxChannelCount_);
+    streamManager_->setUsableTxChannelCount(usableTxChannelCount_);
+    AES67_LOGF("AES67Device: StreamManager usable channels set to RX=%u TX=%u",
+               usableRxChannelCount_, usableTxChannelCount_);
 
     // Compatibility profile, likewise before loadSavedStreams(): restored
     // streams face the same profile limits new ones will. Defaults to AES67
