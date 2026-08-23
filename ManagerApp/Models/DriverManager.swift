@@ -1056,7 +1056,7 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0,
               direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
         .init(id: "dma",
-              name: "DMA (spec pending)",
+              name: "Dolby DMA (spec pending)",
               caveats: "PLACEHOLDER PROFILE — the exact device and its real parameters haven't "
                      + "been looked up yet. Sample rates, ptime, encoding, and PTP domain here "
                      + "are copied from DAC3202 as a stand-in and will change once the real spec "
