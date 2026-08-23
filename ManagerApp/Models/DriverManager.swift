@@ -1074,13 +1074,20 @@ class DriverManager: ObservableObject {
               caveats: "Requires the Dante device to have AES67 mode explicitly enabled — this "
                      + "app can't do that remotely, it's a setting on the Dante hardware itself "
                      + "(Dante Controller). Dante natively syncs with PTPv1; AES67 mode is what "
-                     + "switches it to PTPv2, which is what this driver speaks. Enforces the "
-                     + "239.69.0.0/16 multicast range Dante requires in AES67 mode.",
-              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
+                     + "switches it to PTPv2, which is what this driver speaks, on a fixed "
+                     + "domain 0. AES67 mode is narrower than AES67 itself: 48 kHz only "
+                     + "(whatever the device runs natively), L24 only, 1 ms packets, port 5004. "
+                     + "Enforces the 239.69.0.0/16 multicast range — that prefix is Dante's "
+                     + "factory default and is configurable in Dante Controller, so a site that "
+                     + "has moved it should use the AES67 baseline profile instead. Dante marks "
+                     + "audio DSCP EF/46 and PTP CS7/56, where standard AES67 gear marks PTP 46 "
+                     + "— a documented QoS conflict to watch for on shared networks, though "
+                     + "this driver applies no marking of its own either way.",
+              domainIsFixed: true, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
-              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
-              allowedSampleRates: [44100, 48000, 96000], allowedPtimesMs: [1],
-              allowedEncodings: ["L16", "L24"],
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
+              allowedSampleRates: [48000], allowedPtimesMs: [1],
+              allowedEncodings: ["L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: "239.69"),
         .init(id: "cp850",
               name: "Dolby CP850 (Atmos Cinema Processor)",
