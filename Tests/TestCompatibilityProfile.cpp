@@ -238,6 +238,13 @@ bool testDAC3202IsTransmitOnlyFromOurSide() {
     TEST_ASSERT(dac3202.direction == ProfileDirection::TransmitOnly,
                 "DAC3202 only converts digital-in to analog-out, nothing returns to the network");
     TEST_ASSERT(dac3202.maxTotalChannels == 32, "32 is its full analog output count");
+    // Confirmed (not assumed) by the CP950/CP950A manual, which names the
+    // DAC3202 explicitly alongside DMA for all three of these.
+    TEST_ASSERT(dac3202.recommendedPtpDomain == 109, "DAC3202 should record Dolby's confirmed default PTP domain (109)");
+    TEST_ASSERT(dac3202.recommendedMulticastAddress == "239.81.83.67",
+                "DAC3202 should record Dolby's confirmed default destination multicast address");
+    TEST_ASSERT(dac3202.useFixedMulticastWithPerFlowSourcePort,
+                "DAC3202 shares DMA's confirmed Atmos Connect wire scheme, not this driver's AES67/Dante default");
 
     auto sdp = baselineSession();
     sdp.sampleRate = 96000.0;
@@ -251,10 +258,40 @@ bool testDAC3202IsTransmitOnlyFromOurSide() {
     return true;
 }
 
+bool testCP950IsReceiveOnlyFromOurSideWithSelectableChannelCount() {
+    std::cout << "Test: B8b · CP950/CP950A: this driver may only receive from it, 64ch ceiling... ";
+    const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
+    TEST_ASSERT(cp950.direction == ProfileDirection::ReceiveOnly,
+                "CP950/CP950A renders and sends over AES67, same role as CP850");
+    // CP950 itself only renders 16ch, CP950A up to 64 — one profile covers
+    // both models, same "selectable, not fixed" treatment as DMA. 64 is
+    // the outer ceiling, not a claim every unit reaches it.
+    TEST_ASSERT(cp950.maxTotalChannels == 64, "64 is CP950A's own ceiling, the wider of the two models");
+    TEST_ASSERT(cp950.ptpRole == PTPRoleConstraint::ForcedSlave,
+                "this driver must always be PTP slave under CP950/CP950A (it defaults to the "
+                "highest PTP priority in the chain and is meant to win grandmaster)");
+    TEST_ASSERT(cp950.recommendedPtpDomain == 109, "CP950/CP950A should record the confirmed default PTP domain (109)");
+    TEST_ASSERT(cp950.recommendedMulticastAddress == "239.81.83.67",
+                "CP950/CP950A should record the confirmed default destination multicast address");
+    TEST_ASSERT(!cp950.domainIsFixed, "CP950/CP950A's PTP domain isn't fixed — cinema installs set their own");
+
+    auto sdp = baselineSession();
+    sdp.sampleRate = 96000.0; // DCI's higher rate, not part of AES67's own three
+    std::string error;
+    TEST_ASSERT(cp950.validate(sdp, /*isTransmit=*/false, &error),
+                "receiving from a CP950/CP950A at 96 kHz (DCI spec) must be accepted: " + error);
+    TEST_ASSERT(!cp950.validate(sdp, /*isTransmit=*/true, &error),
+                "this driver must not be allowed to transmit to a CP950/CP950A");
+    TEST_ASSERT(!error.empty(), "rejection must explain itself");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
 bool testOnlyCP850AndDAC3202RestrictDirection() {
     std::cout << "Test: B9 · every other profile leaves direction unrestricted... ";
     for (const auto& profile : CompatibilityProfile::all()) {
         if (profile.kind == CompatibilityProfileKind::CP850 ||
+            profile.kind == CompatibilityProfileKind::CP950 ||
             profile.kind == CompatibilityProfileKind::DAC3202 ||
             profile.kind == CompatibilityProfileKind::DMA) {
             continue;
@@ -278,6 +315,10 @@ bool testCinemaProfilesRecordDscpAsInformationalOnly() {
     // standard's own baseline — -1 means "none recorded", not "zero".
     const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
     TEST_ASSERT(aes67.recommendedDscp == -1, "AES67 baseline has no profile-specific DSCP");
+    // CP950/CP950A's manual doesn't document a DSCP value the way CP850's
+    // does — -1 here is honest, not an oversight.
+    const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
+    TEST_ASSERT(cp950.recommendedDscp == -1, "CP950/CP950A has no documented DSCP — must not be assumed from CP850");
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -290,9 +331,13 @@ bool testCP850AndDAC3202ForcePTPRole() {
                 "this driver must always be PTP slave under the CP850 profile");
     TEST_ASSERT(dac3202.ptpRole == PTPRoleConstraint::ForcedMaster,
                 "this driver must always be PTP master under the DAC3202 profile");
+    const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
+    TEST_ASSERT(cp950.ptpRole == PTPRoleConstraint::ForcedSlave,
+                "this driver must always be PTP slave under the CP950/CP950A profile, same as CP850");
 
     for (const auto& profile : CompatibilityProfile::all()) {
         if (profile.kind == CompatibilityProfileKind::CP850 ||
+            profile.kind == CompatibilityProfileKind::CP950 ||
             profile.kind == CompatibilityProfileKind::DAC3202 ||
             profile.kind == CompatibilityProfileKind::DMA) {
             continue;
@@ -336,10 +381,13 @@ bool testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount() {
     return true;
 }
 
-bool testOnlyDMAUsesTheFixedMulticastAddressingScheme() {
-    std::cout << "Test: B13 · only DMA uses the fixed-multicast/per-flow-source-port scheme... ";
+bool testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme() {
+    std::cout << "Test: B13 · only DMA and DAC3202 use the fixed-multicast/per-flow-source-port scheme... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        if (profile.kind == CompatibilityProfileKind::DMA) continue;
+        if (profile.kind == CompatibilityProfileKind::DMA ||
+            profile.kind == CompatibilityProfileKind::DAC3202) {
+            continue;
+        }
         TEST_ASSERT(!profile.useFixedMulticastWithPerFlowSourcePort,
                     profile.displayName + " must keep the AES67/Dante default addressing scheme");
     }
@@ -430,11 +478,12 @@ int main() {
     std::cout << "--------------------------------------------------------------------" << std::endl;
     testCP850IsReceiveOnlyFromOurSide();
     testDAC3202IsTransmitOnlyFromOurSide();
+    testCP950IsReceiveOnlyFromOurSideWithSelectableChannelCount();
     testOnlyCP850AndDAC3202RestrictDirection();
     testCinemaProfilesRecordDscpAsInformationalOnly();
     testCP850AndDAC3202ForcePTPRole();
     testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount();
-    testOnlyDMAUsesTheFixedMulticastAddressingScheme();
+    testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme();
     std::cout << std::endl;
 
     std::cout << "C · Limits shared by every profile" << std::endl;
