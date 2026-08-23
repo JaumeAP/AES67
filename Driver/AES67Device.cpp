@@ -93,6 +93,12 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
     RegisterCustomProperty(kPTPDiagnosticsPropertySelector,
         [this]() { return GetPTPDiagnosticsProperty(); });
 
+    // Same for SAP discovery. Registered here for the same reason: the
+    // getter is only invoked once a client actually queries, by which time
+    // sapListener_ exists (and guards against null anyway).
+    RegisterCustomProperty(kDiscoveredSessionsPropertySelector,
+        [this]() { return GetDiscoveredSessionsProperty(); });
+
     AES67_LOG("AES67Device constructor: Basic initialization complete");
 }
 
@@ -164,6 +170,19 @@ void AES67Device::Initialize() {
         AES67_LOGF("AES67Device: Amplifier unit %u of max %u -> TX flow port offset %u "
                    "(%u flows per unit)",
                    unitIndex, profile.maxUnits, flowOffset, flowsPerUnit);
+    }
+
+    // SAP discovery. Passive: this listens for other devices' session
+    // announcements so ManagerApp can offer them, and announces nothing of
+    // its own. Failing to start is not fatal — discovery is a convenience,
+    // and a driver that carries audio without it is far better than one
+    // that refuses to load because a multicast join failed.
+    sapListener_ = std::make_unique<SAPListener>();
+    if (sapListener_->initialize() && sapListener_->start()) {
+        AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
+    } else {
+        AES67_LOG("AES67Device: SAP discovery unavailable — continuing without it");
+        sapListener_.reset();
     }
 
     // Set device sample rate in StreamManager
@@ -533,6 +552,39 @@ CFPropertyListRef AES67Device::GetPTPDiagnosticsProperty() const {
     SetCFInt64(dict, kPTPDiagKeyAnnounceMessagesReceived, diag.announceMessagesReceived);
 
     return dict; // +1 from CFDictionaryCreateMutable — caller CFReleases, per RegisterCustomProperty's contract
+}
+
+CFPropertyListRef AES67Device::GetDiscoveredSessionsProperty() const {
+    // Non-RT, like the diagnostics property — SAPListener takes its own
+    // mutex, and getDiscoveredStreams() sweeps expired sessions as it
+    // reads, so what comes back is what's actually still being announced.
+    CFMutableArrayRef array = CFArrayCreateMutable(
+        kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    if (!array) return nullptr;
+
+    if (!sapListener_) {
+        return array; // Discovery unavailable — an empty list, not a failure
+    }
+
+    for (const auto& session : sapListener_->getDiscoveredStreams()) {
+        CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
+            kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        if (!dict) continue;
+
+        SetCFString(dict, kSessionKeyName, session.sessionName);
+        SetCFString(dict, kSessionKeySourceAddress, session.sourceAddress);
+        SetCFString(dict, kSessionKeyMulticastAddress, session.multicastAddress);
+        SetCFInt64(dict, kSessionKeyPort, session.port);
+        SetCFInt64(dict, kSessionKeyPtpDomain, session.ptpDomain);
+        // The full SDP, so ManagerApp can add the stream without having to
+        // re-derive anything the announcer already told us.
+        SetCFString(dict, kSessionKeySDP, session.sessionDescription);
+
+        CFArrayAppendValue(array, dict);
+        CFRelease(dict); // array retains it
+    }
+
+    return array; // +1 — caller CFReleases, per RegisterCustomProperty's contract
 }
 
 OSStatus AES67Device::OnSetSampleRate(Float64 sampleRate) {

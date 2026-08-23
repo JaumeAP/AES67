@@ -47,4 +47,21 @@ inline constexpr const char* kPTPDiagKeyCompetitorPriority2 = "competitorPriorit
 inline constexpr const char* kPTPDiagKeySyncMessagesReceived = "syncMessagesReceived";
 inline constexpr const char* kPTPDiagKeyAnnounceMessagesReceived = "announceMessagesReceived";
 
+// FourCharCode 'a67s' ("AES67 Sessions") — the SAP discovery gateway, same
+// mechanism as the diagnostics one above. Returns a CFArray of
+// CFDictionaries, one per session currently being announced on the
+// network, so ManagerApp can offer them instead of making the user type a
+// multicast address by hand. Sessions that stop being announced drop out
+// of the array on their own (SAPListener::kSessionTimeout).
+inline constexpr AudioObjectPropertySelector kDiscoveredSessionsPropertySelector = 0x61363773;
+
+// Keys in each element of that array. sessionName/sourceAddress/
+// multicastAddress/sdp are CFString; port/ptpDomain are CFNumber.
+inline constexpr const char* kSessionKeyName = "sessionName";
+inline constexpr const char* kSessionKeySourceAddress = "sourceAddress";
+inline constexpr const char* kSessionKeyMulticastAddress = "multicastAddress";
+inline constexpr const char* kSessionKeyPort = "port";
+inline constexpr const char* kSessionKeyPtpDomain = "ptpDomain";
+inline constexpr const char* kSessionKeySDP = "sdp";
+
 } // namespace AES67

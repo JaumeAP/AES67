@@ -99,6 +99,18 @@ public:
     
     std::vector<SAPAnnouncement> getDiscoveredStreams() const {
         std::lock_guard<std::mutex> lock(discoveredStreamsMutex_);
+
+        // Expire here rather than on a timer: this is the only place the
+        // list is read, so the sweep costs nothing extra and a caller can
+        // never be handed a session that has already timed out.
+        const auto now = std::chrono::steady_clock::now();
+        discoveredStreams_.erase(
+            std::remove_if(discoveredStreams_.begin(), discoveredStreams_.end(),
+                           [&](const SAPAnnouncement& s) {
+                               return now - s.lastSeen > SAPListener::kSessionTimeout;
+                           }),
+            discoveredStreams_.end());
+
         return discoveredStreams_;
     }
     
@@ -121,32 +133,48 @@ private:
                                                                    inet_ntoa(srcAddr.sin_addr));
                 
                 if (!announcement.sessionDescription.empty()) {
-                    // Store the announcement
+                    const bool isDeletion = announcement.isDeletion;
+                    bool isNew = false;
+
                     {
                         std::lock_guard<std::mutex> lock(discoveredStreamsMutex_);
-                        
-                        // Check if we already have this announcement to avoid duplicates
-                        bool found = false;
-                        for (const auto& existing : discoveredStreams_) {
-                            if (existing.sessionName == announcement.sessionName && 
-                                existing.sourceAddress == announcement.sourceAddress) {
-                                found = true;
-                                break;
+
+                        auto existing = std::find_if(
+                            discoveredStreams_.begin(), discoveredStreams_.end(),
+                            [&](const SAPAnnouncement& s) {
+                                return s.sessionName == announcement.sessionName &&
+                                       s.sourceAddress == announcement.sourceAddress;
+                            });
+
+                        if (isDeletion) {
+                            // An explicit goodbye — the announcer is telling
+                            // us it's finished, so drop it now instead of
+                            // waiting out kSessionTimeout.
+                            if (existing != discoveredStreams_.end()) {
+                                discoveredStreams_.erase(existing);
                             }
-                        }
-                        
-                        if (!found) {
+                        } else if (existing != discoveredStreams_.end()) {
+                            // A repeat. This is the normal case — announcers
+                            // repeat indefinitely — and refreshing lastSeen
+                            // is what keeps the session from expiring.
+                            *existing = announcement;
+                        } else {
                             discoveredStreams_.push_back(announcement);
-                            
-                            // Keep only the most recent announcements (e.g., last 50)
+                            isNew = true;
+
+                            // Backstop against a flood of one-shot sessions.
+                            // Expiry is the real mechanism; this only bounds
+                            // memory if something announces pathologically.
                             if (discoveredStreams_.size() > 50) {
                                 discoveredStreams_.erase(discoveredStreams_.begin());
                             }
                         }
                     }
-                    
-                    // Notify all registered callbacks
-                    {
+
+                    // Only tell callbacks about sessions they haven't been
+                    // told about — otherwise every repeat (every 30 s per
+                    // announcer) would look like a new discovery.
+                    if (isNew) {
                         std::lock_guard<std::mutex> lock(callbacksMutex_);
                         for (const auto& callback : callbacks_) {
                             callback(announcement);
@@ -161,6 +189,7 @@ private:
                                        const std::string& sourceAddress) {
         SAPAnnouncement announcement;
         announcement.sourceAddress = sourceAddress;
+        announcement.lastSeen = std::chrono::steady_clock::now();
 
         // SAP header (RFC 2974) minimum: 4 bytes + 4 bytes originating source
         // Byte 0: V(3) | A(1) | R(1) | T(1) | E(1) | C(1)
@@ -181,11 +210,12 @@ private:
             return announcement; // Unknown SAP version
         }
 
-        // Check type bit (0 = announcement, 1 = deletion)
-        uint8_t typeBit = (sapHeader >> 2) & 0x01;
-        if (typeBit != 0) {
-            return announcement; // Not an announcement (deletion)
-        }
+        // Type bit: 0 = announcement, 1 = deletion. A deletion is parsed
+        // like any other packet — the caller needs its session name to know
+        // what to drop — and flagged rather than discarded, which is how
+        // this listener used to treat it (silently ignoring a sender's
+        // explicit goodbye and waiting for the timeout instead).
+        announcement.isDeletion = ((sapHeader >> 2) & 0x01) != 0;
 
         // Check encryption and compression bits — we don't support them
         uint8_t encrypted = (sapHeader >> 1) & 0x01;
@@ -319,7 +349,9 @@ private:
     std::vector<SAPAnnouncementCallback> callbacks_;
     
     mutable std::mutex discoveredStreamsMutex_;
-    std::vector<SAPAnnouncement> discoveredStreams_;
+    // mutable: getDiscoveredStreams() is const but sweeps expired
+    // sessions as it reads, so the list never outlives what's on the wire.
+    mutable std::vector<SAPAnnouncement> discoveredStreams_;
 };
 
 SAPListener::SAPListener() : pimpl_(std::make_unique<Impl>()) {
