@@ -106,6 +106,24 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
 
     case CompatibilityProfileKind::CP850:
         p.displayName = "Dolby CP850 (Atmos Cinema Processor)";
+        // Source: Docs/references/dolby_cp850_installation_manual_issue2.pdf
+        // (Issue 2, 2014, part 9111710) — read in full, no AES67/PTP/
+        // multicast/DSCP/BLU-Link content anywhere in its 105 pages. That's
+        // not an oversight on this driver's part: this particular manual
+        // covers the ORIGINAL CP850 + DAC3201 pairing, a fixed point-to-
+        // point protocol ("Do not connect this port to an Ethernet
+        // switch") entirely distinct from AES67 — confirmed by the DMA
+        // manual's own warning that DAC3201 "uses a different protocol
+        // that is not supported by the Dolby Multichannel Amplifier or
+        // DAC3202." AES67/Atmos Connect exists on the CP850 as a separate
+        // licensed "enablement" this manual doesn't itself configure. So
+        // the parameters below remain inherited from the CP950/CP950A and
+        // DMA manuals' shared-family documentation (CP950/CP950A being
+        // CP850's own confirmed successor line) rather than confirmed by
+        // a CP850-specific AES67 configuration guide — this manual
+        // narrows that gap to "genuinely not published anywhere for
+        // CP850", not "not yet looked for".
+        //
         // Digital cinema audio (DCI spec): 48 or 96 kHz, up to 24-bit PCM.
         // Not AES67's 44.1 kHz — cinema doesn't use it.
         p.allowedSampleRates = {48000.0, 96000.0};
@@ -123,16 +141,22 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.ptpRole = PTPRoleConstraint::ForcedSlave;
         p.caveats =
             "The CP850 uses AES67 as its transport to Dolby Atmos Connect "
-            "Interfaces (DAC3202), not the full Dante protocol. Dolby's own "
-            "documentation notes its factory-default DSCP marking is more "
-            "traditional than typical Dante configurations (EF/46) — this "
-            "driver has a DSCP-setting function "
-            "(NetworkUtils::setQoSTrafficClass) but nothing calls it yet, "
-            "so no marking is actually applied. No documented fixed PTP "
-            "domain; cinema installations set their own house domain "
-            "(factory default, not a requirement). This driver is always "
-            "PTP slave under this profile — it never contends for "
-            "grandmaster. Receive-only: this driver may only add RX "
+            "Interfaces (DAC3202), not the full Dante protocol — and not "
+            "the DAC3201 breakout box (an older, incompatible point-to-"
+            "point protocol; needs a separate licensed enablement to "
+            "speak AES67 at all). Dolby's own documentation notes its "
+            "factory-default DSCP marking is more traditional than "
+            "typical Dante configurations (EF/46) — this driver has a "
+            "DSCP-setting function (NetworkUtils::setQoSTrafficClass) but "
+            "nothing calls it yet, so no marking is actually applied. No "
+            "documented fixed PTP domain; cinema installations set their "
+            "own house domain (factory default, not a requirement) — "
+            "unlike CP950/CP950A/DMA/DAC3202, no CP850-specific manual "
+            "documents its AES67 mode's own PTP/multicast defaults, so "
+            "these parameters are inherited from that shared family "
+            "rather than independently confirmed for CP850. This driver "
+            "is always PTP slave under this profile — it never contends "
+            "for grandmaster. Receive-only: this driver may only add RX "
             "streams under this profile, up to 64 channels total, the "
             "most the CP850 renders.";
         break;

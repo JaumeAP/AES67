@@ -1036,15 +1036,20 @@ class DriverManager: ObservableObject {
         .init(id: "cp850",
               name: "Dolby CP850 (Atmos Cinema Processor)",
               caveats: "Uses AES67 as its transport to Dolby Atmos Connect Interfaces (DAC3202), "
-                     + "not the full Dante protocol. Dolby's own documentation notes its "
+                     + "not the full Dante protocol — and not the DAC3201 breakout box (an "
+                     + "older, incompatible point-to-point protocol; needs a separate licensed "
+                     + "enablement to speak AES67 at all). Dolby's own documentation notes its "
                      + "factory-default DSCP marking is more traditional than typical Dante "
                      + "configs (EF/46) — this driver has a DSCP-setting function but nothing "
                      + "calls it yet, so no marking is actually applied. No documented fixed "
                      + "PTP domain; cinema installations set their own house domain (factory "
-                     + "default, not a requirement). This driver is always PTP slave under this "
-                     + "profile — it never contends for grandmaster. Receive-only: this driver "
-                     + "may only add RX streams under this profile, up to 64 channels total, "
-                     + "the most the CP850 renders.",
+                     + "default, not a requirement) — unlike CP950/CP950A/DMA/DAC3202, no "
+                     + "CP850-specific manual documents its AES67 mode's own PTP/multicast "
+                     + "defaults, so these are inherited from that shared family rather than "
+                     + "independently confirmed for CP850. This driver is always PTP slave "
+                     + "under this profile — it never contends for grandmaster. Receive-only: "
+                     + "this driver may only add RX streams under this profile, up to 64 "
+                     + "channels total, the most the CP850 renders.",
               domainIsFixed: false, fixedDomain: 0,
               direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
         .init(id: "cp950",
