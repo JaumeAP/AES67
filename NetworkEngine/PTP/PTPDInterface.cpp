@@ -35,6 +35,13 @@ PTPDInterface::~PTPDInterface() {
     stop();
 }
 
+void PTPDInterface::enableMasterCapability(PTPClockSourceKind clockSourceKind,
+                                            AudioDeviceID lockToDeviceID) {
+    masterCapable_ = true;
+    masterClockSourceKind_ = clockSourceKind;
+    masterLockToDeviceID_ = lockToDeviceID;
+}
+
 bool PTPDInterface::init(const std::string& interfaceName) {
     interfaceName_ = interfaceName;
 
@@ -46,19 +53,8 @@ bool PTPDInterface::init(const std::string& interfaceName) {
         return true;
     }
 
-    // Real PTP mode — create the slave
-    PTPSlaveConfig config;
-    config.domain = domain_;
-    config.interfaceName = interfaceName;
-    config.delayReqIntervalMs = 1000;  // 1 second between Delay_Req messages
-    config.twoStepOnly = true;          // AES67 uses two-step clocks
-
-    ptpSlave_ = std::make_unique<PTPSlave>(config);
-
-    // Set measurement callback so PTPSlave pushes results into our PTPState
-    ptpSlave_->setMeasurementCallback([this](const PTPMeasurement& m) {
+    auto onMeasurement = [this](const PTPMeasurement& m) {
         if (!m.valid) return;
-
         onPTPMeasurement(
             m.offsetFromMasterNs,
             m.meanPathDelayNs,
@@ -68,7 +64,33 @@ bool PTPDInterface::init(const std::string& interfaceName) {
             true, // We received a valid measurement
             m.grandmasterID.toString()
         );
-    });
+    };
+
+    if (masterCapable_) {
+        PTPArbitratorConfig config;
+        config.domain = domain_;
+        config.interfaceName = interfaceName;
+        config.clockSourceKind = masterClockSourceKind_;
+        config.lockToDeviceID = masterLockToDeviceID_;
+
+        ptpArbitrator_ = std::make_unique<PTPArbitrator>(config);
+        ptpArbitrator_->setMeasurementCallback(onMeasurement);
+
+        std::cout << "[PTPDInterface] Master-capable PTP initialization for interface: "
+                  << interfaceName << " domain=" << domain_
+                  << " clockSource=" << ptpArbitrator_->clockSource().name() << std::endl;
+        return true;
+    }
+
+    // Slave-only mode — original behavior, unchanged.
+    PTPSlaveConfig config;
+    config.domain = domain_;
+    config.interfaceName = interfaceName;
+    config.delayReqIntervalMs = 1000;  // 1 second between Delay_Req messages
+    config.twoStepOnly = true;          // AES67 uses two-step clocks
+
+    ptpSlave_ = std::make_unique<PTPSlave>(config);
+    ptpSlave_->setMeasurementCallback(onMeasurement);
 
     std::cout << "[PTPDInterface] Real PTP initialization for interface: "
               << interfaceName << " domain=" << domain_ << std::endl;
@@ -98,8 +120,21 @@ void PTPDInterface::start() {
         return;
     }
 
-    // Start the real PTP slave
-    if (ptpSlave_) {
+    // Start whichever real path we were init()'d with
+    if (ptpArbitrator_) {
+        if (!ptpArbitrator_->start()) {
+            std::cerr << "[PTPDInterface] Failed to start PTPArbitrator on "
+                      << interfaceName_ << " — falling back to stub mode" << std::endl;
+            stubMode_ = true;
+            state_.isLocked.store(false);
+            state_.clockClass.store(255);
+            diagnostics_.isLocked = false;
+            diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
+            return;
+        }
+        std::cout << "[PTPDInterface] PTPArbitrator started on "
+                  << interfaceName_ << " domain=" << domain_ << std::endl;
+    } else if (ptpSlave_) {
         if (!ptpSlave_->start()) {
             // Failed to start real PTP — fall back to stub mode
             std::cerr << "[PTPDInterface] Failed to start PTP slave on "
@@ -124,7 +159,9 @@ void PTPDInterface::stop() {
 
     running_ = false;
 
-    if (ptpSlave_) {
+    if (ptpArbitrator_) {
+        ptpArbitrator_->stop();
+    } else if (ptpSlave_) {
         ptpSlave_->stop();
     }
 
@@ -140,11 +177,16 @@ PTPState& PTPDInterface::getState() {
 }
 
 PTPDiagnostics& PTPDInterface::getDiagnostics() {
-    // If we have a real PTP slave, update diagnostics from it
-    if (ptpSlave_ && !stubMode_) {
+    if (ptpArbitrator_ && !stubMode_) {
+        ptpArbitrator_->updateDiagnostics(diagnostics_);
+    } else if (ptpSlave_ && !stubMode_) {
         ptpSlave_->updateDiagnostics(diagnostics_);
     }
     return diagnostics_;
+}
+
+PTPRole PTPDInterface::getRole() const {
+    return ptpArbitrator_ ? ptpArbitrator_->role() : PTPRole::Slave;
 }
 
 void PTPDInterface::onPTPMeasurement(int64_t offsetNs, int64_t pathDelayNs,
@@ -158,8 +200,13 @@ void PTPDInterface::onPTPMeasurement(int64_t offsetNs, int64_t pathDelayNs,
     state_.clockClass.store(clockClass);
     state_.clockAccuracy.store(clockAccuracy);
 
-    // Lock state is determined by PTPSlave — only update if the slave says locked
-    if (ptpSlave_) {
+    // Lock state is determined by whichever slave-side path is active — only
+    // update if it says locked.
+    if (ptpArbitrator_) {
+        bool slaveLocked = ptpArbitrator_->isSlaveLocked();
+        state_.isLocked.store(slaveLocked);
+        diagnostics_.isLocked = slaveLocked;
+    } else if (ptpSlave_) {
         bool slaveLocked = ptpSlave_->isLocked();
         state_.isLocked.store(slaveLocked);
         diagnostics_.isLocked = slaveLocked;
