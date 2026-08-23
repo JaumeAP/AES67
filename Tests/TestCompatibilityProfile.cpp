@@ -23,6 +23,7 @@
 
 #include "../NetworkEngine/CompatibilityProfile.h"
 
+#include <cmath>
 #include <iostream>
 
 using namespace AES67;
@@ -174,24 +175,44 @@ bool testDanteRequiresItsMulticastRange() {
     return true;
 }
 
-bool testDanteDomainIsConfigurable() {
-    std::cout << "Test: B5 · Dante's PTP domain is user-configurable, unlike AES67's... ";
+bool testDanteAES67ModeIsNarrowerThanAES67Itself() {
+    std::cout << "Test: B5 · Dante's AES67 mode is narrower than AES67: 48k/L24/domain 0... ";
     const auto dante = CompatibilityProfile::forKind(CompatibilityProfileKind::Dante);
     const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
 
-    TEST_ASSERT(!dante.domainIsFixed, "Dante Controller allows domain segmentation (0-127)");
+    // Per Audinate's own AES67 Config documentation. This profile used to
+    // assume Dante simply inherited AES67's baseline (three rates, L16 or
+    // L24, free domain) — it doesn't, on any of the three.
+    TEST_ASSERT(dante.allowedSampleRates.size() == 1 &&
+                std::abs(dante.allowedSampleRates[0] - 48000.0) < 1.0,
+                "Dante AES67 flows are 48 kHz only, whatever the device runs natively");
+    TEST_ASSERT(dante.allowedEncodings.size() == 1 && dante.allowedEncodings[0] == "L24",
+                "Dante AES67 flows must use 24-bit linear encoding");
+    TEST_ASSERT(dante.domainIsFixed && dante.fixedDomain == 0,
+                "Dante's AES67 mode uses a fixed PTPv2 domain 0 — the 0-127 range belongs to "
+                "its native PTPv1 clocking, not to AES67 mode");
+    TEST_ASSERT(dante.recommendedDscp == 46, "Dante marks audio EF/46");
     TEST_ASSERT(aes67.domainIsFixed && aes67.fixedDomain == 0,
                 "AES67's mandatory configuration is domain 0");
 
-    // With domain free, any domain in a stream must be accepted.
+    // A rate AES67 itself permits but Dante's AES67 mode doesn't.
     auto sdp = baselineSession();
     sdp.connectionAddress = "239.69.1.10";
-    sdp.ptpDomain = 42;
-    TEST_ASSERT(dante.validate(sdp, false, nullptr), "Dante must accept a non-zero domain");
-
-    // With domain fixed at 0, the same stream must be rejected.
+    sdp.sampleRate = 96000.0;
     std::string error;
-    TEST_ASSERT(!aes67.validate(sdp, false, &error), "AES67 must reject a non-zero domain");
+    TEST_ASSERT(!dante.validate(sdp, false, &error), "Dante must reject 96 kHz in AES67 mode");
+    TEST_ASSERT(aes67.validate(sdp, false, nullptr), "AES67 itself permits 96 kHz");
+
+    // Likewise an encoding AES67 permits but Dante's AES67 mode doesn't.
+    sdp.sampleRate = 48000.0;
+    sdp.encoding = "L16";
+    TEST_ASSERT(!dante.validate(sdp, false, &error), "Dante must reject L16 in AES67 mode");
+    TEST_ASSERT(aes67.validate(sdp, false, nullptr), "AES67 itself permits L16");
+
+    // And a non-zero domain, now that Dante pins it like AES67 does.
+    sdp.encoding = "L24";
+    sdp.ptpDomain = 42;
+    TEST_ASSERT(!dante.validate(sdp, false, &error), "Dante must reject a non-zero PTP domain");
     TEST_ASSERT(!error.empty(), "rejection must explain itself");
 
     std::cout << "PASS" << std::endl;
@@ -499,7 +520,7 @@ int main() {
     std::cout << "B2 · Dante" << std::endl;
     std::cout << "----------" << std::endl;
     testDanteRequiresItsMulticastRange();
-    testDanteDomainIsConfigurable();
+    testDanteAES67ModeIsNarrowerThanAES67Itself();
     testAES67AcceptsNoPtpDomainSentinel();
     std::cout << std::endl;
 
