@@ -168,6 +168,13 @@ void AES67Device::Initialize() {
             StreamChannelMapper::kMaxChannelsPerFlow;
         const uint32_t flowOffset = (unitIndex - 1) * flowsPerUnit;
         streamManager_->setTxFlowPortOffset(flowOffset);
+
+        // Playout delay lives in the same settings file.
+        const PlayoutDelaySettings delay = unitSettingsManager.loadPlayoutDelay();
+        streamManager_->setPlayoutDelaySamples(delay.samples);
+        if (delay.samples > 0) {
+            AES67_LOGF("AES67Device: Playout delay %u samples", delay.samples);
+        }
         AES67_LOGF("AES67Device: Amplifier unit %u of max %u -> TX flow port offset %u "
                    "(%u flows per unit)",
                    unitIndex, profile.maxUnits, flowOffset, flowsPerUnit);

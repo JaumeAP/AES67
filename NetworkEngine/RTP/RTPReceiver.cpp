@@ -7,6 +7,7 @@
 #include "RTPReceiver.h"
 #include "SimpleRTP.h"
 #include "../../Driver/DebugLog.h"
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 #include <chrono>
@@ -19,7 +20,8 @@ RTPReceiver::RTPReceiver(
     const ChannelMapping& mapping,
     DeviceChannelBuffers& deviceChannels,
     size_t jitterBufferDepth,
-    const std::string& networkInterface
+    const std::string& networkInterface,
+    uint32_t playoutDelaySamples
 )
     : sdp_(sdp)
     , mapping_(mapping)
@@ -28,6 +30,16 @@ RTPReceiver::RTPReceiver(
                                           : LockFreeCircularJitterBuffer::DEFAULT_BUFFER_SIZE)
     , networkInterface_(networkInterface)
 {
+    // Playout delay, expressed the way installers think about it (samples)
+    // and applied the way this receiver can actually honour it (packets of
+    // cushion before paced consumption begins). Converted here rather than
+    // stored, because the packet count is what the pre-fill loop compares.
+    if (playoutDelaySamples > 0) {
+        const uint32_t samplesPerPacket = sdp_.framecount > 0 ? sdp_.framecount : 48;
+        const size_t packets = (playoutDelaySamples + samplesPerPacket - 1) / samplesPerPacket;
+        prefillPacketCount_ = std::max<size_t>(packets, 1); // a zero cushion starves immediately
+    }
+
     std::memset(&stats_, 0, sizeof(stats_));
 
     // Pre-allocate audio buffer to avoid allocations in receiveLoop()
@@ -289,7 +301,7 @@ void RTPReceiver::consumeLoop() {
     // and fills silence (existing AES67IOHandler behavior).
     while (running_ && !prefillComplete_.load(std::memory_order_relaxed)) {
         size_t buffered = jitterBuffer_.getBufferedPacketCount();
-        if (buffered >= kPrefillPacketCount) {
+        if (buffered >= prefillPacketCount_) {
             prefillComplete_.store(true, std::memory_order_relaxed);
             break;
         }

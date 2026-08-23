@@ -949,7 +949,9 @@ std::unique_ptr<RTPReceiver> StreamManager::createReceiver(
     const std::string& networkInterface
 ) {
     // Receivers write decoded network audio to INPUT buffers (Network → Core Audio)
-    return std::make_unique<RTPReceiver>(sdp, mapping, inputChannels_, jitterBufferDepth, networkInterface);
+    return std::make_unique<RTPReceiver>(sdp, mapping, inputChannels_, jitterBufferDepth,
+                                        networkInterface,
+                                        playoutDelaySamples_.load(std::memory_order_relaxed));
 }
 
 std::unique_ptr<RTPTransmitter> StreamManager::createTransmitter(

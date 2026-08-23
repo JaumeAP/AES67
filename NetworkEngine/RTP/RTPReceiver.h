@@ -39,7 +39,8 @@ public:
         const ChannelMapping& mapping,
         DeviceChannelBuffers& deviceChannels,
         size_t jitterBufferDepth = 0,
-        const std::string& networkInterface = ""
+        const std::string& networkInterface = "",
+        uint32_t playoutDelaySamples = 0
     );
 
     ~RTPReceiver();
@@ -117,7 +118,17 @@ private:
     // Pre-fill gate: consumer waits until jitter buffer has enough packets
     // before starting paced consumption, preventing initial starvation
     std::atomic<bool> prefillComplete_{false};
+
+    /// Default cushion when no playout delay is configured — the value
+    /// this receiver used unconditionally before playout delay existed.
     static constexpr size_t kPrefillPacketCount = 6;
+
+    /// How many packets must accumulate before paced consumption starts.
+    /// This IS the playout delay: the cushion is the latency. Derived in
+    /// the constructor from the configured delay in samples, never below
+    /// one packet (a zero-length cushion would starve immediately) and
+    /// defaulting to kPrefillPacketCount.
+    size_t prefillPacketCount_{kPrefillPacketCount};
 
     // Adaptive rate matching: lightweight P-controller to compensate for
     // clock drift between network sender and local Core Audio clock.
