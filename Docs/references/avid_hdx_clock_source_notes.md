@@ -19,6 +19,9 @@ wrong, and the recommendation has been replaced with a warning.
 
 ### What to do instead
 
+Full treatment in `../taking_clock_from_digilink.md` — three hardware
+paths that genuinely put the network on the HDX clock. In brief:
+
 Clock both worlds from one source rather than chaining one to the other:
 
 - A dedicated **PTPv2 grandmaster** on the AES67 network — the recommended
