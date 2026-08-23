@@ -46,11 +46,24 @@ RTPTransmitter::RTPTransmitter(
     const size_t maxPayloadSize = 3 * sdp_.numChannels * maxFrames;
     payloadBuffer_.resize(12 + maxPayloadSize);
 
-    // Calculate packet interval based on sample rate
-    // AES67 standard: 1ms packets = sample_rate / 1000 samples per packet
-    // Example: 48000 Hz → 48 samples/packet → 1ms interval
-    const uint64_t intervalUs = 1000; // 1ms in microseconds
-    packetInterval_ = std::chrono::microseconds(intervalUs);
+    // Packet interval and payload size must agree, or the stream drifts:
+    // send N samples every T, and the receiver's clock recovery expects
+    // N/sampleRate == T. This used to hardcode T = 1 ms while taking N
+    // from sdp_.framecount, so any stream whose framecount didn't happen
+    // to be sampleRate/1000 — a 96 kHz stream with the default 48, say —
+    // transmitted at the wrong rate.
+    //
+    // framecount is authoritative when present (it's an exact integer
+    // sample count); ptime derives it otherwise. Either way both numbers
+    // come from the same place.
+    samplesPerPacket_ = sdp_.framecount > 0
+        ? sdp_.framecount
+        : static_cast<uint32_t>((static_cast<uint64_t>(sdp_.sampleRate) * sdp_.ptimeUs) / 1000000ULL);
+    if (samplesPerPacket_ == 0) samplesPerPacket_ = 1; // never a zero-length packet
+
+    const uint64_t intervalUs =
+        (static_cast<uint64_t>(samplesPerPacket_) * 1000000ULL) / std::max<uint32_t>(sdp_.sampleRate, 1);
+    packetInterval_ = std::chrono::microseconds(std::max<uint64_t>(intervalUs, 1));
 }
 
 RTPTransmitter::~RTPTransmitter() {
@@ -98,7 +111,7 @@ bool RTPTransmitter::start() {
     running_ = true;
     transmitThread_ = std::thread([this]() {
         // Real cycle length is the stream's own packet time, not a guess.
-        if (!AudioThreadPriority::configureForRealTime(static_cast<double>(sdp_.ptime))) {
+        if (!AudioThreadPriority::configureForRealTime(sdp_.ptimeUs / 1000.0)) {
             AES67_LOGF("RTPTransmitter: failed to set RT priority on transmit thread (stream=%s)",
                        sdp_.sessionName.c_str());
         }
@@ -163,8 +176,8 @@ bool RTPTransmitter::updateMapping(const ChannelMapping& newMapping) {
 }
 
 void RTPTransmitter::transmitLoop() {
-    // Calculate samples per packet (typically 48 for 48kHz @ 1ms)
-    const size_t samplesPerPacket = sdp_.framecount;
+    // Derived in the constructor, consistent with packetInterval_.
+    const size_t samplesPerPacket = samplesPerPacket_;
 
     auto nextTransmitTime = startTime_;
     bool unsupportedEncodingLogged = false;

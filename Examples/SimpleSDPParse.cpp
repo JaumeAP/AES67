@@ -5,6 +5,7 @@
 //
 
 #include "../Driver/SDPParser.h"
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
 
@@ -32,7 +33,7 @@ void printSDPSession(const SDPSession& session) {
     std::cout << "  Encoding:       " << session.encoding << "\n";
     std::cout << "  Sample Rate:    " << session.sampleRate << " Hz\n";
     std::cout << "  Channels:       " << session.numChannels << "\n";
-    std::cout << "  Packet Time:    " << session.ptime << " ms\n";
+    std::cout << "  Packet Time:    " << (session.ptimeUs / 1000.0) << " ms\n";
     std::cout << "  Samples/Packet: " << session.framecount << "\n";
     std::cout << "\n";
 
@@ -96,7 +97,7 @@ int main(int argc, char* argv[]) {
                   << (bytesPerSecond / 1024.0 / 1024.0) << " MB/s\n";
 
         // Add RTP overhead (12 bytes header + UDP/IP/Ethernet headers ~42 bytes)
-        size_t packetsPerSecond = 1000 / session->ptime;
+        size_t packetsPerSecond = 1000000 / std::max<uint32_t>(session->ptimeUs, 1);
         size_t overheadPerSecond = packetsPerSecond * 54;  // ~54 bytes per packet
         double totalMBps = (bytesPerSecond + overheadPerSecond) / 1024.0 / 1024.0;
 
