@@ -164,6 +164,33 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "this profile, up to 32 channels total, its full analog output "
             "count.";
         break;
+
+    case CompatibilityProfileKind::DMA:
+        p.displayName = "DMA (spec pending)";
+        // PLACEHOLDER: audio parameters copied from DAC3202 until the real
+        // device/spec is looked up. What's actually fixed here isn't a
+        // spec value at all — it's an explicit instruction: this driver is
+        // always PTP master and transmits 32 channels total, same as
+        // DAC3202, but under different (not yet researched) parameters.
+        p.allowedSampleRates = {48000.0, 96000.0};
+        p.allowedPtimesMs = {1};
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.domainIsFixed = false;
+        p.recommendedDscp = -1; // not yet documented for this profile
+        p.direction = ProfileDirection::TransmitOnly;
+        p.maxTotalChannels = 32;
+        p.ptpRole = PTPRoleConstraint::ForcedMaster;
+        p.caveats =
+            "PLACEHOLDER PROFILE — the exact device and its real parameters "
+            "haven't been looked up yet. Sample rates, ptime, encoding, and "
+            "PTP domain here are copied from DAC3202 as a stand-in and will "
+            "change once the real spec is found. Only two things are fixed "
+            "already, by instruction rather than a spec: this driver is "
+            "always PTP master under this profile, and transmit-only, up "
+            "to 32 channels total.";
+        break;
     }
 
     return p;
@@ -177,6 +204,7 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::Dante),
         forKind(CompatibilityProfileKind::CP850),
         forKind(CompatibilityProfileKind::DAC3202),
+        forKind(CompatibilityProfileKind::DMA),
     };
 }
 
@@ -188,6 +216,7 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
     case CompatibilityProfileKind::Dante:     return "dante";
     case CompatibilityProfileKind::CP850:     return "cp850";
     case CompatibilityProfileKind::DAC3202:   return "dac3202";
+    case CompatibilityProfileKind::DMA:       return "dma";
     }
     return "aes67";
 }
@@ -198,6 +227,7 @@ CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string&
     if (s == "dante")     return CompatibilityProfileKind::Dante;
     if (s == "cp850")     return CompatibilityProfileKind::CP850;
     if (s == "dac3202")   return CompatibilityProfileKind::DAC3202;
+    if (s == "dma")       return CompatibilityProfileKind::DMA;
     return CompatibilityProfileKind::AES67;
 }
 
