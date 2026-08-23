@@ -277,6 +277,27 @@ bool testCinemaProfilesRecordDscpAsInformationalOnly() {
     return true;
 }
 
+bool testCP850AndDAC3202ForcePTPRole() {
+    std::cout << "Test: B11 · CP850 forces this driver to PTP slave, DAC3202 to PTP master... ";
+    const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
+    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
+    TEST_ASSERT(cp850.ptpRole == PTPRoleConstraint::ForcedSlave,
+                "this driver must always be PTP slave under the CP850 profile");
+    TEST_ASSERT(dac3202.ptpRole == PTPRoleConstraint::ForcedMaster,
+                "this driver must always be PTP master under the DAC3202 profile");
+
+    for (const auto& profile : CompatibilityProfile::all()) {
+        if (profile.kind == CompatibilityProfileKind::CP850 ||
+            profile.kind == CompatibilityProfileKind::DAC3202) {
+            continue;
+        }
+        TEST_ASSERT(profile.ptpRole == PTPRoleConstraint::Any,
+                    profile.displayName + " should not force a PTP role — BMCA decides");
+    }
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
 // ============================================================================
 // C. Limits shared by every profile
 // ============================================================================
@@ -362,6 +383,7 @@ int main() {
     testDAC3202IsTransmitOnlyFromOurSide();
     testOnlyCP850AndDAC3202RestrictDirection();
     testCinemaProfilesRecordDscpAsInformationalOnly();
+    testCP850AndDAC3202ForcePTPRole();
     std::cout << std::endl;
 
     std::cout << "C · Limits shared by every profile" << std::endl;
