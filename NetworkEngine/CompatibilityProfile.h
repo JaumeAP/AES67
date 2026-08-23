@@ -59,9 +59,17 @@ enum class CompatibilityProfileKind {
     /// redundancy) aren't implemented here, so as a *constraint set* this
     /// is currently identical to AES67 — see profileNotes().
     RAVENNA,
-    /// SMPTE ST 2110-30 Level A: 48 kHz only, 1 ms packets, RTP timestamp
-    /// offset must be zero.
+    /// SMPTE ST 2110-30 Level A: 48 kHz only, 1 ms packets, 1-8 channels,
+    /// RTP timestamp offset must be zero. The mandatory level — gear
+    /// claiming any higher level must also support this one, so it is
+    /// always the safe common ground.
     ST2110_30,
+    /// SMPTE ST 2110-30 Level B: Level A's constraints with a 125 us
+    /// packet time instead of 1 ms. Separate profile rather than widening
+    /// Level A's allowed packet times, because the levels are claims about
+    /// what gear supports: a receiver that only does Level A must not be
+    /// sent 125 us packets just because this driver can now emit them.
+    ST2110_30_LevelB,
     /// Dante in AES67 mode (Audinate). Requires multicast inside
     /// 239.69.0.0/16 — that's Dante's own requirement, not AES67's.
     Dante,
