@@ -44,6 +44,7 @@ swiftc -o AES67Manager \
   Views/ChannelMapDiagnosticView.swift \
   Views/QuickStartView.swift \
   Views/PTPDiagnosticView.swift \
+  Views/ProfileParametersView.swift \
   Views/AudioStatusView.swift \
   AES67ManagerApp.swift
 

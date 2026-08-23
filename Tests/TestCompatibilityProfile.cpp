@@ -386,6 +386,30 @@ bool testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount() {
     return true;
 }
 
+bool testOnlyDolbyEndpointsChainMultipleUnits() {
+    std::cout << "Test: B14 · only DMA and DAC3202 chain more than one unit (max 3)... ";
+    for (const auto& profile : CompatibilityProfile::all()) {
+        const bool chains = profile.kind == CompatibilityProfileKind::DMA ||
+                            profile.kind == CompatibilityProfileKind::DAC3202;
+        if (chains) {
+            // DMA manual §2.3: "you cannot interconnect more than three of
+            // these devices unless you use a switch".
+            TEST_ASSERT(profile.maxUnits == 3,
+                        profile.displayName + " chains up to three units without a switch");
+            // The unit selection only reaches the wire as a source-port
+            // offset, so it's meaningless without the Dolby scheme.
+            TEST_ASSERT(profile.useFixedMulticastWithPerFlowSourcePort,
+                        profile.displayName + " must use per-flow source ports for unit "
+                        "selection to mean anything");
+        } else {
+            TEST_ASSERT(profile.maxUnits == 1,
+                        profile.displayName + " is a single-unit profile");
+        }
+    }
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
 bool testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme() {
     std::cout << "Test: B13 · only DMA and DAC3202 use the fixed-multicast/per-flow-source-port scheme... ";
     for (const auto& profile : CompatibilityProfile::all()) {
@@ -489,6 +513,7 @@ int main() {
     testCP850AndDAC3202ForcePTPRole();
     testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount();
     testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme();
+    testOnlyDolbyEndpointsChainMultipleUnits();
     std::cout << std::endl;
 
     std::cout << "C · Limits shared by every profile" << std::endl;

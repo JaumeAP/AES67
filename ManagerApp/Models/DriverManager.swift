@@ -104,6 +104,7 @@ class DriverManager: ObservableObject {
         loadPTPMasterSettings()
         loadDeviceChannelSettings()
         loadCompatibilityProfile()
+        loadAmplifierUnit()
         startAutoRefresh()
     }
 
@@ -998,6 +999,30 @@ class DriverManager: ObservableObject {
         /// "Act as PTP master" toggle is disabled and forced to match when
         /// this isn't .any.
         let ptpRole: PTPRoleConstraint
+        /// How many units of this gear may be chained in one auditorium,
+        /// each taking the next consecutive channel group (Dolby Atmos
+        /// Connect: up to 3 without a switch). 1 = the amplifier-unit
+        /// selector is meaningless and stays disabled.
+        let maxUnits: Int
+        /// Factory-default destination multicast address, or "" if none is
+        /// documented. Informational, same as recommendedPtpDomain.
+        let recommendedMulticastAddress: String
+        /// Factory-default DSCP marking, or -1 if none is documented.
+        let recommendedDscp: Int
+        /// Sample rates this profile accepts, for display in the
+        /// parameters window.
+        let allowedSampleRates: [Int]
+        /// Packet times in ms this profile accepts.
+        let allowedPtimesMs: [Int]
+        /// Encodings this profile accepts.
+        let allowedEncodings: [String]
+        /// True when this profile uses Dolby's fixed-multicast /
+        /// stepped-source-port flow addressing rather than the AES67/Dante
+        /// address-stepping convention.
+        let usesFixedMulticastPerFlowSourcePort: Bool
+        /// Multicast prefix streams must fall inside ("239.69" for Dante),
+        /// or "" when any valid multicast address is accepted.
+        let requiredMulticastPrefix: String
 
         static func == (lhs: CompatibilityProfileOption, rhs: CompatibilityProfileOption) -> Bool {
             lhs.id == rhs.id
@@ -1013,7 +1038,11 @@ class DriverManager: ObservableObject {
                      + "itself declares more (up to 384 kHz), which other AES67 gear may refuse. "
                      + "PTP domain fixed at 0.",
               domainIsFixed: true, fixedDomain: 0, recommendedPtpDomain: -1,
-              direction: .any, maxTotalChannels: 0, ptpRole: .any),
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
+              allowedSampleRates: [44100, 48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "ravenna",
               name: "RAVENNA",
               caveats: "Constraints are currently identical to AES67: RAVENNA is more permissive, "
@@ -1022,7 +1051,11 @@ class DriverManager: ObservableObject {
                      + "RAVENNA's own additions — Bonjour discovery and stream redundancy — "
                      + "are not implemented.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
-              direction: .any, maxTotalChannels: 0, ptpRole: .any),
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
+              allowedSampleRates: [44100, 48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "st2110-30",
               name: "SMPTE ST 2110-30 (Level A)",
               caveats: "Level A only — Levels B and C need 125 µs packets, which this driver's "
@@ -1031,7 +1064,11 @@ class DriverManager: ObservableObject {
                      + "against a real grandmaster. Enforces the parameters it can check; "
                      + "it is not a conformance claim.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
-              direction: .any, maxTotalChannels: 0, ptpRole: .any),
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
+              allowedSampleRates: [48000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "dante",
               name: "Dante (AES67 mode)",
               caveats: "Requires the Dante device to have AES67 mode explicitly enabled — this "
@@ -1040,7 +1077,11 @@ class DriverManager: ObservableObject {
                      + "switches it to PTPv2, which is what this driver speaks. Enforces the "
                      + "239.69.0.0/16 multicast range Dante requires in AES67 mode.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
-              direction: .any, maxTotalChannels: 0, ptpRole: .any),
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
+              allowedSampleRates: [44100, 48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: "239.69"),
         .init(id: "cp850",
               name: "Dolby CP850 (Atmos Cinema Processor)",
               caveats: "Uses AES67 as its transport to Dolby Atmos Connect Interfaces (DAC3202), "
@@ -1065,7 +1106,11 @@ class DriverManager: ObservableObject {
                      + "this driver may only add RX streams under this profile, up to 64 "
                      + "channels total, the most the CP850 renders.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
+              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave,
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
+              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "cp950",
               name: "Dolby CP950 / CP950A (Cinema Processor)",
               caveats: "Current-generation replacement for CP850 (its own manual says so). CP950 "
@@ -1084,7 +1129,11 @@ class DriverManager: ObservableObject {
                      + "grandmaster. Receive-only: this driver may only add RX streams under "
                      + "this profile, up to 64 channels total.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave),
+              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave,
+              maxUnits: 1, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
+              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "dac3202",
               name: "Dolby DAC3202 (Atmos Connect Interface)",
               caveats: "Receiving end of the same CP850/CP950/CP950A link — 32 analog outputs, "
@@ -1099,7 +1148,11 @@ class DriverManager: ObservableObject {
                      + "under this profile. Transmit-only: this driver may only create TX "
                      + "streams under this profile, up to 32 channels total.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
+              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster,
+              maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
+              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
         .init(id: "dma",
               name: "Dolby DMA (Multichannel Amplifier)",
               caveats: "Covers the whole Dolby Multichannel Amplifier family (DMA16301/16302, "
@@ -1117,7 +1170,11 @@ class DriverManager: ObservableObject {
                      + "destination multicast address 239.81.83.67. This driver is always PTP "
                      + "master under this profile, transmit-only.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .transmitOnly, maxTotalChannels: 64, ptpRole: .forcedMaster),
+              direction: .transmitOnly, maxTotalChannels: 64, ptpRole: .forcedMaster,
+              maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
+              allowedSampleRates: [48000, 96000], allowedPtimesMs: [1],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
     ]
 
     @Published var compatibilityProfileID: String = "aes67"
@@ -1156,6 +1213,71 @@ class DriverManager: ObservableObject {
             showAlert(title: "Save Failed",
                      message: "Could not save the compatibility profile: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Amplifier Unit
+    //
+    // Which physical unit in a chained Dolby Atmos Connect installation
+    // this driver is feeding. Mirrors NetworkEngine/AmplifierUnitSettings.h
+    // — same file both processes read/write (amplifier_unit.json). Only
+    // meaningful when the active profile's maxUnits > 1; the driver clamps
+    // whatever it reads to that, so a stale value can't affect a
+    // single-unit profile.
+    //
+    // Each unit carries the next consecutive block of channels, which on
+    // the wire means the next block of source UDP ports — so selecting
+    // unit 2 shifts this driver's TX flows to that unit's ports rather
+    // than changing anything about the audio itself.
+
+    @Published var amplifierUnit: Int = 1
+
+    /// Units the active profile allows, as a range for the picker.
+    var amplifierUnitChoices: [Int] {
+        Array(1...max(1, activeCompatibilityProfile.maxUnits))
+    }
+
+    private var amplifierUnitConfigURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/AES67Driver/amplifier_unit.json")
+    }
+
+    func loadAmplifierUnit() {
+        guard let data = try? Data(contentsOf: amplifierUnitConfigURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let unit = obj["unitIndex"] as? Int,
+              (1...3).contains(unit) else {
+            amplifierUnit = 1
+            return
+        }
+        amplifierUnit = unit
+    }
+
+    func saveAmplifierUnit() {
+        let dir = amplifierUnitConfigURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let obj: [String: Any] = ["version": "1.0", "unitIndex": amplifierUnit]
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
+            try data.write(to: amplifierUnitConfigURL, options: .atomic)
+        } catch {
+            showAlert(title: "Save Failed",
+                     message: "Could not save the amplifier unit: \(error.localizedDescription)")
+        }
+    }
+
+    /// The source UDP ports this driver's TX flows will use for the
+    /// currently selected unit and output channel count, or an empty array
+    /// when the active profile doesn't use per-flow source ports. Mirrors
+    /// StreamManager::createTxStreamFlows()'s own arithmetic so the
+    /// parameters window can show what will actually go on the wire rather
+    /// than a generic description of it.
+    func txSourcePorts(destinationPort: Int) -> [Int] {
+        let profile = activeCompatibilityProfile
+        guard profile.usesFixedMulticastPerFlowSourcePort else { return [] }
+        let channels = totalTxChannelCount
+        let flowsPerUnit = (channels + 7) / 8
+        let offset = (min(amplifierUnit, profile.maxUnits) - 1) * flowsPerUnit
+        return (0..<flowsPerUnit).map { destinationPort + 1 + offset + $0 }
     }
 
     // MARK: - PTP Diagnostics Gateway
