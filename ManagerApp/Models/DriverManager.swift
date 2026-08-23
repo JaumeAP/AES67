@@ -1056,15 +1056,22 @@ class DriverManager: ObservableObject {
               domainIsFixed: false, fixedDomain: 0,
               direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
         .init(id: "dma",
-              name: "Dolby DMA (spec pending)",
-              caveats: "PLACEHOLDER PROFILE — the exact device and its real parameters haven't "
-                     + "been looked up yet. Sample rates, ptime, encoding, and PTP domain here "
-                     + "are copied from DAC3202 as a stand-in and will change once the real spec "
-                     + "is found. Only two things are fixed already, by instruction rather than "
-                     + "a spec: this driver is always PTP master under this profile, and "
-                     + "transmit-only, up to 32 channels total.",
+              name: "Dolby DMA (Multichannel Amplifier)",
+              caveats: "Covers the whole Dolby Multichannel Amplifier family (DMA16301/16302, "
+                     + "DMA24300/24302, DMA32300/32301) — pick your real amplifier's channel "
+                     + "count with the Output selector on the main window rather than a separate "
+                     + "profile per model; 64 is the outer ceiling (the Atmos Connect chain's own "
+                     + "limit), not a specific model's count. This driver's flow splitter steps "
+                     + "the destination multicast IP's last octet per 8-channel flow; the real "
+                     + "DMA instead keeps one multicast address and steps the source UDP port per "
+                     + "flow (fixed RTP destination port 6517) — multi-flow interop with a real "
+                     + "unit is unverified until that's reconciled. Sample rate/ptime/encoding are "
+                     + "inherited from the same Atmos Connect chain as CP850/DAC3202 (not "
+                     + "independently documented for the DMA itself). PTP domain defaults to 109 "
+                     + "for Dolby gear (not fixed — must match the sending processor). This driver "
+                     + "is always PTP master under this profile, transmit-only.",
               domainIsFixed: false, fixedDomain: 0,
-              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster),
+              direction: .transmitOnly, maxTotalChannels: 64, ptpRole: .forcedMaster),
     ]
 
     @Published var compatibilityProfileID: String = "aes67"
