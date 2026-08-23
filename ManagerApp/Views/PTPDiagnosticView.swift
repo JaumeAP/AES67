@@ -17,6 +17,30 @@ struct PTPDiagnosticView: View {
     @State private var showCopiedFeedback: Bool = false
     @State private var isTestingConnectivity: Bool = false
     @State private var connectivityTestResult: ConnectivityTestResult?
+    @State private var clockSources: [DriverManager.PTPClockSourceOption] = []
+
+    // Binding for the clock source Picker: maps the two persisted fields
+    // (ptpClockSourceKind/ptpLockToDeviceUID) to a single selection ID
+    // ("internal", or a device UID), and saves on every change — this is
+    // the one setting on this screen that's real, not mock (see
+    // DriverManager's "PTP Master Clock Source" section for why).
+    private var selectedClockSourceID: Binding<String> {
+        Binding(
+            get: {
+                driverManager.ptpClockSourceKind == "internal" ? "internal" : driverManager.ptpLockToDeviceUID
+            },
+            set: { newID in
+                if newID == "internal" {
+                    driverManager.ptpClockSourceKind = "internal"
+                    driverManager.ptpLockToDeviceUID = ""
+                } else {
+                    driverManager.ptpClockSourceKind = "localAudioDevice"
+                    driverManager.ptpLockToDeviceUID = newID
+                }
+                driverManager.savePTPMasterSettings()
+            }
+        )
+    }
 
     // MARK: - PTP Health Computed Property
 
@@ -467,6 +491,69 @@ struct PTPDiagnosticView: View {
                 // Contextual Guidance
                 healthGuidance
 
+                // PTP Clock Source — real setting, persisted to
+                // ptp_master.json, read by the driver at its next start.
+                GroupBox("PTP Clock Source") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Act as PTP master when eligible (BMCA decides)", isOn: Binding(
+                            get: { driverManager.ptpMasterCapable },
+                            set: { driverManager.ptpMasterCapable = $0; driverManager.savePTPMasterSettings() }
+                        ))
+
+                        if driverManager.ptpMasterCapable {
+                            Picker("Clock source:", selection: selectedClockSourceID) {
+                                ForEach(clockSources) { option in
+                                    Text(option.name).tag(option.id)
+                                }
+                            }
+                            .disabled(clockSources.isEmpty)
+                        }
+
+                        Text("Changes apply the next time Core Audio restarts, not immediately.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            Button("Restart Core Audio to Apply") {
+                                driverManager.restartCoreAudio()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("Refresh Device List") {
+                                clockSources = driverManager.listAvailableClockSources()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .onAppear {
+                    clockSources = driverManager.listAvailableClockSources()
+                }
+
+                // Grandmaster / Role — who's actually the reference clock
+                // right now: this Mac itself, or a remote master we lost
+                // BMCA to (or are still listening for). Still mock data
+                // like the rest of this screen (see refreshDiagnostics()):
+                // there's no live channel from the running driver process
+                // to this app yet, only the persisted setting above.
+                GroupBox("Grandmaster") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        StatusRow(title: "Role:", status: role == .master ? "Master (this Mac is the grandmaster)" : "Slave (synced to a remote master)")
+                        StatusRow(title: "Ever Was Master (this session):", status: everWasMaster ? "Yes" : "No")
+                        if role == .master {
+                            StatusRow(title: "Grandmaster:", status: "SELF")
+                        } else {
+                            StatusRow(title: "Currently Synced To:", status: masterClockID ?? "None")
+                            if hasCompetitor {
+                                StatusRow(title: "Lost BMCA To (priority1 / priority2):",
+                                          status: "\(competitorPriority1) / \(competitorPriority2)")
+                            } else {
+                                StatusRow(title: "Foreign Master Heard:", status: "No")
+                            }
+                        }
+                    }
+                }
+
                 // Connection Status
                 GroupBox("Connection Status") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -624,7 +711,27 @@ struct PTPDiagnosticView: View {
     private var domainMismatchErrors: Int {
         return ptpDiagnostics?.domainMismatchErrors ?? 0
     }
-    
+
+    private var role: PTPDiagnostics.Role {
+        return ptpDiagnostics?.role ?? .slave
+    }
+
+    private var everWasMaster: Bool {
+        return ptpDiagnostics?.everWasMaster ?? false
+    }
+
+    private var hasCompetitor: Bool {
+        return ptpDiagnostics?.hasCompetitor ?? false
+    }
+
+    private var competitorPriority1: Int {
+        return ptpDiagnostics?.competitorPriority1 ?? 0
+    }
+
+    private var competitorPriority2: Int {
+        return ptpDiagnostics?.competitorPriority2 ?? 0
+    }
+
     private func refreshDiagnostics() {
         // In a real implementation, this would fetch updated diagnostics from the driver
         // For now, we'll simulate with mock data
@@ -654,6 +761,22 @@ struct PTPDiagnosticView: View {
             currentDomain: 0,
             preferredDomain: 0
         )
+        // Role and competitor fields aren't part of the struct's memberwise
+        // init above (added after it) — set separately, still mock, but at
+        // least tracking the one real setting on this screen: if master
+        // capability is off, there's nothing to simulate winning BMCA with.
+        if driverManager.ptpMasterCapable {
+            ptpDiagnostics?.role = .master
+            ptpDiagnostics?.everWasMaster = true
+            ptpDiagnostics?.masterClockID = "SELF (acting as grandmaster)"
+            ptpDiagnostics?.hasCompetitor = false
+        } else {
+            ptpDiagnostics?.role = .slave
+            ptpDiagnostics?.everWasMaster = false
+            ptpDiagnostics?.hasCompetitor = true
+            ptpDiagnostics?.competitorPriority1 = 128
+            ptpDiagnostics?.competitorPriority2 = 128
+        }
     }
     
     private func resetCounters() {

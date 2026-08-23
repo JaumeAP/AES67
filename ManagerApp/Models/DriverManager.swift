@@ -59,6 +59,20 @@ struct PTPDiagnostics {
     // PTP domain info
     var currentDomain: Int = 0
     var preferredDomain: Int = 0
+
+    // Role — mirrors PTPDiagnostics::Role (NetworkEngine/PTP/PTPDiagnostics.h).
+    // Only meaningful when the driver was built with master capability
+    // (PTPArbitrator); a plain slave-only driver always reports .slave.
+    enum Role { case slave, master }
+    var role: Role = .slave
+    var everWasMaster: Bool = false
+
+    // BMCA competitor — who we're losing to (or still listening for) while
+    // role == .slave. hasCompetitor is false both before anything's been
+    // heard yet and once role == .master (nothing to compete with then).
+    var hasCompetitor: Bool = false
+    var competitorPriority1: Int = 0
+    var competitorPriority2: Int = 0
 }
 
 class DriverManager: ObservableObject {
@@ -87,6 +101,7 @@ class DriverManager: ObservableObject {
         checkDriverStatus()
         loadConfiguration()
         loadDeviceSampleRate()
+        loadPTPMasterSettings()
         startAutoRefresh()
     }
 
@@ -235,6 +250,144 @@ class DriverManager: ObservableObject {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.checkDriverStatus()
+        }
+    }
+
+    // MARK: - PTP Master Clock Source
+    //
+    // This is the one piece of PTP master configuration that's real, not
+    // mock: it reads/writes the same ptp_master.json file
+    // PTPMasterSettingsManager reads in the driver (NetworkEngine/PTP/
+    // PTPMasterSettings.h) — same directory convention as streams.json
+    // (configURL above), different filename. Takes effect on the driver's
+    // next start (PTPClock's constructor loads it once, at construction),
+    // not live — there's no running-driver IPC channel for that yet (see
+    // ptpDiagnostics below, which is still mock for exactly that reason).
+
+    struct PTPClockSourceOption: Identifiable, Equatable {
+        let id: String       // "internal", or the device's UID
+        let name: String
+        let isInternal: Bool
+    }
+
+    @Published var ptpMasterCapable: Bool = false
+    @Published var ptpClockSourceKind: String = "internal" // "internal" | "localAudioDevice"
+    @Published var ptpLockToDeviceUID: String = ""
+
+    private var ptpMasterConfigURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/AES67Driver/ptp_master.json")
+    }
+
+    /// "Internal" plus every CoreAudio device that exposes its own clock
+    /// domain (kAudioDevicePropertyClockDomain != 0) — same criterion as
+    /// AudioClockDeviceList::listClockCapableAudioDevices() on the driver
+    /// side, reimplemented here because this is a separate process with no
+    /// way to call into the driver's C++ directly. Excludes the AES67
+    /// device itself: it has no hardware clock of its own to offer back.
+    func listAvailableClockSources() -> [PTPClockSourceOption] {
+        var options: [PTPClockSourceOption] = [
+            PTPClockSourceOption(id: "internal", name: "Internal (this Mac's clock)", isInternal: true)
+        ]
+
+        let aes67Device = findAES67DeviceID()
+
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
+                                              &propertyAddress, 0, nil, &dataSize) == noErr else {
+            return options
+        }
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var devices = [AudioDeviceID](repeating: 0, count: deviceCount)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                          &propertyAddress, 0, nil, &dataSize, &devices) == noErr else {
+            return options
+        }
+
+        for device in devices {
+            if let aes67 = aes67Device, device == aes67 { continue }
+
+            var clockDomain: UInt32 = 0
+            var clockAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyClockDomain,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var size = UInt32(MemoryLayout<UInt32>.size)
+            let status = AudioObjectGetPropertyData(device, &clockAddr, 0, nil, &size, &clockDomain)
+            guard status == noErr, clockDomain != 0 else { continue }
+
+            var uidAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uidRef: CFString? = nil
+            var uidSize = UInt32(MemoryLayout<CFString?>.size)
+            guard AudioObjectGetPropertyData(device, &uidAddr, 0, nil, &uidSize, &uidRef) == noErr,
+                  let uid = uidRef as String? else { continue }
+
+            var nameAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var nameRef: CFString? = nil
+            var nameSize = UInt32(MemoryLayout<CFString?>.size)
+            let name: String
+            if AudioObjectGetPropertyData(device, &nameAddr, 0, nil, &nameSize, &nameRef) == noErr,
+               let n = nameRef as String? {
+                name = n
+            } else {
+                name = "(unnamed device)"
+            }
+
+            options.append(PTPClockSourceOption(id: uid, name: name, isInternal: false))
+        }
+
+        return options
+    }
+
+    /// Loads the persisted choice, defaulting to master capability off
+    /// (exactly the driver's original slave-only behavior) if the file
+    /// doesn't exist yet.
+    func loadPTPMasterSettings() {
+        guard let data = try? Data(contentsOf: ptpMasterConfigURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            ptpMasterCapable = false
+            ptpClockSourceKind = "internal"
+            ptpLockToDeviceUID = ""
+            return
+        }
+        ptpMasterCapable = obj["masterCapable"] as? Bool ?? false
+        ptpClockSourceKind = obj["clockSourceKind"] as? String ?? "internal"
+        ptpLockToDeviceUID = obj["lockToDeviceUID"] as? String ?? ""
+    }
+
+    /// Persists the current selection. The driver only reads this at
+    /// startup (PTPClock's constructor) — changing it here doesn't affect
+    /// an already-running driver; restart Core Audio (the existing
+    /// "Restart Core Audio" action) to apply it.
+    func savePTPMasterSettings() {
+        let dir = ptpMasterConfigURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let obj: [String: Any] = [
+                "version": "1.0",
+                "masterCapable": ptpMasterCapable,
+                "clockSourceKind": ptpClockSourceKind,
+                "lockToDeviceUID": ptpLockToDeviceUID,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
+            try data.write(to: ptpMasterConfigURL, options: .atomic)
+        } catch {
+            showAlert(title: "Save Failed",
+                     message: "Could not save the PTP clock source setting: \(error.localizedDescription)")
         }
     }
 
