@@ -217,8 +217,22 @@ struct AddStreamView: View {
                         HStack {
                             Text("PTP Domain")
                             Spacer()
-                            Stepper("\(ptpDomain)", value: $ptpDomain, in: 0...127)
-                                .frame(width: 120)
+                            // Locked to the active compatibility profile's
+                            // fixed domain (AES67's mandatory configuration
+                            // is domain 0) — free 0...127 for profiles that
+                            // don't pin one (RAVENNA, Dante, ST 2110-30,
+                            // CP850, DAC3202). See DriverManager's
+                            // CompatibilityProfileOption.
+                            if driverManager.activeCompatibilityProfile.domainIsFixed {
+                                Text("\(driverManager.activeCompatibilityProfile.fixedDomain) (fixed by \(driverManager.activeCompatibilityProfile.name))")
+                                    .foregroundColor(.secondary)
+                                    .onAppear {
+                                        ptpDomain = driverManager.activeCompatibilityProfile.fixedDomain
+                                    }
+                            } else {
+                                Stepper("\(ptpDomain)", value: $ptpDomain, in: 0...127)
+                                    .frame(width: 120)
+                            }
                         }
                     }
 
