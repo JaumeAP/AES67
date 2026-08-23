@@ -1347,6 +1347,80 @@ class DriverManager: ObservableObject {
         return diag
     }
 
+    // MARK: - SAP Discovery Gateway
+    //
+    // Second custom property on the same gateway — Shared/CustomProperties.h,
+    // kDiscoveredSessionsPropertySelector — carrying the sessions other
+    // devices are announcing over SAP. Kept in sync by hand with that
+    // header, same as the diagnostics selector above.
+    private static let kDiscoveredSessionsPropertySelector: AudioObjectPropertySelector = 0x61363773 // 'a67s'
+
+    /// One AES67 session another device is announcing on the network.
+    struct DiscoveredSession: Identifiable, Equatable {
+        let sessionName: String
+        let sourceAddress: String
+        let multicastAddress: String
+        let port: Int
+        let ptpDomain: Int
+        /// The announcer's own SDP, complete — enough to add the stream
+        /// without asking the user to retype anything.
+        let sdp: String
+
+        /// Announcer + session name, which is what the driver dedupes on.
+        var id: String { "\(sourceAddress)|\(sessionName)" }
+    }
+
+    @Published var discoveredSessions: [DiscoveredSession] = []
+
+    /// Sessions currently announced, straight from the running driver.
+    /// Empty when the driver isn't loaded, is an older build without this
+    /// property, or simply hasn't heard any announcements yet — none of
+    /// which are errors worth surfacing differently.
+    func fetchDiscoveredSessions() -> [DiscoveredSession] {
+        guard let deviceID = findAES67DeviceID() else { return [] }
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: Self.kDiscoveredSessionsPropertySelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else { return [] }
+
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else {
+            return []
+        }
+
+        var cfArray: CFArray? = nil
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
+              let entries = cfArray as? [[String: Any]] else {
+            return []
+        }
+
+        return entries.compactMap { entry in
+            guard let name = entry["sessionName"] as? String,
+                  let source = entry["sourceAddress"] as? String else { return nil }
+            return DiscoveredSession(
+                sessionName: name,
+                sourceAddress: source,
+                multicastAddress: entry["multicastAddress"] as? String ?? "",
+                port: (entry["port"] as? Int64).map(Int.init) ?? 5004,
+                ptpDomain: (entry["ptpDomain"] as? Int64).map(Int.init) ?? 0,
+                sdp: entry["sdp"] as? String ?? ""
+            )
+        }
+    }
+
+    /// Refreshes discoveredSessions on the main thread. Called by the
+    /// discovery UI while it's open rather than on the shared auto-refresh
+    /// timer — there's no reason to keep querying when nobody's looking.
+    func refreshDiscoveredSessions() {
+        let sessions = fetchDiscoveredSessions()
+        DispatchQueue.main.async {
+            self.discoveredSessions = sessions
+        }
+    }
+
     /// Finds the AES67 virtual audio device ID
     private func findAES67DeviceID() -> AudioDeviceID? {
         var propertyAddress = AudioObjectPropertyAddress(
