@@ -116,13 +116,28 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // manual's own warning that DAC3201 "uses a different protocol
         // that is not supported by the Dolby Multichannel Amplifier or
         // DAC3202." AES67/Atmos Connect exists on the CP850 as a separate
-        // licensed "enablement" this manual doesn't itself configure. So
-        // the parameters below remain inherited from the CP950/CP950A and
-        // DMA manuals' shared-family documentation (CP950/CP950A being
-        // CP850's own confirmed successor line) rather than confirmed by
-        // a CP850-specific AES67 configuration guide — this manual
-        // narrows that gap to "genuinely not published anywhere for
-        // CP850", not "not yet looked for".
+        // licensed "enablement" this manual doesn't itself configure.
+        //
+        // That the AES67 mode is real, not just a name on a spec sheet, is
+        // now independently confirmed: Docs/references/
+        // merging_cp850_aes67_config_notes.md (a third-party interop guide,
+        // tested against CP850 firmware V2.3.1.4) walks through enabling it
+        // via System > Network > Dolby Atmos Connect tab with its "legacy
+        // mode" checkbox unticked, and confirms — a third source, after the
+        // DMA and CP950/CP950A manuals — that the CP850 is meant to win PTP
+        // grandmaster and the downstream device should be slave, matching
+        // ptpRole below. Its own worked example uses custom PTP domain/
+        // priority/multicast/port values, though, chosen for a specific
+        // non-Dolby receiver via the "advanced mode" CP950/CP950A's manual
+        // describes for exactly that purpose — not Dolby's own factory
+        // defaults, so they aren't adopted here (see that file for why).
+        //
+        // Net effect: the parameters below remain inherited from the
+        // CP950/CP950A and DMA manuals' shared-family documentation
+        // (CP950/CP950A being CP850's own confirmed successor line) rather
+        // than confirmed by a CP850-specific Dolby AES67 configuration
+        // guide — genuinely not published anywhere by Dolby for CP850,
+        // not merely not yet looked for.
         //
         // Digital cinema audio (DCI spec): 48 or 96 kHz, up to 24-bit PCM.
         // Not AES67's 44.1 kHz — cinema doesn't use it.
@@ -151,11 +166,15 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "nothing calls it yet, so no marking is actually applied. No "
             "documented fixed PTP domain; cinema installations set their "
             "own house domain (factory default, not a requirement) — "
-            "unlike CP950/CP950A/DMA/DAC3202, no CP850-specific manual "
-            "documents its AES67 mode's own PTP/multicast defaults, so "
-            "these parameters are inherited from that shared family "
-            "rather than independently confirmed for CP850. This driver "
-            "is always PTP slave under this profile — it never contends "
+            "unlike CP950/CP950A/DMA/DAC3202, no CP850-specific Dolby "
+            "manual documents its AES67 mode's own PTP/multicast "
+            "defaults (a third-party interop guide confirms the mode is "
+            "real and where to enable it, System > Network > Dolby Atmos "
+            "Connect tab, but its example uses custom non-Dolby values, "
+            "not Dolby's own factory defaults), so these parameters "
+            "remain inherited from that shared family rather than "
+            "independently confirmed for CP850. This driver is always "
+            "PTP slave under this profile — it never contends "
             "for grandmaster. Receive-only: this driver may only add RX "
             "streams under this profile, up to 64 channels total, the "
             "most the CP850 renders.";

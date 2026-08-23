@@ -95,3 +95,17 @@ belongs to the original publisher (Dolby Laboratories).
   genuinely aren't any published for CP850 itself, and separately
   documents the DAC3201 incompatibility so it doesn't get confused with
   DAC3202/DMA gear.
+
+- `merging_cp850_aes67_config_notes.md` — not a Dolby source: a
+  third-party (Merging Technologies) interop guide, kept because it
+  settles what the Issue 2 manual above couldn't — whether the CP850's
+  AES67 mode is a real, documented UI at all. It is: System > Network >
+  Dolby Atmos Connect tab, "legacy mode" unticked, tested against CP850
+  firmware V2.3.1.4. Also confirms, a third independent source after the
+  DMA and CP950/CP950A manuals, that the CP850 is meant to win PTP
+  grandmaster and the downstream device should be slave — matching this
+  driver's CP850 `ptpRole = ForcedSlave`. Its own worked example's PTP
+  domain/priority/multicast/port values are NOT adopted, though — they're
+  the integrator's own choices for a specific non-Dolby receiver via
+  "advanced mode," not Dolby's factory defaults; see the file itself for
+  the full reasoning.
