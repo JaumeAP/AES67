@@ -134,10 +134,15 @@ struct ProfileParametersView: View {
             )
             parameterRow(
                 "Packet time",
-                value: profile.allowedPtimesUs.map { Self.formatPtime($0) }.joined(separator: ", "),
+                value: profile.allowedPtimesUs.isEmpty
+                    ? "any on receive · 1 ms on transmit"
+                    : profile.allowedPtimesUs.map { Self.formatPtime($0) }.joined(separator: ", "),
                 locked: true,
-                note: "This driver's transmitter emits 1 ms packets and can't be "
-                    + "reconfigured, so this is a hard limit either way."
+                note: profile.allowedPtimesUs.isEmpty
+                    ? "This profile places no packet-time limit on received streams; "
+                        + "the transmitter still emits 1 ms."
+                    : "This driver's transmitter emits 1 ms packets and can't be "
+                        + "reconfigured, so this is a hard limit either way."
             )
             parameterRow(
                 "Encoding",
