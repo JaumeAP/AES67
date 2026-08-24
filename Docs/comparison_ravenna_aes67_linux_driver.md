@@ -215,9 +215,13 @@ that declares no grandmaster is never refused on this ground.
 `setIgnoreRefClockMismatch()` is the escape hatch, driver-wide where
 theirs is per sink.
 
-Still missing: `refclk_ptp_traceable`, which is about whether the clock
-chain reaches a traceable source at all rather than whether two streams
-agree.
+`refclk_ptp_traceable` — the RFC 7273 traceable form,
+`a=ts-refclk:ptp=IEEE1588-2008:traceable`, where the grandmaster is locked
+to a traceable primary reference (e.g. GPS) and pins no gmid/domain — is
+now handled too: `SDPParser` parses it into `SDPSession::ptpTraceable`
+(clearing the gmid so a receiver won't lock to an identity allowed to
+change) and regenerates it in preference to a named grandmaster.
+Round-tripped in TestSDPParser.
 
 ### Wider format support
 

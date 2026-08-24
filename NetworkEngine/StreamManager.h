@@ -194,7 +194,8 @@ public:
         uint16_t port,
         uint16_t numChannels,
         const ChannelMapping& mapping,
-        uint16_t sourcePort = 0
+        uint16_t sourcePort = 0,
+        int dscp = -1
     );
 
     /// Creates a TX stream of any width as one or more AES67 flows, each
@@ -229,7 +230,8 @@ public:
         const std::string& baseMulticastIP,
         uint16_t port,
         uint16_t numChannels,
-        const ChannelMapping& mapping
+        const ChannelMapping& mapping,
+        int dscp = -1
     );
 
     // Export stream to SDP file
@@ -305,6 +307,14 @@ public:
             return SinkFollowDecision::ChannelCountChanged;
         }
         return SinkFollowDecision::Follow;
+    }
+
+    // Effective DSCP for a transmit stream: the stream's own override when
+    // set (>= 0), else the active profile's recommendedDscp. Inline + static
+    // so it is unit-testable without a live StreamManager. -1 out means leave
+    // the socket unmarked.
+    static int resolveEffectiveDscp(int perSourceDscp, int profileDscp) {
+        return perSourceDscp >= 0 ? perSourceDscp : profileDscp;
     }
 
     // Enable/disable auto sink-follow. On by default; a source that never

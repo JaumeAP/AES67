@@ -293,7 +293,8 @@ StreamID StreamManager::createTxStream(
     uint16_t port,
     uint16_t numChannels,
     const ChannelMapping& mapping,
-    uint16_t sourcePort
+    uint16_t sourcePort,
+    int dscp
 ) {
     std::lock_guard<std::mutex> lock(streamsMutex_);
 
@@ -308,6 +309,7 @@ StreamID StreamManager::createTxStream(
     sdp.payloadType = 97; // Dynamic payload type
     sdp.sessionID = static_cast<uint64_t>(std::time(nullptr));
     sdp.sessionVersion = 1;
+    sdp.dscp = dscp; // -1 = inherit the active profile's DSCP (createTransmitter)
 
     // Validate
     std::string error;
@@ -437,7 +439,8 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
     const std::string& baseMulticastIP,
     uint16_t port,
     uint16_t numChannels,
-    const ChannelMapping& mapping
+    const ChannelMapping& mapping,
+    int dscp
 ) {
     // Note: deliberately NOT holding streamsMutex_ here — createTxStream()
     // and removeStream() below each take it themselves.
@@ -512,7 +515,7 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
             : baseName + " (flow " + std::to_string(flow + 1) +
               "/" + std::to_string(flowCount) + ")";
 
-        const StreamID id = createTxStream(flowName, flowIP, port, flowChannels, flowMapping, flowSourcePort);
+        const StreamID id = createTxStream(flowName, flowIP, port, flowChannels, flowMapping, flowSourcePort, dscp);
         if (id.isNull()) {
             AES67_LOGF("StreamManager::createTxStreamFlows: flow %u/%u of '%s' failed "
                        "— rolling back %zu already created",
@@ -1067,10 +1070,11 @@ std::unique_ptr<RTPTransmitter> StreamManager::createTransmitter(
     // This is the one place the profiles' recommendedDscp actually reaches
     // the wire — see CompatibilityProfile::recommendedDscp.
     const auto profile = CompatibilityProfile::forKind(profileKind_.load(std::memory_order_relaxed));
+    const int effectiveDscp = resolveEffectiveDscp(sdp.dscp, profile.recommendedDscp);
 
     // Transmitters read audio from OUTPUT buffers (Core Audio → Network)
     return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface,
-                                            sourcePort, profile.recommendedDscp);
+                                            sourcePort, effectiveDscp);
 }
 
 //

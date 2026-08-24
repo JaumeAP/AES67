@@ -73,7 +73,19 @@ struct SDPSession {
     // PTP timing (a=ts-refclk, a=mediaclk)
     int ptpDomain{0};               // -1 = no PTP
     std::string ptpMasterMAC;       // PTP grandmaster MAC address
+    bool ptpTraceable{false};        // a=ts-refclk:ptp=IEEE1588-2008:traceable
+                                    // (grandmaster locked to a traceable primary
+                                    // reference, e.g. GPS); per RFC 7273 no
+                                    // gmid/domain is pinned. Mutually exclusive
+                                    // with a named ptpMasterMAC.
     std::string mediaClockType{"direct=0"};  // Media clock reference
+
+    // Per-source DSCP override for THIS transmit stream. -1 (default) = use
+    // the active profile's recommendedDscp. Driver-side transmit property,
+    // not an SDP attribute (DSCP is a network egress marking, absent from
+    // RFC 4566), so it is neither parsed from nor written to the wire SDP;
+    // it lets one stream be marked differently from the profile default.
+    int dscp{-1};
 
     // Additional attributes
     std::string direction{"recvonly"};  // sendonly, recvonly, sendrecv, inactive
