@@ -180,12 +180,27 @@ void AES67Device::Initialize() {
                    unitIndex, profile.maxUnits, flowOffset, flowsPerUnit);
     }
 
-    // SAP discovery. Passive: this listens for other devices' session
-    // announcements so ManagerApp can offer them, and announces nothing of
-    // its own. Failing to start is not fatal — discovery is a convenience,
+    // SAP discovery. Listens for other devices' session announcements so
+    // ManagerApp can offer them and receive streams can auto-follow a moved
+    // source (below); our own sources are announced separately by
+    // SAPAnnouncer. Failing to start is not fatal — discovery is a convenience,
     // and a driver that carries audio without it is far better than one
     // that refuses to load because a multicast join failed.
     sapListener_ = std::make_unique<SAPListener>();
+    if (sapListener_) {
+        // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
+        // source re-announces with changed transport, re-point any receive
+        // stream bound to it. Parsing happens here, off the audio path; the
+        // match/re-subscribe is StreamManager's job.
+        sapListener_->registerAnnouncementCallback(
+            [this](const SAPAnnouncement& a) {
+                if (a.isDeletion || a.sessionDescription.empty()) return;
+                if (!streamManager_) return;
+                auto parsed = SDPParser::parseString(a.sessionDescription);
+                if (!parsed) return;
+                streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
+            });
+    }
     if (sapListener_->initialize() && sapListener_->start()) {
         AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
     } else {

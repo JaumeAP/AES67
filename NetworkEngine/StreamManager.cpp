@@ -638,6 +638,78 @@ std::vector<SDPSession> StreamManager::getTransmitSessions() const {
     return sessions;
 }
 
+void StreamManager::setAutoSinkFollow(bool enabled) {
+    autoSinkFollowEnabled_.store(enabled, std::memory_order_relaxed);
+}
+
+
+size_t StreamManager::updateReceiveStreamsFromAnnouncement(const SDPSession& announced) {
+    if (!autoSinkFollowEnabled_.load(std::memory_order_relaxed)) return 0;
+    if (announced.sessionName.empty()) return 0;
+
+    struct Pending {
+        StreamID id;
+        size_t deviceChannelStart;
+        SDPSession newSdp;
+    };
+    std::vector<Pending> pending;
+
+    // Phase 1: find matches under the lock, but don't mutate here —
+    // removeStream/addStream take the same lock. Collect what to do, release,
+    // then act through the public API (fully-tested paths).
+    {
+        std::lock_guard<std::mutex> lock(streamsMutex_);
+        for (const auto& pair : streams_) {
+            const ManagedStream& s = pair.second;
+            if (s.isTransmit) continue; // only receive sinks follow
+
+            const SinkFollowDecision d = evaluateSinkFollow(s.sdp, announced);
+            if (d == SinkFollowDecision::ChannelCountChanged) {
+                AES67_LOGF("StreamManager: source '%s' changed channel count "
+                           "(%u -> %u); not auto-following (needs manual re-map)",
+                           s.sdp.sessionName.c_str(), s.sdp.numChannels,
+                           announced.numChannels);
+                continue;
+            }
+            if (d != SinkFollowDecision::Follow) continue;
+
+            Pending p;
+            p.id = pair.first;
+            p.deviceChannelStart = s.mapping.deviceChannelStart;
+            p.newSdp = announced;
+            p.newSdp.sessionName = s.sdp.sessionName; // keep sink identity
+            pending.push_back(std::move(p));
+        }
+    }
+
+    // Phase 2: re-subscribe each match. removeStream frees its device
+    // channels, so re-adding at the same deviceChannelStart reclaims them.
+    size_t followed = 0;
+    for (const auto& p : pending) {
+        ChannelMapping newMapping;
+        newMapping.streamName = p.newSdp.sessionName;
+        newMapping.streamChannelCount = p.newSdp.numChannels;
+        newMapping.deviceChannelStart = p.deviceChannelStart;
+        newMapping.deviceChannelCount = p.newSdp.numChannels;
+
+        if (!removeStream(p.id)) continue;
+        StreamID newId = addStream(p.newSdp, newMapping);
+        if (!newId.isNull()) {
+            ++followed;
+            AES67_LOGF("StreamManager: sink '%s' followed source to %s:%u "
+                       "(%s %u ch @ %u Hz)",
+                       p.newSdp.sessionName.c_str(),
+                       p.newSdp.connectionAddress.c_str(), p.newSdp.port,
+                       p.newSdp.encoding.c_str(), p.newSdp.numChannels,
+                       p.newSdp.sampleRate);
+        } else {
+            AES67_LOGF("StreamManager: sink '%s' follow FAILED to re-add after "
+                       "source change — sink is now down", p.newSdp.sessionName.c_str());
+        }
+    }
+    return followed;
+}
+
 std::optional<StreamInfo> StreamManager::getStreamInfo(const StreamID& id) const {
     std::lock_guard<std::mutex> lock(streamsMutex_);
 
