@@ -377,7 +377,7 @@ bool testProfilesRecordTheDscpTheirGearExpects() {
 bool testOnlyDolbyEndpointsChainMultipleUnits() {
     std::cout << "Test: B14 · only the Dolby profile chains more than one unit (max 3)... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        const bool isDolby = profile.displayName.rfind("Dolby", 0) == 0;
+        const bool isDolby = CompatibilityProfile::kindToString(profile.kind).rfind("dolby", 0) == 0;
         if (!isDolby) {
             // No non-Dolby profile chains — a single unit only.
             TEST_ASSERT(profile.maxUnits == 1,
@@ -406,7 +406,7 @@ bool testOnlyDolbyEndpointsChainMultipleUnits() {
 bool testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme() {
     std::cout << "Test: B13 · only the Dolby profile uses the fixed-multicast/per-flow-source-port scheme... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        const bool isDolby = profile.displayName.rfind("Dolby", 0) == 0;
+        const bool isDolby = CompatibilityProfile::kindToString(profile.kind).rfind("dolby", 0) == 0;
         if (isDolby) continue; // the whole Dolby family may use the Atmos Connect scheme
         TEST_ASSERT(!profile.useFixedMulticastWithPerFlowSourcePort,
                     profile.displayName + " must keep the AES67/Dante default addressing scheme");

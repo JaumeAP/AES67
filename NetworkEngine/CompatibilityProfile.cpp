@@ -48,7 +48,7 @@ CompatibilityProfile makeDolbyModelProfile(CompatibilityProfileKind kind,
         ", up to " + std::to_string(channels) + " channels. Shared family "
         "parameters as the Dolby profile (48/96 kHz, 1 ms, L16/L24, PTP domain "
         "109, multicast 239.81.83.67, the Atmos Connect wire scheme). For "
-        "automatic discovery instead of picking a model, use Dolby LAN. Not a "
+        "automatic discovery instead of picking a model, use Autodetect. Not a "
         "conformance claim; PTP has never been verified against real hardware.";
     return p;
 }
@@ -221,7 +221,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         break;
 
     case CompatibilityProfileKind::Dolby: {
-        p.displayName = "Dolby Generic";
+        p.displayName = "Generic";
         // The plain, minimal Dolby profile: the parameters common to the whole
         // Dolby Atmos Connect family, a single generic unit, configured by
         // hand. No automatic discovery (see DolbyLAN below). Shared family
@@ -256,7 +256,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "6517 — source port stepped per 8-channel flow); DSCP EF/46. "
             "Direction and PTP role are open — set them by how you configure "
             "the streams. For automatic discovery of Dolby gear on the network "
-            "and multi-unit chaining, use \"Dolby LAN\" instead. Not a "
+            "and multi-unit chaining, use Autodetect instead. Not a "
             "conformance claim; PTP has never been verified against real Dolby "
             "hardware.";
         break;
@@ -267,7 +267,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // variant is about: automatic discovery and multi-unit chaining.
         p = forKind(CompatibilityProfileKind::Dolby);
         p.kind = CompatibilityProfileKind::DolbyLAN;
-        p.displayName = "Dolby LAN";
+        p.displayName = "Autodetect";
         p.maxUnits = 3;                // up to three chained OUTPUT amplifier units (DMA §2.3); inputs are not capped
         p.usesLanAutoDetection = true; // the Inputs/Outputs tabs list found gear
         p.caveats =
