@@ -13,6 +13,7 @@
 #include "../NetworkEngine/Discovery/SAPListener.h"
 #include "../NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "../NetworkEngine/PTP/PTPPeerObserver.h"
+#include "../NetworkEngine/Discovery/RTCPMonitor.h"
 #include "../NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
 #include <aspl/Stream.hpp>
@@ -174,6 +175,11 @@ private:
     /// mechanism as the two above.
     CFPropertyListRef GetPtpPeersProperty() const;
 
+    /// Backs kRtcpReceiversPropertySelector: a CFArray of CFDictionaries, one
+    /// per distinct receiver that has sent an RTCP report on a transmit
+    /// stream (RTCPMonitor) - the second amplifier-detection vector.
+    CFPropertyListRef GetRtcpReceiversProperty() const;
+
     // Initialize streams and IO handler
     void InitializeStreams();
     void InitializeIOHandler();
@@ -208,6 +214,7 @@ private:
     std::unique_ptr<SAPListener> sapListener_;
     std::unique_ptr<SAPAnnouncer> sapAnnouncer_;
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
+    std::unique_ptr<RTCPMonitor> rtcpMonitor_;
 
     // Channels the mapper may hand out to streams, per direction. Set once
     // in the constructor from the persisted DeviceChannelSettings.rx/.tx and

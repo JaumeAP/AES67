@@ -173,6 +173,7 @@ set(NETWORK_SOURCES
     NetworkEngine/DoPDecoder.cpp
     NetworkEngine/Discovery/SAPListener.cpp
     NetworkEngine/Discovery/SAPAnnouncer.cpp
+    NetworkEngine/Discovery/RTCPMonitor.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
 )
 
