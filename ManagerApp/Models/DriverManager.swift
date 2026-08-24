@@ -1129,15 +1129,18 @@ class DriverManager: ObservableObject {
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "ravenna",
               name: "RAVENNA",
-              caveats: "Constraints are currently identical to AES67: RAVENNA is more permissive, "
-                     + "not less, and the extra freedom (1–192 samples per packet) needs a "
-                     + "configurable transmit packet time this driver doesn't have yet. "
-                     + "RAVENNA's own additions — Bonjour discovery and stream redundancy — "
-                     + "are not implemented.",
+              caveats: "A true AES67 superset on receive: accepts RAVENNA's full sample-rate "
+                     + "set (44.1–192 kHz) and any packet time, so a RAVENNA source is not "
+                     + "rejected for using a rate or ptime AES67 doesn't name. Two honest edges "
+                     + "remain, both receiver-architecture limits, not RAVENNA ones: a single "
+                     + "stream is still capped at 8 channels per flow (wider RAVENNA streams "
+                     + "must be split), and only L16/L24 are decoded (RAVENNA's L32 is not). "
+                     + "Transmit still emits 1 ms L24. RAVENNA's Bonjour discovery and stream "
+                     + "redundancy are not implemented.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
-              allowedSampleRates: [44100, 48000, 96000], allowedPtimesUs: [1000],
+              allowedSampleRates: [44100, 48000, 88200, 96000, 176400, 192000], allowedPtimesUs: [],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "st2110-30",
