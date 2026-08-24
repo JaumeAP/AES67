@@ -599,10 +599,37 @@ struct ProfileParametersView: View {
                 }
                 Spacer()
             }
+            // When feeding a later unit, the source-port offset depends on the
+            // ACTUAL sizes of the units before it — a chain may mix 16/24/32-
+            // channel units (2/3/4 flows each). Let each preceding unit's size
+            // be set; "Same" falls back to this driver's own output width.
+            if multiUnit && driverManager.amplifierUnit > 1 {
+                ForEach(0..<(driverManager.amplifierUnit - 1), id: \.self) { i in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(DriverManager.amplifierUnitLabel(i + 1)) unit size")
+                            .frame(width: 220, alignment: .leading)
+                            .foregroundColor(.secondary)
+                        Picker("", selection: Binding(
+                            get: { driverManager.precedingUnitChannel(i) },
+                            set: { driverManager.setPrecedingUnitChannel(i, $0) }
+                        )) {
+                            ForEach(DriverManager.chainUnitSizeChoices, id: \.self) { ch in
+                                Text(ch == 0 ? "Same as output" : "\(ch) ch").tag(ch)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 180, alignment: .leading)
+                        .disabled(driverManager.isDriverLoaded)
+                        Spacer()
+                    }
+                }
+            }
             Text(multiUnit
                  ? "Up to \(profile.maxUnits) units chain in one auditorium, each carrying the "
                    + "next block of channels. Selecting a unit shifts this driver's flows to that "
-                   + "unit's own source ports — see below."
+                   + "unit's own source ports. Units need not be the same size — set each "
+                   + "preceding unit's channel count above so the source ports line up (a 16/24/"
+                   + "32-channel unit takes 2/3/4 source ports)."
                  : "\(profile.name) is a single-unit profile — nothing to select.")
                 .font(.caption)
                 .foregroundColor(.secondary)
