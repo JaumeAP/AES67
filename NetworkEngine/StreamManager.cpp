@@ -622,6 +622,22 @@ std::vector<StreamInfo> StreamManager::getActiveStreams() const {
     return activeStreams;
 }
 
+std::vector<SDPSession> StreamManager::getTransmitSessions() const {
+    // The full SDP of every TX stream — what SAP announcement broadcasts so
+    // other AES67 gear can discover and subscribe to what this driver
+    // sends. RX streams are not announced: they are things this driver
+    // receives, not sources it offers.
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    std::vector<SDPSession> sessions;
+    for (const auto& pair : streams_) {
+        if (pair.second.isTransmit) {
+            sessions.push_back(pair.second.sdp);
+        }
+    }
+    return sessions;
+}
+
 std::optional<StreamInfo> StreamManager::getStreamInfo(const StreamID& id) const {
     std::lock_guard<std::mutex> lock(streamsMutex_);
 
