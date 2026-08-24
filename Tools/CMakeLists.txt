@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.15)
 add_executable(AES67TestSender
     AES67TestSender.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/NetworkUtils.cpp
 )
 
@@ -15,11 +16,13 @@ target_include_directories(AES67TestSender PRIVATE
 )
 
 target_compile_features(AES67TestSender PRIVATE cxx_std_17)
+target_link_libraries(AES67TestSender PRIVATE "-framework Accelerate")
 
 # AES67 Test Receiver: joins multicast group and reports received RTP packets
 add_executable(AES67TestReceiver
     AES67TestReceiver.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/NetworkUtils.cpp
 )
 
@@ -28,6 +31,7 @@ target_include_directories(AES67TestReceiver PRIVATE
 )
 
 target_compile_features(AES67TestReceiver PRIVATE cxx_std_17)
+target_link_libraries(AES67TestReceiver PRIVATE "-framework Accelerate")
 
 message(STATUS "Tools configured:")
 message(STATUS "  - AES67TestSender")

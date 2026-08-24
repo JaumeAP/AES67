@@ -538,6 +538,26 @@ bool testSinkFollowChannelCountChange() {
     return true;
 }
 
+
+bool testResolveEffectiveDscp() {
+    std::cout << "Test: per-source DSCP resolution (override vs profile)... ";
+
+    // No override (-1) -> take the profile's value, whatever it is.
+    TEST_ASSERT(StreamManager::resolveEffectiveDscp(-1, 46) == 46,
+                "No override must use the profile DSCP (46/EF)");
+    TEST_ASSERT(StreamManager::resolveEffectiveDscp(-1, -1) == -1,
+                "No override and no profile DSCP stays unmarked (-1)");
+
+    // A per-source value overrides the profile, including down to 0 (CS0).
+    TEST_ASSERT(StreamManager::resolveEffectiveDscp(34, 46) == 34,
+                "Per-source 34 (AF41) must override profile 46");
+    TEST_ASSERT(StreamManager::resolveEffectiveDscp(0, 46) == 0,
+                "Per-source 0 is a real value and must override, not fall through");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
 //
 // Main Test Runner
 //
@@ -605,6 +625,7 @@ int main() {
     testSinkFollowUnchangedIsNoOp();
     testSinkFollowNotBound();
     testSinkFollowChannelCountChange();
+    testResolveEffectiveDscp();
     std::cout << std::endl;
 
     std::cout << "========================================" << std::endl;
