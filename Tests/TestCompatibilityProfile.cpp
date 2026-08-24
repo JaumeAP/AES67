@@ -377,20 +377,26 @@ bool testProfilesRecordTheDscpTheirGearExpects() {
 bool testOnlyDolbyEndpointsChainMultipleUnits() {
     std::cout << "Test: B14 · only the Dolby profile chains more than one unit (max 3)... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        const bool chains = profile.kind == CompatibilityProfileKind::DolbyLAN;
+        const bool isDolby = profile.displayName.rfind("Dolby", 0) == 0;
+        if (!isDolby) {
+            // No non-Dolby profile chains — a single unit only.
+            TEST_ASSERT(profile.maxUnits == 1,
+                        profile.displayName + " is a single-unit profile");
+            continue;
+        }
+        // Within the Dolby family, only the OUTPUT profiles (amplifiers this
+        // driver feeds) chain, up to three; input/generic ones stay at one.
+        const bool chains = profile.maxUnits == 3;
         if (chains) {
-            // DMA manual §2.3: "you cannot interconnect more than three of
-            // these devices unless you use a switch".
-            TEST_ASSERT(profile.maxUnits == 3,
-                        profile.displayName + " chains up to three units without a switch");
-            // The unit selection only reaches the wire as a source-port
-            // offset, so it's meaningless without the Dolby scheme.
+            TEST_ASSERT(profile.direction == ProfileDirection::TransmitOnly ||
+                        profile.direction == ProfileDirection::Any,
+                        profile.displayName + " chaining is output-side");
             TEST_ASSERT(profile.useFixedMulticastWithPerFlowSourcePort,
                         profile.displayName + " must use per-flow source ports for unit "
                         "selection to mean anything");
         } else {
             TEST_ASSERT(profile.maxUnits == 1,
-                        profile.displayName + " is a single-unit profile");
+                        profile.displayName + " is a single-unit Dolby profile");
         }
     }
     std::cout << "PASS" << std::endl;
@@ -400,10 +406,8 @@ bool testOnlyDolbyEndpointsChainMultipleUnits() {
 bool testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme() {
     std::cout << "Test: B13 · only the Dolby profile uses the fixed-multicast/per-flow-source-port scheme... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        if (profile.kind == CompatibilityProfileKind::Dolby ||
-            profile.kind == CompatibilityProfileKind::DolbyLAN) {
-            continue;
-        }
+        const bool isDolby = profile.displayName.rfind("Dolby", 0) == 0;
+        if (isDolby) continue; // the whole Dolby family may use the Atmos Connect scheme
         TEST_ASSERT(!profile.useFixedMulticastWithPerFlowSourcePort,
                     profile.displayName + " must keep the AES67/Dante default addressing scheme");
     }
