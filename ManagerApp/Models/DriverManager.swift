@@ -1249,7 +1249,7 @@ class DriverManager: ObservableObject {
             recommendedMulticastAddress: "239.81.83.67", recommendedDscp: dscp,
             allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
             allowedEncodings: ["L16", "L24"],
-            usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "",
+            usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "239.81",
             usesLanAutoDetection: false, group: "Dolby")
     }
 
@@ -1267,7 +1267,7 @@ The minimal Dolby profile — the parameters common to every Dolby Atmos Connect
               maxUnits: 1, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
               allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
-              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "",
+              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "239.81",
               group: "Dolby")
 
     private static let dolbyLANProfile: CompatibilityProfileOption =
@@ -1281,7 +1281,7 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
               maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
               allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
-              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "",
+              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "239.81",
               usesLanAutoDetection: true, group: "Dolby")
 
     @Published var compatibilityProfileID: String = "aes67"
