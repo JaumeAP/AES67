@@ -128,15 +128,33 @@ struct ContentView: View {
                 Text("Compatible with:")
                     .font(.callout)
 
-                Picker("", selection: Binding(
-                    get: { driverManager.compatibilityProfileID },
-                    set: { driverManager.compatibilityProfileID = $0; driverManager.saveCompatibilityProfile() }
-                )) {
-                    ForEach(DriverManager.compatibilityProfiles) { profile in
-                        Text(profile.name).tag(profile.id)
+                // A menu rather than a flat picker so the Dolby family — the
+                // generic profile, the LAN auto-detecting one, and one entry
+                // per model — folds into a single "Dolby" submenu instead of
+                // crowding the top level.
+                Menu {
+                    ForEach(DriverManager.compatibilityProfiles.filter { $0.group == nil }) { profile in
+                        Button(profile.name) { selectProfile(profile.id) }
                     }
+                    let dolby = DriverManager.compatibilityProfiles.filter { $0.group == "Dolby" }
+                    if !dolby.isEmpty {
+                        Menu("Dolby") {
+                            ForEach(dolby) { profile in
+                                Button(profile.name) { selectProfile(profile.id) }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(driverManager.activeCompatibilityProfile.name)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(width: 220)
                 }
-                .labelsHidden()
+                .menuStyle(.borderlessButton)
                 .frame(width: 220)
                 .disabled(locked)
                 .help(driverManager.activeCompatibilityProfile.caveats)
@@ -234,6 +252,11 @@ struct ContentView: View {
                     .environmentObject(driverManager)
             }
         }
+    }
+
+    private func selectProfile(_ id: String) {
+        driverManager.compatibilityProfileID = id
+        driverManager.saveCompatibilityProfile()
     }
 
     var body: some View {

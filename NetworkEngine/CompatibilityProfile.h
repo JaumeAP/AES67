@@ -96,6 +96,16 @@ enum class CompatibilityProfileKind {
     /// what's found (up to three chained units). Everything the plain Dolby
     /// profile has, plus usesLanAutoDetection and multi-unit chaining.
     DolbyLAN,
+    // Per-model Dolby profiles - the specific device chosen by hand, each
+    // enforcing that model.s direction, PTP role and channel count on top of
+    // the shared family parameters. Grouped under "Dolby" in the menu.
+    DolbyDAC3202,   ///< 32-ch amplifier: transmit-only, forced master.
+    DolbyDMA16,     ///< 16-ch amplifier: transmit-only, forced master.
+    DolbyDMA24,     ///< 24-ch amplifier: transmit-only, forced master.
+    DolbyDMA32,     ///< 32-ch amplifier: transmit-only, forced master.
+    DolbyCP850,     ///< cinema processor: receive-only, forced slave, 64 ch.
+    DolbyCP950,     ///< cinema processor: receive-only, forced slave, 16 ch.
+    DolbyCP950A,    ///< cinema processor: receive-only, forced slave, 64 ch.
 };
 
 struct CompatibilityProfile {
