@@ -11,6 +11,7 @@
 #include "../Shared/RingBuffer.hpp"
 #include "../NetworkEngine/StreamManager.h"
 #include "../NetworkEngine/Discovery/SAPListener.h"
+#include "../NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "../NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
 #include <aspl/Stream.hpp>
@@ -198,6 +199,7 @@ private:
     // SAP discovery. Runs for the driver's whole life once Initialize()
     // starts it — passive listening only, it announces nothing.
     std::unique_ptr<SAPListener> sapListener_;
+    std::unique_ptr<SAPAnnouncer> sapAnnouncer_;
 
     // Channels the mapper may hand out to streams, per direction. Set once
     // in the constructor from the persisted DeviceChannelSettings.rx/.tx and
