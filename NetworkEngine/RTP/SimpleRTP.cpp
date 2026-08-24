@@ -105,6 +105,7 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     struct ip_mreq mreq;
     mreq.imr_multiaddr.s_addr = inet_addr(multicastIP);
     mreq.imr_interface = ifaceAddr;
+    multicastGroupAddr_.s_addr = mreq.imr_multiaddr.s_addr; // remember for rejoinMulticast()
 
     if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
@@ -283,6 +284,16 @@ ssize_t RTPSocket::receive(RTPPacket& packet, uint8_t* buffer, size_t bufferSize
     packet.payloadSize = bytesReceived - sizeof(RTPHeader);
 
     return bytesReceived;
+}
+
+void RTPSocket::rejoinMulticast() {
+    if (!isReceiver_ || sockfd_ < 0 || multicastGroupAddr_.s_addr == 0) return;
+    struct ip_mreq mreq;
+    mreq.imr_multiaddr = multicastGroupAddr_;
+    mreq.imr_interface = boundInterfaceAddr_;
+    // Ignore the result: EADDRINUSE means still joined; a failure while the
+    // link is down is retried on the next call.
+    setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
 }
 
 void RTPSocket::close() {

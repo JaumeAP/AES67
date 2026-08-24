@@ -117,6 +117,15 @@ private:
             int fd = openRTCPSocket(w.first.ip, w.first.port, ifAddr_);
             if (fd >= 0) sockets_[w.first] = fd;
         }
+        // Re-issue the multicast join on every current socket so a membership
+        // dropped by an interface flap is re-established — reconcile already
+        // runs every couple of seconds. Harmless (EADDRINUSE) when still joined.
+        for (const auto& kv : sockets_) {
+            ip_mreq mreq{};
+            mreq.imr_multiaddr.s_addr = ::inet_addr(kv.first.ip.c_str());
+            mreq.imr_interface = ifAddr_;
+            ::setsockopt(kv.second, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+        }
     }
 
     void run() {

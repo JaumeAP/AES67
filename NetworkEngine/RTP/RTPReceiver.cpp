@@ -264,7 +264,20 @@ void RTPReceiver::receiveLoop() {
 
     RTP::RTPPacket packet;
 
+    // Re-join the multicast group every few seconds so reception recovers on
+    // its own after a network-interface flap (cable unplug/replug), which can
+    // silently drop the membership while leaving the socket open. This is not
+    // the real-time audio callback — it runs on the receive thread — so a
+    // periodic setsockopt here is safe.
+    auto lastRejoin = std::chrono::steady_clock::now();
+
     while (running_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastRejoin >= std::chrono::seconds(5)) {
+            rtpSocket_.rejoinMulticast();
+            lastRejoin = now;
+        }
+
         // Set up select with 1ms timeout (responsive but not spinning)
         FD_ZERO(&readfds);
         int sockfd = rtpSocket_.getFd();

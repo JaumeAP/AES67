@@ -1,4 +1,5 @@
 #include "PTPPeerObserver.h"
+#include "../MulticastRejoiner.h"
 
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -92,6 +93,10 @@ public:
             return false;
         }
 
+        // Keep the PTP multicast membership alive across an interface flap.
+        if (eventFd_ >= 0) rejoiner_.add(eventFd_, kPTPMulticast, ifAddr);
+        if (generalFd_ >= 0) rejoiner_.add(generalFd_, kPTPMulticast, ifAddr);
+
         thread_ = std::thread([this] { run(); });
         return true;
     }
@@ -122,6 +127,8 @@ private:
     void run() {
         uint8_t buf[kMaxPTPMessageSize];
         while (running_.load(std::memory_order_acquire)) {
+            rejoiner_.maybeRejoin(std::chrono::steady_clock::now());
+
             fd_set rd;
             FD_ZERO(&rd);
             int maxFd = -1;
@@ -166,6 +173,7 @@ private:
     std::thread thread_;
     mutable std::mutex mutex_;
     mutable PTPPeerTable table_;
+    MulticastRejoiner rejoiner_;
 };
 
 PTPPeerObserver::PTPPeerObserver() : pimpl_(std::make_unique<Impl>()) {}

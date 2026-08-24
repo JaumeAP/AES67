@@ -8,6 +8,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include "../MulticastRejoiner.h"
 
 namespace AES67 {
 
@@ -38,6 +39,13 @@ public:
             close(sockFd_);
             return false;
         }
+
+        // A 1 s receive timeout so the listen loop wakes periodically even on a
+        // quiet network — needed so the multicast membership can be re-joined
+        // after an interface flap (see MulticastRejoiner) rather than only when
+        // a packet happens to arrive.
+        struct timeval rcvto{1, 0};
+        setsockopt(sockFd_, SOL_SOCKET, SO_RCVTIMEO, &rcvto, sizeof(rcvto));
         
         // Bind to INADDR_ANY on the SAP port rather than to one multicast
         // address, so the socket can receive traffic for MORE THAN ONE SAP
@@ -81,6 +89,12 @@ public:
             std::cerr << "Failed to join any SAP multicast group" << std::endl;
             close(sockFd_);
             return false;
+        }
+
+        // Keep those memberships alive across an interface flap.
+        for (const char* group : groups) {
+            in_addr any{}; any.s_addr = htonl(INADDR_ANY);
+            rejoiner_.add(sockFd_, group, any);
         }
 
         return true;
@@ -164,6 +178,8 @@ private:
         char buffer[2048];
         
         while (running_) {
+            rejoiner_.maybeRejoin(std::chrono::steady_clock::now());
+
             struct sockaddr_in srcAddr;
             socklen_t addrLen = sizeof(srcAddr);
             
@@ -413,6 +429,7 @@ private:
     std::atomic<bool> running_;
     int sockFd_;
     std::thread listenThread_;
+    MulticastRejoiner rejoiner_;
     
     mutable std::mutex callbacksMutex_;
     std::vector<SAPAnnouncementCallback> callbacks_;
