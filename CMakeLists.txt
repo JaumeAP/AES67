@@ -158,6 +158,7 @@ set(NETWORK_SOURCES
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPArbitrator.cpp
     NetworkEngine/PTP/CoreAudioClockSource.cpp
+    NetworkEngine/PTP/PTPPeerObserver.cpp
     NetworkEngine/PTP/PTPMasterSettings.cpp
     NetworkEngine/PTP/AudioClockDeviceList.cpp
     NetworkEngine/PTP/CustomSys.cpp
