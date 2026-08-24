@@ -44,22 +44,36 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
 
     case CompatibilityProfileKind::RAVENNA:
         p.displayName = "RAVENNA";
-        // RAVENNA is natively AES67 and imposes no *narrower* limits on
-        // these parameters — it is more permissive, not less (1-192 samples
-        // per packet vs AES67's fixed 1 ms). Since this driver's
-        // transmitter only emits 1 ms packets, that extra freedom isn't
-        // reachable, so the enforced constraint set is identical to AES67.
-        p.allowedSampleRates = {44100.0, 48000.0, 96000.0};
-        p.allowedPtimesUs = {1000}; // 1 ms
+        // RAVENNA is a SUPERSET of AES67, so this profile must accept, not
+        // narrow, what RAVENNA gear can send — otherwise a legitimate
+        // RAVENNA stream (a high sample rate, a sub-millisecond packet time)
+        // would be rejected on receive and the profile would be "compatible"
+        // in name only. So:
+        //  - the full RAVENNA sample-rate set, not AES67's three;
+        //  - NO packet-time restriction at all (empty = validate() accepts
+        //    any ptime), because RAVENNA frame sizes run 1-192 samples, a
+        //    continuum of durations no fixed list could enumerate. Our own
+        //    transmitter still emits 1 ms (a valid RAVENNA ptime); the empty
+        //    set only widens what we ACCEPT, it doesn't make us send anything
+        //    new.
+        // Encodings stay L16/L24: those are what PCMCodec can actually
+        // decode. RAVENNA also defines L32, but accepting an SDP we can't
+        // decode would be a false claim, so it is deliberately excluded.
+        p.allowedSampleRates = {44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0};
+        p.allowedPtimesUs = {}; // empty = accept any packet time (RAVENNA is unrestricted here)
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
         p.caveats =
-            "Constraints are currently identical to AES67: RAVENNA is more "
-            "permissive, not less, and the extra freedom (1-192 samples per "
-            "packet) needs a configurable transmit packet time this driver "
-            "doesn't have yet. RAVENNA's own additions — Bonjour discovery "
-            "and stream redundancy — are not implemented.";
+            "A true AES67 superset on receive: accepts RAVENNA's full sample-"
+            "rate set (44.1-192 kHz) and any packet time, so a RAVENNA source "
+            "is not rejected for using a rate or ptime AES67 doesn't name. "
+            "Two honest edges remain, both receiver-architecture limits, not "
+            "RAVENNA ones: a single stream is still capped at 8 channels per "
+            "flow (wider RAVENNA streams must be split), and only L16/L24 are "
+            "decoded (RAVENNA's L32 is not). Transmit still emits 1 ms L24. "
+            "RAVENNA's Bonjour discovery and stream redundancy are not "
+            "implemented.";
         break;
 
     case CompatibilityProfileKind::ST2110_30:
