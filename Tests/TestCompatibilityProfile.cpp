@@ -268,123 +268,77 @@ bool testAES67AcceptsNoPtpDomainSentinel() {
 // B3. CP850 / DAC3202 — direction, from OUR driver's point of view
 // ============================================================================
 
-bool testCP850IsReceiveOnlyFromOurSide() {
-    std::cout << "Test: B7 · CP850: this driver may only receive from it, up to 64 channels... ";
-    const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
-    TEST_ASSERT(cp850.direction == ProfileDirection::ReceiveOnly,
-                "CP850 renders and sends over AES67, it doesn't accept AES67 input");
-    TEST_ASSERT(cp850.maxTotalChannels == 64, "64 is the most the CP850 renders");
-    // Every profile in this family that documents a PTP domain default
-    // (DMA, CP950/CP950A, DAC3202) ships at 109 — CP850 shares it too.
-    TEST_ASSERT(cp850.recommendedPtpDomain == 109,
-                "CP850 should record the same factory-default PTP domain as the rest of the family (109)");
-    TEST_ASSERT(!cp850.domainIsFixed, "CP850's PTP domain isn't fixed — cinema installs set their own per auditorium");
+bool testDolbyIsOneFamilyProfileOpenBothWays() {
+    std::cout << "Test: B7 · Dolby is one family profile, open in direction and PTP role... ";
+    const auto dolby = CompatibilityProfile::forKind(CompatibilityProfileKind::Dolby);
 
+    // Covers processors (input) and amplifiers (output), so it must not
+    // restrict direction or PTP role — detection sorts each element out.
+    TEST_ASSERT(dolby.direction == ProfileDirection::Any,
+                "Dolby covers both processors and amplifiers, so direction is open");
+    TEST_ASSERT(dolby.ptpRole == PTPRoleConstraint::Any,
+                "Dolby is master to amplifiers and slave to processors, so PTP role is open");
+
+    // No profile-level channel cap — the count comes from detection.
+    TEST_ASSERT(dolby.maxTotalChannels == 0, "Dolby places no profile channel cap");
+
+    // Shared family parameters.
+    TEST_ASSERT(dolby.recommendedPtpDomain == 109, "Dolby PTP domain factory default 109");
+    TEST_ASSERT(!dolby.domainIsFixed, "Dolby PTP domain isn't fixed — set per auditorium");
+    TEST_ASSERT(dolby.recommendedMulticastAddress == "239.81.83.67",
+                "Dolby shares the family destination multicast default");
+    TEST_ASSERT(dolby.recommendedDscp == 46, "Dolby records the family EF/46 audio marking");
+    TEST_ASSERT(dolby.maxUnits == 3, "Dolby amplifiers chain up to three units");
+    TEST_ASSERT(dolby.useFixedMulticastWithPerFlowSourcePort,
+                "Dolby uses the Atmos Connect fixed-multicast/per-flow-source-port scheme");
+
+    // Both directions accepted at the family's rates.
     auto sdp = baselineSession();
-    sdp.sampleRate = 96000.0; // DCI's higher rate, not part of AES67's own three
+    sdp.sampleRate = 96000.0; // DCI's higher rate
     std::string error;
-    TEST_ASSERT(cp850.validate(sdp, /*isTransmit=*/false, &error),
-                "receiving from a CP850 at 96 kHz (DCI spec) must be accepted: " + error);
-    TEST_ASSERT(!cp850.validate(sdp, /*isTransmit=*/true, &error),
-                "this driver must not be allowed to transmit to a CP850");
-    TEST_ASSERT(!error.empty(), "rejection must explain itself");
+    TEST_ASSERT(dolby.validate(sdp, /*isTransmit=*/true, &error),
+                "transmitting to a Dolby amplifier at 96 kHz must be accepted: " + error);
+    TEST_ASSERT(dolby.validate(sdp, /*isTransmit=*/false, &error),
+                "receiving from a Dolby processor at 96 kHz must be accepted: " + error);
     std::cout << "PASS" << std::endl;
     return true;
 }
 
-bool testDAC3202IsTransmitOnlyFromOurSide() {
-    std::cout << "Test: B8 · DAC3202: this driver may only transmit to it, up to 32 channels... ";
-    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
-    TEST_ASSERT(dac3202.direction == ProfileDirection::TransmitOnly,
-                "DAC3202 only converts digital-in to analog-out, nothing returns to the network");
-    TEST_ASSERT(dac3202.maxTotalChannels == 32, "32 is its full analog output count");
-    // Confirmed (not assumed) by the CP950/CP950A manual, which names the
-    // DAC3202 explicitly alongside DMA for all three of these.
-    TEST_ASSERT(dac3202.recommendedPtpDomain == 109, "DAC3202 should record Dolby's confirmed default PTP domain (109)");
-    TEST_ASSERT(dac3202.recommendedMulticastAddress == "239.81.83.67",
-                "DAC3202 should record Dolby's confirmed default destination multicast address");
-    TEST_ASSERT(dac3202.useFixedMulticastWithPerFlowSourcePort,
-                "DAC3202 shares DMA's confirmed Atmos Connect wire scheme, not this driver's AES67/Dante default");
-
-    auto sdp = baselineSession();
-    sdp.sampleRate = 96000.0;
+bool testDolbyRejectsNonFamilyParameters() {
+    std::cout << "Test: B8 · Dolby still enforces the shared family parameters... ";
+    const auto dolby = CompatibilityProfile::forKind(CompatibilityProfileKind::Dolby);
     std::string error;
-    TEST_ASSERT(dac3202.validate(sdp, /*isTransmit=*/true, &error),
-                "transmitting to a DAC3202 at 96 kHz (DCI spec) must be accepted: " + error);
-    TEST_ASSERT(!dac3202.validate(sdp, /*isTransmit=*/false, &error),
-                "this driver must not be allowed to receive from a DAC3202");
-    TEST_ASSERT(!error.empty(), "rejection must explain itself");
-    std::cout << "PASS" << std::endl;
-    return true;
-}
 
-bool testCP950IsReceiveOnlyFromOurSideWithSelectableChannelCount() {
-    std::cout << "Test: B8b · CP950/CP950A: this driver may only receive from it, 64ch ceiling... ";
-    const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
-    TEST_ASSERT(cp950.direction == ProfileDirection::ReceiveOnly,
-                "CP950/CP950A renders and sends over AES67, same role as CP850");
-    // CP950 itself only renders 16ch, CP950A up to 64 — one profile covers
-    // both models, same "selectable, not fixed" treatment as DMA. 64 is
-    // the outer ceiling, not a claim every unit reaches it.
-    TEST_ASSERT(cp950.maxTotalChannels == 64, "64 is CP950A's own ceiling, the wider of the two models");
-    TEST_ASSERT(cp950.ptpRole == PTPRoleConstraint::ForcedSlave,
-                "this driver must always be PTP slave under CP950/CP950A (it defaults to the "
-                "highest PTP priority in the chain and is meant to win grandmaster)");
-    TEST_ASSERT(cp950.recommendedPtpDomain == 109, "CP950/CP950A should record the confirmed default PTP domain (109)");
-    TEST_ASSERT(cp950.recommendedMulticastAddress == "239.81.83.67",
-                "CP950/CP950A should record the confirmed default destination multicast address");
-    TEST_ASSERT(!cp950.domainIsFixed, "CP950/CP950A's PTP domain isn't fixed — cinema installs set their own");
+    // 44.1 kHz isn't a DCI cinema rate.
+    auto badRate = baselineSession();
+    badRate.sampleRate = 44100.0;
+    TEST_ASSERT(!dolby.validate(badRate, /*isTransmit=*/true, &error),
+                "Dolby must reject 44.1 kHz (not a DCI rate)");
 
-    auto sdp = baselineSession();
-    sdp.sampleRate = 96000.0; // DCI's higher rate, not part of AES67's own three
-    std::string error;
-    TEST_ASSERT(cp950.validate(sdp, /*isTransmit=*/false, &error),
-                "receiving from a CP950/CP950A at 96 kHz (DCI spec) must be accepted: " + error);
-    TEST_ASSERT(!cp950.validate(sdp, /*isTransmit=*/true, &error),
-                "this driver must not be allowed to transmit to a CP950/CP950A");
-    TEST_ASSERT(!error.empty(), "rejection must explain itself");
-    std::cout << "PASS" << std::endl;
-    return true;
-}
-
-bool testOnlyCP850AndDAC3202RestrictDirection() {
-    std::cout << "Test: B9 · every other profile leaves direction unrestricted... ";
-    for (const auto& profile : CompatibilityProfile::all()) {
-        if (profile.kind == CompatibilityProfileKind::CP850 ||
-            profile.kind == CompatibilityProfileKind::CP950 ||
-            profile.kind == CompatibilityProfileKind::DAC3202 ||
-            profile.kind == CompatibilityProfileKind::DMA) {
-            continue;
-        }
-        TEST_ASSERT(profile.direction == ProfileDirection::Any,
-                    profile.displayName + " should not restrict direction");
-        TEST_ASSERT(profile.maxTotalChannels == 0,
-                    profile.displayName + " should not have an aggregate channel cap");
-    }
+    // More than 8 channels in one flow is still rejected.
+    auto wide = baselineSession();
+    wide.numChannels = 16;
+    TEST_ASSERT(!dolby.validate(wide, /*isTransmit=*/true, &error),
+                "Dolby must reject more than 8 channels in one flow");
     std::cout << "PASS" << std::endl;
     return true;
 }
 
 bool testProfilesRecordTheDscpTheirGearExpects() {
-    std::cout << "Test: B10 · profiles carry the DSCP their gear expects (applied to TX sockets)... ";
-    const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
-    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
-    TEST_ASSERT(cp850.recommendedDscp == 46, "CP850 documents EF (46)");
-    TEST_ASSERT(dac3202.recommendedDscp == 46, "DAC3202 documents EF (46)");
-    // AES67 and RAVENNA have no documented DSCP requirement from either
-    // standard's own baseline — -1 means "none recorded", not "zero".
+    std::cout << "Test: B10 · profiles carry the DSCP their gear expects... ";
     const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
-    TEST_ASSERT(aes67.recommendedDscp == -1, "AES67 baseline has no profile-specific DSCP");
-    // CP950/CP950A's manual doesn't document a DSCP value the way CP850's
-    // does — -1 here is honest, not an oversight.
-    const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
-    TEST_ASSERT(cp950.recommendedDscp == -1, "CP950/CP950A has no documented DSCP — must not be assumed from CP850");
-    // Dante's own audio marking, from Audinate's documentation. Notable
-    // because Dante marks PTP CS7/56 where standard AES67 gear marks 46.
     const auto dante = CompatibilityProfile::forKind(CompatibilityProfileKind::Dante);
+    const auto dolby = CompatibilityProfile::forKind(CompatibilityProfileKind::Dolby);
+
+    // AES67/RAVENNA have no profile-specific DSCP; -1 means "none recorded".
+    TEST_ASSERT(aes67.recommendedDscp == -1, "AES67 baseline has no profile-specific DSCP");
+    // Dante marks audio EF/46 (Audinate).
     TEST_ASSERT(dante.recommendedDscp == 46, "Dante marks audio EF (46)");
-    // -1 must stay distinguishable from 0: it means "leave the socket
-    // unmarked", not "mark with codepoint 0" (which is a real DSCP value).
+    // Dolby's documented family audio marking is EF/46.
+    TEST_ASSERT(dolby.recommendedDscp == 46, "Dolby records the family EF (46) audio marking");
+
+    // -1 must stay distinguishable from 0 (a real codepoint), and every
+    // value is a valid 6-bit DSCP.
     for (const auto& profile : CompatibilityProfile::all()) {
         TEST_ASSERT(profile.recommendedDscp == -1 || profile.recommendedDscp > 0,
                     profile.displayName + ": DSCP must be -1 (unmarked) or a real codepoint");
@@ -395,72 +349,10 @@ bool testProfilesRecordTheDscpTheirGearExpects() {
     return true;
 }
 
-bool testCP850AndDAC3202ForcePTPRole() {
-    std::cout << "Test: B11 · CP850 forces this driver to PTP slave, DAC3202 to PTP master... ";
-    const auto cp850 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP850);
-    const auto dac3202 = CompatibilityProfile::forKind(CompatibilityProfileKind::DAC3202);
-    TEST_ASSERT(cp850.ptpRole == PTPRoleConstraint::ForcedSlave,
-                "this driver must always be PTP slave under the CP850 profile");
-    TEST_ASSERT(dac3202.ptpRole == PTPRoleConstraint::ForcedMaster,
-                "this driver must always be PTP master under the DAC3202 profile");
-    const auto cp950 = CompatibilityProfile::forKind(CompatibilityProfileKind::CP950);
-    TEST_ASSERT(cp950.ptpRole == PTPRoleConstraint::ForcedSlave,
-                "this driver must always be PTP slave under the CP950/CP950A profile, same as CP850");
-
-    for (const auto& profile : CompatibilityProfile::all()) {
-        if (profile.kind == CompatibilityProfileKind::CP850 ||
-            profile.kind == CompatibilityProfileKind::CP950 ||
-            profile.kind == CompatibilityProfileKind::DAC3202 ||
-            profile.kind == CompatibilityProfileKind::DMA) {
-            continue;
-        }
-        TEST_ASSERT(profile.ptpRole == PTPRoleConstraint::Any,
-                    profile.displayName + " should not force a PTP role — BMCA decides");
-    }
-    std::cout << "PASS" << std::endl;
-    return true;
-}
-
-bool testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount() {
-    std::cout << "Test: B12 · DMA is transmit-only/forced-master, 32ch ceiling, channel count not fixed... ";
-    const auto dma = CompatibilityProfile::forKind(CompatibilityProfileKind::DMA);
-    TEST_ASSERT(dma.direction == ProfileDirection::TransmitOnly,
-                "DMA must be transmit-only — this driver plays the sending processor's role");
-    // A single DMA is a 16-, 24-, or 32-channel model and this driver feeds
-    // ONE unit at a time (the amplifier-unit selector steps the source-port
-    // offset to pick which unit, it does not sum units), so the ceiling is
-    // the largest single model, 32 — the same as the DAC3202. The real
-    // amplifier's channel count is still whatever the user picks with the
-    // Output selector, not baked into the profile; 32 is only the ceiling.
-    // (An earlier 64 assumed one specific install that combined two 32ch
-    // units — a site configuration, not the general profile.)
-    TEST_ASSERT(dma.maxTotalChannels == 32, "DMA's ceiling is 32, the largest single model (DMA32); combining units is a specific install");
-    TEST_ASSERT(dma.ptpRole == PTPRoleConstraint::ForcedMaster,
-                "this driver must always be PTP master under DMA (the real amplifier's "
-                "PTP clock priority is fixed at 255 and never originates timing)");
-    TEST_ASSERT(dma.recommendedPtpDomain == 109,
-                "DMA should record Dolby's documented default PTP domain (109)");
-    TEST_ASSERT(!dma.domainIsFixed,
-                "DMA's PTP domain must match the sending processor, so it isn't fixed here");
-    TEST_ASSERT(dma.useFixedMulticastWithPerFlowSourcePort,
-                "DMA must use the real Atmos Connect wire scheme — fixed multicast/port, "
-                "source port stepped per flow — not this driver's AES67/Dante default");
-
-    auto sdp = baselineSession();
-    std::string error;
-    TEST_ASSERT(dma.validate(sdp, /*isTransmit=*/true, &error),
-                "transmitting to DMA must be accepted: " + error);
-    TEST_ASSERT(!dma.validate(sdp, /*isTransmit=*/false, &error),
-                "this driver must not be allowed to receive under DMA");
-    std::cout << "PASS" << std::endl;
-    return true;
-}
-
 bool testOnlyDolbyEndpointsChainMultipleUnits() {
-    std::cout << "Test: B14 · only DMA and DAC3202 chain more than one unit (max 3)... ";
+    std::cout << "Test: B14 · only the Dolby profile chains more than one unit (max 3)... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        const bool chains = profile.kind == CompatibilityProfileKind::DMA ||
-                            profile.kind == CompatibilityProfileKind::DAC3202;
+        const bool chains = profile.kind == CompatibilityProfileKind::Dolby;
         if (chains) {
             // DMA manual §2.3: "you cannot interconnect more than three of
             // these devices unless you use a switch".
@@ -481,10 +373,9 @@ bool testOnlyDolbyEndpointsChainMultipleUnits() {
 }
 
 bool testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme() {
-    std::cout << "Test: B13 · only DMA and DAC3202 use the fixed-multicast/per-flow-source-port scheme... ";
+    std::cout << "Test: B13 · only the Dolby profile uses the fixed-multicast/per-flow-source-port scheme... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        if (profile.kind == CompatibilityProfileKind::DMA ||
-            profile.kind == CompatibilityProfileKind::DAC3202) {
+        if (profile.kind == CompatibilityProfileKind::Dolby) {
             continue;
         }
         TEST_ASSERT(!profile.useFixedMulticastWithPerFlowSourcePort,
@@ -544,6 +435,11 @@ bool testKindStringRoundTrip() {
                 "empty string must fall back to AES67");
     TEST_ASSERT(CompatibilityProfile::kindFromString("nonsense") == CompatibilityProfileKind::AES67,
                 "unknown value must fall back to AES67");
+    // The former per-model ids migrate to the unified Dolby profile.
+    for (const char* legacy : {"cp850", "cp950", "dac3202", "dma"}) {
+        TEST_ASSERT(CompatibilityProfile::kindFromString(legacy) == CompatibilityProfileKind::Dolby,
+                    std::string("legacy id ") + legacy + " must migrate to Dolby");
+    }
     std::cout << "PASS" << std::endl;
     return true;
 }
@@ -574,15 +470,11 @@ int main() {
     testAES67AcceptsNoPtpDomainSentinel();
     std::cout << std::endl;
 
-    std::cout << "B3 · CP850 / DAC3202 direction (always from our own point of view)" << std::endl;
-    std::cout << "--------------------------------------------------------------------" << std::endl;
-    testCP850IsReceiveOnlyFromOurSide();
-    testDAC3202IsTransmitOnlyFromOurSide();
-    testCP950IsReceiveOnlyFromOurSideWithSelectableChannelCount();
-    testOnlyCP850AndDAC3202RestrictDirection();
+    std::cout << "B3 · Dolby (one family profile, direction/role open)" << std::endl;
+    std::cout << "-----------------------------------------------------" << std::endl;
+    testDolbyIsOneFamilyProfileOpenBothWays();
+    testDolbyRejectsNonFamilyParameters();
     testProfilesRecordTheDscpTheirGearExpects();
-    testCP850AndDAC3202ForcePTPRole();
-    testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount();
     testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme();
     testOnlyDolbyEndpointsChainMultipleUnits();
     std::cout << std::endl;
