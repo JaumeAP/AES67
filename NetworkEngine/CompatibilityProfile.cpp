@@ -185,36 +185,18 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
 
     case CompatibilityProfileKind::Dolby: {
         p.displayName = "Dolby";
-        // One profile for the whole Dolby Atmos Connect family — the cinema
-        // processors that send (CP850, CP950/CP950A, IMS3000) and the
-        // downstream endpoints that receive (DAC3202, DMA amplifiers). They
-        // share one protocol, so this profile carries the shared parameters
-        // and stays permissive on the two things that differ per element —
-        // direction and PTP role — because the driver is a processor to the
-        // amplifiers (transmits, master) and an amplifier to the processors
-        // (receives, slave). Which one applies is discovered per element by
-        // the passive PTP peer observer; the specific model, and thus channel
-        // count, is confirmed per element via DolbyModelCatalog. This replaces
-        // the former one-profile-per-model scheme (CP850/CP950/DAC3202/DMA).
-        //
-        // Shared parameters, all confirmed across the family's manuals:
-        //  - 48/96 kHz, 1 ms, L16/L24 — DCI cinema audio, not AES67's three
-        //    rates (CP850/CP950A/DAC3202/DMA all identical here).
-        //  - PTP domain factory default 109 (not fixed — installers set one
-        //    per auditorium in multi-screen sites).
-        //  - Destination multicast factory default 239.81.83.67 (CP950A/DMA/
-        //    DAC3202 §3.8, shared).
-        //  - The Atmos Connect wire scheme: one multicast address, fixed RTP
-        //    destination port (pass 6517), source port stepped per 8-channel
-        //    flow — see StreamManager::createTxStreamFlows(). Applies when
-        //    transmitting to an amplifier.
-        //  - Up to three units chained (DMA manual §2.3).
-        //  - DSCP EF/46 is the family's documented audio marking (CP850,
-        //    DAC3202); the DMA manual instead specifies switch queue-based
-        //    QoS, so 46 here is the informational family default, applied to
-        //    this driver's own transmit sockets when it plays the processor.
+        // The plain, minimal Dolby profile: the parameters common to the whole
+        // Dolby Atmos Connect family, a single generic unit, configured by
+        // hand. No automatic discovery (see DolbyLAN below). Shared family
+        // parameters (confirmed across the manuals): 48/96 kHz, 1 ms, L16/L24;
+        // PTP domain factory default 109 (not fixed); destination multicast
+        // default 239.81.83.67; the Atmos Connect wire scheme (one multicast
+        // address, fixed RTP destination port — pass 6517 — source port
+        // stepped per 8-channel flow); DSCP EF/46 (the DMA uses switch
+        // queue-based QoS instead). Direction and PTP role stay open because a
+        // Dolby box can be a source (processor) or a sink (amplifier).
         p.allowedSampleRates = {48000.0, 96000.0};
-        p.allowedPtimesUs = {1000}; // 1 ms — Dolby Atmos Connect
+        p.allowedPtimesUs = {1000};
         p.allowedEncodings = {"L16", "L24"};
         p.maxChannelsPerFlow = 8;
         p.requiresZeroRtpTimestampOffset = false;
@@ -222,36 +204,48 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.recommendedPtpDomain = 109;
         p.recommendedMulticastAddress = "239.81.83.67";
         p.recommendedDscp = 46;
-        // Open both ways: the driver receives from processors and transmits
-        // to amplifiers; the passive PTP observer identifies which each
-        // detected element is (master peer = input source, slave peer =
-        // output sink).
         p.direction = ProfileDirection::Any;
         p.ptpRole = PTPRoleConstraint::Any;
-        // No profile-level channel cap: the real count comes from the
-        // detected elements (DolbyModelCatalog) applied to the device's
-        // usable channel selection, itself bounded by the 128-channel device.
         p.maxTotalChannels = 0;
         p.useFixedMulticastWithPerFlowSourcePort = true;
-        p.maxUnits = 3; // §2.3: at most three chained without a switch
+        p.maxUnits = 1;                 // a single generic unit — no chaining
+        p.usesLanAutoDetection = false; // minimal: configured by hand
         p.caveats =
-            "One profile for the whole Dolby Atmos Connect family — the "
-            "processors that send (CP850, CP950/CP950A, IMS3000) and the "
-            "endpoints that receive (DAC3202, DMA amplifiers). The driver is "
-            "a processor to an amplifier (it transmits, it is PTP master) and "
-            "an amplifier to a processor (it receives, it is PTP slave), so "
-            "direction and PTP role are left open and worked out per element "
-            "by passive PTP detection — each detected unit is listed on the "
-            "Inputs or Outputs tab, and confirming its model there sets its "
-            "channel count. Shared parameters are enforced: 48/96 kHz, 1 ms, "
-            "L16/L24; PTP domain factory-default 109; destination multicast "
-            "factory-default 239.81.83.67; the real Atmos Connect wire scheme "
-            "(one multicast address, fixed RTP destination port — pass 6517 — "
-            "with the source port stepped per 8-channel flow); up to three "
-            "chained units. DSCP EF/46 is the family's documented audio "
-            "marking (the DMA instead uses switch queue-based QoS). Selecting "
-            "this profile is not a conformance claim; PTP has never been "
-            "verified against real Dolby hardware.";
+            "The minimal Dolby profile — the parameters common to every Dolby "
+            "Atmos Connect device, for one unit you configure by hand: 48/96 "
+            "kHz, 1 ms, L16/L24; PTP domain factory-default 109; destination "
+            "multicast factory-default 239.81.83.67; the Atmos Connect wire "
+            "scheme (one multicast address, fixed RTP destination port — pass "
+            "6517 — source port stepped per 8-channel flow); DSCP EF/46. "
+            "Direction and PTP role are open — set them by how you configure "
+            "the streams. For automatic discovery of Dolby gear on the network "
+            "and multi-unit chaining, use \"Dolby LAN\" instead. Not a "
+            "conformance claim; PTP has never been verified against real Dolby "
+            "hardware.";
+        break;
+    }
+
+    case CompatibilityProfileKind::DolbyLAN: {
+        // Identical to the minimal Dolby profile plus the two things this
+        // variant is about: automatic discovery and multi-unit chaining.
+        p = forKind(CompatibilityProfileKind::Dolby);
+        p.kind = CompatibilityProfileKind::DolbyLAN;
+        p.displayName = "Dolby LAN";
+        p.maxUnits = 3;                // up to three chained OUTPUT amplifier units (DMA §2.3); inputs are not capped
+        p.usesLanAutoDetection = true; // the Inputs/Outputs tabs list found gear
+        p.caveats =
+            "Dolby with automatic discovery. The driver finds Dolby elements on "
+            "the network by passive PTP observation and lists them on the "
+            "Inputs and Outputs tabs; confirming each detected unit's model "
+            "there sets its channel count, and the resolved total becomes the "
+            "device's channel layout. A master peer is a processor feeding this "
+            "driver (an input, e.g. CP850/CP950); a slave peer is an amplifier "
+            "this driver feeds (an output, e.g. DAC3202/DMA). The up-to-three "
+            "limit is OUTPUT-side only — the amplifiers this driver feeds; each "
+            "chained amplifier unit appears as its own Outputs entry. Input "
+            "sources that feed this driver are not capped by it. Same family "
+            "parameters as the plain Dolby profile. Not a conformance claim; "
+            "PTP has never been verified against real Dolby hardware.";
         break;
     }
     }
@@ -267,6 +261,7 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::ST2110_30_LevelB),
         forKind(CompatibilityProfileKind::Dante),
         forKind(CompatibilityProfileKind::Dolby),
+        forKind(CompatibilityProfileKind::DolbyLAN),
     };
 }
 
@@ -278,6 +273,7 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
     case CompatibilityProfileKind::ST2110_30_LevelB: return "st2110-30-b";
     case CompatibilityProfileKind::Dante:     return "dante";
     case CompatibilityProfileKind::Dolby:     return "dolby";
+    case CompatibilityProfileKind::DolbyLAN:  return "dolby-lan";
     }
     return "aes67";
 }
@@ -287,10 +283,12 @@ CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string&
     if (s == "st2110-30") return CompatibilityProfileKind::ST2110_30;
     if (s == "st2110-30-b") return CompatibilityProfileKind::ST2110_30_LevelB;
     if (s == "dante")     return CompatibilityProfileKind::Dante;
+    if (s == "dolby-lan") return CompatibilityProfileKind::DolbyLAN;
     if (s == "dolby")     return CompatibilityProfileKind::Dolby;
-    // Migrate the former one-profile-per-model ids to the unified Dolby one.
+    // The former one-profile-per-model ids were the auto-discovering,
+    // multi-unit family behaviour — that is now "Dolby LAN".
     if (s == "cp850" || s == "cp950" || s == "dac3202" || s == "dma")
-        return CompatibilityProfileKind::Dolby;
+        return CompatibilityProfileKind::DolbyLAN;
     return CompatibilityProfileKind::AES67;
 }
 
