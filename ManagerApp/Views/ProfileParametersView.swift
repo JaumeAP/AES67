@@ -69,7 +69,11 @@ struct ProfileParametersView: View {
     /// turns this list into the driver's own inputs/outputs.
     @ViewBuilder
     private func foundElementsSection(_ peers: [DriverManager.DiscoveredPeer],
+                                      direction: DolbyIoDirection,
                                       side: String) -> some View {
+        let resolved = direction == .input
+            ? driverManager.resolvedInputChannels
+            : driverManager.resolvedOutputChannels
         section("Detected elements (PTP) — \(side)") {
             if peers.isEmpty {
                 Text("None detected yet. Elements are discovered passively from PTP "
@@ -80,7 +84,7 @@ struct ProfileParametersView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 ForEach(peers) { peer in
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .firstTextBaseline) {
                             Image(systemName: "dot.radiowaves.left.and.right")
                                 .font(.caption).foregroundColor(.secondary)
@@ -90,14 +94,40 @@ struct ProfileParametersView: View {
                             Text("OUI \(peer.oui)")
                                 .font(.caption).foregroundColor(.secondary)
                         }
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Model")
+                                .frame(width: 80, alignment: .leading)
+                                .foregroundColor(.secondary)
+                            Picker("", selection: Binding(
+                                get: { driverManager.assignedModelId(peer.clockId) ?? "" },
+                                set: { driverManager.assignPeerModel(peer.clockId, $0.isEmpty ? nil : $0) }
+                            )) {
+                                Text("Unassigned").tag("")
+                                ForEach(DolbyModelCatalog.forDirection(direction)) { model in
+                                    Text("\(model.displayName) · \(model.channels) ch").tag(model.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 280, alignment: .leading)
+                            Spacer()
+                        }
                         Text("clock \(peer.clockId) · domain \(peer.domain) · "
                              + "\(peer.messageCount) msgs")
                             .font(.caption).foregroundColor(.secondary)
                     }
+                    Divider()
                 }
-                Text("\(peers.count) found. Vendor is read from the OUI; PTP can't tell "
-                     + "one Dolby model from another, so confirm each unit's model to set "
-                     + "its channel count.")
+                HStack {
+                    Text("\(peers.count) found")
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+                    Text("Resolved: \(resolved) channels")
+                        .font(.caption).bold()
+                }
+                Text("Vendor is read from the OUI; PTP can't tell one Dolby model from "
+                     + "another, so confirm each unit's model to set its channel count. "
+                     + "The resolved total is what the next stage turns into the driver's "
+                     + "\(side).")
                     .font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -290,7 +320,7 @@ struct ProfileParametersView: View {
             )
         }
 
-        foundElementsSection(driverManager.inputPeers, side: "sources we would follow")
+        foundElementsSection(driverManager.inputPeers, direction: .input, side: "input channels")
     }
 
     // MARK: - Outputs tab (TX: Core Audio -> network)
@@ -343,7 +373,7 @@ struct ProfileParametersView: View {
             }
         }
 
-        foundElementsSection(driverManager.outputPeers, side: "sinks we feed")
+        foundElementsSection(driverManager.outputPeers, direction: .output, side: "output channels")
     }
 
     private func directionNotice(_ text: String) -> some View {
