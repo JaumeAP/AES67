@@ -39,6 +39,26 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Sanitizer build (opt-in, verification only — NOT for the shipping driver).
+# Configure a separate build dir with the sanitizers you want, then build the
+# test targets and run ctest:
+#
+#   cmake -S . -B build-san -DAES67_SANITIZE="address,undefined"
+#   cmake --build build-san --target TestSDPParser TestRTCPReceiverTable ...
+#   ctest --test-dir build-san -E IntegrationAudioPath
+#
+# Use "thread" instead for data-race checking. macOS ASan has no leak detector
+# (detect_leaks is unsupported); use the system `leaks --atExit -- <binary>`
+# tool on a normal build for leaks. Applies to every C++ target; the Swift
+# ManagerApp (built by its own build.sh) is unaffected.
+set(AES67_SANITIZE "" CACHE STRING
+    "Sanitizers to enable, e.g. address,undefined or thread (empty = none)")
+if(AES67_SANITIZE)
+    message(STATUS "Sanitizers enabled: ${AES67_SANITIZE}")
+    add_compile_options(-fsanitize=${AES67_SANITIZE} -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=${AES67_SANITIZE})
+endif()
+
 # Build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
