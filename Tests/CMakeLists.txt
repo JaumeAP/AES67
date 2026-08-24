@@ -300,6 +300,13 @@ add_executable(TestDolbyModelCatalog
 target_include_directories(TestDolbyModelCatalog PRIVATE ${CMAKE_SOURCE_DIR})
 target_compile_features(TestDolbyModelCatalog PRIVATE cxx_std_17)
 
+# Test: chained-unit source-port offset (mixed unit sizes)
+add_executable(TestAmplifierUnit
+    TestAmplifierUnit.cpp
+)
+target_include_directories(TestAmplifierUnit PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_features(TestAmplifierUnit PRIVATE cxx_std_17)
+
 # Add tests to CTest
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
@@ -315,6 +322,7 @@ add_test(NAME Resampling COMMAND TestResampling)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
 add_test(NAME DolbyModelCatalog COMMAND TestDolbyModelCatalog)
+add_test(NAME AmplifierUnit COMMAND TestAmplifierUnit)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)

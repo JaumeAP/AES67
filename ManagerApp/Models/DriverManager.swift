@@ -1344,6 +1344,12 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     // than changing anything about the audio itself.
 
     @Published var amplifierUnit: Int = 1
+    /// Channel count of each unit in the chain (unit 1 first). Units need not
+    /// be the same size — a 16/24/32 mix each takes 2/3/4 flows — so this
+    /// drives the source-port offset for the selected unit. An empty entry or
+    /// 0 falls back to this driver's own output width. Mirror of
+    /// AmplifierUnitSettings::chainUnitChannels; persisted in amplifier_unit.json.
+    @Published var chainUnitChannels: [Int] = []
 
     /// Safety cushion in samples before a receiver starts handing audio to
     /// Core Audio. 0 = the receiver's own default. Higher survives worse
@@ -1356,6 +1362,25 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     var amplifierUnitChoices: [Int] {
         Array(1...max(1, activeCompatibilityProfile.maxUnits))
     }
+
+    /// The recorded channel count of unit at chain position `index` (0-based),
+    /// or 0 meaning "unset — same width as this driver's output".
+    func precedingUnitChannel(_ index: Int) -> Int {
+        (index >= 0 && index < chainUnitChannels.count) ? chainUnitChannels[index] : 0
+    }
+
+    /// Set a chain position's unit size (0 = same as this driver's output) and
+    /// persist. Pads the array so earlier positions stay addressable.
+    func setPrecedingUnitChannel(_ index: Int, _ channels: Int) {
+        guard index >= 0 else { return }
+        while chainUnitChannels.count <= index { chainUnitChannels.append(0) }
+        chainUnitChannels[index] = channels
+        saveAmplifierUnit()
+    }
+
+    /// Sizes a chain unit may be set to: the real Dolby amplifier widths.
+    /// 0 is offered as "same as output" (the uniform default).
+    static let chainUnitSizeChoices: [Int] = [0, 16, 24, 32]
 
     /// Ordinal label for a chained-unit position — "1st", "2nd", "3rd" — so
     /// the unit selector reads as first/second/third rather than bare numbers.
@@ -1388,6 +1413,12 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             amplifierUnit = 1
         }
 
+        if let chain = obj["chainUnitChannels"] as? [Int] {
+            chainUnitChannels = chain
+        } else {
+            chainUnitChannels = []
+        }
+
         if let delay = obj["playoutDelaySamples"] as? Int,
            (0...Self.maxPlayoutDelaySamples).contains(delay) {
             playoutDelaySamples = delay
@@ -1403,6 +1434,7 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             let obj: [String: Any] = [
                 "version": "1.0",
                 "unitIndex": amplifierUnit,
+                "chainUnitChannels": chainUnitChannels,
                 "playoutDelaySamples": playoutDelaySamples,
             ]
             let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
@@ -1424,7 +1456,17 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         guard profile.usesFixedMulticastPerFlowSourcePort else { return [] }
         let channels = totalTxChannelCount
         let flowsPerUnit = (channels + 7) / 8
-        let offset = (min(amplifierUnit, profile.maxUnits) - 1) * flowsPerUnit
+        let unit = min(amplifierUnit, profile.maxUnits)
+        // Offset = the real sum of the PRECEDING units' flows, each unit
+        // possibly a different size (mirrors AmplifierUnitSettings::
+        // flowOffsetForUnit). Unknown positions fall back to this driver's
+        // own width.
+        var offset = 0
+        for i in 0..<(unit - 1) {
+            let ch = (i < chainUnitChannels.count && chainUnitChannels[i] > 0)
+                ? chainUnitChannels[i] : channels
+            offset += (ch + 7) / 8
+        }
         // Only ports the driver would actually use — it rolls back a flow
         // whose source port would exceed 65535 (createTxStreamFlows), so
         // showing higher ones here would misrepresent what goes on the wire.
