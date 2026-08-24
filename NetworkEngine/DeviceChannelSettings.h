@@ -75,6 +75,9 @@ struct DeviceChannelSettings {
     /// in EACH direction independently.
     static constexpr uint32_t kMaxDeviceChannels = 128;
 
+    /// Selectable usable-channel totals: every group of 8 up to
+    /// kMaxDeviceChannels (8, 16, 24, ... 128). A cap on how many of the
+    /// fixed 128 buffer channels are assigned, not a change to the buffers.
     static const std::vector<uint32_t>& allowedChannelCounts();
 
     /// True if both rx and tx are individually valid.

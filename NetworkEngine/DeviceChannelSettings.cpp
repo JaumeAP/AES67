@@ -14,7 +14,20 @@
 namespace AES67 {
 
 const std::vector<uint32_t>& DeviceChannelSettings::allowedChannelCounts() {
-    static const std::vector<uint32_t> counts = {8, 16, 32, 64, 128};
+    // Every group of 8 up to the RT-buffer ceiling: 8, 16, 24, 32, ... 128.
+    // This is a "usable channel" cap on top of the fixed 128-channel buffers
+    // (which are unchanged and hardware-verified), NOT a change to what the
+    // device advertises — so any multiple of 8 is safe, and finer than the
+    // old {8,16,32,64,128} presets. It lets a detected layout of, say, 48 or
+    // 96 channels (DMA32+DMA16, three DMA32) be exposed exactly instead of
+    // rounded to a coarse preset.
+    static const std::vector<uint32_t> counts = [] {
+        std::vector<uint32_t> c;
+        for (uint32_t n = kChannelGroupSize; n <= kMaxDeviceChannels; n += kChannelGroupSize) {
+            c.push_back(n);
+        }
+        return c;
+    }();
     return counts;
 }
 
