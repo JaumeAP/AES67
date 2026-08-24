@@ -268,6 +268,57 @@ a=mediaclk:direct=0
     std::cout << "✓ PASSED\n";
 }
 
+void testBareDomainRefClock() {
+    std::cout << "Test: RFC 7273 bare-domain ts-refclk (aes67-linux-daemon form)... ";
+    // The daemon emits ptp=IEEE1588-2008:<gmid>:<domain> — a bare number, not
+    // ":domain-nmbr=". This must parse (it used to reject the whole SDP).
+    std::string sdp = R"(v=0
+o=- 1 1 IN IP4 192.168.1.50
+s=daemon
+t=0 0
+m=audio 5004 RTP/AVP 98
+c=IN IP4 239.69.83.10/32
+a=rtpmap:98 L24/48000/8
+a=ptime:1
+a=ts-refclk:ptp=IEEE1588-2008:00-11-22-33-44-55-66-77:0
+)";
+    auto session = SDPParser::parseString(sdp);
+    assert(session.has_value());
+    assert(session->ptpDomain == 0);
+    assert(session->ptpMasterMAC == "00-11-22-33-44-55-66-77");
+
+    // Non-zero bare domain too.
+    std::string sdp9 = R"(v=0
+o=- 1 1 IN IP4 192.168.1.50
+s=daemon
+t=0 0
+m=audio 5004 RTP/AVP 98
+c=IN IP4 239.69.83.10/32
+a=rtpmap:98 L24/48000/8
+a=ptime:1
+a=ts-refclk:ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:9
+)";
+    auto s9 = SDPParser::parseString(sdp9);
+    assert(s9.has_value());
+    assert(s9->ptpDomain == 9);
+
+    // The domain-nmbr= variant must still work.
+    std::string sdpN = R"(v=0
+o=- 1 1 IN IP4 192.168.1.50
+s=daemon
+t=0 0
+m=audio 5004 RTP/AVP 98
+c=IN IP4 239.69.83.10/32
+a=rtpmap:98 L24/48000/8
+a=ptime:1
+a=ts-refclk:ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:domain-nmbr=3
+)";
+    auto sN = SDPParser::parseString(sdpN);
+    assert(sN.has_value() && sN->ptpDomain == 3);
+
+    std::cout << "\u2713 PASSED\n";
+}
+
 void testInvalidSDP() {
     std::cout << "Test: Invalid SDP Handling... ";
 
@@ -289,7 +340,7 @@ void testFileOperations() {
     std::cout << "Test: File Operations... ";
 
     // Create test SDP file
-    std::string testPath = "/tmp/test_aes67.sdp";
+    std::string testPath = "test_aes67_tmp.sdp"; // CWD, not /tmp (portable / sandbox-safe)
     std::string sdp = R"(v=0
 o=- 1729346400 0 IN IP4 192.168.1.100
 s=File Test
@@ -325,6 +376,7 @@ void runAllTests() {
     testMultiChannelConfigurations();
     testSDPGeneration();
     testPTPTraceableRefClock();
+    testBareDomainRefClock();
     testInvalidSDP();
     testFileOperations();
 
