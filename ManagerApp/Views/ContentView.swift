@@ -190,7 +190,7 @@ struct ContentView: View {
                         set: { driverManager.amplifierUnit = $0; driverManager.saveAmplifierUnit() }
                     )) {
                         ForEach(driverManager.amplifierUnitChoices, id: \.self) { unit in
-                            Text("\(unit)").tag(unit)
+                            Text(DriverManager.amplifierUnitLabel(unit)).tag(unit)
                         }
                     }
                     .pickerStyle(.segmented)
