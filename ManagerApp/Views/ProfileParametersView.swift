@@ -61,6 +61,47 @@ struct ProfileParametersView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear { driverManager.refreshPtpPeers() }
+    }
+
+    /// The list of Dolby elements found on the network by passive PTP
+    /// observation, filtered to one side. Read-only for now — the next stage
+    /// turns this list into the driver's own inputs/outputs.
+    @ViewBuilder
+    private func foundElementsSection(_ peers: [DriverManager.DiscoveredPeer],
+                                      side: String) -> some View {
+        section("Detected elements (PTP) — \(side)") {
+            if peers.isEmpty {
+                Text("None detected yet. Elements are discovered passively from PTP "
+                     + "traffic — a Dolby unit appears here once it is on the network "
+                     + "and exchanging PTP with this driver. Each chained DMA unit "
+                     + "shows as its own entry.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(peers) { peer in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: "dot.radiowaves.left.and.right")
+                                .font(.caption).foregroundColor(.secondary)
+                            Text(peer.sourceIp.isEmpty ? peer.clockId : peer.sourceIp)
+                                .font(.system(.body, design: .monospaced))
+                            Spacer()
+                            Text("OUI \(peer.oui)")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        Text("clock \(peer.clockId) · domain \(peer.domain) · "
+                             + "\(peer.messageCount) msgs")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                }
+                Text("\(peers.count) found. Vendor is read from the OUI; PTP can't tell "
+                     + "one Dolby model from another, so confirm each unit's model to set "
+                     + "its channel count.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     // MARK: - Master tab
@@ -248,6 +289,8 @@ struct ProfileParametersView: View {
                     : "Entered per stream when adding one; must match what the sending device uses."
             )
         }
+
+        foundElementsSection(driverManager.inputPeers, side: "sources we would follow")
     }
 
     // MARK: - Outputs tab (TX: Core Audio -> network)
@@ -299,6 +342,8 @@ struct ProfileParametersView: View {
                 sourcePortsRow
             }
         }
+
+        foundElementsSection(driverManager.outputPeers, side: "sinks we feed")
     }
 
     private func directionNotice(_ text: String) -> some View {

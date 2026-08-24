@@ -1506,6 +1506,44 @@ class DriverManager: ObservableObject {
 
     @Published var discoveredSessions: [DiscoveredSession] = []
 
+    // Third custom property on the same gateway — Shared/CustomProperties.h,
+    // kPtpPeersPropertySelector ('a67e') — the passive-PTP peer list, used to
+    // show which Dolby elements are on the network. Kept in sync by hand with
+    // that header, same as the selectors above.
+    private static let kPtpPeersPropertySelector: AudioObjectPropertySelector = 0x61363765 // 'a67e'
+
+    /// A distinct PTP participant seen on the network. A "master" peer is a
+    /// source we would follow (an input, e.g. CP850/CP950); a "slave" peer is
+    /// a sink we feed (an output, e.g. DAC3202/DMA); distinct slaves are the
+    /// count of chained DMA units. The vendor OUI is the first three bytes of
+    /// the clock identity — how a Dolby element is recognised.
+    struct DiscoveredPeer: Identifiable, Equatable {
+        enum Role: String { case master, slave, mixed, unknown }
+        let clockId: String
+        let oui: String
+        let role: Role
+        let sourceIp: String
+        let domain: Int
+        let messageCount: Int
+
+        var id: String { clockId }
+
+        /// From our side: a master peer feeds us (input), a slave peer is fed
+        /// by us (output). Mixed/unknown map to neither.
+        var isInput: Bool { role == .master }
+        var isOutput: Bool { role == .slave }
+    }
+
+    @Published var ptpPeers: [DiscoveredPeer] = []
+
+    /// PTP peers that are sources to us (masters we would follow) — the
+    /// Input side of the found-elements list.
+    var inputPeers: [DiscoveredPeer] { ptpPeers.filter { $0.isInput } }
+
+    /// PTP peers that are sinks we feed (slaves following us) — the Output
+    /// side, and where the DMA unit count is read off.
+    var outputPeers: [DiscoveredPeer] { ptpPeers.filter { $0.isOutput } }
+
     // MARK: - Device sample rate selection
     //
     // Three states, because there are three genuinely different reasons the
@@ -1594,6 +1632,53 @@ class DriverManager: ObservableObject {
         let sessions = fetchDiscoveredSessions()
         DispatchQueue.main.async {
             self.discoveredSessions = sessions
+        }
+    }
+
+    /// PTP peers currently seen, straight from the running driver. Empty when
+    /// the driver isn't loaded, is an older build without this property, or
+    /// simply hasn't heard any PTP traffic yet — none of which are errors.
+    func fetchPtpPeers() -> [DiscoveredPeer] {
+        guard let deviceID = findAES67DeviceID() else { return [] }
+
+        var address = AudioObjectPropertyAddress(
+            mSelector: Self.kPtpPeersPropertySelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else { return [] }
+
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else {
+            return []
+        }
+
+        var cfArray: CFArray? = nil
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
+              let entries = cfArray as? [[String: Any]] else {
+            return []
+        }
+
+        return entries.compactMap { entry in
+            guard let clockId = entry["clockId"] as? String else { return nil }
+            let roleStr = entry["role"] as? String ?? "unknown"
+            return DiscoveredPeer(
+                clockId: clockId,
+                oui: entry["oui"] as? String ?? "",
+                role: DiscoveredPeer.Role(rawValue: roleStr) ?? .unknown,
+                sourceIp: entry["sourceIp"] as? String ?? "",
+                domain: (entry["domain"] as? Int64).map(Int.init) ?? 0,
+                messageCount: (entry["messageCount"] as? Int64).map(Int.init) ?? 0
+            )
+        }
+    }
+
+    /// Refreshes ptpPeers on the main thread. Called by the UI showing the
+    /// found-elements list while it's open.
+    func refreshPtpPeers() {
+        let peers = fetchPtpPeers()
+        DispatchQueue.main.async {
+            self.ptpPeers = peers
         }
     }
 

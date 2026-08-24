@@ -64,4 +64,23 @@ inline constexpr const char* kSessionKeyPort = "port";
 inline constexpr const char* kSessionKeyPtpDomain = "ptpDomain";
 inline constexpr const char* kSessionKeySDP = "sdp";
 
+// FourCharCode 'a67e' ("AES67 Elements") - the passive-PTP peer gateway.
+// Returns a CFArray of CFDictionaries, one per distinct PTP clock identity
+// currently seen on the network (PTPPeerObserver / PTPPeerTable), so
+// ManagerApp can list which Dolby elements are present: a "master" peer is a
+// source we would follow (an input, e.g. CP850/CP950), a "slave" peer is a
+// sink we feed (an output, e.g. DAC3202/DMA), and distinct slaves are the
+// count of chained DMA units. Peers that go silent drop out on their own
+// (PTPPeerTable::kPeerTimeout).
+inline constexpr AudioObjectPropertySelector kPtpPeersPropertySelector = 0x61363765;
+
+// Keys in each element. clockId/oui/role/sourceIp are CFString; domain and
+// messageCount are CFNumber. role is "master" | "slave" | "mixed" | "unknown".
+inline constexpr const char* kPeerKeyClockId = "clockId";
+inline constexpr const char* kPeerKeyOui = "oui";
+inline constexpr const char* kPeerKeyRole = "role";
+inline constexpr const char* kPeerKeySourceIp = "sourceIp";
+inline constexpr const char* kPeerKeyDomain = "domain";
+inline constexpr const char* kPeerKeyMessageCount = "messageCount";
+
 } // namespace AES67
