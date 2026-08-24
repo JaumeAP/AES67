@@ -17,6 +17,43 @@ namespace AES67 {
 // Profile definitions
 // ============================================================================
 
+namespace {
+// Build a per-model Dolby profile from the shared "Dolby" base, narrowing the
+// three things a specific model pins: direction, PTP role and channel count.
+// Amplifiers (outputs) transmit from this driver and force it master, chaining
+// up to three; cinema processors (inputs) feed this driver and force it slave,
+// a single unit. Everything else is inherited from the Dolby family profile.
+CompatibilityProfile makeDolbyModelProfile(CompatibilityProfileKind kind,
+                                           const char* name, uint32_t channels,
+                                           bool isOutput, int dscp) {
+    CompatibilityProfile p = CompatibilityProfile::forKind(CompatibilityProfileKind::Dolby);
+    p.kind = kind;
+    p.displayName = name;
+    p.maxTotalChannels = channels;
+    p.usesLanAutoDetection = false;
+    p.recommendedDscp = dscp;
+    if (isOutput) {
+        p.direction = ProfileDirection::TransmitOnly;
+        p.ptpRole = PTPRoleConstraint::ForcedMaster;
+        p.maxUnits = 3; // amplifiers chain up to three (output-side)
+    } else {
+        p.direction = ProfileDirection::ReceiveOnly;
+        p.ptpRole = PTPRoleConstraint::ForcedSlave;
+        p.maxUnits = 1;
+    }
+    p.caveats =
+        std::string(name) + ": a specific Dolby model, chosen by hand. " +
+        (isOutput ? "This driver transmits to it and is forced PTP master"
+                  : "This driver receives from it and is forced PTP slave") +
+        ", up to " + std::to_string(channels) + " channels. Shared family "
+        "parameters as the Dolby profile (48/96 kHz, 1 ms, L16/L24, PTP domain "
+        "109, multicast 239.81.83.67, the Atmos Connect wire scheme). For "
+        "automatic discovery instead of picking a model, use Dolby LAN. Not a "
+        "conformance claim; PTP has never been verified against real hardware.";
+    return p;
+}
+} // namespace
+
 CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind) {
     CompatibilityProfile p;
     p.kind = kind;
@@ -184,7 +221,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         break;
 
     case CompatibilityProfileKind::Dolby: {
-        p.displayName = "Dolby";
+        p.displayName = "Dolby Generic";
         // The plain, minimal Dolby profile: the parameters common to the whole
         // Dolby Atmos Connect family, a single generic unit, configured by
         // hand. No automatic discovery (see DolbyLAN below). Shared family
@@ -248,6 +285,21 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "PTP has never been verified against real Dolby hardware.";
         break;
     }
+
+    case CompatibilityProfileKind::DolbyDAC3202:
+        return makeDolbyModelProfile(kind, "Dolby DAC3202", 32, /*isOutput=*/true, 46);
+    case CompatibilityProfileKind::DolbyDMA16:
+        return makeDolbyModelProfile(kind, "Dolby DMA (16-channel)", 16, /*isOutput=*/true, -1);
+    case CompatibilityProfileKind::DolbyDMA24:
+        return makeDolbyModelProfile(kind, "Dolby DMA (24-channel)", 24, /*isOutput=*/true, -1);
+    case CompatibilityProfileKind::DolbyDMA32:
+        return makeDolbyModelProfile(kind, "Dolby DMA (32-channel)", 32, /*isOutput=*/true, -1);
+    case CompatibilityProfileKind::DolbyCP850:
+        return makeDolbyModelProfile(kind, "Dolby CP850", 64, /*isOutput=*/false, 46);
+    case CompatibilityProfileKind::DolbyCP950:
+        return makeDolbyModelProfile(kind, "Dolby CP950", 16, /*isOutput=*/false, 46);
+    case CompatibilityProfileKind::DolbyCP950A:
+        return makeDolbyModelProfile(kind, "Dolby CP950A", 64, /*isOutput=*/false, 46);
     }
 
     return p;
@@ -262,6 +314,13 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::Dante),
         forKind(CompatibilityProfileKind::Dolby),
         forKind(CompatibilityProfileKind::DolbyLAN),
+        forKind(CompatibilityProfileKind::DolbyDAC3202),
+        forKind(CompatibilityProfileKind::DolbyDMA16),
+        forKind(CompatibilityProfileKind::DolbyDMA24),
+        forKind(CompatibilityProfileKind::DolbyDMA32),
+        forKind(CompatibilityProfileKind::DolbyCP850),
+        forKind(CompatibilityProfileKind::DolbyCP950),
+        forKind(CompatibilityProfileKind::DolbyCP950A),
     };
 }
 
@@ -274,6 +333,13 @@ std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
     case CompatibilityProfileKind::Dante:     return "dante";
     case CompatibilityProfileKind::Dolby:     return "dolby";
     case CompatibilityProfileKind::DolbyLAN:  return "dolby-lan";
+    case CompatibilityProfileKind::DolbyDAC3202: return "dolby-dac3202";
+    case CompatibilityProfileKind::DolbyDMA16:   return "dolby-dma16";
+    case CompatibilityProfileKind::DolbyDMA24:   return "dolby-dma24";
+    case CompatibilityProfileKind::DolbyDMA32:   return "dolby-dma32";
+    case CompatibilityProfileKind::DolbyCP850:   return "dolby-cp850";
+    case CompatibilityProfileKind::DolbyCP950:   return "dolby-cp950";
+    case CompatibilityProfileKind::DolbyCP950A:  return "dolby-cp950a";
     }
     return "aes67";
 }
@@ -284,6 +350,13 @@ CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string&
     if (s == "st2110-30-b") return CompatibilityProfileKind::ST2110_30_LevelB;
     if (s == "dante")     return CompatibilityProfileKind::Dante;
     if (s == "dolby-lan") return CompatibilityProfileKind::DolbyLAN;
+    if (s == "dolby-dac3202") return CompatibilityProfileKind::DolbyDAC3202;
+    if (s == "dolby-dma16")   return CompatibilityProfileKind::DolbyDMA16;
+    if (s == "dolby-dma24")   return CompatibilityProfileKind::DolbyDMA24;
+    if (s == "dolby-dma32")   return CompatibilityProfileKind::DolbyDMA32;
+    if (s == "dolby-cp850")   return CompatibilityProfileKind::DolbyCP850;
+    if (s == "dolby-cp950")   return CompatibilityProfileKind::DolbyCP950;
+    if (s == "dolby-cp950a")  return CompatibilityProfileKind::DolbyCP950A;
     if (s == "dolby")     return CompatibilityProfileKind::Dolby;
     // The former one-profile-per-model ids were the auto-discovering,
     // multi-unit family behaviour — that is now "Dolby LAN".
