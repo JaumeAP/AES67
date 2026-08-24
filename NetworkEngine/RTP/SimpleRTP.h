@@ -140,6 +140,12 @@ public:
     // Close socket
     void close();
 
+    // Re-issue IP_ADD_MEMBERSHIP for a receiver socket, so a multicast
+    // membership dropped by a network-interface flap (cable unplug/replug) is
+    // re-established. Harmless (EADDRINUSE) while still joined; no-op for a
+    // transmitter or a closed socket.
+    void rejoinMulticast();
+
     // Socket status checks
     bool isOpen() const { return sockfd_ >= 0; }
     bool isValid() const;
@@ -152,6 +158,7 @@ private:
     struct sockaddr_in multicastAddr_;
     bool isReceiver_;
     struct in_addr boundInterfaceAddr_;  // Interface used for multicast join (for proper leave)
+    struct in_addr multicastGroupAddr_{};  // Group joined, for rejoinMulticast()
 };
 
 //
