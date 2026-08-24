@@ -422,16 +422,19 @@ bool testCP850AndDAC3202ForcePTPRole() {
 }
 
 bool testDMAIsTransmitOnlyForcedMasterWithSelectableChannelCount() {
-    std::cout << "Test: B12 · DMA is transmit-only/forced-master, 64ch ceiling, channel count not fixed... ";
+    std::cout << "Test: B12 · DMA is transmit-only/forced-master, 32ch ceiling, channel count not fixed... ";
     const auto dma = CompatibilityProfile::forKind(CompatibilityProfileKind::DMA);
     TEST_ASSERT(dma.direction == ProfileDirection::TransmitOnly,
                 "DMA must be transmit-only — this driver plays the sending processor's role");
-    // Unlike CP850/DAC3202, maxTotalChannels here is the outer ceiling
-    // (the whole Atmos Connect chain's own limit), not one specific
-    // model's fixed output count — the real amplifier's channel count is
-    // whatever the user picks with ManagerApp's Output selector, not baked
-    // into the profile itself.
-    TEST_ASSERT(dma.maxTotalChannels == 64, "DMA's ceiling must be 64, the Atmos Connect chain's own limit");
+    // A single DMA is a 16-, 24-, or 32-channel model and this driver feeds
+    // ONE unit at a time (the amplifier-unit selector steps the source-port
+    // offset to pick which unit, it does not sum units), so the ceiling is
+    // the largest single model, 32 — the same as the DAC3202. The real
+    // amplifier's channel count is still whatever the user picks with the
+    // Output selector, not baked into the profile; 32 is only the ceiling.
+    // (An earlier 64 assumed one specific install that combined two 32ch
+    // units — a site configuration, not the general profile.)
+    TEST_ASSERT(dma.maxTotalChannels == 32, "DMA's ceiling is 32, the largest single model (DMA32); combining units is a specific install");
     TEST_ASSERT(dma.ptpRole == PTPRoleConstraint::ForcedMaster,
                 "this driver must always be PTP master under DMA (the real amplifier's "
                 "PTP clock priority is fixed at 255 and never originates timing)");

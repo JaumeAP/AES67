@@ -1271,8 +1271,10 @@ class DriverManager: ObservableObject {
               caveats: "Covers the whole Dolby Multichannel Amplifier family (DMA16301/16302, "
                      + "DMA24300/24302, DMA32300/32301) — pick your real amplifier's channel "
                      + "count with the Output selector on the main window rather than a separate "
-                     + "profile per model; 64 is the outer ceiling (the Atmos Connect chain's own "
-                     + "limit), not a specific model's count. Multi-flow addressing matches the "
+                     + "profile per model; 32 is the ceiling, the largest single model (DMA32), "
+                     + "since this driver feeds one unit at a time. Combining units for more "
+                     + "channels is a specific install, handled by the amplifier-unit selector "
+                     + "(up to three), not a wider single stream. Multi-flow addressing matches the "
                      + "real device: one multicast address, fixed RTP destination port (pass "
                      + "6517 as the stream's port to match Dolby's own default), source port "
                      + "stepped per 8-channel flow — see StreamManager::createTxStreamFlows(). "
@@ -1283,7 +1285,7 @@ class DriverManager: ObservableObject {
                      + "destination multicast address 239.81.83.67. This driver is always PTP "
                      + "master under this profile, transmit-only.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .transmitOnly, maxTotalChannels: 64, ptpRole: .forcedMaster,
+              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster,
               maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
               allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],

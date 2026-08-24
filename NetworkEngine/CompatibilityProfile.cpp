@@ -399,9 +399,15 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // from CP850/DAC3202's DCI parameters (48/96 kHz, 1 ms, L16/L24) as
         // the same-chain assumption, not independently confirmed here.
         //
-        // Channel ceiling: 64, from the same chain's own limits — CP850's
-        // 64-channel render cap, and the DMA's own Atmos Connect port table
-        // (below) only defines channels 1–64 (8 flows of 8).
+        // Channel ceiling: 32. A single DMA is a 16-, 24-, or 32-channel
+        // model (DMA16/24/32), and this driver feeds ONE unit at a time —
+        // the amplifier-unit selector picks WHICH unit by stepping the
+        // source-port offset, it does not sum units into one wider stream.
+        // So the general per-unit ceiling is the largest single model, 32,
+        // the same as the DAC3202. (An earlier 64 came from one specific
+        // install that combined two 32-channel units; that is a site
+        // configuration, not the general profile — chaining is expressed by
+        // maxUnits + the port offset, not by widening this ceiling.)
         //
         // Port scheme: §3.2.4 "Source UDP and RTP Destination Ports"
         // documents a FIXED RTP destination port (6517) with the SOURCE UDP
@@ -426,7 +432,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.recommendedMulticastAddress = "239.81.83.67";
         p.recommendedDscp = -1; // manual recommends DiffServ QoS (4 queues, strict priority) on the switch, not one documented codepoint
         p.direction = ProfileDirection::TransmitOnly;
-        p.maxTotalChannels = 64;
+        p.maxTotalChannels = 32; // largest SINGLE DMA model (DMA32); 16/24 are the smaller models, all user-selectable below
         p.ptpRole = PTPRoleConstraint::ForcedMaster;
         // Real Atmos Connect wire scheme, not this driver's default AES67/
         // Dante one — see useFixedMulticastWithPerFlowSourcePort's own doc
@@ -439,9 +445,12 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "Covers the whole Dolby Multichannel Amplifier family "
             "(DMA16301/16302, DMA24300/24302, DMA32300/32301) — pick your "
             "real amplifier's channel count with the Output selector on the "
-            "main window rather than a separate profile per model; 64 is "
-            "the outer ceiling (the Atmos Connect chain's own limit), not a "
-            "specific model's count. Multi-flow addressing matches the real "
+            "main window rather than a separate profile per model; 32 is the "
+            "ceiling, the largest single model (DMA32), since this driver "
+            "feeds one unit at a time. Combining units for more channels is a "
+            "specific install, handled by the amplifier-unit selector (up to "
+            "three), not by a wider single stream. Multi-flow addressing "
+            "matches the real "
             "device: one multicast address, fixed RTP destination port "
             "(pass 6517 as the stream's port to match Dolby's own default), "
             "source port stepped per 8-channel flow (destination+1, +2, "
