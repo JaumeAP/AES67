@@ -358,6 +358,16 @@ bool SDPParser::parseSourceFilterAttribute(const std::string& value, SDPSession&
 }
 
 bool SDPParser::parsePTPRefClockAttribute(const std::string& value, SDPSession& session) {
+    // RFC 7273 traceable form: ptp=IEEE1588-2008:traceable — the source's
+    // grandmaster is locked to a traceable primary reference (e.g. GPS) and
+    // pins no specific gmid/domain, so the receiver must not lock to an
+    // identity that is allowed to change.
+    if (value.find("traceable") != std::string::npos) {
+        session.ptpTraceable = true;
+        session.ptpMasterMAC.clear();
+        return true;
+    }
+
     // Format: ptp=IEEE1588-2008:<mac-address>:domain-nmbr=<domain>
     // Example: ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:domain-nmbr=0
     std::regex ptpRegex(R"(ptp=IEEE1588-2008:([0-9A-Fa-f\-:]+):domain-nmbr=(\d+))");
@@ -486,8 +496,11 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
         attributes.push_back(sourceFilter.str());
     }
 
-    // PTP reference clock
-    if (session.ptpDomain >= 0 && !session.ptpMasterMAC.empty()) {
+    // PTP reference clock. The traceable form omits gmid and domain (RFC
+    // 7273) and takes precedence over a named grandmaster.
+    if (session.ptpTraceable) {
+        attributes.push_back("a=ts-refclk:ptp=IEEE1588-2008:traceable");
+    } else if (session.ptpDomain >= 0 && !session.ptpMasterMAC.empty()) {
         std::ostringstream ptpRefclk;
         ptpRefclk << "a=ts-refclk:ptp=IEEE1588-2008:"
                   << session.ptpMasterMAC

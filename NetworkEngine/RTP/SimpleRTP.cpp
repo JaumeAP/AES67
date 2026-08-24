@@ -6,6 +6,7 @@
 
 #include "SimpleRTP.h"
 #include "../NetworkUtils.h"
+#include "PCMCodec.h"
 #include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
@@ -325,32 +326,19 @@ bool RTPSocket::isValid() const {
 // L16Codec Implementation
 //
 
+// These thin wrappers delegate to the free functions in PCMCodec, which are
+// the single implementation of the float<->PCM arithmetic (and the one with
+// the vDSP/Accelerate path and its own unit test, TestPCMCodec). The class
+// API is kept because tests use it; the duplicated per-sample loops that used
+// to live here are gone. numBytes here is a byte count, so convert to a
+// sample count for the free functions' totalSamples argument.
+
 void L16Codec::encode(const float* samples, size_t numSamples, uint8_t* output) {
-    for (size_t i = 0; i < numSamples; i++) {
-        // Clamp float to [-1.0, 1.0]
-        float sample = std::max(-1.0f, std::min(1.0f, samples[i]));
-
-        // Convert to 16-bit signed integer
-        int16_t pcm = static_cast<int16_t>(sample * 32767.0f);
-
-        // Store as big-endian (network byte order)
-        output[i * 2 + 0] = (pcm >> 8) & 0xFF;  // MSB
-        output[i * 2 + 1] = pcm & 0xFF;         // LSB
-    }
+    encodeL16BE(samples, numSamples, output);
 }
 
 void L16Codec::decode(const uint8_t* input, size_t numBytes, float* samples) {
-    size_t numSamples = numBytes / 2;
-
-    for (size_t i = 0; i < numSamples; i++) {
-        // Read big-endian 16-bit value (assemble as unsigned to avoid
-        // implementation-defined narrowing from promoted int to int16_t)
-        uint16_t raw = (static_cast<uint16_t>(input[i * 2 + 0]) << 8) | input[i * 2 + 1];
-        int16_t pcm = static_cast<int16_t>(raw);
-
-        // Convert to float [-1.0, 1.0]
-        samples[i] = pcm / 32768.0f;
-    }
+    decodeL16BE(input, numBytes / 2, samples);
 }
 
 //
@@ -358,39 +346,11 @@ void L16Codec::decode(const uint8_t* input, size_t numBytes, float* samples) {
 //
 
 void L24Codec::encode(const float* samples, size_t numSamples, uint8_t* output) {
-    for (size_t i = 0; i < numSamples; i++) {
-        // Clamp float to [-1.0, 1.0]
-        float sample = std::max(-1.0f, std::min(1.0f, samples[i]));
-
-        // Convert to 24-bit signed integer
-        int32_t pcm = static_cast<int32_t>(sample * 8388607.0f); // 2^23 - 1
-
-        // Store as big-endian 24-bit (network byte order)
-        output[i * 3 + 0] = (pcm >> 16) & 0xFF;  // MSB
-        output[i * 3 + 1] = (pcm >> 8) & 0xFF;   // Middle byte
-        output[i * 3 + 2] = pcm & 0xFF;          // LSB
-    }
+    encodeL24BE(samples, numSamples, output);
 }
 
 void L24Codec::decode(const uint8_t* input, size_t numBytes, float* samples) {
-    size_t numSamples = numBytes / 3;
-
-    for (size_t i = 0; i < numSamples; i++) {
-        // Read big-endian 24-bit value (cast to uint32_t before shifting
-        // to avoid relying on signed int promotion of uint8_t)
-        uint32_t raw = (static_cast<uint32_t>(input[i * 3 + 0]) << 16) |
-                       (static_cast<uint32_t>(input[i * 3 + 1]) << 8) |
-                       static_cast<uint32_t>(input[i * 3 + 2]);
-        int32_t pcm = static_cast<int32_t>(raw);
-
-        // Sign extend from 24-bit to 32-bit
-        if (pcm & 0x800000) {
-            pcm |= 0xFF000000;
-        }
-
-        // Convert to float [-1.0, 1.0]
-        samples[i] = pcm / 8388608.0f;  // 2^23
-    }
+    decodeL24BE(input, numBytes / 3, samples);
 }
 
 } // namespace RTP
