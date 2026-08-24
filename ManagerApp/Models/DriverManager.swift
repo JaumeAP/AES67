@@ -1588,6 +1588,21 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
 
     @Published var ptpPeers: [DiscoveredPeer] = []
 
+    // Fourth custom property — kRtcpReceiversPropertySelector ('a67r'): the
+    // receivers that have sent RTCP reports on this driver's transmit streams,
+    // the second amplifier-detection vector beside PTP.
+    private static let kRtcpReceiversPropertySelector: AudioObjectPropertySelector = 0x61363772 // 'a67r'
+
+    struct RtcpReceiver: Identifiable, Equatable {
+        let ssrc: UInt32
+        let sourceIp: String
+        let cname: String
+        let packetCount: Int
+        var id: UInt32 { ssrc }
+    }
+
+    @Published var rtcpReceivers: [RtcpReceiver] = []
+
     /// PTP peers that are sources to us (masters we would follow) — the
     /// Input side of the found-elements list.
     var inputPeers: [DiscoveredPeer] { ptpPeers.filter { $0.isInput } }
@@ -1809,6 +1824,37 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         let peers = fetchPtpPeers()
         DispatchQueue.main.async {
             self.ptpPeers = peers
+        }
+    }
+
+    func fetchRtcpReceivers() -> [RtcpReceiver] {
+        guard let deviceID = findAES67DeviceID() else { return [] }
+        var address = AudioObjectPropertyAddress(
+            mSelector: Self.kRtcpReceiversPropertySelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else { return [] }
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else { return [] }
+        var cfArray: CFArray? = nil
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
+              let entries = cfArray as? [[String: Any]] else { return [] }
+        return entries.compactMap { entry in
+            guard let ssrc = entry["ssrc"] as? Int64 else { return nil }
+            return RtcpReceiver(
+                ssrc: UInt32(truncatingIfNeeded: ssrc),
+                sourceIp: entry["sourceIp"] as? String ?? "",
+                cname: entry["cname"] as? String ?? "",
+                packetCount: (entry["packetCount"] as? Int64).map(Int.init) ?? 0
+            )
+        }
+    }
+
+    func refreshRtcpReceivers() {
+        let recv = fetchRtcpReceivers()
+        DispatchQueue.main.async {
+            self.rtcpReceivers = recv
         }
     }
 
