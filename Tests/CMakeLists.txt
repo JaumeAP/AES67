@@ -307,6 +307,13 @@ add_executable(TestAmplifierUnit
 target_include_directories(TestAmplifierUnit PRIVATE ${CMAKE_SOURCE_DIR})
 target_compile_features(TestAmplifierUnit PRIVATE cxx_std_17)
 
+# Test: RTCP receiver-report detection core
+add_executable(TestRTCPReceiverTable
+    TestRTCPReceiverTable.cpp
+)
+target_include_directories(TestRTCPReceiverTable PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_features(TestRTCPReceiverTable PRIVATE cxx_std_17)
+
 # Add tests to CTest
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
@@ -323,6 +330,7 @@ add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
 add_test(NAME DolbyModelCatalog COMMAND TestDolbyModelCatalog)
 add_test(NAME AmplifierUnit COMMAND TestAmplifierUnit)
+add_test(NAME RTCPReceiverTable COMMAND TestRTCPReceiverTable)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)

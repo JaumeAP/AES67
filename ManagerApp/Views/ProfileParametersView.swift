@@ -61,7 +61,7 @@ struct ProfileParametersView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { driverManager.refreshPtpPeers() }
+        .onAppear { driverManager.refreshPtpPeers(); driverManager.refreshRtcpReceivers() }
     }
 
     /// The list of Dolby elements found on the network by passive PTP
@@ -156,6 +156,28 @@ struct ProfileParametersView: View {
                           + "in groups of 8; it takes effect on the next driver start."))
                     .font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                // Output side only: a second, independent count of the actual
+                // receivers of our streams, from RTCP reports — a cross-check
+                // on the PTP slave count for gear that emits RTCP.
+                if direction == .output {
+                    Divider()
+                    HStack(alignment: .firstTextBaseline) {
+                        Image(systemName: "arrow.uturn.left")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text("Receivers seen via RTCP")
+                            .font(.caption)
+                        Spacer()
+                        Text("\(driverManager.rtcpReceivers.count)")
+                            .font(.caption).bold()
+                    }
+                    Text("A second, independent check: receivers of this driver's streams that "
+                         + "send RTCP reports. Should agree with the slaves found above — but "
+                         + "only appears for gear that emits RTCP, which Dolby's manuals don't "
+                         + "confirm the amplifiers do. Zero here doesn't mean no receiver.")
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

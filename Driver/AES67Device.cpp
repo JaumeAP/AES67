@@ -105,6 +105,10 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
     RegisterCustomProperty(kPtpPeersPropertySelector,
         [this]() { return GetPtpPeersProperty(); });
 
+    // RTCP receiver-report gateway - the second amplifier-detection vector.
+    RegisterCustomProperty(kRtcpReceiversPropertySelector,
+        [this]() { return GetRtcpReceiversProperty(); });
+
     AES67_LOG("AES67Device constructor: Basic initialization complete");
 }
 
@@ -245,6 +249,29 @@ void AES67Device::Initialize() {
         ptpPeerObserver_.reset();
     }
 
+    // RTCP receiver monitor: listens on the RTCP port (RTP destination + 1) of
+    // each transmit stream to count the receivers of what this driver sends —
+    // the second amplifier-detection vector, for gear that emits RTCP. Passive
+    // and non-fatal, like the others.
+    rtcpMonitor_ = std::make_unique<RTCPMonitor>();
+    if (rtcpMonitor_->start([this]() {
+            std::vector<RTCPMonitor::Endpoint> eps;
+            if (!streamManager_) return eps;
+            for (const auto& session : streamManager_->getTransmitSessions()) {
+                if (session.connectionAddress.empty()) continue;
+                RTCPMonitor::Endpoint e;
+                e.multicastIp = session.connectionAddress;
+                e.rtcpPort = static_cast<uint16_t>(session.port + 1); // RTP dest + 1
+                eps.push_back(e);
+            }
+            return eps;
+        })) {
+        AES67_LOG("AES67Device: RTCP receiver monitor started");
+    } else {
+        AES67_LOG("AES67Device: RTCP receiver monitor unavailable - continuing without it");
+        rtcpMonitor_.reset();
+    }
+
     // PTP. Off unless the installation has asked for it — see
     // StreamManager::setPTPEnabled() for why that default is what it is.
     {
@@ -325,6 +352,7 @@ AES67Device::~AES67Device() {
     // destroyed after it - but stop promptly regardless).
     if (sapAnnouncer_) sapAnnouncer_->stop();
     if (ptpPeerObserver_) ptpPeerObserver_->stop();
+    if (rtcpMonitor_) rtcpMonitor_->stop();
     // Deactivate streams directly rather than calling StopIO() (which requires
     // framework context). This is safe in the destructor.
     if (inputStream_) {
@@ -701,6 +729,27 @@ CFPropertyListRef AES67Device::GetPtpPeersProperty() const {
     }
 
     return array; // +1 — caller CFReleases, per RegisterCustomProperty's contract
+}
+
+CFPropertyListRef AES67Device::GetRtcpReceiversProperty() const {
+    CFMutableArrayRef array = CFArrayCreateMutable(
+        kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    if (!array) return nullptr;
+    if (!rtcpMonitor_) {
+        return array; // monitor unavailable — empty list, not a failure
+    }
+    for (const auto& r : rtcpMonitor_->reporters()) {
+        CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
+            kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        if (!dict) continue;
+        SetCFInt64(dict, kRcvrKeySSRC, static_cast<int64_t>(r.ssrc));
+        SetCFString(dict, kRcvrKeySourceIp, r.sourceIp);
+        SetCFString(dict, kRcvrKeyCname, r.cname);
+        SetCFInt64(dict, kRcvrKeyPacketCount, static_cast<int64_t>(r.packetCount));
+        CFArrayAppendValue(array, dict);
+        CFRelease(dict);
+    }
+    return array;
 }
 
 OSStatus AES67Device::OnSetSampleRate(Float64 sampleRate) {
