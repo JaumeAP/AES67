@@ -1198,99 +1198,26 @@ class DriverManager: ObservableObject {
               allowedSampleRates: [48000], allowedPtimesUs: [1000],
               allowedEncodings: ["L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: "239.69"),
-        .init(id: "cp850",
-              name: "Dolby CP850 (Atmos Cinema Processor)",
-              caveats: "Uses AES67 as its transport to Dolby Atmos Connect Interfaces (DAC3202), "
-                     + "not the full Dante protocol — and not the DAC3201 breakout box (an "
-                     + "older, incompatible point-to-point protocol; needs a separate licensed "
-                     + "enablement to speak AES67 at all). Dolby's own documentation notes its "
-                     + "factory-default DSCP marking is more traditional than typical Dante "
-                     + "configs (EF/46) — this driver has a DSCP-setting function but nothing "
-                     + "calls it yet, so no marking is actually applied. PTP domain ships at "
-                     + "109, the same factory default as the rest of this Dolby family (not "
-                     + "fixed — cinema installations routinely set their own per auditorium, "
-                     + "e.g. 109/110/111/112 across multiple screens). Otherwise, unlike "
-                     + "CP950/CP950A/DMA/DAC3202, no CP850-specific Dolby manual documents "
-                     + "its AES67 mode's own multicast address default (a third-party "
-                     + "interop guide confirms the mode is "
-                     + "real and where to enable it, System > Network > Dolby Atmos Connect "
-                     + "tab, but its example uses custom non-Dolby values, not Dolby's own "
-                     + "factory defaults), so these parameters remain inherited from that "
-                     + "shared family rather than independently confirmed for CP850. This "
-                     + "driver is always PTP slave "
-                     + "under this profile — it never contends for grandmaster. Receive-only: "
-                     + "this driver may only add RX streams under this profile, up to 64 "
-                     + "channels total, the most the CP850 renders.",
+        .init(id: "dolby",
+              name: "Dolby",
+              caveats: "One profile for the whole Dolby Atmos Connect family — the processors "
+                     + "that send (CP850, CP950/CP950A, IMS3000) and the endpoints that receive "
+                     + "(DAC3202, DMA amplifiers). The driver is a processor to an amplifier (it "
+                     + "transmits, it is PTP master) and an amplifier to a processor (it "
+                     + "receives, it is PTP slave), so direction and PTP role are left open and "
+                     + "worked out per element by passive PTP detection — each detected unit is "
+                     + "listed on the Inputs or Outputs tab, and confirming its model there sets "
+                     + "its channel count. Shared parameters are enforced: 48/96 kHz, 1 ms, "
+                     + "L16/L24; PTP domain factory-default 109; destination multicast "
+                     + "factory-default 239.81.83.67; the Atmos Connect wire scheme (one "
+                     + "multicast address, fixed RTP destination port — pass 6517 — with the "
+                     + "source port stepped per 8-channel flow); up to three chained units. "
+                     + "DSCP EF/46 is the family's documented audio marking (the DMA instead "
+                     + "uses switch queue-based QoS). Not a conformance claim; PTP has never "
+                     + "been verified against real Dolby hardware.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave,
-              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
-              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
-              allowedEncodings: ["L16", "L24"],
-              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
-        .init(id: "cp950",
-              name: "Dolby CP950 / CP950A (Cinema Processor)",
-              caveats: "Current-generation replacement for CP850 (its own manual says so). CP950 "
-                     + "renders up to 16 channels over Atmos Connect, CP950A up to 64 — pick your "
-                     + "real unit's channel count with the Input selector rather than a separate "
-                     + "profile per model. Atmos Connect can carry AES67 or BLU Link, mutually "
-                     + "exclusive per installation (the unit reboots when switching) — this "
-                     + "profile assumes AES67 mode, the factory default. PTP domain ships at 109 "
-                     + "(not fixed — installers commonly set a different one per auditorium, "
-                     + "e.g. 109/110/111, to keep multiple screens on the same network from "
-                     + "colliding); factory-default destination multicast address 239.81.83.67, "
-                     + "shared out of the box with Dolby Multichannel Amplifier and DAC3202 — "
-                     + "likewise expected to be changed per auditorium in multi-screen installs. "
-                     + "This driver is always PTP slave under this profile — the CP950/CP950A "
-                     + "ships at the highest PTP priority in the chain and is meant to win "
-                     + "grandmaster. Receive-only: this driver may only add RX streams under "
-                     + "this profile, up to 64 channels total.",
-              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .receiveOnly, maxTotalChannels: 64, ptpRole: .forcedSlave,
-              maxUnits: 1, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
-              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
-              allowedEncodings: ["L16", "L24"],
-              usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
-        .init(id: "dac3202",
-              name: "Dolby DAC3202 (Atmos Connect Interface)",
-              caveats: "Receiving end of the same CP850/CP950/CP950A link — 32 analog outputs, "
-                     + "so a full-width feed is 4 flows of 8 channels. Multi-flow addressing "
-                     + "matches the real device (confirmed by the CP950/CP950A manual): one "
-                     + "multicast address, fixed RTP destination port, source port stepped per "
-                     + "8-channel flow — see StreamManager::createTxStreamFlows(). Same DSCP "
-                     + "note as CP850: factory default EF/46, which this driver applies to "
-                     + "its own transmit sockets. PTP "
-                     + "domain ships at 109; factory-default destination multicast address "
-                     + "239.81.83.67 — both commonly changed per auditorium in multi-screen "
-                     + "installs, same as CP950/CP950A above. This driver is always PTP master "
-                     + "under this profile. Transmit-only: this driver may only create TX "
-                     + "streams under this profile, up to 32 channels total.",
-              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster,
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
-              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
-              allowedEncodings: ["L16", "L24"],
-              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
-        .init(id: "dma",
-              name: "Dolby DMA (Multichannel Amplifier)",
-              caveats: "Covers the whole Dolby Multichannel Amplifier family (DMA16301/16302, "
-                     + "DMA24300/24302, DMA32300/32301) — pick your real amplifier's channel "
-                     + "count with the Output selector on the main window rather than a separate "
-                     + "profile per model; 32 is the ceiling, the largest single model (DMA32), "
-                     + "since this driver feeds one unit at a time. Combining units for more "
-                     + "channels is a specific install, handled by the amplifier-unit selector "
-                     + "(up to three), not a wider single stream. Multi-flow addressing matches the "
-                     + "real device: one multicast address, fixed RTP destination port (pass "
-                     + "6517 as the stream's port to match Dolby's own default), source port "
-                     + "stepped per 8-channel flow — see StreamManager::createTxStreamFlows(). "
-                     + "Sample rate/ptime/encoding are inherited from the same Atmos Connect "
-                     + "chain as CP850/DAC3202 (not independently documented for the DMA "
-                     + "itself). PTP domain ships at 109 for Dolby gear (not fixed — installers "
-                     + "commonly set a different one per auditorium); factory-default "
-                     + "destination multicast address 239.81.83.67. This driver is always PTP "
-                     + "master under this profile, transmit-only.",
-              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
-              direction: .transmitOnly, maxTotalChannels: 32, ptpRole: .forcedMaster,
-              maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: -1,
               allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
@@ -1311,8 +1238,15 @@ class DriverManager: ObservableObject {
     func loadCompatibilityProfile() {
         guard let data = try? Data(contentsOf: compatibilityProfileConfigURL),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = obj["profile"] as? String,
-              Self.compatibilityProfiles.contains(where: { $0.id == id }) else {
+              let rawId = obj["profile"] as? String else {
+            compatibilityProfileID = "aes67"
+            return
+        }
+        // Migrate the former per-model Dolby ids to the unified profile,
+        // matching CompatibilityProfile::kindFromString on the driver side.
+        let legacyDolby: Set<String> = ["cp850", "cp950", "dac3202", "dma"]
+        let id = legacyDolby.contains(rawId) ? "dolby" : rawId
+        guard Self.compatibilityProfiles.contains(where: { $0.id == id }) else {
             // Unknown or missing falls back to the unrestricted baseline —
             // never to a profile that would start rejecting working streams.
             compatibilityProfileID = "aes67"
