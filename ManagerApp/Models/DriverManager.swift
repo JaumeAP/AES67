@@ -1240,7 +1240,7 @@ class DriverManager: ObservableObject {
             id: id, name: name,
             caveats: "\(name): a specific Dolby model, chosen by hand. \(role), up to "
                 + "\(channels) channels. Shared family parameters as the Dolby profile. For "
-                + "automatic discovery instead of picking a model, use Dolby LAN.",
+                + "automatic discovery instead of picking a model, use Autodetect.",
             domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
             direction: isOutput ? .transmitOnly : .receiveOnly,
             maxTotalChannels: channels,
@@ -1258,9 +1258,9 @@ class DriverManager: ObservableObject {
     // the same elements inside an array literal time out.
     private static let dolbyProfile: CompatibilityProfileOption =
         .init(id: "dolby",
-              name: "Dolby Generic",
+              name: "Generic",
               caveats: """
-The minimal Dolby profile — the parameters common to every Dolby Atmos Connect device, for one unit you configure by hand: 48/96 kHz, 1 ms, L16/L24; PTP domain factory-default 109; destination multicast factory-default 239.81.83.67; the Atmos Connect wire scheme (one multicast address, fixed RTP destination port — pass 6517 — source port stepped per 8-channel flow); DSCP EF/46. Direction and PTP role are open — set them by how you configure the streams. For automatic discovery of Dolby gear and multi-unit chaining, use "Dolby LAN". Not a conformance claim; PTP has never been verified against real Dolby hardware.
+The minimal Dolby profile — the parameters common to every Dolby Atmos Connect device, for one unit you configure by hand: 48/96 kHz, 1 ms, L16/L24; PTP domain factory-default 109; destination multicast factory-default 239.81.83.67; the Atmos Connect wire scheme (one multicast address, fixed RTP destination port — pass 6517 — source port stepped per 8-channel flow); DSCP EF/46. Direction and PTP role are open — set them by how you configure the streams. For automatic discovery of Dolby gear and multi-unit chaining, use Autodetect. Not a conformance claim; PTP has never been verified against real Dolby hardware.
 """,
                             domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
@@ -1272,7 +1272,7 @@ The minimal Dolby profile — the parameters common to every Dolby Atmos Connect
 
     private static let dolbyLANProfile: CompatibilityProfileOption =
         .init(id: "dolby-lan",
-              name: "Dolby LAN",
+              name: "Autodetect",
               caveats: """
 Dolby with automatic discovery. The driver finds Dolby elements on the network by passive PTP observation and lists them on the Inputs and Outputs tabs; confirming each detected unit's model there sets its channel count, and the resolved total becomes the device's channel layout. A master peer is a processor feeding this driver (an input, e.g. CP850/CP950); a slave peer is an amplifier this driver feeds (an output, e.g. DAC3202/DMA). The up-to-three limit is OUTPUT-side only — the amplifiers this driver feeds; input sources are not capped by it. Same family parameters as the plain Dolby profile.
 """,
