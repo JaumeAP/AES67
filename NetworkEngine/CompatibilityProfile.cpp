@@ -245,12 +245,11 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.ptpRole = PTPRoleConstraint::Any;
         p.maxTotalChannels = 0;
         p.useFixedMulticastWithPerFlowSourcePort = true;
-        // Dolby's obligatory multicast range: streams must sit inside
-        // 239.81.0.0/16 (factory default 239.81.83.67). Installers may move
-        // the address within that range per auditorium, but not outside it,
-        // so it's a required prefix, not a locked exact address. Inherited by
-        // Autodetect and every per-model profile (both build from this base).
-        p.requiredMulticastPrefix = "239.81";
+        // Multicast is a factory DEFAULT (239.81.83.67), not a requirement:
+        // the CP950/CP950A manual (§3.8) documents installers overriding the
+        // destination multicast address per auditorium, with no fixed range —
+        // so recommendedMulticastAddress above is set, but no
+        // requiredMulticastPrefix is imposed. Matches the manuals.
         p.maxUnits = 1;                 // a single generic unit — no chaining
         p.usesLanAutoDetection = false; // minimal: configured by hand
         p.caveats =
