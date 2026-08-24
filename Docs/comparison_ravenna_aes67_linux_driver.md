@@ -52,8 +52,13 @@ announcer's explicit goodbye takes effect immediately rather than after
 the timeout. Repeats refresh the entry rather than being treated as new
 discoveries.
 
-Still missing versus theirs: we listen but never *announce* our own
-sources, there's no mDNS/RAVENNA discovery, and no `auto_sinks_update`
+We now both listen *and* announce: `NetworkEngine/Discovery/SAPAnnouncer.{h,cpp}`
+sends version-1 SAP announcements for every TX stream on both SAP groups
+every 30 s (`kAnnounceInterval`), with a deletion packet on withdrawal
+carrying the same Message ID Hash it announced with, and `IP_MULTICAST_LOOP`
+off so we never discover our own sources. AES67Device wires it to
+`StreamManager::getTransmitSessions()` + `SDPParser::generate`. Still missing
+versus theirs: no mDNS/RAVENNA discovery, and no `auto_sinks_update`
 equivalent.
 
 **SAP address, found by inspecting Dante Controller.** The listener
@@ -61,9 +66,12 @@ originally joined only 224.2.127.254 (RFC 2974 SAPv2 global scope). Dante's
 own `libDanteController` announces AES67 sessions on **239.255.255.255**
 (the address AES67 uses, and the AES67 Linux daemon's own default too), so
 a Dante device in AES67 mode was never discovered. The listener now joins
-both groups. Note this only fixes RECEIVE-side discovery — because we still
-don't announce, a Dante device can't auto-discover streams FROM us; that
-needs SAP announce, still on the list above.
+both groups. That was the RECEIVE side; the SEND side (SAP announce, above)
+is now done too, so a Dante device in AES67 mode can auto-discover streams
+FROM us. (Dante *Controller* itself still won't list us in its device view:
+it browses for Dante `_netaudio-*` mDNS devices, and we are an AES67 device,
+not a Dante one — the interop is at the stream/SAP/PTP layer, which is what
+both halves cover.)
 
 The daemon announces its own sources over SAP *and* browses for remote
 ones, on `sap_mcast_addr` (default 239.255.255.255) every `sap_interval`
@@ -240,8 +248,11 @@ implementation treats 2022-7 as a driver-level concern, not an add-on.
 ### Automatic sink updates
 
 `auto_sinks_update` — configured sinks follow discovered sources when
-they change. Only meaningful once discovery exists at all, but it's the
-natural second half of turning `SAPListener` on.
+they change. Only meaningful once discovery exists at all. Discovery now
+exists in both directions (`SAPListener` + `SAPAnnouncer`), so this — sinks
+that re-follow a source when its SDP changes — is the remaining unbuilt
+piece; the announcer already re-hashes and re-announces a changed SDP, so
+the missing half is purely receive-side sink re-subscription.
 
 ## Their documented operational gotchas
 
@@ -267,7 +278,8 @@ Ranked by value-for-effort, given how much is already written here:
    above. Still unverified against real hardware, which is exactly why
    the defaults are off.
 2. ~~**Turn on `SAPListener`**, with their expiry rule~~ — **done**, see
-   above.
+   above. And its natural second half, ~~**announce our own sources over
+   SAP**~~ — **done**, `SAPAnnouncer`, see above.
 3. ~~**Call `setQoSTrafficClass()`** with each profile's documented DSCP~~
    — **done**, see above.
 4. ~~**Make transmit ptime configurable**~~ — **done**, see above. A

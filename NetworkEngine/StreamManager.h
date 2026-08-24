@@ -255,6 +255,10 @@ public:
     // Get all active streams
     std::vector<StreamInfo> getActiveStreams() const;
 
+    // Full SDP of every TX stream - the sources this driver offers, for SAP
+    // announcement so other AES67/Dante gear can discover and subscribe.
+    std::vector<SDPSession> getTransmitSessions() const;
+
     // Get stream info
     std::optional<StreamInfo> getStreamInfo(const StreamID& id) const;
 

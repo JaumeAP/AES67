@@ -193,6 +193,28 @@ void AES67Device::Initialize() {
         sapListener_.reset();
     }
 
+    // SAP announcement of our OWN transmit streams, so remote AES67/Dante
+    // receivers can discover and subscribe to what this driver sends.
+    // Listening (above) lets us find others; announcing lets others find us.
+    // Like discovery, a failure here is not fatal - audio still flows, only
+    // auto-discovery of our sources is lost.
+    sapAnnouncer_ = std::make_unique<SAPAnnouncer>();
+    if (sapAnnouncer_->initialize() &&
+        sapAnnouncer_->start([this]() {
+            std::vector<std::string> sdps;
+            if (!streamManager_) return sdps;
+            for (const auto& session : streamManager_->getTransmitSessions()) {
+                std::string sdp = SDPParser::generate(session);
+                if (!sdp.empty()) sdps.push_back(std::move(sdp));
+            }
+            return sdps;
+        })) {
+        AES67_LOG("AES67Device: SAP announcing transmit streams on :9875");
+    } else {
+        AES67_LOG("AES67Device: SAP announcement unavailable - continuing without it");
+        sapAnnouncer_.reset();
+    }
+
     // PTP. Off unless the installation has asked for it — see
     // StreamManager::setPTPEnabled() for why that default is what it is.
     {
@@ -268,6 +290,10 @@ void AES67Device::Initialize() {
 }
 
 AES67Device::~AES67Device() {
+    // Stop announcing first: its sender thread calls back into streamManager_,
+    // which must still be alive (it is - declared before the announcer, so
+    // destroyed after it - but stop promptly regardless).
+    if (sapAnnouncer_) sapAnnouncer_->stop();
     // Deactivate streams directly rather than calling StopIO() (which requires
     // framework context). This is safe in the destructor.
     if (inputStream_) {
