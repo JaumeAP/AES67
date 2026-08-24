@@ -14,6 +14,8 @@ namespace AES67 {
 // PIMPL idiom to hide platform-specific implementation details
 class SAPListener::Impl {
 public:
+    static constexpr uint16_t kSapPort = 9875; // RFC 2974, shared by every SAP group
+
     Impl() : running_(false), sockFd_(-1) {
     }
     
@@ -37,30 +39,50 @@ public:
             return false;
         }
         
-        // Bind to SAP multicast address
+        // Bind to INADDR_ANY on the SAP port rather than to one multicast
+        // address, so the socket can receive traffic for MORE THAN ONE SAP
+        // group — see the two joins below. Binding to a specific group
+        // address would restrict us to that group alone.
         struct sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
-        addr.sin_port = htons(9875);  // SAP port
-        addr.sin_addr.s_addr = inet_addr("224.2.127.254");  // SAP multicast address
-        
+        addr.sin_port = htons(kSapPort);
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
         if (bind(sockFd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             std::cerr << "Failed to bind SAP socket" << std::endl;
             close(sockFd_);
             return false;
         }
-        
-        // Join multicast group
-        struct ip_mreq mreq;
-        mreq.imr_multiaddr.s_addr = inet_addr("224.2.127.254");
-        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-        
-        if (setsockopt(sockFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-            std::cerr << "Failed to join SAP multicast group" << std::endl;
+
+        // Join both SAP groups in use in the wild:
+        //  - 224.2.127.254 — RFC 2974 SAPv2 global scope, the original.
+        //  - 239.255.255.255 — the address AES67 uses, and (confirmed by
+        //    inspecting Dante Controller's libDanteController) what Dante
+        //    announces AES67 sessions on. Listening only on the RFC address
+        //    (as this once did) meant Dante and other AES67 gear were never
+        //    discovered at all — the profile could enforce Dante's rules but
+        //    the listener couldn't hear it.
+        // Joining at least one must succeed; a group that fails to join is
+        // logged and skipped rather than failing the whole listener.
+        const char* groups[] = {"224.2.127.254", "239.255.255.255"};
+        int joined = 0;
+        for (const char* group : groups) {
+            struct ip_mreq mreq;
+            mreq.imr_multiaddr.s_addr = inet_addr(group);
+            mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+            if (setsockopt(sockFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == 0) {
+                ++joined;
+            } else {
+                std::cerr << "SAP: could not join multicast group " << group << std::endl;
+            }
+        }
+        if (joined == 0) {
+            std::cerr << "Failed to join any SAP multicast group" << std::endl;
             close(sockFd_);
             return false;
         }
-        
+
         return true;
     }
     
