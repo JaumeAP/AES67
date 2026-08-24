@@ -86,6 +86,18 @@ AmplifierUnitSettings AmplifierUnitSettingsManager::load() {
         parsed.unitIndex = static_cast<uint32_t>(std::stoul(match[1].str()));
     }
 
+    // Optional per-unit chain sizes: "chainUnitChannels": [16, 32, 24].
+    std::smatch arrMatch;
+    std::regex arrPattern("\"chainUnitChannels\"\\s*:\\s*\\[([^\\]]*)\\]");
+    if (std::regex_search(json, arrMatch, arrPattern) && arrMatch.size() > 1) {
+        const std::string body = arrMatch[1].str();
+        std::regex num("\\d+");
+        for (auto it = std::sregex_iterator(body.begin(), body.end(), num);
+             it != std::sregex_iterator(); ++it) {
+            parsed.chainUnitChannels.push_back(static_cast<uint32_t>(std::stoul(it->str())));
+        }
+    }
+
     if (!parsed.isValid()) {
         AES67_LOGF("AmplifierUnitSettingsManager: %s holds an out-of-range unit index (%u) "
                    "— using unit 1 instead",
@@ -124,6 +136,19 @@ PlayoutDelaySettings AmplifierUnitSettingsManager::loadPlayoutDelay() {
     return settings;
 }
 
+namespace {
+std::string chainArrayJson(const std::vector<uint32_t>& chain) {
+    std::ostringstream a;
+    a << "[";
+    for (size_t i = 0; i < chain.size(); ++i) {
+        if (i) a << ", ";
+        a << chain[i];
+    }
+    a << "]";
+    return a.str();
+}
+} // namespace
+
 bool AmplifierUnitSettingsManager::savePlayoutDelay(const PlayoutDelaySettings& settings) {
     if (!settings.isValid()) return false;
     // Both values live in one file, so read the other one back before
@@ -135,6 +160,7 @@ bool AmplifierUnitSettingsManager::savePlayoutDelay(const PlayoutDelaySettings& 
     json << "{\n";
     json << "  \"version\": \"1.0\",\n";
     json << "  \"unitIndex\": " << unit.unitIndex << ",\n";
+    json << "  \"chainUnitChannels\": " << chainArrayJson(unit.chainUnitChannels) << ",\n";
     json << "  \"playoutDelaySamples\": " << settings.samples << "\n";
     json << "}\n";
 
@@ -161,6 +187,7 @@ bool AmplifierUnitSettingsManager::save(const AmplifierUnitSettings& settings) {
     json << "{\n";
     json << "  \"version\": \"1.0\",\n";
     json << "  \"unitIndex\": " << settings.unitIndex << ",\n";
+    json << "  \"chainUnitChannels\": " << chainArrayJson(settings.chainUnitChannels) << ",\n";
     json << "  \"playoutDelaySamples\": " << delay.samples << "\n";
     json << "}\n";
 
