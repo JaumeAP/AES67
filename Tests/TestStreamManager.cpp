@@ -457,6 +457,87 @@ bool testChannelMapperAvailability() {
     return true;
 }
 
+
+//
+// Auto Sink-Follow Decision Tests (RAVENNA auto_sinks_update)
+//
+using SFD = StreamManager::SinkFollowDecision;
+
+bool testSinkFollowMatchAndMove() {
+    std::cout << "Test: sink follows a source that changed transport... ";
+
+    SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000); // 239.1.1.1
+    // Same source re-announces on a new multicast/port.
+    SDPSession moved = stored;
+    moved.connectionAddress = "239.9.9.9";
+    moved.port = 5010;
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, moved) == SFD::Follow,
+                "Changed address/port must Follow");
+
+    // Encoding / rate / ptime / payload changes also count as a move.
+    SDPSession reEnc = stored; reEnc.encoding = "L16";
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, reEnc) == SFD::Follow,
+                "Changed encoding must Follow");
+    SDPSession reRate = stored; reRate.sampleRate = 96000;
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, reRate) == SFD::Follow,
+                "Changed rate must Follow");
+    SDPSession rePtime = stored; rePtime.ptimeUs = 125;
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, rePtime) == SFD::Follow,
+                "Changed ptime must Follow");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testSinkFollowUnchangedIsNoOp() {
+    std::cout << "Test: identical re-announcement does not re-subscribe... ";
+    SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000);
+    SDPSession same = stored; // byte-identical transport
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, same) == SFD::Unchanged,
+                "Identical announcement must be Unchanged");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testSinkFollowNotBound() {
+    std::cout << "Test: an unrelated announcement is not this sink's source... ";
+
+    SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000);
+
+    // Different name -> not our source even if transport differs.
+    SDPSession other = createTestSDP("Cam2", 6000, 8, 48000);
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, other) == SFD::NotBound,
+                "Different name must be NotBound");
+
+    // Empty announced name -> never binds.
+    SDPSession nameless = stored; nameless.sessionName = ""; nameless.port = 7000;
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, nameless) == SFD::NotBound,
+                "Nameless announcement must be NotBound");
+
+    // Same name but a different unicast source when both are known.
+    SDPSession otherSender = stored;
+    otherSender.port = 5010;
+    otherSender.sourceAddress = "10.0.0.2";
+    SDPSession storedWithSrc = stored; storedWithSrc.sourceAddress = "10.0.0.1";
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(storedWithSrc, otherSender) == SFD::NotBound,
+                "Same name, different known source must be NotBound");
+
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
+bool testSinkFollowChannelCountChange() {
+    std::cout << "Test: a channel-count change is not auto-followed... ";
+    SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000);
+    SDPSession wider = stored;
+    wider.connectionAddress = "239.9.9.9";
+    wider.numChannels = 16; // moved AND re-widened
+    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, wider) == SFD::ChannelCountChanged,
+                "Channel-count change must be flagged, not followed");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
 //
 // Main Test Runner
 //
@@ -519,6 +600,11 @@ int main() {
     std::cout << "------------------------------" << std::endl;
     testStreamManagerValidationHelper();
     testChannelMapperAvailability();
+
+    testSinkFollowMatchAndMove();
+    testSinkFollowUnchangedIsNoOp();
+    testSinkFollowNotBound();
+    testSinkFollowChannelCountChange();
     std::cout << std::endl;
 
     std::cout << "========================================" << std::endl;
