@@ -221,6 +221,53 @@ void testSDPGeneration() {
     std::cout << "✓ PASSED\n";
 }
 
+void testPTPTraceableRefClock() {
+    std::cout << "Test: PTP traceable ts-refclk (RFC 7273)... ";
+
+    // Parse the traceable form: no gmid, no domain pinned.
+    std::string sdp = R"(v=0
+o=- 1729346400 0 IN IP4 192.168.1.100
+s=Traceable GM
+t=0 0
+m=audio 5004 RTP/AVP 97
+c=IN IP4 239.69.83.1/32
+a=rtpmap:97 L24/48000/8
+a=ptime:1
+a=ts-refclk:ptp=IEEE1588-2008:traceable
+a=mediaclk:direct=0
+)";
+    auto session = SDPParser::parseString(sdp);
+    assert(session.has_value());
+    assert(session->ptpTraceable);
+    assert(session->ptpMasterMAC.empty());
+
+    // Regenerate: must emit the traceable form, not a named grandmaster.
+    std::string gen = SDPParser::generate(*session);
+    assert(gen.find("a=ts-refclk:ptp=IEEE1588-2008:traceable") != std::string::npos);
+    assert(gen.find("domain-nmbr=") == std::string::npos);
+
+    // And it round-trips back to traceable.
+    auto reparsed = SDPParser::parseString(gen);
+    assert(reparsed.has_value());
+    assert(reparsed->ptpTraceable);
+
+    // A named grandmaster still generates the gmid+domain form (traceable
+    // false), and traceable takes precedence when both are somehow set.
+    SDPSession named;
+    named.sessionName = "Named GM";
+    named.originAddress = "192.168.1.200";
+    named.connectionAddress = "239.69.100.1";
+    named.port = 5008;
+    named.encoding = "L24";
+    named.ptpDomain = 0;
+    named.ptpMasterMAC = "00-1B-21-AC-B5-4F";
+    std::string namedGen = SDPParser::generate(named);
+    assert(namedGen.find("00-1B-21-AC-B5-4F") != std::string::npos);
+    assert(namedGen.find("traceable") == std::string::npos);
+
+    std::cout << "✓ PASSED\n";
+}
+
 void testInvalidSDP() {
     std::cout << "Test: Invalid SDP Handling... ";
 
@@ -277,6 +324,7 @@ void runAllTests() {
     testHighSampleRates();
     testMultiChannelConfigurations();
     testSDPGeneration();
+    testPTPTraceableRefClock();
     testInvalidSDP();
     testFileOperations();
 
