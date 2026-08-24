@@ -34,6 +34,7 @@ swiftc -o AES67Manager \
   -framework UniformTypeIdentifiers \
   Models/StreamInfo.swift \
   Models/DriverManager.swift \
+  Models/DolbyModelCatalog.swift \
   Models/MenuBarManager.swift \
   Views/ContentView.swift \
   Views/StreamListView.swift \

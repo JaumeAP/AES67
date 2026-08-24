@@ -293,6 +293,13 @@ add_executable(TestPTPPeerTable
 target_include_directories(TestPTPPeerTable PRIVATE ${CMAKE_SOURCE_DIR})
 target_compile_features(TestPTPPeerTable PRIVATE cxx_std_17)
 
+# Test: Dolby model catalog (model -> channels/direction + channel resolver)
+add_executable(TestDolbyModelCatalog
+    TestDolbyModelCatalog.cpp
+)
+target_include_directories(TestDolbyModelCatalog PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_features(TestDolbyModelCatalog PRIVATE cxx_std_17)
+
 # Add tests to CTest
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
@@ -307,6 +314,7 @@ add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME Resampling COMMAND TestResampling)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
+add_test(NAME DolbyModelCatalog COMMAND TestDolbyModelCatalog)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
