@@ -56,6 +56,15 @@ Still missing versus theirs: we listen but never *announce* our own
 sources, there's no mDNS/RAVENNA discovery, and no `auto_sinks_update`
 equivalent.
 
+**SAP address, found by inspecting Dante Controller.** The listener
+originally joined only 224.2.127.254 (RFC 2974 SAPv2 global scope). Dante's
+own `libDanteController` announces AES67 sessions on **239.255.255.255**
+(the address AES67 uses, and the AES67 Linux daemon's own default too), so
+a Dante device in AES67 mode was never discovered. The listener now joins
+both groups. Note this only fixes RECEIVE-side discovery — because we still
+don't announce, a Dante device can't auto-discover streams FROM us; that
+needs SAP announce, still on the list above.
+
 The daemon announces its own sources over SAP *and* browses for remote
 ones, on `sap_mcast_addr` (default 239.255.255.255) every `sap_interval`
 seconds (default 30, or 0 for the RFC-compliant automatic interval), and
