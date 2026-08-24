@@ -1357,6 +1357,17 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         Array(1...max(1, activeCompatibilityProfile.maxUnits))
     }
 
+    /// Ordinal label for a chained-unit position — "1st", "2nd", "3rd" — so
+    /// the unit selector reads as first/second/third rather than bare numbers.
+    static func amplifierUnitLabel(_ n: Int) -> String {
+        switch n {
+        case 1: return "1st"
+        case 2: return "2nd"
+        case 3: return "3rd"
+        default: return "\(n)th"
+        }
+    }
+
     private var amplifierUnitConfigURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/AES67Driver/amplifier_unit.json")
