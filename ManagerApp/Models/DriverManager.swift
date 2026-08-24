@@ -932,8 +932,11 @@ class DriverManager: ObservableObject {
     // change only takes effect on the next start, which is why the UI
     // disables the selector while the driver is installed.
 
-    /// Selectable totals. Matches DeviceChannelSettings::allowedChannelCounts().
-    static let allowedChannelCounts: [Int] = [8, 16, 32, 64, 128]
+    /// Selectable totals. Matches DeviceChannelSettings::allowedChannelCounts()
+    /// — every group of 8 up to 128 (a usable-channel cap on the fixed
+    /// 128-channel buffers), so a detected layout lands exactly instead of
+    /// rounding to a coarse preset.
+    static let allowedChannelCounts: [Int] = Array(stride(from: 8, through: 128, by: 8))
 
     /// Everything is a multiple of this; the aux pair gets a whole group.
     static let channelGroupSize = 8
@@ -1581,6 +1584,46 @@ class DriverManager: ObservableObject {
     /// Total output channels the found+assigned output elements would contribute.
     var resolvedOutputChannels: Int {
         DolbyModelCatalog.totalChannels(outputPeers.compactMap { peerModelAssignments[$0.clockId] }, .output)
+    }
+
+    // Stage 2c: turn the resolved totals into the driver's usable channel
+    // counts. The driver accepts any group of 8 up to 128 (see
+    // DeviceChannelSettings::allowedChannelCounts), so a resolved total that is
+    // itself a multiple of 8 — which every catalog sum is (16/24/32 units) —
+    // is exposed exactly. ceilToAllowedChannelCount only rounds up when a
+    // total somehow isn't group-aligned, to the next group of 8.
+    static func ceilToAllowedChannelCount(_ n: Int) -> Int {
+        for count in allowedChannelCounts where count >= n { return count }
+        return maxDeviceChannels
+    }
+
+    /// The input channel count the detected+assigned input elements imply,
+    /// rounded up to a supported size (0 stays 0 — nothing assigned).
+    var suggestedInputChannelCount: Int {
+        resolvedInputChannels == 0 ? 0 : Self.ceilToAllowedChannelCount(resolvedInputChannels)
+    }
+
+    /// Same for output.
+    var suggestedOutputChannelCount: Int {
+        resolvedOutputChannels == 0 ? 0 : Self.ceilToAllowedChannelCount(resolvedOutputChannels)
+    }
+
+    /// Apply the suggested count for one side to the device channel selection
+    /// and persist it. Takes effect on the next driver start, exactly like the
+    /// manual selector — the device reads device_channels.json when Core Audio
+    /// constructs it. No-op if nothing is assigned on that side.
+    func applyDetectedLayout(_ direction: DolbyIoDirection) {
+        switch direction {
+        case .input:
+            let count = suggestedInputChannelCount
+            guard count > 0 else { return }
+            rxChannelCount = count
+        case .output:
+            let count = suggestedOutputChannelCount
+            guard count > 0 else { return }
+            txChannelCount = count
+        }
+        saveDeviceChannelSettings()
     }
 
     // MARK: - Device sample rate selection
