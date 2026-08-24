@@ -368,18 +368,49 @@ bool SDPParser::parsePTPRefClockAttribute(const std::string& value, SDPSession& 
         return true;
     }
 
-    // Format: ptp=IEEE1588-2008:<mac-address>:domain-nmbr=<domain>
-    // Example: ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:domain-nmbr=0
-    std::regex ptpRegex(R"(ptp=IEEE1588-2008:([0-9A-Fa-f\-:]+):domain-nmbr=(\d+))");
-    std::smatch match;
-
-    if (std::regex_search(value, match, ptpRegex)) {
-        session.ptpMasterMAC = match[1];
-        session.ptpDomain = std::stoi(match[2]);
+    // Two grandmaster forms exist in the wild:
+    //   ptp=IEEE1588-2008:<gmid>:<domain>            (RFC 7273, bare number —
+    //                                                 what the AES67 Linux
+    //                                                 daemon and most standard
+    //                                                 senders emit)
+    //   ptp=IEEE1588-2008:<gmid>:domain-nmbr=<n>     (a variant some tools use)
+    // and the domain may be absent entirely. Accept all of them. The gmid is
+    // an EUI-64, usually hyphen-separated; the field separator is ':'.
+    const std::string prefix = "ptp=IEEE1588-2008:";
+    const size_t at = value.find(prefix);
+    if (at != std::string::npos) {
+        std::string rest = value.substr(at + prefix.size());
+        // Trim trailing whitespace.
+        while (!rest.empty() && (rest.back() == ' ' || rest.back() == '\r' ||
+                                 rest.back() == '\n' || rest.back() == '\t')) {
+            rest.pop_back();
+        }
+        const size_t nmbr = rest.find(":domain-nmbr=");
+        if (nmbr != std::string::npos) {
+            session.ptpMasterMAC = rest.substr(0, nmbr);
+            try { session.ptpDomain = std::stoi(rest.substr(nmbr + 13)); } catch (...) {}
+            return true;
+        }
+        // Otherwise a trailing ":<digits>" is the bare domain number.
+        const size_t lastColon = rest.rfind(':');
+        if (lastColon != std::string::npos && lastColon + 1 < rest.size()) {
+            const std::string tail = rest.substr(lastColon + 1);
+            const bool allDigits = !tail.empty() &&
+                tail.find_first_not_of("0123456789") == std::string::npos;
+            if (allDigits) {
+                session.ptpMasterMAC = rest.substr(0, lastColon);
+                try { session.ptpDomain = std::stoi(tail); } catch (...) {}
+                return true;
+            }
+        }
+        // gmid only, no domain — keep the gmid, leave the domain default.
+        session.ptpMasterMAC = rest;
         return true;
     }
 
-    return false;
+    // Unrecognized ts-refclk variant: it is informational, so never reject the
+    // whole SDP over it — an interop mismatch here must not drop a valid stream.
+    return true;
 }
 
 bool SDPParser::parseMediaClockAttribute(const std::string& value, SDPSession& session) {
