@@ -12,6 +12,7 @@
 #include "../NetworkEngine/StreamManager.h"
 #include "../NetworkEngine/Discovery/SAPListener.h"
 #include "../NetworkEngine/Discovery/SAPAnnouncer.h"
+#include "../NetworkEngine/PTP/PTPPeerObserver.h"
 #include "../NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
 #include <aspl/Stream.hpp>
@@ -167,6 +168,12 @@ private:
     /// mechanism as the diagnostics property above.
     CFPropertyListRef GetDiscoveredSessionsProperty() const;
 
+    /// Backs kPtpPeersPropertySelector: a CFArray of CFDictionaries, one per
+    /// distinct PTP clock identity currently seen (PTPPeerObserver). Lets
+    /// ManagerApp list the Dolby elements present by role. Same gateway
+    /// mechanism as the two above.
+    CFPropertyListRef GetPtpPeersProperty() const;
+
     // Initialize streams and IO handler
     void InitializeStreams();
     void InitializeIOHandler();
@@ -200,6 +207,7 @@ private:
     // starts it — passive listening only, it announces nothing.
     std::unique_ptr<SAPListener> sapListener_;
     std::unique_ptr<SAPAnnouncer> sapAnnouncer_;
+    std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
 
     // Channels the mapper may hand out to streams, per direction. Set once
     // in the constructor from the persisted DeviceChannelSettings.rx/.tx and

@@ -100,6 +100,11 @@ AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
     RegisterCustomProperty(kDiscoveredSessionsPropertySelector,
         [this]() { return GetDiscoveredSessionsProperty(); });
 
+    // Passive PTP peer observer gateway - lists the Dolby elements present
+    // on the network by PTP role. Getter guards against a null observer.
+    RegisterCustomProperty(kPtpPeersPropertySelector,
+        [this]() { return GetPtpPeersProperty(); });
+
     AES67_LOG("AES67Device constructor: Basic initialization complete");
 }
 
@@ -230,6 +235,18 @@ void AES67Device::Initialize() {
         sapAnnouncer_.reset();
     }
 
+    // Passive PTP peer observer: watches PTP traffic to list which Dolby
+    // elements are on the network (see PTPPeerObserver / GetPtpPeersProperty).
+    // Independent of our own PTP role and, like SAP discovery, non-fatal if it
+    // can't start. Uses the default interface (empty) for now.
+    ptpPeerObserver_ = std::make_unique<PTPPeerObserver>();
+    if (ptpPeerObserver_->start("")) {
+        AES67_LOG("AES67Device: PTP peer observer watching 319/320");
+    } else {
+        AES67_LOG("AES67Device: PTP peer observer unavailable - continuing without it");
+        ptpPeerObserver_.reset();
+    }
+
     // PTP. Off unless the installation has asked for it — see
     // StreamManager::setPTPEnabled() for why that default is what it is.
     {
@@ -309,6 +326,7 @@ AES67Device::~AES67Device() {
     // which must still be alive (it is - declared before the announcer, so
     // destroyed after it - but stop promptly regardless).
     if (sapAnnouncer_) sapAnnouncer_->stop();
+    if (ptpPeerObserver_) ptpPeerObserver_->stop();
     // Deactivate streams directly rather than calling StopIO() (which requires
     // framework context). This is safe in the destructor.
     if (inputStream_) {
@@ -640,6 +658,45 @@ CFPropertyListRef AES67Device::GetDiscoveredSessionsProperty() const {
         // The full SDP, so ManagerApp can add the stream without having to
         // re-derive anything the announcer already told us.
         SetCFString(dict, kSessionKeySDP, session.sessionDescription);
+
+        CFArrayAppendValue(array, dict);
+        CFRelease(dict); // array retains it
+    }
+
+    return array; // +1 — caller CFReleases, per RegisterCustomProperty's contract
+}
+
+CFPropertyListRef AES67Device::GetPtpPeersProperty() const {
+    // Non-RT: PTPPeerObserver::peers() takes its own lock and sweeps expired
+    // peers as it reads, so the array reflects who is actually still on the
+    // PTP network right now.
+    CFMutableArrayRef array = CFArrayCreateMutable(
+        kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    if (!array) return nullptr;
+
+    if (!ptpPeerObserver_) {
+        return array; // observer unavailable — an empty list, not a failure
+    }
+
+    for (const auto& peer : ptpPeerObserver_->peers()) {
+        CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
+            kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        if (!dict) continue;
+
+        const char* roleStr = "unknown";
+        switch (peer.role()) {
+            case PTPPeerRole::Master: roleStr = "master"; break;
+            case PTPPeerRole::Slave:  roleStr = "slave";  break;
+            case PTPPeerRole::Mixed:  roleStr = "mixed";  break;
+            case PTPPeerRole::Unknown: roleStr = "unknown"; break;
+        }
+
+        SetCFString(dict, kPeerKeyClockId, peer.clockIdString());
+        SetCFString(dict, kPeerKeyOui, peer.ouiString());
+        SetCFString(dict, kPeerKeyRole, roleStr);
+        SetCFString(dict, kPeerKeySourceIp, peer.sourceIp);
+        SetCFInt64(dict, kPeerKeyDomain, peer.domain);
+        SetCFInt64(dict, kPeerKeyMessageCount, static_cast<int64_t>(peer.messageCount));
 
         CFArrayAppendValue(array, dict);
         CFRelease(dict); // array retains it
