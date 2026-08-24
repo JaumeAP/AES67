@@ -73,41 +73,21 @@ enum class CompatibilityProfileKind {
     /// Dante in AES67 mode (Audinate). Requires multicast inside
     /// 239.69.0.0/16 — that's Dante's own requirement, not AES67's.
     Dante,
-    /// Dolby Atmos Cinema Processor CP850 (and IMS3000): sends AES67
-    /// over Ethernet to a Dolby Atmos Connect Interface (DAC3202 profile,
-    /// below). Cinema audio, so 48/96 kHz per the DCI spec rather than
-    /// AES67's own three rates.
-    CP850,
-    /// Dolby Cinema Processor CP950 / Atmos Cinema Processor CP950A — the
-    /// current-generation replacement line for CP850 (its own manual says
-    /// so explicitly). Same role as CP850 from this driver's point of
-    /// view: it renders and sends, this driver only ever receives.
-    /// CP950 outputs up to 16 channels over Atmos Connect, CP950A up to
-    /// 64 — covered as one profile the same way DMA covers its whole
-    /// model range, since it's the same protocol either way: pick the
-    /// real unit's channel count with ManagerApp's Input selector rather
-    /// than picking a separate profile per model.
-    CP950,
-    /// Dolby Atmos Connect Interface DAC3202: the receiving end of the same
-    /// link a CP850/CP950/CP950A sends — 32 analog outputs, i.e. up to 4
-    /// flows of 8 channels. Same constraint set as CP850; they're two ends
-    /// of one link, not two different networks.
-    DAC3202,
-    /// Dolby Multichannel Amplifier — like DAC3202, another downstream
-    /// endpoint on a Dolby Atmos Connect link; this driver plays the
-    /// cinema-processor role sending to it, so transmit-only and always PTP
-    /// master, confirmed (not assumed) by its manual
-    /// (Docs/references/dolby_multichannel_amplifier_manual.pdf): the
-    /// amplifier's own PTP clock priority is fixed at 255 (lowest) and it
-    /// is documented as "strictly a downstream device" that never
-    /// originates timing. Its Atmos Connect port scheme also differs from
-    /// this driver's own flow splitter — see CompatibilityProfile.cpp's DMA
-    /// case for specifics. Covers every real model (DMA16301/16302,
-    /// DMA24300/24302, DMA32300/32301) as one profile: unlike CP850/
-    /// DAC3202, the output channel count isn't fixed here — it's whatever
-    /// the user picks with ManagerApp's Output channel-count selector, up
-    /// to this profile's own maxTotalChannels ceiling.
-    DMA,
+    /// Dolby. A single profile for the whole Dolby Atmos Connect family —
+    /// the cinema processors that send (CP850, CP950/CP950A, IMS3000) and
+    /// the downstream endpoints that receive (DAC3202, the DMA amplifiers).
+    /// They share one protocol (48/96 kHz per the DCI spec, 1 ms, L16/L24,
+    /// PTP domain 109, multicast 239.81.83.67, the fixed-multicast/
+    /// per-flow-source-port wire scheme, up to three chained units), so one
+    /// permissive family profile covers them all: direction and PTP role are
+    /// left open because the driver is a processor to the amplifiers (it
+    /// transmits, it is master) and an amplifier to the processors (it
+    /// receives, it is slave), and which one is which is discovered per
+    /// element by the passive PTP peer observer, not fixed by the profile.
+    /// The specific model — and therefore its channel count — is confirmed
+    /// per detected element via DolbyModelCatalog, replacing the old
+    /// one-profile-per-model (CP850/CP950/DAC3202/DMA) scheme.
+    Dolby,
 };
 
 struct CompatibilityProfile {
