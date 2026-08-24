@@ -105,6 +105,7 @@ class DriverManager: ObservableObject {
         loadDeviceChannelSettings()
         loadCompatibilityProfile()
         loadAmplifierUnit()
+        loadPeerAssignments()
         startAutoRefresh()
     }
 
@@ -1543,6 +1544,44 @@ class DriverManager: ObservableObject {
     /// PTP peers that are sinks we feed (slaves following us) — the Output
     /// side, and where the DMA unit count is read off.
     var outputPeers: [DiscoveredPeer] { ptpPeers.filter { $0.isOutput } }
+
+    // Per-element model assignment (stage 2b). PTP gives vendor + role but not
+    // model, so the user confirms each detected element's model; that maps to
+    // a channel count via DolbyModelCatalog. Keyed by the peer's clock id so
+    // the choice sticks to that physical unit across refreshes. Persisted in
+    // UserDefaults — a ManagerApp-side preference, not a driver setting.
+    @Published var peerModelAssignments: [String: String] = [:] // clockId -> modelId
+    private let peerAssignmentsKey = "peerModelAssignments"
+
+    func loadPeerAssignments() {
+        if let dict = UserDefaults.standard.dictionary(forKey: peerAssignmentsKey) as? [String: String] {
+            peerModelAssignments = dict
+        }
+    }
+
+    /// Assign (or clear, with nil) a detected element's model and persist it.
+    func assignPeerModel(_ clockId: String, _ modelId: String?) {
+        if let modelId = modelId {
+            peerModelAssignments[clockId] = modelId
+        } else {
+            peerModelAssignments.removeValue(forKey: clockId)
+        }
+        UserDefaults.standard.set(peerModelAssignments, forKey: peerAssignmentsKey)
+    }
+
+    /// The model id assigned to a peer, if any.
+    func assignedModelId(_ clockId: String) -> String? { peerModelAssignments[clockId] }
+
+    /// Total input channels the found+assigned input elements would contribute
+    /// — what stage 2c will turn into the driver's input channel count.
+    var resolvedInputChannels: Int {
+        DolbyModelCatalog.totalChannels(inputPeers.compactMap { peerModelAssignments[$0.clockId] }, .input)
+    }
+
+    /// Total output channels the found+assigned output elements would contribute.
+    var resolvedOutputChannels: Int {
+        DolbyModelCatalog.totalChannels(outputPeers.compactMap { peerModelAssignments[$0.clockId] }, .output)
+    }
 
     // MARK: - Device sample rate selection
     //
