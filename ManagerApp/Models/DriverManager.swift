@@ -1216,7 +1216,7 @@ class DriverManager: ObservableObject {
     ]
 
     private static let compatibilityProfilesDolby: [CompatibilityProfileOption] =
-        [dolbyProfile, dolbyLANProfile] + dolbyModelProfiles
+        [dolbyProfile] + dolbyModelProfiles + [dolbyLANProfile]
 
     // Per-model Dolby profiles, built by a function so each is a typed call
     // (an array literal of these times out the type-checker). Mirror of the
