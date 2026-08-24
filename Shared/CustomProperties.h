@@ -83,4 +83,17 @@ inline constexpr const char* kPeerKeySourceIp = "sourceIp";
 inline constexpr const char* kPeerKeyDomain = "domain";
 inline constexpr const char* kPeerKeyMessageCount = "messageCount";
 
+// FourCharCode 'a67r' ("AES67 Receivers") - the RTCP receiver-report gateway.
+// Returns a CFArray of CFDictionaries, one per distinct receiver that has sent
+// an RTCP Sender/Receiver Report on one of this driver's transmit streams
+// (RTCPMonitor / RTCPReceiverTable) - the second detection vector for a
+// downstream amplifier beside the PTP one, for gear that emits RTCP.
+inline constexpr AudioObjectPropertySelector kRtcpReceiversPropertySelector = 0x61363772;
+
+// Keys per element. ssrc/packetCount are CFNumber; sourceIp/cname are CFString.
+inline constexpr const char* kRcvrKeySSRC = "ssrc";
+inline constexpr const char* kRcvrKeySourceIp = "sourceIp";
+inline constexpr const char* kRcvrKeyCname = "cname";
+inline constexpr const char* kRcvrKeyPacketCount = "packetCount";
+
 } // namespace AES67
