@@ -259,6 +259,58 @@ public:
     // announcement so other AES67/Dante gear can discover and subscribe.
     std::vector<SDPSession> getTransmitSessions() const;
 
+    // Auto sink-follow (RAVENNA auto_sinks_update): given a freshly parsed SAP
+    // announcement, re-point any RECEIVE stream bound to that source onto the
+    // source's new transport (multicast address, port, sample rate, encoding,
+    // ptime, payload type) when it has changed, preserving the sink's device-
+    // channel mapping. Streams are matched by session name plus, when both
+    // sides know it, the unicast source address. A change in channel count is
+    // deliberately NOT followed (it would force a device-channel re-map that
+    // could collide with neighbouring streams) — skipped and logged instead.
+    // Returns how many receive streams were re-subscribed. No-op unless
+    // setAutoSinkFollow(true) (the default).
+    size_t updateReceiveStreamsFromAnnouncement(const SDPSession& announced);
+
+    // Outcome of matching a SAP announcement against one stored receive
+    // stream — the pure decision behind auto sink-follow, exposed static so
+    // it can be unit-tested without a live StreamManager (no sockets):
+    //   NotBound            - announcement isn't this sink's source
+    //   Unchanged           - same source, identical transport: nothing to do
+    //   ChannelCountChanged - source moved but changed channel count; not
+    //                         auto-followed (would force a device re-map)
+    //   Follow              - source moved; re-subscribe to the new transport
+    enum class SinkFollowDecision { NotBound, Unchanged, ChannelCountChanged, Follow };
+    static SinkFollowDecision evaluateSinkFollow(const SDPSession& stored,
+                                                 const SDPSession& announced) {
+        // Defined inline so it can be unit-tested without linking the rest of
+        // StreamManager (receivers, sockets, PTP).
+        if (announced.sessionName.empty() ||
+            stored.sessionName != announced.sessionName) {
+            return SinkFollowDecision::NotBound;
+        }
+        if (!stored.sourceAddress.empty() && !announced.sourceAddress.empty() &&
+            stored.sourceAddress != announced.sourceAddress) {
+            return SinkFollowDecision::NotBound;
+        }
+        const bool transportChanged =
+            stored.connectionAddress != announced.connectionAddress ||
+            stored.port != announced.port ||
+            stored.payloadType != announced.payloadType ||
+            stored.encoding != announced.encoding ||
+            stored.sampleRate != announced.sampleRate ||
+            stored.ptimeUs != announced.ptimeUs ||
+            stored.framecount != announced.framecount;
+        if (!transportChanged) return SinkFollowDecision::Unchanged;
+        if (stored.numChannels != announced.numChannels) {
+            return SinkFollowDecision::ChannelCountChanged;
+        }
+        return SinkFollowDecision::Follow;
+    }
+
+    // Enable/disable auto sink-follow. On by default; a source that never
+    // changes its SDP is unaffected either way.
+    void setAutoSinkFollow(bool enabled);
+
     // Get stream info
     std::optional<StreamInfo> getStreamInfo(const StreamID& id) const;
 
@@ -417,6 +469,11 @@ private:
     // setTxFlowPortOffset(). 0 = first (or only) unit, the behavior before
     // the selector existed.
     std::atomic<uint32_t> txFlowPortOffset_{0};
+
+    // Auto sink-follow toggle (see updateReceiveStreamsFromAnnouncement). On
+    // by default. Atomic: read on the SAP listener's callback thread, set
+    // from control paths.
+    std::atomic<bool> autoSinkFollowEnabled_{true};
 
     // Grandmaster of the streams currently open, and whether to police it.
     // Its own mutex rather than streamsMutex_, for the same reason

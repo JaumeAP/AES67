@@ -58,8 +58,9 @@ every 30 s (`kAnnounceInterval`), with a deletion packet on withdrawal
 carrying the same Message ID Hash it announced with, and `IP_MULTICAST_LOOP`
 off so we never discover our own sources. AES67Device wires it to
 `StreamManager::getTransmitSessions()` + `SDPParser::generate`. Still missing
-versus theirs: no mDNS/RAVENNA discovery, and no `auto_sinks_update`
-equivalent.
+versus theirs: no mDNS/RAVENNA discovery (SAP is our only discovery
+transport). `auto_sinks_update` — receive streams following a moved source —
+is now done; see below.
 
 **SAP address, found by inspecting Dante Controller.** The listener
 originally joined only 224.2.127.254 (RFC 2974 SAPv2 global scope). Dante's
@@ -248,11 +249,17 @@ implementation treats 2022-7 as a driver-level concern, not an add-on.
 ### Automatic sink updates
 
 `auto_sinks_update` — configured sinks follow discovered sources when
-they change. Only meaningful once discovery exists at all. Discovery now
-exists in both directions (`SAPListener` + `SAPAnnouncer`), so this — sinks
-that re-follow a source when its SDP changes — is the remaining unbuilt
-piece; the announcer already re-hashes and re-announces a changed SDP, so
-the missing half is purely receive-side sink re-subscription.
+they change. **Now done.** `StreamManager::updateReceiveStreamsFromAnnouncement`,
+fed from the `SAPListener` announcement callback in AES67Device (parsing the
+SDP off the audio path), re-points any receive stream onto a source that
+re-announced with changed transport — multicast address, port, sample rate,
+encoding, ptime, payload type — preserving the sink's device-channel mapping.
+Streams are matched by session name plus, when both sides know it, the unicast
+source address; a channel-count change is deliberately NOT followed (it would
+force a device re-map that could collide with neighbouring streams) and is
+logged instead. The pure decision is `StreamManager::evaluateSinkFollow`
+(inline, unit-tested in TestStreamManager: move, no-op, not-bound,
+channel-count-change). On by default; `setAutoSinkFollow(false)` disables it.
 
 ## Their documented operational gotchas
 
