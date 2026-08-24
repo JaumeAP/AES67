@@ -313,7 +313,6 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::ST2110_30_LevelB),
         forKind(CompatibilityProfileKind::Dante),
         forKind(CompatibilityProfileKind::Dolby),
-        forKind(CompatibilityProfileKind::DolbyLAN),
         forKind(CompatibilityProfileKind::DolbyDAC3202),
         forKind(CompatibilityProfileKind::DolbyDMA16),
         forKind(CompatibilityProfileKind::DolbyDMA24),
@@ -321,6 +320,7 @@ std::vector<CompatibilityProfile> CompatibilityProfile::all() {
         forKind(CompatibilityProfileKind::DolbyCP850),
         forKind(CompatibilityProfileKind::DolbyCP950),
         forKind(CompatibilityProfileKind::DolbyCP950A),
+        forKind(CompatibilityProfileKind::DolbyLAN),
     };
 }
 
