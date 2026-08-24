@@ -288,7 +288,8 @@ bool testDolbyIsOneFamilyProfileOpenBothWays() {
     TEST_ASSERT(dolby.recommendedMulticastAddress == "239.81.83.67",
                 "Dolby shares the family destination multicast default");
     TEST_ASSERT(dolby.recommendedDscp == 46, "Dolby records the family EF/46 audio marking");
-    TEST_ASSERT(dolby.maxUnits == 3, "Dolby amplifiers chain up to three units");
+    TEST_ASSERT(dolby.maxUnits == 1, "plain Dolby is a single generic unit (max 1)");
+    TEST_ASSERT(!dolby.usesLanAutoDetection, "plain Dolby has no auto-detection");
     TEST_ASSERT(dolby.useFixedMulticastWithPerFlowSourcePort,
                 "Dolby uses the Atmos Connect fixed-multicast/per-flow-source-port scheme");
 
@@ -324,6 +325,30 @@ bool testDolbyRejectsNonFamilyParameters() {
     return true;
 }
 
+bool testDolbyLANAddsDetectionAndChaining() {
+    std::cout << "Test: B9 · Dolby LAN = Dolby plus auto-detection and up-to-3 output units... ";
+    const auto dolby = CompatibilityProfile::forKind(CompatibilityProfileKind::Dolby);
+    const auto lan = CompatibilityProfile::forKind(CompatibilityProfileKind::DolbyLAN);
+
+    // Same shared family parameters as plain Dolby.
+    TEST_ASSERT(lan.allowedSampleRates == dolby.allowedSampleRates, "same rates as Dolby");
+    TEST_ASSERT(lan.allowedEncodings == dolby.allowedEncodings, "same encodings as Dolby");
+    TEST_ASSERT(lan.recommendedPtpDomain == 109, "same PTP domain default");
+    TEST_ASSERT(lan.recommendedMulticastAddress == "239.81.83.67", "same multicast default");
+    TEST_ASSERT(lan.recommendedDscp == 46, "same DSCP");
+    TEST_ASSERT(lan.direction == ProfileDirection::Any, "open direction");
+    TEST_ASSERT(lan.ptpRole == PTPRoleConstraint::Any, "open PTP role");
+    TEST_ASSERT(lan.useFixedMulticastWithPerFlowSourcePort, "Atmos Connect wire scheme");
+
+    // The two differences.
+    TEST_ASSERT(lan.usesLanAutoDetection, "Dolby LAN auto-detects; plain Dolby does not");
+    TEST_ASSERT(!dolby.usesLanAutoDetection, "plain Dolby does not auto-detect");
+    TEST_ASSERT(lan.maxUnits == 3, "Dolby LAN chains up to three OUTPUT units");
+    TEST_ASSERT(dolby.maxUnits == 1, "plain Dolby is a single unit");
+    std::cout << "PASS" << std::endl;
+    return true;
+}
+
 bool testProfilesRecordTheDscpTheirGearExpects() {
     std::cout << "Test: B10 · profiles carry the DSCP their gear expects... ";
     const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
@@ -352,7 +377,7 @@ bool testProfilesRecordTheDscpTheirGearExpects() {
 bool testOnlyDolbyEndpointsChainMultipleUnits() {
     std::cout << "Test: B14 · only the Dolby profile chains more than one unit (max 3)... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        const bool chains = profile.kind == CompatibilityProfileKind::Dolby;
+        const bool chains = profile.kind == CompatibilityProfileKind::DolbyLAN;
         if (chains) {
             // DMA manual §2.3: "you cannot interconnect more than three of
             // these devices unless you use a switch".
@@ -375,7 +400,8 @@ bool testOnlyDolbyEndpointsChainMultipleUnits() {
 bool testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme() {
     std::cout << "Test: B13 · only the Dolby profile uses the fixed-multicast/per-flow-source-port scheme... ";
     for (const auto& profile : CompatibilityProfile::all()) {
-        if (profile.kind == CompatibilityProfileKind::Dolby) {
+        if (profile.kind == CompatibilityProfileKind::Dolby ||
+            profile.kind == CompatibilityProfileKind::DolbyLAN) {
             continue;
         }
         TEST_ASSERT(!profile.useFixedMulticastWithPerFlowSourcePort,
@@ -437,8 +463,8 @@ bool testKindStringRoundTrip() {
                 "unknown value must fall back to AES67");
     // The former per-model ids migrate to the unified Dolby profile.
     for (const char* legacy : {"cp850", "cp950", "dac3202", "dma"}) {
-        TEST_ASSERT(CompatibilityProfile::kindFromString(legacy) == CompatibilityProfileKind::Dolby,
-                    std::string("legacy id ") + legacy + " must migrate to Dolby");
+        TEST_ASSERT(CompatibilityProfile::kindFromString(legacy) == CompatibilityProfileKind::DolbyLAN,
+                    std::string("legacy id ") + legacy + " must migrate to Dolby LAN");
     }
     std::cout << "PASS" << std::endl;
     return true;
@@ -474,6 +500,7 @@ int main() {
     std::cout << "-----------------------------------------------------" << std::endl;
     testDolbyIsOneFamilyProfileOpenBothWays();
     testDolbyRejectsNonFamilyParameters();
+    testDolbyLANAddsDetectionAndChaining();
     testProfilesRecordTheDscpTheirGearExpects();
     testOnlyDMAAndDAC3202UseTheFixedMulticastAddressingScheme();
     testOnlyDolbyEndpointsChainMultipleUnits();

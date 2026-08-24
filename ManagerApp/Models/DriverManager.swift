@@ -1111,6 +1111,12 @@ class DriverManager: ObservableObject {
         /// Multicast prefix streams must fall inside ("239.69" for Dante),
         /// or "" when any valid multicast address is accepted.
         let requiredMulticastPrefix: String
+        /// True for "Dolby LAN": the driver auto-detects Dolby elements on the
+        /// network (passive PTP) and shows them on the Inputs/Outputs tabs to
+        /// drive the channel layout. Plain "Dolby" leaves it false — same
+        /// minimal parameters, configured by hand. Default false so the other
+        /// profiles' initialisers don't need to name it.
+        var usesLanAutoDetection: Bool = false
 
         static func == (lhs: CompatibilityProfileOption, rhs: CompatibilityProfileOption) -> Bool {
             lhs.id == rhs.id
@@ -1119,7 +1125,12 @@ class DriverManager: ObservableObject {
 
     /// Must stay in step with CompatibilityProfile::all() on the C++ side —
     /// there's no shared header across the language boundary.
-    static let compatibilityProfiles: [CompatibilityProfileOption] = [
+    static let compatibilityProfiles: [CompatibilityProfileOption] =
+        compatibilityProfilesGeneric + compatibilityProfilesDolby
+
+    // Split in two so the Swift type-checker infers each smaller array
+    // literal in reasonable time (one big literal times out).
+    private static let compatibilityProfilesGeneric: [CompatibilityProfileOption] = [
         .init(id: "aes67",
               name: "AES67",
               caveats: "Baseline. Accepts the three sample rates AES67 names; the device "
@@ -1198,30 +1209,40 @@ class DriverManager: ObservableObject {
               allowedSampleRates: [48000], allowedPtimesUs: [1000],
               allowedEncodings: ["L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: "239.69"),
+    ]
+
+    private static let compatibilityProfilesDolby: [CompatibilityProfileOption] =
+        [dolbyProfile, dolbyLANProfile]
+
+    // Each on its own typed constant: with the element type explicit the
+    // Swift type-checker handles the long caveats concatenation quickly, where
+    // the same elements inside an array literal time out.
+    private static let dolbyProfile: CompatibilityProfileOption =
         .init(id: "dolby",
               name: "Dolby",
-              caveats: "One profile for the whole Dolby Atmos Connect family — the processors "
-                     + "that send (CP850, CP950/CP950A, IMS3000) and the endpoints that receive "
-                     + "(DAC3202, DMA amplifiers). The driver is a processor to an amplifier (it "
-                     + "transmits, it is PTP master) and an amplifier to a processor (it "
-                     + "receives, it is PTP slave), so direction and PTP role are left open and "
-                     + "worked out per element by passive PTP detection — each detected unit is "
-                     + "listed on the Inputs or Outputs tab, and confirming its model there sets "
-                     + "its channel count. Shared parameters are enforced: 48/96 kHz, 1 ms, "
-                     + "L16/L24; PTP domain factory-default 109; destination multicast "
-                     + "factory-default 239.81.83.67; the Atmos Connect wire scheme (one "
-                     + "multicast address, fixed RTP destination port — pass 6517 — with the "
-                     + "source port stepped per 8-channel flow); up to three chained units. "
-                     + "DSCP EF/46 is the family's documented audio marking (the DMA instead "
-                     + "uses switch queue-based QoS). Not a conformance claim; PTP has never "
-                     + "been verified against real Dolby hardware.",
-              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
+              caveats: """
+The minimal Dolby profile — the parameters common to every Dolby Atmos Connect device, for one unit you configure by hand: 48/96 kHz, 1 ms, L16/L24; PTP domain factory-default 109; destination multicast factory-default 239.81.83.67; the Atmos Connect wire scheme (one multicast address, fixed RTP destination port — pass 6517 — source port stepped per 8-channel flow); DSCP EF/46. Direction and PTP role are open — set them by how you configure the streams. For automatic discovery of Dolby gear and multi-unit chaining, use "Dolby LAN". Not a conformance claim; PTP has never been verified against real Dolby hardware.
+""",
+                            domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
+              direction: .any, maxTotalChannels: 0, ptpRole: .any,
+              maxUnits: 1, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
+              allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
+              allowedEncodings: ["L16", "L24"],
+              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "")
+
+    private static let dolbyLANProfile: CompatibilityProfileOption =
+        .init(id: "dolby-lan",
+              name: "Dolby LAN",
+              caveats: """
+Dolby with automatic discovery. The driver finds Dolby elements on the network by passive PTP observation and lists them on the Inputs and Outputs tabs; confirming each detected unit's model there sets its channel count, and the resolved total becomes the device's channel layout. A master peer is a processor feeding this driver (an input, e.g. CP850/CP950); a slave peer is an amplifier this driver feeds (an output, e.g. DAC3202/DMA). The up-to-three limit is OUTPUT-side only — the amplifiers this driver feeds; input sources are not capped by it. Same family parameters as the plain Dolby profile.
+""",
+                            domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 109,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 3, recommendedMulticastAddress: "239.81.83.67", recommendedDscp: 46,
               allowedSampleRates: [48000, 96000], allowedPtimesUs: [1000],
               allowedEncodings: ["L16", "L24"],
-              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: ""),
-    ]
+              usesFixedMulticastPerFlowSourcePort: true, requiredMulticastPrefix: "",
+              usesLanAutoDetection: true)
 
     @Published var compatibilityProfileID: String = "aes67"
 
@@ -1245,7 +1266,7 @@ class DriverManager: ObservableObject {
         // Migrate the former per-model Dolby ids to the unified profile,
         // matching CompatibilityProfile::kindFromString on the driver side.
         let legacyDolby: Set<String> = ["cp850", "cp950", "dac3202", "dma"]
-        let id = legacyDolby.contains(rawId) ? "dolby" : rawId
+        let id = legacyDolby.contains(rawId) ? "dolby-lan" : rawId
         guard Self.compatibilityProfiles.contains(where: { $0.id == id }) else {
             // Unknown or missing falls back to the unrestricted baseline —
             // never to a profile that would start rejecting working streams.
