@@ -285,6 +285,14 @@ target_include_directories(TestPCMCodec PRIVATE ${CMAKE_SOURCE_DIR})
 target_compile_features(TestPCMCodec PRIVATE cxx_std_17)
 target_link_libraries(TestPCMCodec PRIVATE "-framework Accelerate")
 
+# Test: PTP peer table (passive Dolby-via-PTP discovery core) — header-only,
+# socket-free, time-injected. See TestPTPPeerTable.cpp.
+add_executable(TestPTPPeerTable
+    TestPTPPeerTable.cpp
+)
+target_include_directories(TestPTPPeerTable PRIVATE ${CMAKE_SOURCE_DIR})
+target_compile_features(TestPTPPeerTable PRIVATE cxx_std_17)
+
 # Add tests to CTest
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
@@ -298,6 +306,7 @@ add_test(NAME CompatibilityProfile COMMAND TestCompatibilityProfile)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME Resampling COMMAND TestResampling)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
+add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
