@@ -47,7 +47,39 @@ struct AmplifierUnitSettings {
     /// maxUnits. Anything outside 1..kMaxUnits falls back to 1.
     static constexpr uint32_t kMaxUnits = 3;
 
+    /// One Atmos Connect flow carries at most this many channels (the
+    /// standard's per-flow cap); the source-port stepping is per flow.
+    static constexpr uint32_t kChannelsPerFlow = 8;
+
+    /// Channel count of each unit in the chain, unit 1 first. Units in a
+    /// chain need NOT be the same model: a 16-, 24- and 32-channel unit can
+    /// sit in one chain, and each takes a DIFFERENT number of 8-channel flows
+    /// (2, 3, 4) and therefore a different block of source ports. This records
+    /// those per-unit sizes so the source-port offset for the selected unit is
+    /// the real sum of the preceding units' flows — not (unitIndex-1) times
+    /// this driver's own width, which only holds when every unit is identical.
+    /// Empty, or a 0 entry, means "unknown — assume same width as this driver's
+    /// output" (the old uniform behaviour), so an unset chain changes nothing.
+    std::vector<uint32_t> chainUnitChannels;
+
     bool isValid() const { return unitIndex >= 1 && unitIndex <= kMaxUnits; }
+
+    /// Source-port flow offset for `unitIndex`: the number of 8-channel flows
+    /// the units BEFORE it occupy. Each preceding unit contributes
+    /// ceil(channels / kChannelsPerFlow) flows, taken from chainUnitChannels
+    /// when known and from `fallbackChannels` (this driver's own output count)
+    /// otherwise. Pure and static so it is unit-tested on its own.
+    static uint32_t flowOffsetForUnit(const std::vector<uint32_t>& chainUnitChannels,
+                                      uint32_t fallbackChannels, uint32_t unitIndex) {
+        uint32_t offset = 0;
+        for (uint32_t i = 0; i + 1 < unitIndex; ++i) { // units 1..unitIndex-1 (0-based i)
+            const uint32_t ch = (i < chainUnitChannels.size() && chainUnitChannels[i] > 0)
+                                    ? chainUnitChannels[i]
+                                    : fallbackChannels;
+            offset += (ch + kChannelsPerFlow - 1) / kChannelsPerFlow;
+        }
+        return offset;
+    }
 };
 
 class AmplifierUnitSettingsManager {

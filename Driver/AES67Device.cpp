@@ -165,13 +165,12 @@ void AES67Device::Initialize() {
         const auto profile = CompatibilityProfile::forKind(profileKind);
         const uint32_t unitIndex = std::min(unitSettings.unitIndex, profile.maxUnits);
 
-        // Each unit carries its own consecutive block of channels, so the
-        // preceding units account for (unitIndex - 1) blocks of however
-        // many flows one unit's worth of channels takes.
-        const uint32_t flowsPerUnit =
-            (usableTxChannelCount_ + StreamChannelMapper::kMaxChannelsPerFlow - 1) /
-            StreamChannelMapper::kMaxChannelsPerFlow;
-        const uint32_t flowOffset = (unitIndex - 1) * flowsPerUnit;
+        // The preceding units' source-port flows — the real sum of their
+        // sizes, since a chain may mix 16-, 24- and 32-channel units (each
+        // 2/3/4 flows). Unknown positions fall back to this driver's own
+        // output width, so an unset chain behaves as the old uniform case.
+        const uint32_t flowOffset = AmplifierUnitSettings::flowOffsetForUnit(
+            unitSettings.chainUnitChannels, usableTxChannelCount_, unitIndex);
         streamManager_->setTxFlowPortOffset(flowOffset);
 
         // Playout delay lives in the same settings file.
@@ -180,9 +179,8 @@ void AES67Device::Initialize() {
         if (delay.samples > 0) {
             AES67_LOGF("AES67Device: Playout delay %u samples", delay.samples);
         }
-        AES67_LOGF("AES67Device: Amplifier unit %u of max %u -> TX flow port offset %u "
-                   "(%u flows per unit)",
-                   unitIndex, profile.maxUnits, flowOffset, flowsPerUnit);
+        AES67_LOGF("AES67Device: Amplifier unit %u of max %u -> TX flow port offset %u",
+                   unitIndex, profile.maxUnits, flowOffset);
     }
 
     // SAP discovery. Listens for other devices' session announcements so
