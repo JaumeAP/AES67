@@ -161,9 +161,13 @@ struct CompatibilityProfile {
     /// DAC3202), where the DMA manual (§2.3) documents up to three chained
     /// directly: "you cannot interconnect more than three of these devices
     /// unless you use a switch", each unit taking the next block of
-    /// channels and the next block of source UDP ports (unit 1 = channels
-    /// 1-32 / source 6518-6521, unit 2 = channels 33-64 / source
-    /// 6522-6525, and so on — §3.2.4's port table runs to channel 64).
+    /// channels and the next block of source UDP ports. A single unit is a
+    /// 16-, 24-, or 32-channel model (DMA16/24/32); with 32-channel units,
+    /// unit 1 = channels 1-32 / source 6518-6521, unit 2 = channels 33-64 /
+    /// source 6522-6525, and so on (§3.2.4's port table runs to channel 64,
+    /// i.e. two 32-channel units). This driver feeds one selected unit at a
+    /// time, so maxTotalChannels is the largest SINGLE unit (32), not the
+    /// chain sum.
     ///
     /// The user picks which unit this driver is feeding with ManagerApp's
     /// amplifier-unit selector; that choice becomes a flow-port offset
