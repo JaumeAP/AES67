@@ -74,18 +74,13 @@ bool transmitDirectionFor(const CompatibilityProfile& profile) {
 
 bool testAllProfilesAcceptTheCommonBaseline() {
     std::cout << "Test: A1 · every profile accepts 48kHz/L24/1ms/8ch, each in its own direction... ";
+    const auto sdp = baselineSession(); // 239.69.1.10 — Dante's range, and no
+                                        // other profile requires a prefix.
     for (const auto& profile : CompatibilityProfile::all()) {
         // ST 2110-30 Level B is the one profile that rejects the baseline
         // on purpose: it exists precisely to require 125 us packets where
         // the baseline (and Level A) use 1 ms.
         if (profile.kind == CompatibilityProfileKind::ST2110_30_LevelB) continue;
-        auto sdp = baselineSession();
-        // Use a multicast the profile actually permits — Dante needs 239.69,
-        // the Dolby family needs 239.81; a profile with no required prefix
-        // accepts the default.
-        if (!profile.requiredMulticastPrefix.empty()) {
-            sdp.connectionAddress = profile.requiredMulticastPrefix + ".1.10";
-        }
         std::string error;
         TEST_ASSERT(profile.validate(sdp, transmitDirectionFor(profile), &error),
                     profile.displayName + " rejected the common baseline: " + error);
@@ -301,7 +296,6 @@ bool testDolbyIsOneFamilyProfileOpenBothWays() {
 
     // Both directions accepted at the family's rates.
     auto sdp = baselineSession();
-    sdp.connectionAddress = "239.81.83.67"; // Dolby's required multicast range
     sdp.sampleRate = 96000.0; // DCI's higher rate
     std::string error;
     TEST_ASSERT(dolby.validate(sdp, /*isTransmit=*/true, &error),
