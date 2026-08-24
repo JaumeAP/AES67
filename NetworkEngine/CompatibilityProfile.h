@@ -87,7 +87,15 @@ enum class CompatibilityProfileKind {
     /// The specific model — and therefore its channel count — is confirmed
     /// per detected element via DolbyModelCatalog, replacing the old
     /// one-profile-per-model (CP850/CP950/DAC3202/DMA) scheme.
+    /// This is the plain, minimal one: the shared Dolby parameters, a single
+    /// generic unit, configured by hand — no automatic discovery.
     Dolby,
+    /// Dolby LAN. The same family, but with automatic discovery: the driver
+    /// finds Dolby elements on the network by passive PTP observation, lists
+    /// them on the Inputs/Outputs tabs, and generates the channel layout from
+    /// what's found (up to three chained units). Everything the plain Dolby
+    /// profile has, plus usesLanAutoDetection and multi-unit chaining.
+    DolbyLAN,
 };
 
 struct CompatibilityProfile {
@@ -135,8 +143,17 @@ struct CompatibilityProfile {
     /// Read by StreamManager::createTxStreamFlows().
     bool useFixedMulticastWithPerFlowSourcePort{false};
 
-    /// How many physical units of this profile's gear may be chained in one
-    /// auditorium, each carrying its own consecutive "channel group" — 1
+    /// True for the "Dolby LAN" profile: this driver auto-detects Dolby
+    /// elements on the network by passive PTP observation and shows them on
+    /// the Inputs/Outputs tabs to drive the channel layout. The plain "Dolby"
+    /// profile leaves it false - same minimal parameters, configured by hand.
+    /// Purely a UI affordance; the PTP observer runs regardless.
+    bool usesLanAutoDetection{false};
+
+    /// How many physical OUTPUT units (amplifiers this driver feeds) may be
+    /// chained in one auditorium, each carrying its own consecutive "channel
+    /// group". Output-side only - input sources that feed this driver are not
+    /// capped by this. Each unit carries its own channel group — 1
     /// for everything except the Dolby Atmos Connect endpoints (DMA and
     /// DAC3202), where the DMA manual (§2.3) documents up to three chained
     /// directly: "you cannot interconnect more than three of these devices

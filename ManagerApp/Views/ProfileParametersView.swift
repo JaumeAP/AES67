@@ -346,7 +346,9 @@ struct ProfileParametersView: View {
             )
         }
 
-        foundElementsSection(driverManager.inputPeers, direction: .input, side: "input channels")
+        if profile.usesLanAutoDetection {
+            foundElementsSection(driverManager.inputPeers, direction: .input, side: "input channels")
+        }
     }
 
     // MARK: - Outputs tab (TX: Core Audio -> network)
@@ -399,7 +401,9 @@ struct ProfileParametersView: View {
             }
         }
 
-        foundElementsSection(driverManager.outputPeers, direction: .output, side: "output channels")
+        if profile.usesLanAutoDetection {
+            foundElementsSection(driverManager.outputPeers, direction: .output, side: "output channels")
+        }
     }
 
     private func directionNotice(_ text: String) -> some View {
