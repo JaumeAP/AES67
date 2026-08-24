@@ -117,6 +117,14 @@ struct ProfileParametersView: View {
                     }
                     Divider()
                 }
+                let suggested = direction == .input
+                    ? driverManager.suggestedInputChannelCount
+                    : driverManager.suggestedOutputChannelCount
+                let current = direction == .input
+                    ? driverManager.rxChannelCount
+                    : driverManager.txChannelCount
+                let locked = driverManager.isDriverLoaded
+
                 HStack {
                     Text("\(peers.count) found")
                         .font(.caption).foregroundColor(.secondary)
@@ -124,10 +132,28 @@ struct ProfileParametersView: View {
                     Text("Resolved: \(resolved) channels")
                         .font(.caption).bold()
                 }
+                HStack {
+                    Button {
+                        driverManager.applyDetectedLayout(direction)
+                    } label: {
+                        Text(suggested == resolved
+                             ? "Set \(side) to \(suggested)"
+                             : "Set \(side) to \(suggested) (rounded up from \(resolved))")
+                    }
+                    .disabled(locked || resolved == 0 || suggested == current)
+                    .help(locked
+                          ? "Uninstall the driver first — the channel layout is read when the driver starts."
+                          : "Sets the device's \(side) to fit the detected elements. Takes effect on the next driver start.")
+                    Spacer()
+                    Text("now: \(current)")
+                        .font(.caption).foregroundColor(.secondary)
+                }
                 Text("Vendor is read from the OUI; PTP can't tell one Dolby model from "
                      + "another, so confirm each unit's model to set its channel count. "
-                     + "The resolved total is what the next stage turns into the driver's "
-                     + "\(side).")
+                     + (locked
+                        ? "Uninstall the driver to apply a new layout — it's read at driver start."
+                        : "Applying sets the device's \(side) to fit the detected elements, "
+                          + "in groups of 8; it takes effect on the next driver start."))
                     .font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
