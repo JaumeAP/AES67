@@ -60,23 +60,24 @@ to, so it still gets its own "Rebut:" line.
 Lists: always numbered — never unnumbered/bulleted, at every level. Nested
 sub-items are numbered too (e.g. `3.1`, `3.2`), never dashes/bullets.
 
-## Repo skills
+## Workflow skills (user scope)
 
-Skills live under `.claude/skills/`. Pointers only, not summaries — each skill is the
-authority on its own topic; invoke it when the task calls for it:
+These rules live in the `session-rules` plugin at `~/.claude/skills/session-rules/`, loaded
+as `session-rules@skills-dir`, not in this repo — they are identical across every one of my
+repos, so they are installed once at user scope instead of vendored per project. Pointers
+only, not summaries; each skill is the authority on its own topic:
 
-1. `handoff-rules` (`.claude/skills/handoff-rules/SKILL.md`) — when to read `HANDOFF.md`,
-   when to regenerate it, and what shape it keeps. Invoke at session start and at close.
-   Its `hooks/` directory holds the six scripts that mechanize it, plus the
-   `settings-snippet.json` that registers them.
-2. `git-sync-and-merge` (`.claude/skills/git-sync-and-merge/SKILL.md`) — the "sincronitza"
-   command and the close git sequence: autonomous local merge, no pull request, call
-   budget, push and conflict failure paths. Invoke before any branch integration.
+1. `handoff-rules` — when to read `HANDOFF.md`, when to regenerate it, and what shape it
+   keeps. Invoke at session start and at close. The plugin also carries the six hooks that
+   mechanize it.
+2. `git-sync-and-merge` — the "sincronitza" command and the close git sequence: autonomous
+   local merge, no pull request, call budget, and the push, clean-tree and merge-conflict
+   failure paths. Invoke before any branch integration.
 
 **Skill creation/extension.** Any skill creation or extension (a new `SKILL.md`, or a
 content/frontmatter change to an existing one) goes through the `skill-creator` skill's
-process, not a plain manual edit (2026-07-20 standing rule). `skill-creator` is installed
-at user scope as `skill-creator@claude-plugins-official`.
+process, not a plain manual edit (2026-07-20 standing rule). `skill-creator` is installed at
+user scope as `skill-creator@claude-plugins-official`.
 
 ## Session continuity — `HANDOFF.md` (repo root)
 
