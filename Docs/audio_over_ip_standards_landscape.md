@@ -28,7 +28,7 @@ is the common subset they meet on.
 | System | Vendor / origin | Sector | Notes for this driver |
 |---|---|---|---|
 | **Dante** | Audinate | Pro AV — over 90% of deployments | Needs **AES67 mode enabled explicitly**. Uses **PTPv1** natively; AES67 mode is what switches it to PTPv2. Requires multicast in `239.69.0.0/16` — the driver's existing `239.x.x.x` check in `StreamManager.cpp` already satisfies this |
-| **RAVENNA** | ALC NetworX | Broadcast | Natively AES67; adds discovery (Bonjour) and stream redundancy that AES67 itself doesn't define. See `aes67_driver_compatibility_review.md` in the `new_renderer` repo |
+| **RAVENNA** | ALC NetworX | Broadcast | Natively AES67; adds discovery (Bonjour) and stream redundancy that AES67 itself doesn't define. See `aes67_driver_compatibility_review.md` in the `llibreries` repo |
 | **Livewire+** | Telos / Axia | Radio | AES67-compliant |
 | **Q-LAN** | QSC | Installed systems | AES67-compliant |
 | **WheatNet-IP** | Wheatstone | Radio | AES67-compliant |
