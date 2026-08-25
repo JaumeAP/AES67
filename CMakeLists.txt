@@ -209,6 +209,89 @@ set(NETWORK_SOURCES
     NetworkEngine/Discovery/RTSPClient.cpp
 )
 
+# ============================================================================
+# Consumable core (see README, "Consuming this repository")
+# ============================================================================
+#
+# This repository is the base other projects build on -- the ESP32-P4 firmware
+# in JaumeAP/DTS-Player among them -- by adding it as a submodule. These two
+# lists are the contract: what a consumer can compile without being on macOS.
+#
+# AES67_CORE_SOURCES is platform-free: no Apple frameworks, no sockets, nothing
+# that assumes an operating system -- checked transitively, through the headers
+# each file includes, not just the file itself. It is the SDP parser, the jitter
+# buffer and packet pool, the PLL and the PTP settings, the resampling chain,
+# the channel mapper and the configuration bookkeeping.
+#
+# What is NOT here, and why, since the surprises are instructive: the RTP layer
+# (SimpleRTP.h opens sockets, and RTPReceiver/RTPTransmitter include it),
+# StreamManager (same), and PTPClock, PTPArbitrator and PTPDInterface, which
+# reach CoreAudio through PTPClockSource.h. None of that shows in the .cpp
+# files; it arrives through a header two levels down. A first pass at this list
+# that only looked at the .cpp files got five of them wrong.
+#
+# AES67_NET_SOURCES adds BSD sockets. Portable in practice -- lwIP gives an
+# ESP32 the same API -- but a consumer may want its own transport, so it is a
+# separate target rather than folded into the core.
+#
+# Three files are in neither, and they are the ones a non-Apple consumer has to
+# replace: RTP/PCMCodec.cpp (Accelerate), PTP/AudioClockDeviceList.cpp and
+# PTP/CoreAudioClockSource.cpp (CoreFoundation, CoreAudio).
+#
+# The rule that keeps this honest: nothing reachable from AES67_CORE_SOURCES may
+# include an Apple framework or a socket header. scripts/ci-local.sh checks it,
+# because a contract nobody verifies drifts the first time someone is in a hurry.
+set(AES67_CORE_SOURCES
+    Shared/Types.cpp
+    Shared/Config.cpp
+    Shared/NonBlockingLogger.cpp
+    Shared/ErrorRecoveryManager.cpp
+    Driver/SDPParser.cpp
+    NetworkEngine/StreamChannelMapper.cpp
+    NetworkEngine/StreamConfig.cpp
+    NetworkEngine/DeviceChannelSettings.cpp
+    NetworkEngine/AmplifierUnitSettings.cpp
+    NetworkEngine/CompatibilityProfile.cpp
+    NetworkEngine/NetworkErrorHandler.cpp
+    NetworkEngine/DoPDecoder.cpp
+    NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
+    NetworkEngine/RTP/LockFreePacketPool.cpp
+    NetworkEngine/RTP/BufferStatusMonitor.cpp
+    NetworkEngine/PTP/PTPMasterSettings.cpp
+    NetworkEngine/PTP/PhaseLockedLoop.cpp
+    NetworkEngine/PTP/CustomSys.cpp
+    NetworkEngine/Resampling/Resampler.cpp
+    NetworkEngine/Resampling/PIController.cpp
+    NetworkEngine/Resampling/SmoothedPIController.cpp
+    NetworkEngine/Resampling/ClockAdjustmentController.cpp
+    NetworkEngine/Resampling/SampleRateAdapter.cpp
+)
+
+set(AES67_NET_SOURCES
+    Shared/ResourceCleanupManager.cpp
+    NetworkEngine/NetworkUtils.cpp
+    NetworkEngine/NetworkInterfaceDetection.cpp
+    NetworkEngine/StreamManager.cpp
+    NetworkEngine/RTP/SimpleRTP.cpp
+    NetworkEngine/RTP/RTPReceiver.cpp
+    NetworkEngine/RTP/RTPTransmitter.cpp
+    NetworkEngine/PTP/PTPSlave.cpp
+    NetworkEngine/PTP/PTPMaster.cpp
+    NetworkEngine/PTP/PTPPeerObserver.cpp
+    NetworkEngine/Discovery/SAPListener.cpp
+    NetworkEngine/Discovery/SAPAnnouncer.cpp
+    NetworkEngine/Discovery/RTCPMonitor.cpp
+    NetworkEngine/Discovery/RTSPClient.cpp
+)
+
+add_library(aes67_core STATIC ${AES67_CORE_SOURCES})
+target_include_directories(aes67_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(aes67_core PUBLIC cxx_std_17)
+
+add_library(aes67_net STATIC ${AES67_NET_SOURCES})
+target_link_libraries(aes67_net PUBLIC aes67_core)
+
+
 # Combine all C++ sources
 set(ALL_CPP_SOURCES
     ${SHARED_SOURCES}
