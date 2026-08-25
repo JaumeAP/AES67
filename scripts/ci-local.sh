@@ -42,19 +42,18 @@ jobs="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
 
 echo "==> Configure (Release, tests only)"
 mkdir -p "$build_dir"
-# BUILD_MANAGER_APP=OFF: the SwiftUI app is built by ManagerApp/build.sh with
-# raw swiftc and does not compile in either environment today -- here the
-# #Preview macro plugin is missing (no full Xcode toolchain), and on the GitHub
-# runner swiftc gave up type-checking DiscoveredSessionsView.swift:23. It is
-# also unverified against a live driver per README. Excluding it keeps this
-# gate about the C++ driver and its tests; build it explicitly with
-# `cmake --build build --target ManagerApp` once it is fixed.
+# ManagerApp is back in the gate: it built with the Command Line Tools once
+# the #Preview blocks moved to Views/Previews/ (the macro plugin they need
+# ships with full Xcode only, and build.sh lists its sources explicitly, so
+# that directory stays out of a command-line build) and once
+# DiscoveredSessionsView's session-already-added check was rewritten. Skip it
+# with -DBUILD_MANAGER_APP=OFF if a machine lacks a Swift toolchain.
 cmake -S . -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTS=ON \
   -DBUILD_EXAMPLES=OFF \
   -DBUILD_TOOLS=OFF \
-  -DBUILD_MANAGER_APP=OFF || { echo "FAIL: cmake configure" >&2; exit 1; }
+  -DBUILD_MANAGER_APP=ON || { echo "FAIL: cmake configure" >&2; exit 1; }
 
 echo "==> Build (-j$jobs)"
 cmake --build "$build_dir" -j"$jobs" || { echo "FAIL: build" >&2; exit 1; }

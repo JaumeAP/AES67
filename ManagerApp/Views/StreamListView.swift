@@ -625,8 +625,3 @@ struct MiniLevelIndicator: View {
         }
     }
 }
-
-#Preview {
-    StreamListView(selectedStream: .constant(nil))
-        .environmentObject(DriverManager())
-}
