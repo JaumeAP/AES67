@@ -255,7 +255,13 @@ endif()
 # Manager App (SwiftUI - macOS only)
 # ============================================================================
 
-if(APPLE AND ASPL_FOUND)
+# Declared here rather than beside BUILD_TESTS/BUILD_EXAMPLES/BUILD_TOOLS
+# further down: an option has to exist before the block that reads it.
+# The app builds through its own build.sh (raw swiftc, not SwiftPM), so it
+# needs a full Xcode toolchain that a plain command-line build may not have.
+option(BUILD_MANAGER_APP "Build the SwiftUI Manager app" ON)
+
+if(APPLE AND ASPL_FOUND AND BUILD_MANAGER_APP)
     add_custom_target(ManagerApp ALL
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
