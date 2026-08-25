@@ -8,6 +8,35 @@
 
 A work-in-progress open-source virtual audio driver for macOS that aims to provide AES67 network audio support. Built as a user-space AudioServerPlugIn using the libASPL framework.
 
+## Consuming this repository
+
+Other projects build on this one by adding it as a submodule — the ESP32-P4
+firmware in `JaumeAP/DTS-Player` among them:
+
+```bash
+git submodule add https://github.com/JaumeAP/aes67_macos_driver.git third_party/aes67
+```
+
+Two CMake targets say what is safe to take:
+
+| Target | What it holds | Needs |
+|---|---|---|
+| `aes67_core` | 23 files: SDP parsing, jitter buffer and packet pool, the PLL and PTP settings, the resampling chain, the channel mapper, configuration | a C++17 compiler, nothing else |
+| `aes67_net` | 14 more: the RTP layer, `StreamManager`, PTP slave and master, SAP/RTSP/RTCP discovery | BSD sockets (lwIP provides them on an ESP32) |
+
+Three files are in neither, and they are what a non-Apple consumer has to
+replace: `NetworkEngine/RTP/PCMCodec.cpp` (Accelerate),
+`NetworkEngine/PTP/AudioClockDeviceList.cpp` and
+`NetworkEngine/PTP/CoreAudioClockSource.cpp` (CoreFoundation, CoreAudio).
+
+The split is checked, not asserted: `scripts/ci-local.sh` fails if anything
+reachable from `aes67_core` — including through a header two levels down —
+includes an Apple framework or a socket header. That check earned its place
+immediately: the first version of the list was drawn from the `.cpp` files
+alone and got five entries wrong, because `SimpleRTP.h` opens sockets and
+`PTPClockSource.h` reaches CoreAudio without either showing up where you would
+look for it.
+
 ## Current Status
 
 **Verified Working (Real Hardware):**
