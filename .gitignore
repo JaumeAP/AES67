@@ -1,6 +1,11 @@
 # Build directories
 build/
 build-pkg/
+# scripts/ci-local.sh --sanitize / --tsan and scripts/coverage.sh each use
+# their own tree so switching modes does not force a full rebuild of build/.
+build-san/
+build-tsan/
+build-cov/
 combined-pkg/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/

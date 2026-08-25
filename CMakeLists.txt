@@ -59,6 +59,18 @@ if(AES67_SANITIZE)
     add_link_options(-fsanitize=${AES67_SANITIZE})
 endif()
 
+# Source-based coverage, opt-in and in its own build dir:
+#   cmake -S . -B build-cov -DAES67_COVERAGE=ON && cmake --build build-cov
+#   scripts/coverage.sh
+# Kept out of the default build because instrumented binaries are slower and
+# emit a .profraw per run, which would pollute a normal build tree.
+option(AES67_COVERAGE "Instrument for llvm-cov source-based coverage" OFF)
+if(AES67_COVERAGE)
+    message(STATUS "Coverage instrumentation enabled")
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping -g -O0)
+    add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+endif()
+
 # Build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)

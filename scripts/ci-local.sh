@@ -16,10 +16,32 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 build_dir="build"
-if [ "${1:-}" = "--clean" ]; then
-  echo "==> Removing $build_dir (clean run)"
-  rm -rf "$build_dir"
-fi
+sanitize=""
+for arg in "$@"; do
+  case "$arg" in
+    --clean)
+      echo "==> Removing $build_dir (clean run)"
+      rm -rf "$build_dir"
+      ;;
+    --sanitize)
+      # Its own build dir and its own flags: sanitizer builds are slower and
+      # link differently, so sharing build/ would force a full rebuild every
+      # time you switch back. Not part of the pre-push gate -- a push should
+      # not wait for an instrumented rebuild -- run it deliberately before
+      # anything that touches the ring buffer or the IO path.
+      build_dir="build-san"
+      sanitize="address,undefined"
+      ;;
+    --tsan)
+      # ThreadSanitizer is the one that has a chance at the SPSC ring buffer
+      # and the IO/network thread boundary. It cannot prove the lock-free code
+      # correct, only catch a race it actually observes, so pair it with
+      # `ctest -L timing`, which is where the concurrent cases live.
+      build_dir="build-tsan"
+      sanitize="thread"
+      ;;
+  esac
+done
 
 if ! command -v cmake >/dev/null 2>&1; then
   echo "FAIL: cmake not found" >&2
@@ -50,6 +72,7 @@ mkdir -p "$build_dir"
 # with -DBUILD_MANAGER_APP=OFF if a machine lacks a Swift toolchain.
 cmake -S . -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
+  -DAES67_SANITIZE="$sanitize" \
   -DBUILD_TESTS=ON \
   -DBUILD_EXAMPLES=OFF \
   -DBUILD_TOOLS=OFF \
@@ -58,8 +81,29 @@ cmake -S . -B "$build_dir" \
 echo "==> Build (-j$jobs)"
 cmake --build "$build_dir" -j"$jobs" || { echo "FAIL: build" >&2; exit 1; }
 
-echo "==> Tests (network-dependent suites excluded, as in CI)"
-( cd "$build_dir" && ctest -E "RingBuffer|PTPClock|IntegrationAudioPath" --output-on-failure ) \
+# -LE timing, not a name regex: the suites that depend on wall-clock behaviour
+# or on real multicast sockets carry the `timing` label (Tests/CMakeLists.txt),
+# so labelling a new one excludes it here automatically. Run them explicitly
+# with `ctest -L timing` when you want them.
+# Under a sanitizer the timing suites are the point, not noise to skip: the
+# concurrent ring-buffer case is what TSan needs to see. Their wall-clock
+# assertions do get slower under instrumentation, so a speed-ratio failure
+# there means "instrumented", not "regressed".
+# Seeded with --output-on-failure so the array is never empty: bash 3.2, which
+# is what /bin/bash is on macOS, treats "${arr[@]}" on an empty array as an
+# unbound variable under `set -u` and aborts.
+ctest_args=(--output-on-failure)
+if [ -n "$sanitize" ]; then
+  # Timing and concurrency suites are the point under a sanitizer, but the
+  # `network` ones need real multicast sockets and fail on a developer machine
+  # for reasons that have nothing to do with the instrumentation.
+  ctest_args+=(-LE network)
+  echo "==> Tests (network excluded, sanitizer: $sanitize)"
+else
+  ctest_args+=(-LE timing)
+  echo "==> Tests (label 'timing' excluded)"
+fi
+( cd "$build_dir" && ctest "${ctest_args[@]}" ) \
   || { echo "FAIL: tests" >&2; exit 1; }
 
 # Both checks below are informational: the workflow's lint job never failed on
