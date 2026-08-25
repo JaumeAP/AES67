@@ -1012,21 +1012,3 @@ struct ConnectivityTestResult {
     let details: [String]
     let timestamp: Date
 }
-
-#Preview("Healthy State") {
-    PTPDiagnosticView()
-        .environmentObject(DriverManager())
-}
-
-#Preview("No Master") {
-    let view = PTPDiagnosticView()
-    return view
-        .environmentObject(DriverManager())
-}
-
-#Preview("Firewall Blocked") {
-    // Note: In real usage, this preview would need a mock DriverManager
-    // that provides ptpDiagnostics with firewallBlockingPTP = true
-    PTPDiagnosticView()
-        .environmentObject(DriverManager())
-}

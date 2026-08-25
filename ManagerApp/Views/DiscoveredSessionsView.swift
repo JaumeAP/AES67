@@ -20,9 +20,26 @@ struct DiscoveredSessionsView: View {
     /// Sessions already added as streams, so the list can say so instead of
     /// letting the user add the same thing twice and get a rejection.
     private func isAlreadyAdded(_ session: DriverManager.DiscoveredSession) -> Bool {
-        driverManager.streams.contains {
-            $0.multicast.ip == session.multicastAddress && Int($0.multicast.port) == session.port
+        // Written out with explicit types rather than as a one-line `contains`
+        // closure: the compact form mixed `Int(_:)` — which has a large
+        // overload set — with `==` and `&&` inside a closure whose parameter
+        // type had to be inferred, and swiftc gave up type-checking it in
+        // reasonable time (the error that failed every CI run before the build
+        // moved to this machine). Splitting it also surfaced what the timeout was
+        // hiding: the closure read `$0.multicast.ip` and `$0.multicast.port`,
+        // and `StreamInfo` has no `multicast` member at all — the fields are
+        // `multicastIP` and `port`. The comparison never worked; it only ever
+        // failed slowly enough to look like a compiler limit.
+        let sessionAddress: String = session.multicastAddress
+        let sessionPort: Int = session.port
+        for stream in driverManager.streams {
+            let streamAddress: String = stream.multicastIP
+            let streamPort: Int = Int(stream.port)
+            if streamAddress == sessionAddress && streamPort == sessionPort {
+                return true
+            }
         }
+        return false
     }
 
     private var canReceive: Bool {

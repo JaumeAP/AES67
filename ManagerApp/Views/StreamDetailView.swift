@@ -235,7 +235,3 @@ struct ChannelMapVisualization: View {
         }
     }
 }
-
-#Preview {
-    StreamDetailView(stream: StreamInfo.example)
-}
