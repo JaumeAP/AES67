@@ -7,7 +7,23 @@
 #include "../NetworkEngine/StreamChannelMapper.h"
 #include <iostream>
 #include <cassert>
+#include <stdexcept>
+#include <string>
 #include <algorithm>
+
+// assert() expands to nothing under NDEBUG, and NDEBUG is exactly how these
+// tests get built: the Release configuration the local gate uses compiles with
+// -O3 -DNDEBUG. Every check in this file silently vanished and the binary
+// exited 0 no matter what the code did. AES67_CHECK throws instead, which
+// main() already catches and turns into a non-zero exit.
+#define AES67_CHECK(cond)                                                     \
+    do {                                                                      \
+        if (!(cond)) {                                                        \
+            throw std::runtime_error(std::string(__FILE__) + ":" +            \
+                                     std::to_string(__LINE__) +               \
+                                     ": check failed: " #cond);               \
+        }                                                                     \
+    } while (0)
 
 namespace AES67 {
 namespace Tests {
@@ -20,19 +36,19 @@ void testBasicMapping() {
 
     // Create 8-channel mapping
     auto mapping = mapper.createDefaultMapping(stream1, "Test Stream 1", 8);
-    assert(mapping.has_value());
-    assert(mapping->deviceChannelStart == 0);
-    assert(mapping->deviceChannelCount == 8);
-    assert(mapping->streamChannelCount == 8);
+    AES67_CHECK(mapping.has_value());
+    AES67_CHECK(mapping->deviceChannelStart == 0);
+    AES67_CHECK(mapping->deviceChannelCount == 8);
+    AES67_CHECK(mapping->streamChannelCount == 8);
 
     // Add to mapper
     bool added = mapper.addMapping(*mapping);
-    assert(added);
+    AES67_CHECK(added);
 
     // Verify retrieval
     auto retrieved = mapper.getMapping(stream1);
-    assert(retrieved.has_value());
-    assert(retrieved->streamName == "Test Stream 1");
+    AES67_CHECK(retrieved.has_value());
+    AES67_CHECK(retrieved->streamName == "Test Stream 1");
 
     std::cout << "✓ PASSED\n";
 }
@@ -45,27 +61,27 @@ void testMultipleStreams() {
     // Add 8-channel stream
     StreamID stream1 = StreamID::generate();
     auto mapping1 = mapper.createDefaultMapping(stream1, "Stream 1", 8);
-    assert(mapping1.has_value());
-    assert(mapping1->deviceChannelStart == 0);
+    AES67_CHECK(mapping1.has_value());
+    AES67_CHECK(mapping1->deviceChannelStart == 0);
     mapper.addMapping(*mapping1);
 
     // Add another 8-channel stream
     StreamID stream2 = StreamID::generate();
     auto mapping2 = mapper.createDefaultMapping(stream2, "Stream 2", 8);
-    assert(mapping2.has_value());
-    assert(mapping2->deviceChannelStart == 8);  // Should start after first stream
+    AES67_CHECK(mapping2.has_value());
+    AES67_CHECK(mapping2->deviceChannelStart == 8);  // Should start after first stream
     mapper.addMapping(*mapping2);
 
     // Add 16-channel stream
     StreamID stream3 = StreamID::generate();
     auto mapping3 = mapper.createDefaultMapping(stream3, "Stream 3", 16);
-    assert(mapping3.has_value());
-    assert(mapping3->deviceChannelStart == 16);
+    AES67_CHECK(mapping3.has_value());
+    AES67_CHECK(mapping3->deviceChannelStart == 16);
     mapper.addMapping(*mapping3);
 
     // Verify all mappings
     auto allMappings = mapper.getAllMappings();
-    assert(allMappings.size() == 3);
+    AES67_CHECK(allMappings.size() == 3);
 
     std::cout << "✓ PASSED\n";
 }
@@ -78,19 +94,19 @@ void testChannelExhaustion() {
     // Fill most channels (120 out of 128)
     StreamID stream1 = StreamID::generate();
     auto mapping1 = mapper.createDefaultMapping(stream1, "Big Stream", 120);
-    assert(mapping1.has_value());
+    AES67_CHECK(mapping1.has_value());
     mapper.addMapping(*mapping1);
 
     // Try to add 16 channels (should fail - not enough space)
     StreamID stream2 = StreamID::generate();
     auto mapping2 = mapper.createDefaultMapping(stream2, "Too Big", 16);
-    assert(!mapping2.has_value());  // Should fail
+    AES67_CHECK(!mapping2.has_value());  // Should fail
 
     // Add 8 channels (should succeed)
     StreamID stream3 = StreamID::generate();
     auto mapping3 = mapper.createDefaultMapping(stream3, "Fits", 8);
-    assert(mapping3.has_value());
-    assert(mapping3->deviceChannelStart == 120);
+    AES67_CHECK(mapping3.has_value());
+    AES67_CHECK(mapping3->deviceChannelStart == 120);
 
     std::cout << "✓ PASSED\n";
 }
@@ -113,11 +129,11 @@ void testCustomChannelMapping() {
     mapping.channelMap = {0, 1, 2, 3, 4, 5, 6, 7};  // Identity mapping
 
     bool added = mapper.addMapping(mapping);
-    assert(added);
+    AES67_CHECK(added);
 
     auto retrieved = mapper.getMapping(streamID);
-    assert(retrieved.has_value());
-    assert(retrieved->deviceChannelStart == 10);
+    AES67_CHECK(retrieved.has_value());
+    AES67_CHECK(retrieved->deviceChannelStart == 10);
 
     std::cout << "✓ PASSED\n";
 }
@@ -142,22 +158,22 @@ void testMappingRemoval() {
     auto m3 = mapper.createDefaultMapping(stream3, "Stream 3", 16);
     mapper.addMapping(*m3);
 
-    assert(mapper.getAllMappings().size() == 3);
+    AES67_CHECK(mapper.getAllMappings().size() == 3);
 
     // Remove middle stream
     bool removed = mapper.removeMapping(stream2);
-    assert(removed);
-    assert(mapper.getAllMappings().size() == 2);
+    AES67_CHECK(removed);
+    AES67_CHECK(mapper.getAllMappings().size() == 2);
 
     // Verify channels 16-31 are now available
     auto unassigned = mapper.getUnassignedDeviceChannels();
-    assert(std::find(unassigned.begin(), unassigned.end(), 16) != unassigned.end());
+    AES67_CHECK(std::find(unassigned.begin(), unassigned.end(), 16) != unassigned.end());
 
     // Should be able to add new stream in freed space
     StreamID stream4 = StreamID::generate();
     auto m4 = mapper.createDefaultMapping(stream4, "Stream 4", 16);
-    assert(m4.has_value());
-    assert(m4->deviceChannelStart == 16);  // Reuses freed space
+    AES67_CHECK(m4.has_value());
+    AES67_CHECK(m4->deviceChannelStart == 16);  // Reuses freed space
 
     std::cout << "✓ PASSED\n";
 }
@@ -176,8 +192,8 @@ void testMappingValidation() {
 
     std::string error;
     bool valid = mapper.validateMapping(invalid, &error);
-    assert(!valid);
-    assert(!error.empty());
+    AES67_CHECK(!valid);
+    AES67_CHECK(!error.empty());
 
     std::cout << "✓ PASSED\n";
 }
@@ -197,7 +213,7 @@ void testMappingOverlap() {
     mapping1.deviceChannelCount = 8;
 
     bool added1 = mapper.addMapping(mapping1);
-    assert(added1);
+    AES67_CHECK(added1);
 
     // Try to add overlapping stream at channels 15-22 (should fail)
     StreamID stream2 = StreamID::generate();
@@ -209,7 +225,7 @@ void testMappingOverlap() {
     mapping2.deviceChannelCount = 8;
 
     bool added2 = mapper.addMapping(mapping2);
-    assert(!added2);  // Should be rejected
+    AES67_CHECK(!added2);  // Should be rejected
 
     std::cout << "✓ PASSED\n";
 }
@@ -221,7 +237,7 @@ void testGetUnassignedChannels() {
 
     // Initially all 128 channels should be unassigned
     auto unassigned = mapper.getUnassignedDeviceChannels();
-    assert(unassigned.size() == 128);
+    AES67_CHECK(unassigned.size() == 128);
 
     // Add stream at channels 0-7
     StreamID stream1 = StreamID::generate();
@@ -230,16 +246,16 @@ void testGetUnassignedChannels() {
 
     // Now 120 channels should be unassigned
     unassigned = mapper.getUnassignedDeviceChannels();
-    assert(unassigned.size() == 120);
+    AES67_CHECK(unassigned.size() == 120);
 
     // Verify channels 0-7 are NOT in unassigned list
     for (int ch = 0; ch < 8; ch++) {
-        assert(std::find(unassigned.begin(), unassigned.end(), ch) == unassigned.end());
+        AES67_CHECK(std::find(unassigned.begin(), unassigned.end(), ch) == unassigned.end());
     }
 
     // Verify channels 8-127 ARE in unassigned list
     for (int ch = 8; ch < 128; ch++) {
-        assert(std::find(unassigned.begin(), unassigned.end(), ch) != unassigned.end());
+        AES67_CHECK(std::find(unassigned.begin(), unassigned.end(), ch) != unassigned.end());
     }
 
     std::cout << "✓ PASSED\n";
@@ -258,19 +274,19 @@ void testRiedelScenario() {
 
         std::string name = "Riedel Panel " + std::to_string(i + 1);
         auto mapping = mapper.createDefaultMapping(streamID, name, 8);
-        assert(mapping.has_value());
-        assert(mapping->deviceChannelStart == i * 8);
+        AES67_CHECK(mapping.has_value());
+        AES67_CHECK(mapping->deviceChannelStart == i * 8);
 
         bool added = mapper.addMapping(*mapping);
-        assert(added);
+        AES67_CHECK(added);
     }
 
     // All 64 channels should be assigned
     auto unassigned = mapper.getUnassignedDeviceChannels();
-    assert(unassigned.size() == 64);  // 128 - 64 = 64 remaining
+    AES67_CHECK(unassigned.size() == 64);  // 128 - 64 = 64 remaining
 
     // Verify all streams are active
-    assert(mapper.getAllMappings().size() == 8);
+    AES67_CHECK(mapper.getAllMappings().size() == 8);
 
     std::cout << "✓ PASSED\n";
 }
@@ -286,20 +302,20 @@ void testLargeScaleScenario() {
         std::string name = "Stream " + std::to_string(i + 1);
 
         auto mapping = mapper.createDefaultMapping(streamID, name, 8);
-        assert(mapping.has_value());
+        AES67_CHECK(mapping.has_value());
 
         bool added = mapper.addMapping(*mapping);
-        assert(added);
+        AES67_CHECK(added);
     }
 
     // All channels should be assigned
     auto unassigned = mapper.getUnassignedDeviceChannels();
-    assert(unassigned.empty());
+    AES67_CHECK(unassigned.empty());
 
     // No more streams should fit
     StreamID extraStream = StreamID::generate();
     auto extraMapping = mapper.createDefaultMapping(extraStream, "Extra", 1);
-    assert(!extraMapping.has_value());
+    AES67_CHECK(!extraMapping.has_value());
 
     std::cout << "✓ PASSED\n";
 }
@@ -311,36 +327,36 @@ void testJSONRoundTrip() {
 
     StreamID stream1 = StreamID::generate();
     auto mapping1 = mapper.createDefaultMapping(stream1, "Stream 1", 8);
-    assert(mapping1.has_value());
+    AES67_CHECK(mapping1.has_value());
     mapper.addMapping(*mapping1);
 
     StreamID stream2 = StreamID::generate();
     auto mapping2 = mapper.createDefaultMapping(stream2, "Stream 2", 16);
-    assert(mapping2.has_value());
+    AES67_CHECK(mapping2.has_value());
     mapper.addMapping(*mapping2);
 
     std::string json = mapper.toJSON();
 
     StreamChannelMapper reloaded;
     bool parsed = reloaded.fromJSON(json);
-    assert(parsed);
+    AES67_CHECK(parsed);
 
     auto allMappings = reloaded.getAllMappings();
-    assert(allMappings.size() == 2);
+    AES67_CHECK(allMappings.size() == 2);
 
     auto restored1 = reloaded.getMapping(stream1);
-    assert(restored1.has_value());
-    assert(restored1->streamName == "Stream 1");
-    assert(restored1->streamChannelCount == 8);
-    assert(restored1->deviceChannelStart == 0);
-    assert(restored1->deviceChannelCount == 8);
+    AES67_CHECK(restored1.has_value());
+    AES67_CHECK(restored1->streamName == "Stream 1");
+    AES67_CHECK(restored1->streamChannelCount == 8);
+    AES67_CHECK(restored1->deviceChannelStart == 0);
+    AES67_CHECK(restored1->deviceChannelCount == 8);
 
     auto restored2 = reloaded.getMapping(stream2);
-    assert(restored2.has_value());
-    assert(restored2->streamName == "Stream 2");
-    assert(restored2->streamChannelCount == 16);
-    assert(restored2->deviceChannelStart == 8);
-    assert(restored2->deviceChannelCount == 16);
+    AES67_CHECK(restored2.has_value());
+    AES67_CHECK(restored2->streamName == "Stream 2");
+    AES67_CHECK(restored2->streamChannelCount == 16);
+    AES67_CHECK(restored2->deviceChannelStart == 8);
+    AES67_CHECK(restored2->deviceChannelCount == 16);
 
     std::cout << "✓ PASSED\n";
 }
@@ -351,13 +367,13 @@ void testJSONImportClearsExisting() {
     StreamChannelMapper mapper;
     StreamID stream1 = StreamID::generate();
     auto mapping1 = mapper.createDefaultMapping(stream1, "Stale Stream", 8);
-    assert(mapping1.has_value());
+    AES67_CHECK(mapping1.has_value());
     mapper.addMapping(*mapping1);
-    assert(mapper.getAllMappings().size() == 1);
+    AES67_CHECK(mapper.getAllMappings().size() == 1);
 
     bool parsed = mapper.fromJSON("{\n  \"mappings\": [\n  ]\n}");
-    assert(parsed);
-    assert(mapper.getAllMappings().empty());
+    AES67_CHECK(parsed);
+    AES67_CHECK(mapper.getAllMappings().empty());
 
     std::cout << "✓ PASSED\n";
 }
@@ -372,10 +388,10 @@ void testUsableChannelCountCapsAutoAssignment() {
 
     StreamChannelMapper mapper;
     // Default is the full device width — the behavior before the setting existed.
-    assert(mapper.getUsableChannelCount() == StreamChannelMapper::kMaxDeviceChannels);
+    AES67_CHECK(mapper.getUsableChannelCount() == StreamChannelMapper::kMaxDeviceChannels);
 
     mapper.setUsableChannelCount(16);
-    assert(mapper.getUsableChannelCount() == 16);
+    AES67_CHECK(mapper.getUsableChannelCount() == 16);
 
     SDPSession sdp;
     sdp.sessionName = "8ch";
@@ -383,19 +399,19 @@ void testUsableChannelCountCapsAutoAssignment() {
 
     // Two 8-channel streams fit exactly within 16.
     auto first = mapper.createDefaultMapping(sdp);
-    assert(first.has_value());
-    assert(first->deviceChannelStart == 0);
-    assert(mapper.addMapping(*first));
+    AES67_CHECK(first.has_value());
+    AES67_CHECK(first->deviceChannelStart == 0);
+    AES67_CHECK(mapper.addMapping(*first));
 
     auto second = mapper.createDefaultMapping(sdp);
-    assert(second.has_value());
-    assert(second->deviceChannelStart == 8);
-    assert(mapper.addMapping(*second));
+    AES67_CHECK(second.has_value());
+    AES67_CHECK(second->deviceChannelStart == 8);
+    AES67_CHECK(mapper.addMapping(*second));
 
     // A third must fail: channels 16..127 exist on the device but are above
     // the cap, so the mapper must not hand them out.
     auto third = mapper.createDefaultMapping(sdp);
-    assert(!third.has_value());
+    AES67_CHECK(!third.has_value());
 
     std::cout << "✓ PASSED\n";
 }
@@ -407,7 +423,7 @@ void testUsableChannelCountNeverExceedsCapacity() {
     // Asking for more than the fixed RT buffer capacity must clamp, not
     // let the mapper hand out channels that have no buffer behind them.
     mapper.setUsableChannelCount(4096);
-    assert(mapper.getUsableChannelCount() == StreamChannelMapper::kMaxDeviceChannels);
+    AES67_CHECK(mapper.getUsableChannelCount() == StreamChannelMapper::kMaxDeviceChannels);
 
     std::cout << "✓ PASSED\n";
 }
@@ -427,12 +443,12 @@ void testMaxChannelsPerFlowMatchesAES67() {
     auto flowsFor = [](uint16_t channels) {
         return (channels + perFlow - 1) / perFlow;
     };
-    assert(flowsFor(1) == 1);
-    assert(flowsFor(8) == 1);    // exactly one full flow, no spill
-    assert(flowsFor(9) == 2);    // one full + one carrying a single channel
-    assert(flowsFor(16) == 2);
-    assert(flowsFor(24) == 3);
-    assert(flowsFor(128) == 16); // full device width
+    AES67_CHECK(flowsFor(1) == 1);
+    AES67_CHECK(flowsFor(8) == 1);    // exactly one full flow, no spill
+    AES67_CHECK(flowsFor(9) == 2);    // one full + one carrying a single channel
+    AES67_CHECK(flowsFor(16) == 2);
+    AES67_CHECK(flowsFor(24) == 3);
+    AES67_CHECK(flowsFor(128) == 16); // full device width
 
     std::cout << "✓ PASSED\n";
 }

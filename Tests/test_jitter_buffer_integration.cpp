@@ -6,7 +6,23 @@
 #include "../NetworkEngine/RTP/LockFreeCircularJitterBuffer.h"
 #include <iostream>
 #include <cassert>
+#include <stdexcept>
+#include <string>
 #include <cstring>
+
+// assert() expands to nothing under NDEBUG, and NDEBUG is exactly how these
+// tests get built: the Release configuration the local gate uses compiles with
+// -O3 -DNDEBUG. Every check in this file silently vanished and the binary
+// exited 0 no matter what the code did. AES67_CHECK throws instead, which
+// main() already catches and turns into a non-zero exit.
+#define AES67_CHECK(cond)                                                     \
+    do {                                                                      \
+        if (!(cond)) {                                                        \
+            throw std::runtime_error(std::string(__FILE__) + ":" +            \
+                                     std::to_string(__LINE__) +               \
+                                     ": check failed: " #cond);               \
+        }                                                                     \
+    } while (0)
 
 using namespace AES67;
 
@@ -25,29 +41,29 @@ void test_basic_integration() {
     std::memset(packet3, 0xCC, sizeof(packet3));
 
     // Add packets in order
-    assert(buffer.addPacket(packet1, sizeof(packet1), 100, 1000000));
-    assert(buffer.addPacket(packet2, sizeof(packet2), 101, 2000000));
-    assert(buffer.addPacket(packet3, sizeof(packet3), 102, 3000000));
+    AES67_CHECK(buffer.addPacket(packet1, sizeof(packet1), 100, 1000000));
+    AES67_CHECK(buffer.addPacket(packet2, sizeof(packet2), 101, 2000000));
+    AES67_CHECK(buffer.addPacket(packet3, sizeof(packet3), 102, 3000000));
 
     // Read packets back
     uint8_t output[100];
     size_t outputLen;
     uint64_t presentationTime;
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 100));
-    assert(outputLen == 100);
-    assert(presentationTime == 1000000);
-    assert(output[0] == 0xAA);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 100));
+    AES67_CHECK(outputLen == 100);
+    AES67_CHECK(presentationTime == 1000000);
+    AES67_CHECK(output[0] == 0xAA);
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 101));
-    assert(outputLen == 100);
-    assert(presentationTime == 2000000);
-    assert(output[0] == 0xBB);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 101));
+    AES67_CHECK(outputLen == 100);
+    AES67_CHECK(presentationTime == 2000000);
+    AES67_CHECK(output[0] == 0xBB);
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 102));
-    assert(outputLen == 100);
-    assert(presentationTime == 3000000);
-    assert(output[0] == 0xCC);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 102));
+    AES67_CHECK(outputLen == 100);
+    AES67_CHECK(presentationTime == 3000000);
+    AES67_CHECK(output[0] == 0xCC);
 
     std::cout << "✓ Basic integration test passed\n";
 }
@@ -66,23 +82,23 @@ void test_out_of_order() {
     std::memset(packet3, 0xCC, sizeof(packet3));
 
     // Add packets OUT of order (3, 1, 2)
-    assert(buffer.addPacket(packet3, sizeof(packet3), 102, 3000000));
-    assert(buffer.addPacket(packet1, sizeof(packet1), 100, 1000000));
-    assert(buffer.addPacket(packet2, sizeof(packet2), 101, 2000000));
+    AES67_CHECK(buffer.addPacket(packet3, sizeof(packet3), 102, 3000000));
+    AES67_CHECK(buffer.addPacket(packet1, sizeof(packet1), 100, 1000000));
+    AES67_CHECK(buffer.addPacket(packet2, sizeof(packet2), 101, 2000000));
 
     // Read packets back in correct order
     uint8_t output[100];
     size_t outputLen;
     uint64_t presentationTime;
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 100));
-    assert(output[0] == 0xAA);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 100));
+    AES67_CHECK(output[0] == 0xAA);
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 101));
-    assert(output[0] == 0xBB);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 101));
+    AES67_CHECK(output[0] == 0xBB);
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 102));
-    assert(output[0] == 0xCC);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, 102));
+    AES67_CHECK(output[0] == 0xCC);
 
     std::cout << "✓ Out-of-order test passed\n";
 }
@@ -102,19 +118,19 @@ void test_sequence_wraparound() {
     uint32_t seq1 = 0xFFFF;  // Last value before wraparound
     uint32_t seq2 = 0x0000;  // First value after wraparound
 
-    assert(buffer.addPacket(packet1, sizeof(packet1), seq1, 1000000));
-    assert(buffer.addPacket(packet2, sizeof(packet2), seq2, 2000000));
+    AES67_CHECK(buffer.addPacket(packet1, sizeof(packet1), seq1, 1000000));
+    AES67_CHECK(buffer.addPacket(packet2, sizeof(packet2), seq2, 2000000));
 
     // Read packets back
     uint8_t output[100];
     size_t outputLen;
     uint64_t presentationTime;
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, seq1));
-    assert(output[0] == 0xAA);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, seq1));
+    AES67_CHECK(output[0] == 0xAA);
 
-    assert(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, seq2));
-    assert(output[0] == 0xBB);
+    AES67_CHECK(buffer.getNextPacket(output, sizeof(output), outputLen, presentationTime, seq2));
+    AES67_CHECK(output[0] == 0xBB);
 
     std::cout << "✓ Sequence wraparound test passed\n";
 }
@@ -137,7 +153,7 @@ void test_buffer_full() {
     }
 
     // Should have succeeded for at most maxSize packets
-    assert(successCount <= maxSize);
+    AES67_CHECK(successCount <= maxSize);
 
     std::cout << "✓ Buffer full test passed (accepted " << successCount << " packets)\n";
 }
