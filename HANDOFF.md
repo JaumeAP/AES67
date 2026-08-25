@@ -12,7 +12,9 @@ Architecture invariants: RT-safe thread boundaries (IO thread touches only RTSaf
 
 Build/test: macOS (Apple Silicon + x86_64) + cross-platform tests, CMake out-of-source, per-subsystem CTests. Run via `ctest --output-on-failure`; exclude network tests: `ctest -E "RingBuffer|PTPClock|IntegrationAudioPath"`.
 
-CI: local only. `scripts/ci-local.sh` is the gate, run automatically by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). GitHub Actions is disabled and its workflow deleted. Last green run: 15/15 tests, 6.2s.
+CI: local only. `scripts/ci-local.sh` is the gate, run automatically by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). GitHub Actions is disabled and its workflow deleted. The gate builds the driver, the tests and `ManagerApp`; last green run 15/15 tests.
+
+Manager app previews: `#Preview` blocks live in `ManagerApp/Views/Previews/`, kept out of `build.sh`'s source list because the macro needs full Xcode. New previews go there, and into the Xcode target, never into `build.sh`.
 
 ## Session summary — Workflow-skill plugin migration and doc sync (2026-08-25)
 
@@ -24,4 +26,4 @@ In this repo, CLAUDE.md and HANDOFF.md still described the old skills-dir layout
 
 ## Open items
 
-1. `ManagerApp` does not build anywhere: locally swiftc cannot find the `#Preview` macro plugin (`ManagerApp/build.sh` uses raw swiftc, needs a full Xcode toolchain), and on the retired GitHub runner it timed out type-checking `DiscoveredSessionsView.swift:23`. Excluded from the gate via `-DBUILD_MANAGER_APP=OFF`; build it with `cmake --build build --target ManagerApp` when fixed.
+1. `ManagerApp` builds and is signed, but remains unverified against a live driver, per README.

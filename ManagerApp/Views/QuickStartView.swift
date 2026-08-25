@@ -894,8 +894,3 @@ struct TipRow: View {
 }
 
 // MARK: - Preview
-
-#Preview {
-    QuickStartView(isPresented: .constant(true))
-        .environmentObject(DriverManager())
-}
