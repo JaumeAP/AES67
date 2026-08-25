@@ -1,14 +1,17 @@
 //
 // TestRingBuffer.cpp
 // AES67 macOS Driver - Build #6
-// Unit tests for lock-free SPSC ring buffer
+// Deterministic unit tests for the lock-free SPSC ring buffer.
+//
+// The wall-clock and two-thread cases live in TestRingBufferTiming.cpp: they
+// assert on a speed ratio and on concurrent progress, which makes them
+// sensitive to machine load, so they carry the `timing` label and stay out of
+// the pre-push gate. Everything here is deterministic and always runs.
 //
 
 #include "../Shared/RingBuffer.hpp"
 #include <iostream>
 #include <cassert>
-#include <thread>
-#include <chrono>
 #include <vector>
 #include <numeric>
 
@@ -211,114 +214,6 @@ bool testReset() {
 // Performance Tests
 //
 
-bool testBatchPerformance() {
-    std::cout << "Test: Batch processing performance... ";
-
-    SPSCRingBuffer<float> buffer(512);
-
-    constexpr size_t kNumIterations = 10000;
-    constexpr size_t kBatchSize = 64;
-
-    float writeData[kBatchSize];
-    float readData[kBatchSize];
-
-    for (size_t i = 0; i < kBatchSize; ++i) {
-        writeData[i] = static_cast<float>(i);
-    }
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Batch processing (what we do now)
-    for (size_t i = 0; i < kNumIterations; ++i) {
-        buffer.write(writeData, kBatchSize);
-        buffer.read(readData, kBatchSize);
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    // Compare to per-sample processing (old way)
-    buffer.reset();
-    start = std::chrono::high_resolution_clock::now();
-
-    for (size_t i = 0; i < kNumIterations; ++i) {
-        for (size_t j = 0; j < kBatchSize; ++j) {
-            buffer.write(&writeData[j], 1);
-        }
-        for (size_t j = 0; j < kBatchSize; ++j) {
-            buffer.read(&readData[j], 1);
-        }
-    }
-
-    end = std::chrono::high_resolution_clock::now();
-    auto singleDuration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    double speedup = static_cast<double>(singleDuration.count()) / batchDuration.count();
-
-    std::cout << "PASS (Speedup: " << speedup << "x)" << std::endl;
-    std::cout << "  Batch:  " << batchDuration.count() << " μs" << std::endl;
-    std::cout << "  Single: " << singleDuration.count() << " μs" << std::endl;
-
-    TEST_ASSERT(speedup > 1.5, "Batch should be at least 1.5x faster");
-
-    return true;
-}
-
-bool testThreadSafety() {
-    std::cout << "Test: Thread safety (SPSC)... ";
-
-    SPSCRingBuffer<float> buffer(1024);
-
-    constexpr size_t kNumSamples = 100000;
-    std::atomic<bool> producerDone{false};
-    std::atomic<size_t> samplesWritten{0};
-    std::atomic<size_t> samplesRead{0};
-
-    // Producer thread
-    std::thread producer([&]() {
-        for (size_t i = 0; i < kNumSamples; ++i) {
-            float value = static_cast<float>(i);
-            while (buffer.write(&value, 1) != 1) {
-                std::this_thread::yield();
-            }
-            samplesWritten++;
-        }
-        producerDone = true;
-    });
-
-    // Consumer thread
-    std::thread consumer([&]() -> void {
-        float value;
-        while (!producerDone || !buffer.isEmpty()) {
-            if (buffer.read(&value, 1) == 1) {
-                if (value != static_cast<float>(samplesRead.load())) {
-                    std::cerr << "FAIL: " << "Data should be in order" << std::endl;
-                    testsFailed++;
-                    return;
-                } else {
-                    testsPassed++;
-                }
-                samplesRead++;
-            } else {
-                std::this_thread::yield();
-            }
-        }
-    });
-
-    producer.join();
-    consumer.join();
-
-    TEST_ASSERT(samplesWritten == kNumSamples, "All samples should be written");
-    TEST_ASSERT(samplesRead == kNumSamples, "All samples should be read");
-
-    std::cout << "PASS (" << kNumSamples << " samples)" << std::endl;
-    return true;
-}
-
-//
-// Edge Cases
-//
-
 bool testZeroSizeOperations() {
     std::cout << "Test: Zero-size operations... ";
 
@@ -393,12 +288,6 @@ int main() {
     testBufferEmpty();
     testAvailable();
     testReset();
-    std::cout << std::endl;
-
-    std::cout << "Performance Tests:" << std::endl;
-    std::cout << "-----------------" << std::endl;
-    testBatchPerformance();
-    testThreadSafety();
     std::cout << std::endl;
 
     std::cout << "Edge Cases:" << std::endl;
