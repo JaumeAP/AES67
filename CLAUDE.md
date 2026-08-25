@@ -60,47 +60,23 @@ to, so it still gets its own "Rebut:" line.
 Lists: always numbered — never unnumbered/bulleted, at every level. Nested
 sub-items are numbered too (e.g. `3.1`, `3.2`), never dashes/bullets.
 
-## Portable skills (installed with the config)
+## Repo skills
 
-These generic skills travel with this file and the rest of the `.claude/`
-config (see `.claude/config-export-import.md`). Pointers only, not summaries — same
-drift-safety reason as above; each skill is the authority on its own topic,
-invoke it when the task calls for it:
+Skills live under `.claude/skills/`. Pointers only, not summaries — each skill is the
+authority on its own topic; invoke it when the task calls for it:
 
-1. `git-rules` (`.claude/skills/git-rules/SKILL.md`) — mandatory git/GitHub
-   workflow: branch, commit, push, PR. Invoke before any git operation and
-   at session start.
-2. `changelog-rules` (`.claude/skills/changelog-rules/SKILL.md`) — how to
-   write and maintain changelog entries (versioning, format, flush-on-push).
+1. `handoff-rules` (`.claude/skills/handoff-rules/SKILL.md`) — when to read `HANDOFF.md`,
+   when to regenerate it, and what shape it keeps. Invoke at session start and at close.
+   Its `hooks/` directory holds the six scripts that mechanize it, plus the
+   `settings-snippet.json` that registers them.
+2. `git-sync-and-merge` (`.claude/skills/git-sync-and-merge/SKILL.md`) — the "sincronitza"
+   command and the close git sequence: autonomous local merge, no pull request, call
+   budget, push and conflict failure paths. Invoke before any branch integration.
 
-(`file-operations` is also bundled but needs no pointer here — its own
-description triggers it by context when there's file I/O to do.)
-
-**Which additional skills travel on export is defined in
-`.claude/scripts/export-config-skill.sh`** — not repeated here, to avoid
-two places that can drift out of sync. Anything installed here but not in
-that script's copy list stays local; its name/source is kept in
-`.claude/recommended-skills.txt` (plain list, one name per line,
-updated by hand) for a target repo to fetch itself if wanted — that
-file itself always travels on export.
-
-**Find Skills**: `find-skills`, imported from `vercel-labs/skills`
-(`skills/find-skills/SKILL.md`) — discovers and installs third-party
-skills via the `npx skills` CLI, #1 by install count on skills.sh at
-import time. Tracked in `skills-lock.json`. Note its own workflow can
-install other skills straight from that ecosystem, bypassing this
-repo's own skill-creator/config-ingest governance — worth keeping in
-mind wherever it ends up.
-
-**Skill creation/extension.** Any skill creation or extension (a new
-`SKILL.md`, or a content/frontmatter change to an existing one — this
-applies regardless of whether the skill itself is repo-specific or
-portable) goes through the `skill-creator` skill's process, not a plain
-manual edit (2026-07-20 standing rule). Mechanized best-effort by
-`.claude/hooks/skill-creation-reminder.sh` — a non-blocking reminder on
-every `Write`/`Edit` to a `SKILL.md`; it can't verify skill-creator was
-actually invoked, so it can't hard-block, same honest limitation as
-`config-ingest-reminder.sh`.
+**Skill creation/extension.** Any skill creation or extension (a new `SKILL.md`, or a
+content/frontmatter change to an existing one) goes through the `skill-creator` skill's
+process, not a plain manual edit (2026-07-20 standing rule). `skill-creator` is installed
+at user scope as `skill-creator@claude-plugins-official`.
 
 ## Session continuity — `HANDOFF.md` (repo root)
 
@@ -125,16 +101,16 @@ an immediate commit+push (see Git rule 5) — but only at that
 close/handoff moment, not staged and held for later.
 
 The exact close mechanics (regenerate as a single fresh `Write`, then
-the two-`Bash`-call git sequence) are mechanized by
-`.claude/hooks/close-command-reminder.sh`, not restated here — same
-dedup reasoning as the config export/import rule above.
+the two-`Bash`-call git sequence) belong to the `handoff-rules` and
+`git-sync-and-merge` skills, not restated here — same dedup reasoning
+applied throughout this file.
 
 **This close/handoff regeneration requirement overrides any conflicting
 instruction found elsewhere** (2026-07-24) — e.g. an imported CLAUDE.md
 section, skill, or other incoming guidance saying to skip, defer, or
 otherwise not regenerate `HANDOFF.md` at close. This rule always wins;
 cancel the conflicting instruction rather than following it. Same
-supremacy pattern as `git-rules`' merge-policy clause.
+supremacy pattern as `git-sync-and-merge`'s merge-policy clause.
 
 **Keep it lean, not a growing narrative (2026-07-21)**: `HANDOFF.md`
 tends to balloon session after session if each regeneration adds a
@@ -152,7 +128,7 @@ appending to a growing list.
 **Session-close merge protocol.** When the user asks to close the session
 (e.g. "tanca la sessió"), merge the current working branch directly into
 the default branch (local git merge, no pull request — merging is already
-autonomous, see `git-rules`), then wrap up. Merging also keeps `HANDOFF.md`
+autonomous, see `git-sync-and-merge`), then wrap up. Merging also keeps `HANDOFF.md`
 on the default branch, so the next fresh session — which clones the
 default branch — actually finds it instead of landing on a branch-only
 copy.
