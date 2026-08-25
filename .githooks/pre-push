@@ -1,0 +1,37 @@
+#!/bin/bash
+# Runs the local build and test suite before any push. Replaces the deleted
+# GitHub Actions workflow: nothing verifies these commits server-side any more,
+# so this is the only gate left.
+#
+# Skip one push with `git push --no-verify` or SKIP_LOCAL_CI=1.
+#
+# Note for the close/sync git sequence (git-sync-and-merge): its second Bash
+# call chains the pushes behind `|| echo "PUSH FAILED - continuing"`, so a red
+# build here does not abort the chain -- it leaves the refs unpushed and the
+# guard reports it. Read that line rather than assuming the push landed.
+set -uo pipefail
+
+if [ "${SKIP_LOCAL_CI:-0}" = "1" ]; then
+  echo "pre-push: skipped (SKIP_LOCAL_CI=1)"
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+# A pure branch/tag deletion has nothing to build.
+only_deletes=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  [ -z "${local_sha:-}" ] && continue
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] || only_deletes=0
+done
+if [ "$only_deletes" = "1" ]; then
+  echo "pre-push: deletion only, nothing to build"
+  exit 0
+fi
+
+echo "pre-push: running scripts/ci-local.sh"
+if "$repo_root/scripts/ci-local.sh"; then
+  exit 0
+fi
+echo "pre-push: build or tests failed -- push aborted. Fix, or push with --no-verify." >&2
+exit 1
