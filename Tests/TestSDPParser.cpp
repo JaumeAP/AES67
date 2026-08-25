@@ -7,29 +7,16 @@
 #include "../Driver/SDPParser.h"
 #include <iostream>
 #include <fstream>
-#include <cassert>
-#include <stdexcept>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include <string>
 #include <sstream>
-
-// assert() expands to nothing under NDEBUG, and NDEBUG is exactly how these
-// tests get built: the Release configuration the local gate uses compiles with
-// -O3 -DNDEBUG. Every check in this file silently vanished and the binary
-// exited 0 no matter what the code did. AES67_CHECK throws instead, which
-// main() already catches and turns into a non-zero exit.
-#define AES67_CHECK(cond)                                                     \
-    do {                                                                      \
-        if (!(cond)) {                                                        \
-            throw std::runtime_error(std::string(__FILE__) + ":" +            \
-                                     std::to_string(__LINE__) +               \
-                                     ": check failed: " #cond);               \
-        }                                                                     \
-    } while (0)
 
 namespace AES67 {
 namespace Tests {
 
-void testBasicSDPParsing() {
+TEST_CASE("Basic SDP Parsing") {
     std::cout << "Test: Basic SDP Parsing... ";
 
     std::string sdp = R"(v=0
@@ -45,21 +32,21 @@ a=framecount:48
 )";
 
     auto session = SDPParser::parseString(sdp);
-    AES67_CHECK(session.has_value());
-    AES67_CHECK(session->sessionName == "Test Stream");
-    AES67_CHECK(session->sessionInfo == "8 Channel Test");
-    AES67_CHECK(session->connectionAddress == "239.69.83.171");
-    AES67_CHECK(session->port == 5004);
-    AES67_CHECK(session->sampleRate == 48000);
-    AES67_CHECK(session->numChannels == 8);
-    AES67_CHECK(session->encoding == "L24");
-    AES67_CHECK(session->ptimeUs == 1000);
-    AES67_CHECK(session->framecount == 48);
+    CHECK(session.has_value());;
+    CHECK(session->sessionName == "Test Stream");;
+    CHECK(session->sessionInfo == "8 Channel Test");;
+    CHECK(session->connectionAddress == "239.69.83.171");;
+    CHECK(session->port == 5004);;
+    CHECK(session->sampleRate == 48000);;
+    CHECK(session->numChannels == 8);;
+    CHECK(session->encoding == "L24");;
+    CHECK(session->ptimeUs == 1000);;
+    CHECK(session->framecount == 48);;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testRiedelCompatibleSDP() {
+TEST_CASE("Riedel Compatible SDP") {
     std::cout << "Test: Riedel Artist SDP Parsing... ";
 
     std::string sdp = R"(v=0
@@ -80,16 +67,16 @@ a=mediaclk:direct=0
 )";
 
     auto session = SDPParser::parseString(sdp);
-    AES67_CHECK(session.has_value());
-    AES67_CHECK(session->sessionName == "Riedel Artist IFB");
-    AES67_CHECK(session->ptpDomain == 0);
-    AES67_CHECK(session->ptpMasterMAC == "00-1B-21-AC-B5-4F");
-    AES67_CHECK(session->sourceAddress == "192.168.1.100");
+    CHECK(session.has_value());;
+    CHECK(session->sessionName == "Riedel Artist IFB");;
+    CHECK(session->ptpDomain == 0);;
+    CHECK(session->ptpMasterMAC == "00-1B-21-AC-B5-4F");;
+    CHECK(session->sourceAddress == "192.168.1.100");;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testL16Encoding() {
+TEST_CASE("L16 Encoding") {
     std::cout << "Test: L16 Encoding... ";
 
     std::string sdp = R"(v=0
@@ -103,14 +90,14 @@ a=ptime:1
 )";
 
     auto session = SDPParser::parseString(sdp);
-    AES67_CHECK(session.has_value());
-    AES67_CHECK(session->encoding == "L16");
-    AES67_CHECK(session->numChannels == 2);
+    CHECK(session.has_value());;
+    CHECK(session->encoding == "L16");;
+    CHECK(session->numChannels == 2);;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testHighSampleRates() {
+TEST_CASE("High Sample Rates") {
     std::cout << "Test: High Sample Rates (96kHz, 192kHz)... ";
 
     // Test 96kHz
@@ -126,14 +113,14 @@ a=framecount:48
 )";
 
     auto session96 = SDPParser::parseString(sdp96);
-    AES67_CHECK(session96.has_value());
-    AES67_CHECK(session96->sampleRate == 96000);
+    CHECK(session96.has_value());;
+    CHECK(session96->sampleRate == 96000);;
     // a=ptime:0.5 — sub-millisecond, and legal SDP. This used to parse to
     // zero: ptime was held as integer milliseconds and read with stoul,
     // which stops at the decimal point. The test file has carried these
     // fractional values since before that was noticed, but only ever
     // asserted the sample rate.
-    AES67_CHECK(session96->ptimeUs == 500);
+    CHECK(session96->ptimeUs == 500);;
 
     // Test 192kHz
     std::string sdp192 = R"(v=0
@@ -148,9 +135,9 @@ a=framecount:48
 )";
 
     auto session192 = SDPParser::parseString(sdp192);
-    AES67_CHECK(session192.has_value());
-    AES67_CHECK(session192->sampleRate == 192000);
-    AES67_CHECK(session192->ptimeUs == 250);
+    CHECK(session192.has_value());;
+    CHECK(session192->sampleRate == 192000);;
+    CHECK(session192->ptimeUs == 250);;
 
     // ST 2110-30 Levels B and C run at 125 us — the value this driver's
     // transmitter can now express, and the reason packet time is held in
@@ -166,28 +153,28 @@ a=ptime:0.125
 a=framecount:6
 )";
     auto session125 = SDPParser::parseString(sdp125);
-    AES67_CHECK(session125.has_value());
-    AES67_CHECK(session125->ptimeUs == 125);
+    CHECK(session125.has_value());;
+    CHECK(session125->ptimeUs == 125);;
 
     // Round trip: a fractional packet time must survive being written back
     // out as SDP, not be rounded to "0" or "1".
     std::string regenerated = SDPParser::generate(*session125);
-    AES67_CHECK(regenerated.find("a=ptime:0.125") != std::string::npos);
+    CHECK(regenerated.find("a=ptime:0.125") != std::string::npos);;
     auto reparsed = SDPParser::parseString(regenerated);
-    AES67_CHECK(reparsed.has_value());
-    AES67_CHECK(reparsed->ptimeUs == 125);
+    CHECK(reparsed.has_value());;
+    CHECK(reparsed->ptimeUs == 125);;
 
     // A whole millisecond must still be written the plain way every other
     // implementation writes it, not as "1.000".
     auto whole = SDPParser::parseString(sdp96);
-    AES67_CHECK(whole.has_value());
+    CHECK(whole.has_value());;
     whole->ptimeUs = 1000;
-    AES67_CHECK(SDPParser::generate(*whole).find("a=ptime:1\n") != std::string::npos);
+    CHECK(SDPParser::generate(*whole).find("a=ptime:1\n") != std::string::npos);;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testMultiChannelConfigurations() {
+TEST_CASE("Multi Channel Configurations") {
     std::cout << "Test: Multi-Channel Configurations... ";
 
     // Test 64 channels
@@ -202,13 +189,13 @@ a=ptime:1
 )";
 
     auto session64 = SDPParser::parseString(sdp64);
-    AES67_CHECK(session64.has_value());
-    AES67_CHECK(session64->numChannels == 64);
+    CHECK(session64.has_value());;
+    CHECK(session64->numChannels == 64);;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testSDPGeneration() {
+TEST_CASE("SDP Generation") {
     std::cout << "Test: SDP Generation... ";
 
     SDPSession session;
@@ -225,19 +212,19 @@ void testSDPGeneration() {
     session.ptpDomain = 0;
 
     std::string generated = SDPParser::generate(session);
-    AES67_CHECK(!generated.empty());
+    CHECK(!generated.empty());;
 
     // Verify it can be parsed back
     auto reparsed = SDPParser::parseString(generated);
-    AES67_CHECK(reparsed.has_value());
-    AES67_CHECK(reparsed->sessionName == session.sessionName);
-    AES67_CHECK(reparsed->connectionAddress == session.connectionAddress);
-    AES67_CHECK(reparsed->port == session.port);
+    CHECK(reparsed.has_value());;
+    CHECK(reparsed->sessionName == session.sessionName);;
+    CHECK(reparsed->connectionAddress == session.connectionAddress);;
+    CHECK(reparsed->port == session.port);;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testPTPTraceableRefClock() {
+TEST_CASE("PTP Traceable Ref Clock") {
     std::cout << "Test: PTP traceable ts-refclk (RFC 7273)... ";
 
     // Parse the traceable form: no gmid, no domain pinned.
@@ -253,19 +240,19 @@ a=ts-refclk:ptp=IEEE1588-2008:traceable
 a=mediaclk:direct=0
 )";
     auto session = SDPParser::parseString(sdp);
-    AES67_CHECK(session.has_value());
-    AES67_CHECK(session->ptpTraceable);
-    AES67_CHECK(session->ptpMasterMAC.empty());
+    CHECK(session.has_value());;
+    CHECK(session->ptpTraceable);;
+    CHECK(session->ptpMasterMAC.empty());;
 
     // Regenerate: must emit the traceable form, not a named grandmaster.
     std::string gen = SDPParser::generate(*session);
-    AES67_CHECK(gen.find("a=ts-refclk:ptp=IEEE1588-2008:traceable") != std::string::npos);
-    AES67_CHECK(gen.find("domain-nmbr=") == std::string::npos);
+    CHECK(gen.find("a=ts-refclk:ptp=IEEE1588-2008:traceable") != std::string::npos);;
+    CHECK(gen.find("domain-nmbr=") == std::string::npos);;
 
     // And it round-trips back to traceable.
     auto reparsed = SDPParser::parseString(gen);
-    AES67_CHECK(reparsed.has_value());
-    AES67_CHECK(reparsed->ptpTraceable);
+    CHECK(reparsed.has_value());;
+    CHECK(reparsed->ptpTraceable);;
 
     // A named grandmaster still generates the gmid+domain form (traceable
     // false), and traceable takes precedence when both are somehow set.
@@ -278,13 +265,13 @@ a=mediaclk:direct=0
     named.ptpDomain = 0;
     named.ptpMasterMAC = "00-1B-21-AC-B5-4F";
     std::string namedGen = SDPParser::generate(named);
-    AES67_CHECK(namedGen.find("00-1B-21-AC-B5-4F") != std::string::npos);
-    AES67_CHECK(namedGen.find("traceable") == std::string::npos);
+    CHECK(namedGen.find("00-1B-21-AC-B5-4F") != std::string::npos);;
+    CHECK(namedGen.find("traceable") == std::string::npos);;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testBareDomainRefClock() {
+TEST_CASE("Bare Domain Ref Clock") {
     std::cout << "Test: RFC 7273 bare-domain ts-refclk (aes67-linux-daemon form)... ";
     // The daemon emits ptp=IEEE1588-2008:<gmid>:<domain> — a bare number, not
     // ":domain-nmbr=". This must parse (it used to reject the whole SDP).
@@ -299,9 +286,9 @@ a=ptime:1
 a=ts-refclk:ptp=IEEE1588-2008:00-11-22-33-44-55-66-77:0
 )";
     auto session = SDPParser::parseString(sdp);
-    AES67_CHECK(session.has_value());
-    AES67_CHECK(session->ptpDomain == 0);
-    AES67_CHECK(session->ptpMasterMAC == "00-11-22-33-44-55-66-77");
+    CHECK(session.has_value());;
+    CHECK(session->ptpDomain == 0);;
+    CHECK(session->ptpMasterMAC == "00-11-22-33-44-55-66-77");;
 
     // Non-zero bare domain too.
     std::string sdp9 = R"(v=0
@@ -315,8 +302,8 @@ a=ptime:1
 a=ts-refclk:ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:9
 )";
     auto s9 = SDPParser::parseString(sdp9);
-    AES67_CHECK(s9.has_value());
-    AES67_CHECK(s9->ptpDomain == 9);
+    CHECK(s9.has_value());;
+    CHECK(s9->ptpDomain == 9);;
 
     // The domain-nmbr= variant must still work.
     std::string sdpN = R"(v=0
@@ -330,29 +317,29 @@ a=ptime:1
 a=ts-refclk:ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:domain-nmbr=3
 )";
     auto sN = SDPParser::parseString(sdpN);
-    AES67_CHECK(sN.has_value() && sN->ptpDomain == 3);
+    CHECK((sN.has_value() && sN->ptpDomain == 3));
 
     std::cout << "\u2713 PASSED\n";
 }
 
-void testInvalidSDP() {
+TEST_CASE("Invalid SDP") {
     std::cout << "Test: Invalid SDP Handling... ";
 
     // Empty SDP
     auto empty = SDPParser::parseString("");
-    AES67_CHECK(!empty.has_value());
+    CHECK(!empty.has_value());;
 
     // Missing required fields
     std::string incomplete = R"(v=0
 s=Incomplete
 )";
     auto inc = SDPParser::parseString(incomplete);
-    AES67_CHECK(!inc.has_value());
+    CHECK(!inc.has_value());;
 
     std::cout << "✓ PASSED\n";
 }
 
-void testFileOperations() {
+TEST_CASE("File Operations") {
     std::cout << "Test: File Operations... ";
 
     // Create test SDP file
@@ -373,8 +360,8 @@ a=rtpmap:96 L24/48000/8
 
     // Parse from file
     auto session = SDPParser::parseFile(testPath);
-    AES67_CHECK(session.has_value());
-    AES67_CHECK(session->sessionName == "File Test");
+    CHECK(session.has_value());;
+    CHECK(session->sessionName == "File Test");;
 
     // Cleanup
     std::remove(testPath.c_str());
@@ -382,32 +369,8 @@ a=rtpmap:96 L24/48000/8
     std::cout << "✓ PASSED\n";
 }
 
-void runAllTests() {
-    std::cout << "\n=== AES67 SDP Parser Test Suite ===\n\n";
-
-    testBasicSDPParsing();
-    testRiedelCompatibleSDP();
-    testL16Encoding();
-    testHighSampleRates();
-    testMultiChannelConfigurations();
-    testSDPGeneration();
-    testPTPTraceableRefClock();
-    testBareDomainRefClock();
-    testInvalidSDP();
-    testFileOperations();
-
-    std::cout << "\n✅ All SDP Parser tests passed!\n\n";
-}
+// runAllTests() and main() are gone: doctest registers every TEST_CASE above
+// and provides the runner via DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN.
 
 } // namespace Tests
 } // namespace AES67
-
-int main() {
-    try {
-        AES67::Tests::runAllTests();
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "❌ Test failed with exception: " << e.what() << "\n";
-        return 1;
-    }
-}

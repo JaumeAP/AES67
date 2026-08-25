@@ -12,7 +12,7 @@ Architecture invariants: RT-safe thread boundaries (IO thread touches only RTSaf
 
 Build/test: macOS (Apple Silicon + x86_64) + cross-platform tests, CMake out-of-source, per-subsystem CTests. Run via `ctest --output-on-failure`; exclude network tests: `ctest -E "RingBuffer|PTPClock|IntegrationAudioPath"`.
 
-CI: local only. `scripts/ci-local.sh` is the gate, run automatically by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). GitHub Actions is disabled and its workflow deleted. The gate builds the driver, the tests and `ManagerApp`; last green run 15/15 tests.
+CI: local only. `scripts/ci-local.sh` is the gate, run automatically by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). GitHub Actions is disabled and its workflow deleted. The gate builds the driver, the tests and `ManagerApp`, and runs `ctest -LE timing`; last green run 16/16. `--sanitize` and `--tsan` run everything but `network` (18/18 green, no findings). `scripts/coverage.sh` reports llvm-cov: currently 30.12% of lines, with only SDPParser, CompatibilityProfile, NetworkUtils and PCMCodec covered at all.
 
 Manager app previews: `#Preview` blocks live in `ManagerApp/Views/Previews/`, kept out of `build.sh`'s source list because the macro needs full Xcode. New previews go there, and into the Xcode target, never into `build.sh`.
 
@@ -27,3 +27,5 @@ In this repo, CLAUDE.md and HANDOFF.md still described the old skills-dir layout
 ## Open items
 
 1. `ManagerApp` builds and is signed, but remains unverified against a live driver, per README.
+2. Test suites still on a hand-written `main`: 21 of 22. `Tests/TestSDPParser.cpp` is the doctest reference to copy; convert one per commit.
+3. Coverage is 30% of lines. Whole subsystems sit at 0%: every PTP file, the jitter buffers, the packet pool, `AES67IOHandler`, `NetworkInterfaceDetection`.
