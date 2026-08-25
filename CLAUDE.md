@@ -62,14 +62,15 @@ sub-items are numbered too (e.g. `3.1`, `3.2`), never dashes/bullets.
 
 ## Workflow skills (user scope)
 
-These rules live in the `session-rules` plugin at `~/.claude/skills/session-rules/`, loaded
-as `session-rules@skills-dir`, not in this repo — they are identical across every one of my
-repos, so they are installed once at user scope instead of vendored per project. Pointers
-only, not summaries; each skill is the authority on its own topic:
+These rules live in the `session-rules` plugin, installed at user scope as
+`session-rules@jaumeap` from the `jaumeap` marketplace (repo `JaumeAP/claude-plugins`), not
+in this repo — they are identical across every one of my repos, so they are installed once
+instead of vendored per project. Pointers only, not summaries; each skill is the authority
+on its own topic:
 
 1. `handoff-rules` — when to read `HANDOFF.md`, when to regenerate it, and what shape it
-   keeps. Invoke at session start and at close. The plugin also carries the six hooks that
-   mechanize it.
+   keeps. Invoke at session start and at close. The plugin also carries the two hooks that
+   mechanize its read-at-session-start rule; nothing else in it is enforced mechanically.
 2. `git-sync-and-merge` — the "sincronitza" command and the close git sequence: autonomous
    local merge, no pull request, call budget, and the push, clean-tree and merge-conflict
    failure paths. Invoke before any branch integration.
