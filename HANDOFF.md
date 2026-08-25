@@ -2,9 +2,9 @@
 
 ## Evergreen state
 
-Active branch: `claude/test-coverage-analysis-tjf30t` — test coverage work, PR #3 created (draft).
+Active branch: `chore/skills-to-user-scope` — not yet merged into `main`. PR #3 (test coverage) was merged 2026-07-24.
 
-Configuration: portable bundle (CLAUDE.md, .claude/, 25 skills) fully integrated.
+Configuration: CLAUDE.md in repo; workflow skills at user scope as the `session-rules@jaumeap` plugin, not vendored here. `.claude/` no longer carries skills or settings.
 
 Git workflow: autonomous local merge (no PR) per git-rules. Response style: Catalan replies, English code/commits. Start replies with `Rebut: <order>`. Numbered lists only, no bold/headers/tables.
 
@@ -24,4 +24,4 @@ Fixed DebugLog.h missing `#include <cstdarg>`. All 140 tests passing locally. Te
 
 ## Open items
 
-None. Work complete; awaiting CI and review feedback on PR #3.
+1. `chore/skills-to-user-scope` not merged into `main`.
