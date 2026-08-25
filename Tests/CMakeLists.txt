@@ -4,6 +4,21 @@
 
 cmake_minimum_required(VERSION 3.15)
 
+# doctest, vendored as a submodule the same way libASPL is. Header-only, so an
+# INTERFACE target carrying the include path is the whole integration; no
+# add_subdirectory, which would pull in doctest's own tests and install rules.
+#
+# Migration is per-suite and incremental: a target links doctest_headers and
+# defines DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN once it has been converted, and
+# the ones still using their hand-rolled main keep working untouched.
+add_library(doctest_headers INTERFACE)
+target_include_directories(doctest_headers INTERFACE
+    ${CMAKE_SOURCE_DIR}/external/doctest/doctest
+)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/doctest/doctest/doctest.h")
+    message(WARNING "external/doctest is empty - run: git submodule update --init external/doctest")
+endif()
+
 # Test: SDP Parser
 add_executable(TestSDPParser
     TestSDPParser.cpp
@@ -14,6 +29,12 @@ add_executable(TestSDPParser
 target_include_directories(TestSDPParser PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
+
+# First suite migrated to doctest. It brings its own main via
+# DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN, and its CHECKs report the operand values
+# instead of a hand-written message. The rest of the suites still use their own
+# main and are migrated one commit at a time.
+target_link_libraries(TestSDPParser PRIVATE doctest_headers)
 
 target_compile_features(TestSDPParser PRIVATE cxx_std_17)
 
@@ -40,6 +61,16 @@ target_include_directories(TestRingBuffer PRIVATE
 )
 
 target_compile_features(TestRingBuffer PRIVATE cxx_std_17)
+
+add_executable(TestRingBufferTiming
+    TestRingBufferTiming.cpp
+)
+
+target_include_directories(TestRingBufferTiming PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_compile_features(TestRingBufferTiming PRIVATE cxx_std_17)
 
 # Test: RTP Receiver
 add_executable(TestRTPReceiver
@@ -319,6 +350,7 @@ enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
 add_test(NAME ChannelMapper COMMAND TestChannelMapper)
 add_test(NAME RingBuffer COMMAND TestRingBuffer)
+add_test(NAME RingBufferTiming COMMAND TestRingBufferTiming)
 add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
@@ -334,6 +366,40 @@ add_test(NAME RTCPReceiverTable COMMAND TestRTCPReceiverTable)
 add_test(NAME StreamConfig COMMAND TestStreamConfig)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
+
+# Labels drive what the local gate runs. scripts/ci-local.sh excludes the
+# `timing` label rather than naming suites in a regex, so a new test that
+# depends on wall-clock behaviour is excluded the
+# moment it is labelled, without anyone remembering to edit the gate.
+#
+# `network` is separate from `timing` on purpose: the sanitizer runs want the
+# concurrent and wall-clock suites -- that is where a race would show -- but
+# still cannot run anything that needs real multicast sockets on a developer
+# machine.
+#
+# Every test also gets a TIMEOUT. The gate runs from a pre-push hook, so a
+# hung test blocks the push forever with no output; the slowest suite today
+# is IntegrationAudioPath at ~2.2s, so 60s is generous by more than an order
+# of magnitude and still bounded.
+set_tests_properties(SDPParser PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(ChannelMapper PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RingBuffer PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RingBufferTiming PROPERTIES LABELS "timing" TIMEOUT 60)
+set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RTPTransmitter PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
+set_tests_properties(PTPMaster PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(CompatibilityProfile PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(Resampling PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPPeerTable PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(DolbyModelCatalog PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(AmplifierUnit PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RTCPReceiverTable PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(StreamConfig PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")
