@@ -193,6 +193,8 @@ system_profiler SPAudioDataType | grep -A 5 "AES67"   # verify it loaded
 
 Build options (pass as `-DOPTION=OFF` to skip): `BUILD_TESTS`, `BUILD_EXAMPLES`, `BUILD_TOOLS` — all `ON` by default.
 
+**CI runs on this machine, not on GitHub (2026-08-25).** The Actions workflow was disabled and deleted; `scripts/ci-local.sh` replaces it, running the same configure/build/test steps plus the old lint job's two greps. `.githooks/pre-push` runs it before every push, so a red build blocks the push — skip one with `git push --no-verify` or `SKIP_LOCAL_CI=1`. A fresh clone must opt in once with `git config core.hooksPath .githooks`; the setting is local, not carried by the repo. The gate configures with `-DBUILD_MANAGER_APP=OFF`: the SwiftUI app fails to build in both environments today (missing `#Preview` macro plugin without a full Xcode toolchain here, swiftc type-check timeout on `DiscoveredSessionsView.swift:23` on the runner) and is unverified against a live driver anyway. Build it explicitly with `cmake --build build --target ManagerApp` once fixed.
+
 Manager app can be built standalone: `cd ManagerApp && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
 CTest names map 1:1 to `Tests/*.cpp` (`SDPParser`, `ChannelMapper`, `RingBuffer`, `RTPReceiver`, `RTPTransmitter`, `PTPClock`, `StreamManager`, `MultiStream`, `IntegrationAudioPath`). `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
