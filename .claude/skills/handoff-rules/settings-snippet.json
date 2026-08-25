@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/sync-command-reminder.sh" },
+          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/close-command-reminder.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/rule-check-reminder.sh" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/precompact-hygiene-flag.sh" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-handoff-read.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-handoff-pushed.sh" }
+        ]
+      }
+    ]
+  }
+}
