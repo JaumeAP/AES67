@@ -329,8 +329,3 @@ struct AboutSettings: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-
-#Preview {
-    SettingsView()
-        .environmentObject(DriverManager())
-}

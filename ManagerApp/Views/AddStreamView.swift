@@ -453,19 +453,3 @@ struct AddStreamView: View {
 }
 
 // MARK: - Preview
-
-#Preview("Add Stream View") {
-    AddStreamView()
-        .environmentObject(DriverManager())
-}
-
-#Preview("Sample Rate Mismatch Alert") {
-    SampleRateMismatchAlert(
-        streamRate: 96000,
-        deviceRate: 48000,
-        onChangeDevice: { print("Change device") },
-        onCancel: { print("Cancel") }
-    )
-    .padding()
-    .background(Color.gray.opacity(0.3))
-}

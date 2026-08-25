@@ -766,8 +766,3 @@ struct LegendItem: View {
 }
 
 // MARK: - Preview
-
-#Preview {
-    ChannelMappingView(driverManager: DriverManager())
-        .frame(width: 1200, height: 800)
-}

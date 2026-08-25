@@ -388,10 +388,3 @@ struct EmptyStateView: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 }
-
-#Preview {
-    let driverManager = DriverManager()
-    ContentView()
-        .environmentObject(driverManager)
-        .environmentObject(MenuBarManager(driverManager: driverManager))
-}
