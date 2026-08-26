@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "../../Shared/Types.h"
-#include "../../Driver/SDPParser.h"
+#include "Shared/Types.h"
+#include "Driver/SDPParser.h"
 #include <string>
 #include <optional>
 #include <map>

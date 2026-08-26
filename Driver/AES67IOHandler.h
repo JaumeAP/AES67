@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include "../Shared/Types.h"
-#include "../Shared/RingBuffer.hpp"
-#include "../NetworkEngine/RTSafeStreamInterface.h"
+#include "Shared/Types.h"
+#include "Shared/RingBuffer.hpp"
+#include "NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/IORequestHandler.hpp>
 #include <aspl/Client.hpp>
 #include <aspl/Stream.hpp>

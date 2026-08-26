@@ -106,44 +106,23 @@ fi
 ( cd "$build_dir" && ctest "${ctest_args[@]}" ) \
   || { echo "FAIL: tests" >&2; exit 1; }
 
-# The one check here that can fail. AES67_CORE_SOURCES is what other projects
-# consume from this repository as a submodule (see the README), and its whole
-# value is that it builds without macOS: an Apple framework or a socket header
-# reaching one of those files breaks every consumer, and it breaks them at their
-# build, not ours, which is the worst place to find out. A grep is crude but it
-# is deterministic and it costs nothing.
+# The core is its own repository now, and it carries its own check. Running it
+# from here rather than reimplementing it: this build is a consumer of that
+# library, and a consumer that lets a platform header into it would find out at
+# somebody else's build.
 echo "==> Core stays platform-free"
-core_files="$(awk '/^set\(AES67_CORE_SOURCES/,/^\)/' CMakeLists.txt | grep -E '\.cpp$' | tr -d ' ')"
-core_violations=""
-for f in $core_files; do
-  headers=""
-  for ext in .h .hpp; do
-    [ -f "${f%.cpp}$ext" ] && headers="$headers ${f%.cpp}$ext"
-  done
-  # Transitively: a platform header usually arrives through an include two
-  # levels down, not in the .cpp. SimpleRTP.h opens sockets and
-  # PTPClockSource.h reaches CoreAudio; neither shows in the files that use
-  # them. Following one level of local includes catches that.
-  for inc in $(grep -ho '#include "[^"]*"' "$f" $headers 2>/dev/null | sed 's/.*"\(.*\)"/\1/'); do
-    cand="$(find . -name "$(basename "$inc")" -not -path './build*' -not -path './external/*' 2>/dev/null | head -1)"
-    [ -n "$cand" ] && headers="$headers $cand"
-  done
-  # shellcheck disable=SC2086
-  hit="$(grep -Hno '#include <\(CoreAudio\|CoreFoundation\|AudioToolbox\|Accelerate\|mach\|sys/socket\|netinet\|arpa\|ifaddrs\)[^>]*>' "$f" $headers 2>/dev/null || true)"
-  [ -n "$hit" ] && core_violations="$core_violations
-$hit"
-done
-if [ -n "$core_violations" ]; then
-  echo "FAIL: platform headers inside AES67_CORE_SOURCES:$core_violations" >&2
+if [ -x external/aes67-core/scripts/check-platform-free.sh ]; then
+  external/aes67-core/scripts/check-platform-free.sh || { echo "FAIL: core contract" >&2; exit 1; }
+else
+  echo "FAIL: external/aes67-core missing - run: git submodule update --init --recursive" >&2
   exit 1
 fi
-echo "$(echo "$core_files" | wc -l | tr -d ' ') core files, all platform-free"
 
 # Both checks below are informational: the workflow's lint job never failed on
 # them either, it only printed what it found.
 echo "==> Active TODOs"
 grep -rn "TODO" --include="*.cpp" --include="*.h" --include="*.hpp" --include="*.swift" . \
-  | grep -v vendor | grep -v "\.git" || echo "No TODOs found"
+  | grep -v vendor | grep -v "\.git" | grep -v "^\./external/" || echo "No TODOs found"
 
 echo "==> Dead-code references in build files"
 grep -rn "CircularJitterBuffer\|JitterBuffer\|TemporalJitterBuffer\|SimplifiedLockFreePacketPool" \

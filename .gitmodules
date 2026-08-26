@@ -1,3 +1,6 @@
 [submodule "external/doctest"]
 	path = external/doctest
 	url = https://github.com/doctest/doctest.git
+[submodule "external/aes67-core"]
+	path = external/aes67-core
+	url = https://github.com/JaumeAP/aes67-core.git

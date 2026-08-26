@@ -4,10 +4,10 @@
 // Unit tests for resampling subsystem: PIController, SmoothedPIController, Resampler
 //
 
-#include "../NetworkEngine/Resampling/PIController.h"
-#include "../NetworkEngine/Resampling/SmoothedPIController.h"
-#include "../NetworkEngine/Resampling/Resampler.h"
-#include "../NetworkEngine/Resampling/SampleRateAdapter.h"
+#include "NetworkEngine/Resampling/PIController.h"
+#include "NetworkEngine/Resampling/SmoothedPIController.h"
+#include "NetworkEngine/Resampling/Resampler.h"
+#include "NetworkEngine/Resampling/SampleRateAdapter.h"
 #include <iostream>
 #include <cassert>
 #include <cmath>

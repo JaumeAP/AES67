@@ -6,12 +6,12 @@
 
 #include "AES67Device.h"
 #include "AES67IOHandler.h"
-#include "SDPParser.h"
-#include "DebugLog.h"
-#include "../Shared/CustomProperties.h"
-#include "../NetworkEngine/DeviceChannelSettings.h"
-#include "../NetworkEngine/AmplifierUnitSettings.h"
-#include "../NetworkEngine/PTP/PTPMasterSettings.h"
+#include "Driver/SDPParser.h"
+#include "Driver/DebugLog.h"
+#include "Shared/CustomProperties.h"
+#include "NetworkEngine/DeviceChannelSettings.h"
+#include "NetworkEngine/AmplifierUnitSettings.h"
+#include "NetworkEngine/PTP/PTPMasterSettings.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <algorithm>
 #include <utility>

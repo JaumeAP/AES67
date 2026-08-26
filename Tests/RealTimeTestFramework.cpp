@@ -1,5 +1,5 @@
 #include "RealTimeTestFramework.h"
-#include "../Shared/NonBlockingLogger.h"
+#include "Shared/NonBlockingLogger.h"
 #include <iostream>
 #include <random>
 #include <algorithm>

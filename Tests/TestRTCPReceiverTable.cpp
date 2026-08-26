@@ -5,7 +5,7 @@
 // CNAMEs from known bytes, malformed-packet robustness (no OOB), and the
 // reporter aggregation + timeout. Header-only, no sockets.
 //
-#include "../NetworkEngine/Discovery/RTCPReceiverTable.h"
+#include "NetworkEngine/Discovery/RTCPReceiverTable.h"
 
 #include <cstdint>
 #include <iostream>

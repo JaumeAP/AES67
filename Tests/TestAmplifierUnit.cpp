@@ -6,7 +6,7 @@
 // different sizes (16/24/32) — not (unitIndex-1) times one uniform width.
 // Header-only (the helper is a static inline), no linkage.
 //
-#include "../NetworkEngine/AmplifierUnitSettings.h"
+#include "NetworkEngine/AmplifierUnitSettings.h"
 
 #include <iostream>
 #include <vector>

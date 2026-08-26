@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "../../Shared/Types.h"
+#include "Shared/Types.h"
 #include "PTPDiagnostics.h"
 #include <thread>
 #include <atomic>

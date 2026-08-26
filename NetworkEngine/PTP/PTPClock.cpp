@@ -8,10 +8,10 @@
 #include "PTPClock.h"
 #include "AudioClockDeviceList.h"
 #include "PTPDInterface.h"
-#include "PTPMasterSettings.h"
-#include "PhaseLockedLoop.h"
-#include "../NetworkInterfaceDetection.h"
-#include "../../Driver/SDPParser.h"
+#include "NetworkEngine/PTP/PTPMasterSettings.h"
+#include "NetworkEngine/PTP/PhaseLockedLoop.h"
+#include "NetworkEngine/NetworkInterfaceDetection.h"
+#include "Driver/SDPParser.h"
 #include <chrono>
 #include <cstring>
 #include <iostream>
