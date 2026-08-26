@@ -4,9 +4,9 @@
 // Unit tests for RTP packet transmitter
 //
 
-#include "../NetworkEngine/RTP/SimpleRTP.h"
-#include "../Driver/SDPParser.h"
-#include "../NetworkEngine/StreamChannelMapper.h"
+#include "NetworkEngine/RTP/SimpleRTP.h"
+#include "Driver/SDPParser.h"
+#include "NetworkEngine/StreamChannelMapper.h"
 #include <iostream>
 #include <cassert>
 #include <vector>

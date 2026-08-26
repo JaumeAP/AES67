@@ -9,7 +9,7 @@
 // the pre-push gate. Everything here is deterministic and always runs.
 //
 
-#include "../Shared/RingBuffer.hpp"
+#include "Shared/RingBuffer.hpp"
 #include <iostream>
 #include <cassert>
 #include <vector>

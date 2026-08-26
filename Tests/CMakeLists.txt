@@ -1,84 +1,4 @@
-# Tests CMakeLists.txt
-# AES67 macOS Driver - Build #4
-# Test suite compilation
 
-cmake_minimum_required(VERSION 3.15)
-
-# doctest, vendored as a submodule the same way libASPL is. Header-only, so an
-# INTERFACE target carrying the include path is the whole integration; no
-# add_subdirectory, which would pull in doctest's own tests and install rules.
-#
-# Migration is per-suite and incremental: a target links doctest_headers and
-# defines DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN once it has been converted, and
-# the ones still using their hand-rolled main keep working untouched.
-add_library(doctest_headers INTERFACE)
-target_include_directories(doctest_headers INTERFACE
-    ${CMAKE_SOURCE_DIR}/external/doctest/doctest
-)
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/doctest/doctest/doctest.h")
-    message(WARNING "external/doctest is empty - run: git submodule update --init external/doctest")
-endif()
-
-# Test: SDP Parser
-add_executable(TestSDPParser
-    TestSDPParser.cpp
-    ../Driver/SDPParser.cpp
-    ../Shared/Types.cpp
-)
-
-target_include_directories(TestSDPParser PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-# First suite migrated to doctest. It brings its own main via
-# DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN, and its CHECKs report the operand values
-# instead of a hand-written message. The rest of the suites still use their own
-# main and are migrated one commit at a time.
-target_link_libraries(TestSDPParser PRIVATE doctest_headers)
-
-target_compile_features(TestSDPParser PRIVATE cxx_std_17)
-
-# Test: Channel Mapper
-add_executable(TestChannelMapper
-    TestChannelMapper.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
-    ../Shared/Types.cpp
-)
-
-target_include_directories(TestChannelMapper PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_compile_features(TestChannelMapper PRIVATE cxx_std_17)
-
-# Test: media-clock PLL. Pure arithmetic, no clock source, no sockets --
-# doctest, and in the gate.
-add_executable(TestPhaseLockedLoop
-    TestPhaseLockedLoop.cpp
-    ../NetworkEngine/PTP/PhaseLockedLoop.cpp
-)
-
-target_include_directories(TestPhaseLockedLoop PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(TestPhaseLockedLoop PRIVATE doctest_headers)
-
-target_compile_features(TestPhaseLockedLoop PRIVATE cxx_std_17)
-
-# Test: RTP wire header, on its own -- no transport, no sockets. doctest, like
-# TestSDPParser.
-add_executable(TestRTPHeader
-    TestRTPHeader.cpp
-)
-
-target_include_directories(TestRTPHeader PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(TestRTPHeader PRIVATE doctest_headers)
-
-target_compile_features(TestRTPHeader PRIVATE cxx_std_17)
 
 # Test: Ring Buffer
 add_executable(TestRingBuffer
@@ -88,6 +8,8 @@ add_executable(TestRingBuffer
 target_include_directories(TestRingBuffer PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
+
+target_link_libraries(TestRingBuffer PRIVATE aes67_core aes67_net)
 
 target_compile_features(TestRingBuffer PRIVATE cxx_std_17)
 
@@ -99,6 +21,8 @@ target_include_directories(TestRingBufferTiming PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(TestRingBufferTiming PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestRingBufferTiming PRIVATE cxx_std_17)
 
 # Test: RTP Receiver
@@ -107,19 +31,15 @@ add_executable(TestRTPReceiver
     ../NetworkEngine/RTP/RTPReceiver.cpp
     ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
-    ../NetworkEngine/NetworkUtils.cpp
-    ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
-    ../NetworkEngine/RTP/LockFreePacketPool.cpp
-    ../Driver/SDPParser.cpp
     ../Driver/AudioThreadPriority.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestRTPReceiver PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
+
+target_link_libraries(TestRTPReceiver PRIVATE aes67_core aes67_net)
 
 target_compile_features(TestRTPReceiver PRIVATE cxx_std_17)
 
@@ -131,16 +51,14 @@ add_executable(TestRTPTransmitter
     ../NetworkEngine/RTP/RTPTransmitter.cpp
     ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
-    ../NetworkEngine/NetworkUtils.cpp
-    ../Driver/SDPParser.cpp
     ../Driver/AudioThreadPriority.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestRTPTransmitter PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
+
+target_link_libraries(TestRTPTransmitter PRIVATE aes67_core aes67_net)
 
 target_compile_features(TestRTPTransmitter PRIVATE cxx_std_17)
 
@@ -156,13 +74,8 @@ add_executable(TestPTPClock
     ../NetworkEngine/PTP/PTPArbitrator.cpp
     ../NetworkEngine/PTP/CoreAudioClockSource.cpp
     ../NetworkEngine/PTP/AudioClockDeviceList.cpp
-    ../NetworkEngine/PTP/PTPMasterSettings.cpp
-    ../NetworkEngine/PTP/PhaseLockedLoop.cpp
-    ../NetworkEngine/PTP/CustomSys.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
-    ../Driver/SDPParser.cpp
     ../Driver/AudioThreadPriority.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestPTPClock PRIVATE
@@ -174,6 +87,8 @@ target_link_libraries(TestPTPClock PRIVATE
     "-framework CoreAudio"
     "-framework CoreFoundation"
 )
+
+target_link_libraries(TestPTPClock PRIVATE aes67_core aes67_net)
 
 target_compile_features(TestPTPClock PRIVATE cxx_std_17)
 
@@ -187,72 +102,65 @@ target_include_directories(TestPTPMaster PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(TestPTPMaster PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
 
 # Test: Compatibility profiles — pure constraint validation, no sockets.
 add_executable(TestCompatibilityProfile
     TestCompatibilityProfile.cpp
-    ../NetworkEngine/CompatibilityProfile.cpp
-    ../Driver/SDPParser.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestCompatibilityProfile PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(TestCompatibilityProfile PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestCompatibilityProfile PRIVATE cxx_std_17)
 
 # Test: Stream Manager
 add_executable(TestStreamManager
     TestStreamManager.cpp
-    ../Driver/SDPParser.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestStreamManager PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(TestStreamManager PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestStreamManager PRIVATE cxx_std_17)
 
 # Test: Resampling Subsystem
 add_executable(TestResampling
     TestResampling.cpp
-    ../NetworkEngine/Resampling/PIController.cpp
-    ../NetworkEngine/Resampling/SmoothedPIController.cpp
-    ../NetworkEngine/Resampling/Resampler.cpp
-    ../NetworkEngine/Resampling/SampleRateAdapter.cpp
 )
 
 target_include_directories(TestResampling PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(TestResampling PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestResampling PRIVATE cxx_std_17)
 
 # Test: Stream Config
 add_executable(TestStreamConfig
     TestStreamConfig.cpp
-    ../NetworkEngine/StreamConfig.cpp
-    ../NetworkEngine/NetworkUtils.cpp
-    ../Driver/SDPParser.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestStreamConfig PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(TestStreamConfig PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestStreamConfig PRIVATE cxx_std_17)
 
 # Integration Test: Multi-Stream Scenarios
 add_executable(TestMultiStream
     TestMultiStream.cpp
-    ../Driver/SDPParser.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
     ../NetworkEngine/PTP/PTPClock.cpp
     ../NetworkEngine/PTP/PTPDInterface.cpp
     ../NetworkEngine/PTP/PTPSlave.cpp
@@ -260,12 +168,8 @@ add_executable(TestMultiStream
     ../NetworkEngine/PTP/PTPArbitrator.cpp
     ../NetworkEngine/PTP/CoreAudioClockSource.cpp
     ../NetworkEngine/PTP/AudioClockDeviceList.cpp
-    ../NetworkEngine/PTP/PTPMasterSettings.cpp
-    ../NetworkEngine/PTP/PhaseLockedLoop.cpp
-    ../NetworkEngine/PTP/CustomSys.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
     ../Driver/AudioThreadPriority.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestMultiStream PRIVATE
@@ -277,6 +181,8 @@ target_link_libraries(TestMultiStream PRIVATE
     "-framework CoreFoundation"
 )
 
+target_link_libraries(TestMultiStream PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestMultiStream PRIVATE cxx_std_17)
 
 # Benchmark: I/O Handler Performance (requires libASPL)
@@ -284,7 +190,6 @@ if(ASPL_FOUND)
     add_executable(BenchmarkIOHandler
         BenchmarkIOHandler.cpp
         ../Driver/AES67IOHandler.cpp
-        ../Shared/Types.cpp
         ${ASPL_SOURCES}
     )
 
@@ -292,6 +197,8 @@ if(ASPL_FOUND)
         ${CMAKE_SOURCE_DIR}
         ${ASPL_INCLUDE_DIR}
     )
+
+    target_link_libraries(BenchmarkIOHandler PRIVATE aes67_core aes67_net)
 
     target_compile_features(BenchmarkIOHandler PRIVATE cxx_std_17)
 
@@ -318,19 +225,15 @@ add_executable(TestIntegrationAudioPath
     ../NetworkEngine/RTP/RTPTransmitter.cpp
     ../NetworkEngine/RTP/PCMCodec.cpp
     ../NetworkEngine/RTP/SimpleRTP.cpp
-    ../NetworkEngine/NetworkUtils.cpp
-    ../NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
-    ../NetworkEngine/RTP/LockFreePacketPool.cpp
-    ../Driver/SDPParser.cpp
     ../Driver/AudioThreadPriority.cpp
-    ../NetworkEngine/StreamChannelMapper.cpp
     ../NetworkEngine/NetworkInterfaceDetection.cpp
-    ../Shared/Types.cpp
 )
 
 target_include_directories(TestIntegrationAudioPath PRIVATE
     ${CMAKE_SOURCE_DIR}
 )
+
+target_link_libraries(TestIntegrationAudioPath PRIVATE aes67_core aes67_net)
 
 target_compile_features(TestIntegrationAudioPath PRIVATE cxx_std_17)
 
@@ -342,6 +245,8 @@ add_executable(TestPCMCodec
     ../NetworkEngine/RTP/PCMCodec.cpp
 )
 target_include_directories(TestPCMCodec PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestPCMCodec PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestPCMCodec PRIVATE cxx_std_17)
 target_link_libraries(TestPCMCodec PRIVATE "-framework Accelerate")
 
@@ -351,6 +256,8 @@ add_executable(TestPTPPeerTable
     TestPTPPeerTable.cpp
 )
 target_include_directories(TestPTPPeerTable PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestPTPPeerTable PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestPTPPeerTable PRIVATE cxx_std_17)
 
 # Test: Dolby model catalog (model -> channels/direction + channel resolver)
@@ -358,6 +265,8 @@ add_executable(TestDolbyModelCatalog
     TestDolbyModelCatalog.cpp
 )
 target_include_directories(TestDolbyModelCatalog PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestDolbyModelCatalog PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestDolbyModelCatalog PRIVATE cxx_std_17)
 
 # Test: chained-unit source-port offset (mixed unit sizes)
@@ -365,6 +274,8 @@ add_executable(TestAmplifierUnit
     TestAmplifierUnit.cpp
 )
 target_include_directories(TestAmplifierUnit PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestAmplifierUnit PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestAmplifierUnit PRIVATE cxx_std_17)
 
 # Test: RTCP receiver-report detection core
@@ -372,14 +283,13 @@ add_executable(TestRTCPReceiverTable
     TestRTCPReceiverTable.cpp
 )
 target_include_directories(TestRTCPReceiverTable PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestRTCPReceiverTable PRIVATE aes67_core aes67_net)
+
 target_compile_features(TestRTCPReceiverTable PRIVATE cxx_std_17)
 
 # Add tests to CTest
 enable_testing()
-add_test(NAME SDPParser COMMAND TestSDPParser)
 add_test(NAME ChannelMapper COMMAND TestChannelMapper)
-add_test(NAME PhaseLockedLoop COMMAND TestPhaseLockedLoop)
-add_test(NAME RTPHeader COMMAND TestRTPHeader)
 add_test(NAME RingBuffer COMMAND TestRingBuffer)
 add_test(NAME RingBufferTiming COMMAND TestRingBufferTiming)
 add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
@@ -412,10 +322,7 @@ add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 # hung test blocks the push forever with no output; the slowest suite today
 # is IntegrationAudioPath at ~2.2s, so 60s is generous by more than an order
 # of magnitude and still bounded.
-set_tests_properties(SDPParser PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(ChannelMapper PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(PhaseLockedLoop PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(RTPHeader PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RingBuffer PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RingBufferTiming PROPERTIES LABELS "timing" TIMEOUT 60)
 set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)

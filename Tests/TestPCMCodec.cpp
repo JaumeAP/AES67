@@ -6,7 +6,7 @@
 // the real-time encode/decode had no direct test before this. Runs in the
 // standard suite (pure arithmetic, no sockets).
 //
-#include "../NetworkEngine/RTP/PCMCodec.h"
+#include "NetworkEngine/RTP/PCMCodec.h"
 
 #include <cmath>
 #include <cstdint>

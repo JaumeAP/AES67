@@ -30,7 +30,7 @@
 
 #pragma once
 
-#include "../Shared/RingBuffer.hpp"
+#include "Shared/RingBuffer.hpp"
 #include <array>
 #include <atomic>
 #include <cstdint>

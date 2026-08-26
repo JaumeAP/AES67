@@ -3,14 +3,14 @@
 
 #pragma once
 
-#include "../../Shared/Types.h"
-#include "../../Shared/RingBuffer.hpp"
-#include "../../Driver/SDPParser.h"
-#include "../StreamChannelMapper.h"
-#include "../NetworkInterfaceDetection.h"
+#include "Shared/Types.h"
+#include "Shared/RingBuffer.hpp"
+#include "Driver/SDPParser.h"
+#include "NetworkEngine/StreamChannelMapper.h"
+#include "NetworkEngine/NetworkInterfaceDetection.h"
 #include "SimpleRTP.h"
-#include "LockFreeCircularJitterBuffer.h"
-#include "../../Driver/AudioThreadPriority.h"
+#include "NetworkEngine/RTP/LockFreeCircularJitterBuffer.h"
+#include "Driver/AudioThreadPriority.h"
 #include <thread>
 #include <atomic>
 #include <memory>

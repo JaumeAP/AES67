@@ -6,7 +6,7 @@
 // timeout eviction. Socket-free, time-injected — no PTPPeerObserver, no
 // network — exactly like TestStreamManager pins evaluateSinkFollow.
 //
-#include "../NetworkEngine/PTP/PTPPeerTable.h"
+#include "NetworkEngine/PTP/PTPPeerTable.h"
 
 #include <array>
 #include <iostream>

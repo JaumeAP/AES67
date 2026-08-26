@@ -4,8 +4,8 @@
 // Unit tests for PTP clock synchronization
 //
 
-#include "../NetworkEngine/PTP/PTPClock.h"
-#include "../Driver/SDPParser.h"
+#include "NetworkEngine/PTP/PTPClock.h"
+#include "Driver/SDPParser.h"
 #include <iostream>
 #include <cassert>
 #include <thread>

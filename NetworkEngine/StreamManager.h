@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include "../Shared/Types.h"
-#include "../Shared/RingBuffer.hpp"
-#include "../Driver/SDPParser.h"
-#include "CompatibilityProfile.h"
-#include "StreamChannelMapper.h"
-#include "StreamConfig.h"
+#include "Shared/Types.h"
+#include "Shared/RingBuffer.hpp"
+#include "Driver/SDPParser.h"
+#include "NetworkEngine/CompatibilityProfile.h"
+#include "NetworkEngine/StreamChannelMapper.h"
+#include "NetworkEngine/StreamConfig.h"
 #include "RTP/RTPReceiver.h"
 #include "RTP/RTPTransmitter.h"
 #include "PTP/PTPClock.h"

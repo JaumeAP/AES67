@@ -7,7 +7,7 @@
 #include "RTPTransmitter.h"
 #include "SimpleRTP.h"
 #include "PCMCodec.h"
-#include "../../Driver/DebugLog.h"
+#include "Driver/DebugLog.h"
 #include <cstring>
 #include <random>
 #include <chrono>

@@ -1,5 +1,5 @@
 #include "ResourceCleanupManager.h"
-#include "NonBlockingLogger.h"
+#include "Shared/NonBlockingLogger.h"
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstdlib>
