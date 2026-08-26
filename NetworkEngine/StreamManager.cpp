@@ -66,7 +66,17 @@ void StreamManager::ensurePTPClockForDomain(int domain) {
 }
 
 StreamManager::~StreamManager() {
-    removeAllStreams();
+    // removeAllStreams() joins threads, closes sockets and touches containers,
+    // any of which can throw. Letting that out of a destructor during unwinding
+    // is std::terminate, and this one runs at driver teardown, where an
+    // exception is already plausible.
+    try {
+        removeAllStreams();
+    } catch (const std::exception& e) {
+        AES67_LOGF("StreamManager: teardown threw: %s", e.what());
+    } catch (...) {
+        AES67_LOG("StreamManager: teardown threw a non-standard exception");
+    }
 }
 
 //

@@ -76,7 +76,8 @@ cmake -S . -B "$build_dir" \
   -DBUILD_TESTS=ON \
   -DBUILD_EXAMPLES=OFF \
   -DBUILD_TOOLS=OFF \
-  -DBUILD_MANAGER_APP=ON || { echo "FAIL: cmake configure" >&2; exit 1; }
+  -DBUILD_MANAGER_APP=ON \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON || { echo "FAIL: cmake configure" >&2; exit 1; }
 
 echo "==> Build (-j$jobs)"
 cmake --build "$build_dir" -j"$jobs" || { echo "FAIL: build" >&2; exit 1; }
@@ -117,6 +118,12 @@ else
   echo "FAIL: external/aes67-core missing - run: git submodule update --init --recursive" >&2
   exit 1
 fi
+
+# Static analysis. Not informational: .clang-tidy decides which checks fail the
+# gate and which only report, and the failing set is the one verified here not
+# to be noisy. It found five defects in the real-time path the day it was added.
+echo "==> Static analysis"
+scripts/check-tidy.sh "$build_dir" || { echo "FAIL: clang-tidy" >&2; exit 1; }
 
 # Both checks below are informational: the workflow's lint job never failed on
 # them either, it only printed what it found.
