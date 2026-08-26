@@ -4,7 +4,7 @@
 // Simple example demonstrating SDP parsing
 //
 
-#include "../Driver/SDPParser.h"
+#include "Driver/SDPParser.h"
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
