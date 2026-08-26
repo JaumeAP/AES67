@@ -4,6 +4,9 @@
 // Unit tests for RTP packet receiver
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include "Driver/SDPParser.h"
 #include "NetworkEngine/StreamChannelMapper.h"
@@ -15,86 +18,73 @@ using namespace AES67;
 using namespace AES67::RTP;
 
 // Test result counter
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
 //
 // Basic RTP Packet Tests
 //
 
-bool testRTPPacketStructure() {
+TEST_CASE("RTP Packet Structure") {
     std::cout << "Test: RTP packet structure... ";
 
     RTPPacket packet;
 
     // Default values
-    TEST_ASSERT(packet.header.version == 2, "RTP version should be 2");
-    TEST_ASSERT(packet.header.padding == 0, "Padding should be disabled");
-    TEST_ASSERT(packet.header.extension == 0, "Extension should be disabled");
-    TEST_ASSERT(packet.header.cc == 0, "CSRC count should be 0");
-    TEST_ASSERT(packet.header.marker == 0, "Marker should be 0");
-    TEST_ASSERT(packet.header.payloadType == PT_AES67_L16, "Default payload should be L16");
+    CHECK(packet.header.version == 2);
+    CHECK(packet.header.padding == 0);
+    CHECK(packet.header.extension == 0);
+    CHECK(packet.header.cc == 0);
+    CHECK(packet.header.marker == 0);
+    CHECK(packet.header.payloadType == PT_AES67_L16);
 
     // Set values
     packet.header.sequenceNumber = 1000;
     packet.header.timestamp = 48000;
     packet.header.ssrc = 0xABCDEF12;
 
-    TEST_ASSERT(packet.header.sequenceNumber == 1000, "Sequence number should be set");
-    TEST_ASSERT(packet.header.timestamp == 48000, "Timestamp should be set");
-    TEST_ASSERT(packet.header.ssrc == 0xABCDEF12, "SSRC should be set");
+    CHECK(packet.header.sequenceNumber == 1000);
+    CHECK(packet.header.timestamp == 48000);
+    CHECK(packet.header.ssrc == 0xABCDEF12);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testRTPHeaderSize() {
+TEST_CASE("RTP Header Size") {
     std::cout << "Test: RTP header size... ";
 
-    TEST_ASSERT(sizeof(RTPHeader) == 12, "RTP header must be exactly 12 bytes");
+    CHECK(sizeof(RTPHeader) == 12);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSequenceNumberHandling() {
+TEST_CASE("Sequence Number Handling") {
     std::cout << "Test: Sequence number handling... ";
 
     uint16_t seq = 0;
 
     // Normal increment
     for (int i = 0; i < 100; ++i) {
-        TEST_ASSERT(seq == i, "Sequence should increment normally");
+        CHECK(seq == i);
         seq++;
     }
 
     // Wrap-around
     seq = 65534;
     seq++;
-    TEST_ASSERT(seq == 65535, "Sequence at boundary");
+    CHECK(seq == 65535);
     seq++;
-    TEST_ASSERT(seq == 0, "Sequence should wrap to 0");
+    CHECK(seq == 0);
     seq++;
-    TEST_ASSERT(seq == 1, "Sequence should continue after wrap");
+    CHECK(seq == 1);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Audio Codec Tests
 //
 
-bool testL16Encoding() {
+TEST_CASE("L16 Encoding") {
     std::cout << "Test: L16 audio encoding/decoding... ";
 
     // Create test audio: 4 samples
@@ -111,14 +101,13 @@ bool testL16Encoding() {
     // Verify round-trip (allow small tolerance)
     for (int i = 0; i < 4; ++i) {
         float diff = std::abs(decoded[i] - audio[i]);
-        TEST_ASSERT(diff < 0.01f, "L16 round-trip should preserve audio");
+        CHECK(diff < 0.01f);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testL24Encoding() {
+TEST_CASE("L24 Encoding") {
     std::cout << "Test: L24 audio encoding/decoding... ";
 
     // Create test audio: 4 samples
@@ -135,18 +124,17 @@ bool testL24Encoding() {
     // Verify round-trip (L24 has better precision)
     for (int i = 0; i < 4; ++i) {
         float diff = std::abs(decoded[i] - audio[i]);
-        TEST_ASSERT(diff < 0.001f, "L24 round-trip should preserve audio with high precision");
+        CHECK(diff < 0.001f);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // SDP Session Tests
 //
 
-bool testSDPSessionCreation() {
+TEST_CASE("SDP Session Creation") {
     std::cout << "Test: SDP session creation... ";
 
     SDPSession sdp;
@@ -159,17 +147,16 @@ bool testSDPSessionCreation() {
     sdp.ttl = 32;
     sdp.payloadType = PT_AES67_L16;
 
-    TEST_ASSERT(sdp.sessionName == "Test Stream", "Session name should be set");
-    TEST_ASSERT(sdp.port == 5004, "Port should be set");
-    TEST_ASSERT(sdp.encoding == "L16", "Encoding should be set");
-    TEST_ASSERT(sdp.sampleRate == 48000, "Sample rate should be set");
-    TEST_ASSERT(sdp.numChannels == 2, "Channel count should be set");
+    CHECK(sdp.sessionName == "Test Stream");
+    CHECK(sdp.port == 5004);
+    CHECK(sdp.encoding == "L16");
+    CHECK(sdp.sampleRate == 48000);
+    CHECK(sdp.numChannels == 2);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSDPSessionValidation() {
+TEST_CASE("SDP Session Validation") {
     std::cout << "Test: SDP session validation... ";
 
     // Create valid SDP
@@ -182,17 +169,16 @@ bool testSDPSessionValidation() {
     validSDP.connectionAddress = "239.1.1.1";
 
     bool isValid = validSDP.isValid();
-    TEST_ASSERT(isValid, "Valid SDP should pass validation");
+    CHECK(isValid);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Channel Mapping Tests
 //
 
-bool testChannelMappingCreation() {
+TEST_CASE("Channel Mapping Creation") {
     std::cout << "Test: Channel mapping creation... ";
 
     ChannelMapping mapping;
@@ -203,15 +189,14 @@ bool testChannelMappingCreation() {
     mapping.deviceChannelStart = 16;
     mapping.deviceChannelCount = 8;
 
-    TEST_ASSERT(mapping.streamChannelCount == 8, "Stream channel count should be set");
-    TEST_ASSERT(mapping.deviceChannelStart == 16, "Device start channel should be set");
-    TEST_ASSERT(mapping.deviceChannelCount == 8, "Device channel count should be set");
+    CHECK(mapping.streamChannelCount == 8);
+    CHECK(mapping.deviceChannelStart == 16);
+    CHECK(mapping.deviceChannelCount == 8);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testChannelMappingValidation() {
+TEST_CASE("Channel Mapping Validation") {
     std::cout << "Test: Channel mapping validation... ";
 
     ChannelMapping validMapping;
@@ -222,7 +207,7 @@ bool testChannelMappingValidation() {
     validMapping.deviceChannelCount = 4;
 
     bool isValid = validMapping.isValid();
-    TEST_ASSERT(isValid, "Valid mapping should pass validation");
+    CHECK(isValid);
 
     // Invalid mapping (device channels out of range)
     ChannelMapping invalidMapping;
@@ -233,51 +218,49 @@ bool testChannelMappingValidation() {
     invalidMapping.deviceChannelCount = 4;
 
     bool isInvalid = !invalidMapping.isValid();
-    TEST_ASSERT(isInvalid, "Out-of-range mapping should fail validation");
+    CHECK(isInvalid);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Payload Size Tests
 //
 
-bool testPayloadSizeCalculations() {
+TEST_CASE("Payload Size Calculations") {
     std::cout << "Test: Payload size calculations... ";
 
     // L16: 2 channels, 48 samples = 48 * 2 * 2 = 192 bytes
     size_t l16_2ch = 48 * 2 * 2;
-    TEST_ASSERT(l16_2ch == 192, "L16 2ch 48 samples = 192 bytes");
+    CHECK(l16_2ch == 192);
 
     // L24: 2 channels, 48 samples = 48 * 2 * 3 = 288 bytes
     size_t l24_2ch = 48 * 2 * 3;
-    TEST_ASSERT(l24_2ch == 288, "L24 2ch 48 samples = 288 bytes");
+    CHECK(l24_2ch == 288);
 
     // L16: 8 channels, 48 samples = 48 * 8 * 2 = 768 bytes
     size_t l16_8ch = 48 * 8 * 2;
-    TEST_ASSERT(l16_8ch == 768, "L16 8ch 48 samples = 768 bytes");
+    CHECK(l16_8ch == 768);
 
     // L24: 8 channels, 48 samples = 48 * 8 * 3 = 1152 bytes
     size_t l24_8ch = 48 * 8 * 3;
-    TEST_ASSERT(l24_8ch == 1152, "L24 8ch 48 samples = 1152 bytes");
+    CHECK(l24_8ch == 1152);
 
     // Check against MTU (1500 bytes - 20 IP - 8 UDP - 12 RTP = 1460 bytes max payload)
     constexpr size_t MAX_PAYLOAD = 1460;
-    TEST_ASSERT(l16_2ch < MAX_PAYLOAD, "L16 2ch payload should fit in MTU");
-    TEST_ASSERT(l24_2ch < MAX_PAYLOAD, "L24 2ch payload should fit in MTU");
-    TEST_ASSERT(l16_8ch < MAX_PAYLOAD, "L16 8ch payload should fit in MTU");
-    TEST_ASSERT(l24_8ch < MAX_PAYLOAD, "L24 8ch payload should fit in MTU");
+    CHECK(l16_2ch < MAX_PAYLOAD);
+    CHECK(l24_2ch < MAX_PAYLOAD);
+    CHECK(l16_8ch < MAX_PAYLOAD);
+    CHECK(l24_8ch < MAX_PAYLOAD);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Timestamp Tests
 //
 
-bool testTimestampCalculation() {
+TEST_CASE("Timestamp Calculation") {
     std::cout << "Test: RTP timestamp calculation... ";
 
     // At 48kHz, 1ms packet = 48 samples
@@ -285,77 +268,27 @@ bool testTimestampCalculation() {
     uint32_t timestamp = 0;
 
     // First packet
-    TEST_ASSERT(timestamp == 0, "Initial timestamp should be 0");
+    CHECK(timestamp == 0);
 
     // Advance by packet interval
     timestamp += samplesPerPacket;
-    TEST_ASSERT(timestamp == 48, "Should advance by samples per packet");
+    CHECK(timestamp == 48);
 
     // Multiple packets
     for (int i = 0; i < 1000; ++i) {
         timestamp += samplesPerPacket;
     }
-    TEST_ASSERT(timestamp == 48 * 1001, "Should accumulate correctly");
+    CHECK(timestamp == 48 * 1001);
 
     // Test timestamp wrap (32-bit)
     uint32_t nearWrap = 0xFFFFFF00;
     nearWrap += 0x200;  // Will wrap
-    TEST_ASSERT(nearWrap == 0x100, "Timestamp should wrap around");
+    CHECK(nearWrap == 0x100);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Main Test Runner
 //
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 RTP Receiver Unit Tests" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "RTP Packet Tests:" << std::endl;
-    std::cout << "----------------" << std::endl;
-    testRTPPacketStructure();
-    testRTPHeaderSize();
-    testSequenceNumberHandling();
-    std::cout << std::endl;
-
-    std::cout << "Audio Codec Tests:" << std::endl;
-    std::cout << "-----------------" << std::endl;
-    testL16Encoding();
-    testL24Encoding();
-    std::cout << std::endl;
-
-    std::cout << "SDP Session Tests:" << std::endl;
-    std::cout << "-----------------" << std::endl;
-    testSDPSessionCreation();
-    testSDPSessionValidation();
-    std::cout << std::endl;
-
-    std::cout << "Channel Mapping Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testChannelMappingCreation();
-    testChannelMappingValidation();
-    std::cout << std::endl;
-
-    std::cout << "Payload Size Tests:" << std::endl;
-    std::cout << "------------------" << std::endl;
-    testPayloadSizeCalculations();
-    std::cout << std::endl;
-
-    std::cout << "Timestamp Tests:" << std::endl;
-    std::cout << "---------------" << std::endl;
-    testTimestampCalculation();
-    std::cout << std::endl;
-
-    std::cout << "========================================" << std::endl;
-    std::cout << "Test Results:" << std::endl;
-    std::cout << "  Passed: " << testsPassed << std::endl;
-    std::cout << "  Failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
-
-    return testsFailed == 0 ? 0 : 1;
-}

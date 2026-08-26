@@ -4,6 +4,9 @@
 // Unit tests for StreamManager
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/StreamManager.h"
 #include "Driver/SDPParser.h"
 #include <iostream>
@@ -12,17 +15,7 @@
 using namespace AES67;
 
 // Test result counter
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
 //
 // Helper Functions
@@ -67,78 +60,74 @@ ChannelMapping createTestMapping(uint16_t streamChannels = 2,
 // SDP Session Creation Tests
 //
 
-bool testSDPSessionCreation() {
+TEST_CASE("SDP Session Creation") {
     std::cout << "Test: SDP session creation for StreamManager... ";
 
     SDPSession sdp = createTestSDP("Test Stream", 5004, 8, 48000);
 
-    TEST_ASSERT(sdp.sessionName == "Test Stream", "Session name should match");
-    TEST_ASSERT(sdp.port == 5004, "Port should match");
-    TEST_ASSERT(sdp.numChannels == 8, "Channel count should match");
-    TEST_ASSERT(sdp.sampleRate == 48000, "Sample rate should match");
-    TEST_ASSERT(sdp.connectionAddress == "239.1.1.1", "Multicast address should match");
+    CHECK(sdp.sessionName == "Test Stream");
+    CHECK(sdp.port == 5004);
+    CHECK(sdp.numChannels == 8);
+    CHECK(sdp.sampleRate == 48000);
+    CHECK(sdp.connectionAddress == "239.1.1.1");
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSDPSessionValidation() {
+TEST_CASE("SDP Session Validation") {
     std::cout << "Test: SDP session validation... ";
 
     SDPSession validSDP = createTestSDP();
-    TEST_ASSERT(validSDP.isValid(), "Valid SDP should pass validation");
+    CHECK(validSDP.isValid());
 
     // Test invalid port
     SDPSession invalidPort = createTestSDP();
     invalidPort.port = 0;
-    TEST_ASSERT(!invalidPort.isValid(), "SDP with port 0 should be invalid");
+    CHECK(!invalidPort.isValid());
 
     // Test invalid sample rate
     SDPSession invalidSR = createTestSDP();
     invalidSR.sampleRate = 0;
-    TEST_ASSERT(!invalidSR.isValid(), "SDP with sample rate 0 should be invalid");
+    CHECK(!invalidSR.isValid());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Channel Mapping Tests
 //
 
-bool testChannelMappingCreation() {
+TEST_CASE("Channel Mapping Creation") {
     std::cout << "Test: Channel mapping for streams... ";
 
     ChannelMapping mapping = createTestMapping(8, 16);
 
-    TEST_ASSERT(mapping.streamChannelCount == 8, "Stream channels should match");
-    TEST_ASSERT(mapping.deviceChannelStart == 16, "Device start should match");
-    TEST_ASSERT(mapping.deviceChannelCount == 8, "Device count should match");
+    CHECK(mapping.streamChannelCount == 8);
+    CHECK(mapping.deviceChannelStart == 16);
+    CHECK(mapping.deviceChannelCount == 8);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testChannelMappingValidation() {
+TEST_CASE("Channel Mapping Validation") {
     std::cout << "Test: Channel mapping validation... ";
 
     // Valid mapping
     ChannelMapping valid = createTestMapping(4, 0);
-    TEST_ASSERT(valid.isValid(), "Valid mapping should pass");
+    CHECK(valid.isValid());
 
     // Invalid: device channels out of range
     ChannelMapping invalid = createTestMapping(4, 126);
-    TEST_ASSERT(!invalid.isValid(), "Out of range mapping should fail");
+    CHECK(!invalid.isValid());
 
     // Invalid: zero channels
     ChannelMapping zeroChannels = createTestMapping(0, 0);
-    TEST_ASSERT(!zeroChannels.isValid(), "Zero channels should be invalid");
+    CHECK(!zeroChannels.isValid());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testChannelMappingOverlap() {
+TEST_CASE("Channel Mapping Overlap") {
     std::cout << "Test: Channel mapping overlap detection... ";
 
     // Mapping 1: channels 0-7
@@ -155,9 +144,9 @@ bool testChannelMappingOverlap() {
     uint16_t end2 = mapping2.getDeviceChannelEnd();
     uint16_t end3 = mapping3.getDeviceChannelEnd();
 
-    TEST_ASSERT(end1 == 8, "Mapping 1 should end at channel 8");
-    TEST_ASSERT(end2 == 16, "Mapping 2 should end at channel 16");
-    TEST_ASSERT(end3 == 12, "Mapping 3 should end at channel 12");
+    CHECK(end1 == 8);
+    CHECK(end2 == 16);
+    CHECK(end3 == 12);
 
     // Check for overlaps
     bool overlap1_2 = (mapping1.deviceChannelStart < end2 &&
@@ -165,18 +154,17 @@ bool testChannelMappingOverlap() {
     bool overlap1_3 = (mapping1.deviceChannelStart < end3 &&
                        mapping3.deviceChannelStart < end1);
 
-    TEST_ASSERT(!overlap1_2, "Mappings 1 and 2 should not overlap");
-    TEST_ASSERT(overlap1_3, "Mappings 1 and 3 should overlap");
+    CHECK(!overlap1_2);
+    CHECK(overlap1_3);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Sample Rate Validation Tests
 //
 
-bool testSampleRateCompatibility() {
+TEST_CASE("Sample Rate Compatibility") {
     std::cout << "Test: Sample rate compatibility... ";
 
     // Common AES67 sample rates
@@ -184,14 +172,13 @@ bool testSampleRateCompatibility() {
 
     for (auto rate : validRates) {
         SDPSession sdp = createTestSDP("Test", 5004, 2, rate);
-        TEST_ASSERT(sdp.sampleRate == rate, "Sample rate should match");
+        CHECK(sdp.sampleRate == rate);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSampleRateMismatch() {
+TEST_CASE("Sample Rate Mismatch") {
     std::cout << "Test: Sample rate mismatch detection... ";
 
     // Device at 48kHz
@@ -199,82 +186,78 @@ bool testSampleRateMismatch() {
 
     // Stream at same rate - OK
     SDPSession matching = createTestSDP("Match", 5004, 2, 48000);
-    TEST_ASSERT(matching.sampleRate == deviceRate, "Matching rate should be OK");
+    CHECK(matching.sampleRate == deviceRate);
 
     // Stream at different rate - Would need validation
     SDPSession mismatched = createTestSDP("Mismatch", 5004, 2, 96000);
-    TEST_ASSERT(mismatched.sampleRate != deviceRate, "Mismatched rate should be detected");
+    CHECK(mismatched.sampleRate != deviceRate);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Stream Configuration Tests
 //
 
-bool testStreamIDGeneration() {
+TEST_CASE("Stream ID Generation") {
     std::cout << "Test: StreamID generation and uniqueness... ";
 
     StreamID id1 = StreamID::generate();
     StreamID id2 = StreamID::generate();
     StreamID id3 = StreamID::generate();
 
-    TEST_ASSERT(!id1.isNull(), "Generated ID should not be null");
-    TEST_ASSERT(!id2.isNull(), "Generated ID should not be null");
-    TEST_ASSERT(!id3.isNull(), "Generated ID should not be null");
+    CHECK(!id1.isNull());
+    CHECK(!id2.isNull());
+    CHECK(!id3.isNull());
 
-    TEST_ASSERT(id1 != id2, "IDs should be unique");
-    TEST_ASSERT(id2 != id3, "IDs should be unique");
-    TEST_ASSERT(id1 != id3, "IDs should be unique");
+    CHECK(id1 != id2);
+    CHECK(id2 != id3);
+    CHECK(id1 != id3);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testStreamIDComparison() {
+TEST_CASE("Stream ID Comparison") {
     std::cout << "Test: StreamID comparison operators... ";
 
     StreamID id1 = StreamID::generate();
     StreamID id2 = id1;  // Copy
     StreamID id3 = StreamID::generate();
 
-    TEST_ASSERT(id1 == id2, "Copied IDs should be equal");
-    TEST_ASSERT(id1 != id3, "Different IDs should not be equal");
+    CHECK(id1 == id2);
+    CHECK(id1 != id3);
 
     // Test null ID
     StreamID null1 = StreamID::null();
     StreamID null2 = StreamID::null();
-    TEST_ASSERT(null1 == null2, "Null IDs should be equal");
-    TEST_ASSERT(null1.isNull(), "Null ID should be detected");
+    CHECK(null1 == null2);
+    CHECK(null1.isNull());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testStreamIDStringConversion() {
+TEST_CASE("Stream ID String Conversion") {
     std::cout << "Test: StreamID string conversion... ";
 
     StreamID id = StreamID::generate();
     std::string idStr = id.toString();
 
-    TEST_ASSERT(!idStr.empty(), "String representation should not be empty");
-    TEST_ASSERT(idStr.length() == 36, "UUID string should be 36 characters (with dashes)");
+    CHECK(!idStr.empty());
+    CHECK(idStr.length() == 36);
 
     // Test null ID
     StreamID nullId = StreamID::null();
     std::string nullStr = nullId.toString();
-    TEST_ASSERT(!nullStr.empty(), "Null ID should have string representation");
+    CHECK(!nullStr.empty());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Multi-Stream Configuration Tests
 //
 
-bool testMultipleStreamConfiguration() {
+TEST_CASE("Multiple Stream Configuration") {
     std::cout << "Test: Multiple stream configuration... ";
 
     // Create multiple SDP sessions
@@ -291,58 +274,51 @@ bool testMultipleStreamConfiguration() {
     uint16_t totalChannels = map1.deviceChannelCount +
                             map2.deviceChannelCount +
                             map3.deviceChannelCount;
-    TEST_ASSERT(totalChannels == 14, "Total channels should be 14");
+    CHECK(totalChannels == 14);
 
     // Verify no overlaps
-    TEST_ASSERT(map1.getDeviceChannelEnd() == map2.deviceChannelStart,
-                "Map 1 and 2 should be contiguous");
-    TEST_ASSERT(map2.getDeviceChannelEnd() == map3.deviceChannelStart,
-                "Map 2 and 3 should be contiguous");
+    CHECK(map1.getDeviceChannelEnd() == map2.deviceChannelStart);
+    CHECK(map2.getDeviceChannelEnd() == map3.deviceChannelStart);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testMaximumStreamConfiguration() {
+TEST_CASE("Maximum Stream Configuration") {
     std::cout << "Test: Maximum channel configuration... ";
 
     // Test maximum channels (128)
     SDPSession maxChannels = createTestSDP("Max Channels", 5004, 128, 48000);
-    TEST_ASSERT(maxChannels.numChannels == 128, "Should support 128 channels");
+    CHECK(maxChannels.numChannels == 128);
 
     // Test multiple streams filling 128 channels
     // 16 streams x 8 channels = 128 channels
     uint16_t streamsNeeded = 128 / 8;
-    TEST_ASSERT(streamsNeeded == 16, "Should need 16 8-channel streams for 128 channels");
+    CHECK(streamsNeeded == 16);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Network Configuration Tests
 //
 
-bool testMulticastAddressValidation() {
+TEST_CASE("Multicast Address Validation") {
     std::cout << "Test: Multicast address validation... ";
 
     // Valid AES67 multicast range (239.x.x.x)
     SDPSession validMcast = createTestSDP();
     validMcast.connectionAddress = "239.1.1.1";
-    TEST_ASSERT(validMcast.connectionAddress.substr(0, 3) == "239",
-                "AES67 should use 239.x.x.x range");
+    CHECK(validMcast.connectionAddress.substr(0, 3) == "239");
 
     // Other multicast addresses
     SDPSession otherMcast = createTestSDP();
     otherMcast.connectionAddress = "224.0.0.1";
-    TEST_ASSERT(otherMcast.connectionAddress.substr(0, 3) == "224",
-                "224.x.x.x is also valid multicast");
+    CHECK(otherMcast.connectionAddress.substr(0, 3) == "224");
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPortConfiguration() {
+TEST_CASE("Port Configuration") {
     std::cout << "Test: Port configuration... ";
 
     // Test various valid ports
@@ -350,111 +326,104 @@ bool testPortConfiguration() {
 
     for (auto port : validPorts) {
         SDPSession sdp = createTestSDP("Test", port, 2, 48000);
-        TEST_ASSERT(sdp.port == port, "Port should be set correctly");
-        TEST_ASSERT(sdp.port > 0, "Port should be positive");
+        CHECK(sdp.port == port);
+        CHECK(sdp.port > 0);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Encoding Configuration Tests
 //
 
-bool testEncodingSupport() {
+TEST_CASE("Encoding Support") {
     std::cout << "Test: Audio encoding support... ";
 
     SDPSession l16 = createTestSDP();
     l16.encoding = "L16";
-    TEST_ASSERT(l16.encoding == "L16", "L16 encoding should be supported");
+    CHECK(l16.encoding == "L16");
 
     SDPSession l24 = createTestSDP();
     l24.encoding = "L24";
-    TEST_ASSERT(l24.encoding == "L24", "L24 encoding should be supported");
+    CHECK(l24.encoding == "L24");
 
     SDPSession am824 = createTestSDP();
     am824.encoding = "AM824";
-    TEST_ASSERT(am824.encoding == "AM824", "AM824 encoding should be supported");
+    CHECK(am824.encoding == "AM824");
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // PTP Configuration Tests
 //
 
-bool testPTPDomainConfiguration() {
+TEST_CASE("PTP Domain Configuration") {
     std::cout << "Test: PTP domain configuration... ";
 
     // Stream with PTP domain 0 (typical for AES67)
     SDPSession withPTP = createTestSDP();
     withPTP.ptpDomain = 0;
-    TEST_ASSERT(withPTP.ptpDomain == 0, "PTP domain 0 should be supported");
+    CHECK(withPTP.ptpDomain == 0);
 
     // Stream without PTP
     SDPSession noPTP = createTestSDP();
     noPTP.ptpDomain = -1;
-    TEST_ASSERT(noPTP.ptpDomain == -1, "No PTP should be indicated by -1");
+    CHECK(noPTP.ptpDomain == -1);
 
     // Other domains
     SDPSession domain127 = createTestSDP();
     domain127.ptpDomain = 127;
-    TEST_ASSERT(domain127.ptpDomain == 127, "PTP domain 127 should be supported");
+    CHECK(domain127.ptpDomain == 127);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // StreamManager Validation Tests (without requiring instance creation)
 //
 
-bool testStreamManagerValidationHelper() {
+TEST_CASE("Stream Manager Validation Helper") {
     std::cout << "Test: SDP validation for StreamManager constraints... ";
 
     // Test that our test SDP generation follows AES67 rules
     SDPSession validSDP = createTestSDP("Valid", 5004, 8, 48000);
-    TEST_ASSERT(validSDP.sampleRate > 0, "Sample rate must be positive");
-    TEST_ASSERT(validSDP.numChannels > 0 && validSDP.numChannels <= 128,
-                "Channels must be 1-128");
-    TEST_ASSERT(validSDP.port > 0, "Port must be positive");
+    CHECK(validSDP.sampleRate > 0);
+    CHECK((validSDP.numChannels > 0 && validSDP.numChannels <= 128));
+    CHECK(validSDP.port > 0);
 
     // Test constraint: channels must not exceed 128
     SDPSession tooManyChannels = createTestSDP();
     tooManyChannels.numChannels = 256;
-    TEST_ASSERT(tooManyChannels.numChannels > 128, "Should generate >128 for test");
+    CHECK(tooManyChannels.numChannels > 128);
 
     // Test constraint: sample rate mismatch detection
     SDPSession sr48 = createTestSDP("Test", 5004, 8, 48000);
     SDPSession sr96 = createTestSDP("Test", 5004, 8, 96000);
-    TEST_ASSERT(sr48.sampleRate != sr96.sampleRate, "Different rates should differ");
+    CHECK(sr48.sampleRate != sr96.sampleRate);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testChannelMapperAvailability() {
+TEST_CASE("Channel Mapper Availability") {
     std::cout << "Test: Channel mapping availability constraints... ";
 
     // Test max channels = 128
     ChannelMapping maxMapping = createTestMapping(128, 0);
-    TEST_ASSERT(maxMapping.isValid(), "128-channel mapping at start should be valid");
-    TEST_ASSERT(maxMapping.getDeviceChannelEnd() == 128, "Max should end at 128");
+    CHECK(maxMapping.isValid());
+    CHECK(maxMapping.getDeviceChannelEnd() == 128);
 
     // Test overflow: start at 1, request 128 channels
     ChannelMapping overflow = createTestMapping(128, 1);
-    TEST_ASSERT(!overflow.isValid(), "Mapping beyond 128 should be invalid");
+    CHECK(!overflow.isValid());
 
     // Test non-overlapping mappings can be detected
     ChannelMapping m1 = createTestMapping(16, 0);    // 0-15
     ChannelMapping m2 = createTestMapping(16, 16);   // 16-31
-    TEST_ASSERT(m1.getDeviceChannelEnd() == m2.deviceChannelStart,
-                "Non-overlapping mappings should be contiguous");
+    CHECK(m1.getDeviceChannelEnd() == m2.deviceChannelStart);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 
@@ -463,7 +432,7 @@ bool testChannelMapperAvailability() {
 //
 using SFD = StreamManager::SinkFollowDecision;
 
-bool testSinkFollowMatchAndMove() {
+TEST_CASE("Sink Follow Match And Move") {
     std::cout << "Test: sink follows a source that changed transport... ";
 
     SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000); // 239.1.1.1
@@ -471,168 +440,76 @@ bool testSinkFollowMatchAndMove() {
     SDPSession moved = stored;
     moved.connectionAddress = "239.9.9.9";
     moved.port = 5010;
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, moved) == SFD::Follow,
-                "Changed address/port must Follow");
+    CHECK(StreamManager::evaluateSinkFollow(stored, moved) == SFD::Follow);
 
     // Encoding / rate / ptime / payload changes also count as a move.
     SDPSession reEnc = stored; reEnc.encoding = "L16";
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, reEnc) == SFD::Follow,
-                "Changed encoding must Follow");
+    CHECK(StreamManager::evaluateSinkFollow(stored, reEnc) == SFD::Follow);
     SDPSession reRate = stored; reRate.sampleRate = 96000;
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, reRate) == SFD::Follow,
-                "Changed rate must Follow");
+    CHECK(StreamManager::evaluateSinkFollow(stored, reRate) == SFD::Follow);
     SDPSession rePtime = stored; rePtime.ptimeUs = 125;
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, rePtime) == SFD::Follow,
-                "Changed ptime must Follow");
+    CHECK(StreamManager::evaluateSinkFollow(stored, rePtime) == SFD::Follow);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSinkFollowUnchangedIsNoOp() {
+TEST_CASE("Sink Follow Unchanged Is No Op") {
     std::cout << "Test: identical re-announcement does not re-subscribe... ";
     SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000);
     SDPSession same = stored; // byte-identical transport
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, same) == SFD::Unchanged,
-                "Identical announcement must be Unchanged");
+    CHECK(StreamManager::evaluateSinkFollow(stored, same) == SFD::Unchanged);
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSinkFollowNotBound() {
+TEST_CASE("Sink Follow Not Bound") {
     std::cout << "Test: an unrelated announcement is not this sink's source... ";
 
     SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000);
 
     // Different name -> not our source even if transport differs.
     SDPSession other = createTestSDP("Cam2", 6000, 8, 48000);
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, other) == SFD::NotBound,
-                "Different name must be NotBound");
+    CHECK(StreamManager::evaluateSinkFollow(stored, other) == SFD::NotBound);
 
     // Empty announced name -> never binds.
     SDPSession nameless = stored; nameless.sessionName = ""; nameless.port = 7000;
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, nameless) == SFD::NotBound,
-                "Nameless announcement must be NotBound");
+    CHECK(StreamManager::evaluateSinkFollow(stored, nameless) == SFD::NotBound);
 
     // Same name but a different unicast source when both are known.
     SDPSession otherSender = stored;
     otherSender.port = 5010;
     otherSender.sourceAddress = "10.0.0.2";
     SDPSession storedWithSrc = stored; storedWithSrc.sourceAddress = "10.0.0.1";
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(storedWithSrc, otherSender) == SFD::NotBound,
-                "Same name, different known source must be NotBound");
+    CHECK(StreamManager::evaluateSinkFollow(storedWithSrc, otherSender) == SFD::NotBound);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSinkFollowChannelCountChange() {
+TEST_CASE("Sink Follow Channel Count Change") {
     std::cout << "Test: a channel-count change is not auto-followed... ";
     SDPSession stored = createTestSDP("Cam1", 5004, 8, 48000);
     SDPSession wider = stored;
     wider.connectionAddress = "239.9.9.9";
     wider.numChannels = 16; // moved AND re-widened
-    TEST_ASSERT(StreamManager::evaluateSinkFollow(stored, wider) == SFD::ChannelCountChanged,
-                "Channel-count change must be flagged, not followed");
+    CHECK(StreamManager::evaluateSinkFollow(stored, wider) == SFD::ChannelCountChanged);
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 
-bool testResolveEffectiveDscp() {
+TEST_CASE("Resolve Effective Dscp") {
     std::cout << "Test: per-source DSCP resolution (override vs profile)... ";
 
     // No override (-1) -> take the profile's value, whatever it is.
-    TEST_ASSERT(StreamManager::resolveEffectiveDscp(-1, 46) == 46,
-                "No override must use the profile DSCP (46/EF)");
-    TEST_ASSERT(StreamManager::resolveEffectiveDscp(-1, -1) == -1,
-                "No override and no profile DSCP stays unmarked (-1)");
+    CHECK(StreamManager::resolveEffectiveDscp(-1, 46) == 46);
+    CHECK(StreamManager::resolveEffectiveDscp(-1, -1) == -1);
 
     // A per-source value overrides the profile, including down to 0 (CS0).
-    TEST_ASSERT(StreamManager::resolveEffectiveDscp(34, 46) == 34,
-                "Per-source 34 (AF41) must override profile 46");
-    TEST_ASSERT(StreamManager::resolveEffectiveDscp(0, 46) == 0,
-                "Per-source 0 is a real value and must override, not fall through");
+    CHECK(StreamManager::resolveEffectiveDscp(34, 46) == 34);
+    CHECK(StreamManager::resolveEffectiveDscp(0, 46) == 0);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Main Test Runner
 //
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 StreamManager Unit Tests" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "SDP Session Tests:" << std::endl;
-    std::cout << "-----------------" << std::endl;
-    testSDPSessionCreation();
-    testSDPSessionValidation();
-    std::cout << std::endl;
-
-    std::cout << "Channel Mapping Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testChannelMappingCreation();
-    testChannelMappingValidation();
-    testChannelMappingOverlap();
-    std::cout << std::endl;
-
-    std::cout << "Sample Rate Tests:" << std::endl;
-    std::cout << "-----------------" << std::endl;
-    testSampleRateCompatibility();
-    testSampleRateMismatch();
-    std::cout << std::endl;
-
-    std::cout << "StreamID Tests:" << std::endl;
-    std::cout << "--------------" << std::endl;
-    testStreamIDGeneration();
-    testStreamIDComparison();
-    testStreamIDStringConversion();
-    std::cout << std::endl;
-
-    std::cout << "Multi-Stream Configuration Tests:" << std::endl;
-    std::cout << "--------------------------------" << std::endl;
-    testMultipleStreamConfiguration();
-    testMaximumStreamConfiguration();
-    std::cout << std::endl;
-
-    std::cout << "Network Configuration Tests:" << std::endl;
-    std::cout << "---------------------------" << std::endl;
-    testMulticastAddressValidation();
-    testPortConfiguration();
-    std::cout << std::endl;
-
-    std::cout << "Encoding Configuration Tests:" << std::endl;
-    std::cout << "----------------------------" << std::endl;
-    testEncodingSupport();
-    std::cout << std::endl;
-
-    std::cout << "PTP Configuration Tests:" << std::endl;
-    std::cout << "-----------------------" << std::endl;
-    testPTPDomainConfiguration();
-    std::cout << std::endl;
-
-    std::cout << "StreamManager Validation Tests:" << std::endl;
-    std::cout << "------------------------------" << std::endl;
-    testStreamManagerValidationHelper();
-    testChannelMapperAvailability();
-
-    testSinkFollowMatchAndMove();
-    testSinkFollowUnchangedIsNoOp();
-    testSinkFollowNotBound();
-    testSinkFollowChannelCountChange();
-    testResolveEffectiveDscp();
-    std::cout << std::endl;
-
-    std::cout << "========================================" << std::endl;
-    std::cout << "Test Results:" << std::endl;
-    std::cout << "  Passed: " << testsPassed << std::endl;
-    std::cout << "  Failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
-
-    return testsFailed == 0 ? 0 : 1;
-}

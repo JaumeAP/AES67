@@ -10,6 +10,9 @@
 // exclusion from the gate. Run them deliberately: `ctest -L timing`.
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "Shared/RingBuffer.hpp"
 #include <iostream>
 #include <thread>
@@ -19,19 +22,9 @@
 
 using namespace AES67;
 
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
-bool testBatchPerformance() {
+TEST_CASE("Batch Performance") {
     std::cout << "Test: Batch processing performance... ";
 
     SPSCRingBuffer<float> buffer(512);
@@ -90,18 +83,15 @@ bool testBatchPerformance() {
     // A zero here means the work vanished again, not that it was infinitely
     // fast. Catch it before dividing, or the ratio is a NaN that fails with a
     // misleading message about batching being slow.
-    TEST_ASSERT(batchNs > 0 && singleNs > 0,
-                "Measurement collapsed to zero - the loops were optimised away");
+    CHECK((batchNs > 0 && singleNs > 0));
 
     double speedup = static_cast<double>(singleNs) / static_cast<double>(batchNs);
     std::cout << "  Speedup: " << speedup << "x" << std::endl;
 
-    TEST_ASSERT(speedup > 1.5, "Batch should be at least 1.5x faster");
-
-    return true;
+    CHECK(speedup > 1.5);
 }
 
-bool testThreadSafety() {
+TEST_CASE("Thread Safety") {
     std::cout << "Test: Thread safety (SPSC)... ";
 
     SPSCRingBuffer<float> buffer(1024);
@@ -123,17 +113,20 @@ bool testThreadSafety() {
         producerDone = true;
     });
 
+    std::atomic<bool> outOfOrder{false};
+
     // Consumer thread
     std::thread consumer([&]() -> void {
         float value;
         while (!producerDone || !buffer.isEmpty()) {
             if (buffer.read(&value, 1) == 1) {
+                // An atomic flag rather than an assertion: this runs on the
+                // consumer thread, and doctest's macros are not safe to call
+                // from anywhere but the thread running the case. The flag is
+                // checked after the join, where asserting is legal.
                 if (value != static_cast<float>(samplesRead.load())) {
-                    std::cerr << "FAIL: " << "Data should be in order" << std::endl;
-                    testsFailed++;
+                    outOfOrder = true;
                     return;
-                } else {
-                    testsPassed++;
                 }
                 samplesRead++;
             } else {
@@ -145,27 +138,14 @@ bool testThreadSafety() {
     producer.join();
     consumer.join();
 
-    TEST_ASSERT(samplesWritten == kNumSamples, "All samples should be written");
-    TEST_ASSERT(samplesRead == kNumSamples, "All samples should be read");
+    CHECK(outOfOrder == false);
+    CHECK(samplesWritten == kNumSamples);
+    CHECK(samplesRead == kNumSamples);
 
     std::cout << "PASS (" << kNumSamples << " samples)" << std::endl;
-    return true;
 }
 
 //
 // Edge Cases
 //
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 Ring Buffer Timing Tests" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    testBatchPerformance();
-    testThreadSafety();
-
-    std::cout << std::endl;
-    std::cout << "Passed: " << testsPassed << ", Failed: " << testsFailed << std::endl;
-    return testsFailed == 0 ? 0 : 1;
-}

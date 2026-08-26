@@ -1,13 +1,263 @@
+# doctest, from the submodule this repository already carries. The core defines
+# the same target name, but its tests are off here (see the root CMakeLists),
+# so nothing collides.
+add_library(doctest_headers INTERFACE)
+target_include_directories(doctest_headers INTERFACE
+    ${CMAKE_SOURCE_DIR}/external/doctest/doctest)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/doctest/doctest/doctest.h")
+    message(WARNING "external/doctest is empty - run: git submodule update --init --recursive")
+endif()
 
 
 
-# Test: RTCP receiver-report detection core
+# Test: Ring Buffer
+add_executable(TestRingBuffer
+    TestRingBuffer.cpp
+)
+
+target_include_directories(TestRingBuffer PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRingBuffer PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRingBuffer PRIVATE doctest_headers)
+target_compile_features(TestRingBuffer PRIVATE cxx_std_17)
+
+add_executable(TestRingBufferTiming
+    TestRingBufferTiming.cpp
+)
+
+target_include_directories(TestRingBufferTiming PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRingBufferTiming PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRingBufferTiming PRIVATE doctest_headers)
+target_compile_features(TestRingBufferTiming PRIVATE cxx_std_17)
+
+# Test: RTP Receiver
+add_executable(TestRTPReceiver
+    TestRTPReceiver.cpp
+    ../NetworkEngine/RTP/RTPReceiver.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../Driver/AudioThreadPriority.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
+)
+
+target_include_directories(TestRTPReceiver PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTPReceiver PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTPReceiver PRIVATE doctest_headers)
+target_compile_features(TestRTPReceiver PRIVATE cxx_std_17)
+
+target_link_libraries(TestRTPReceiver PRIVATE "-framework Accelerate")
+
+# Test: RTP Transmitter
+add_executable(TestRTPTransmitter
+    TestRTPTransmitter.cpp
+    ../NetworkEngine/RTP/RTPTransmitter.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+
+target_include_directories(TestRTPTransmitter PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTPTransmitter PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTPTransmitter PRIVATE doctest_headers)
+target_compile_features(TestRTPTransmitter PRIVATE cxx_std_17)
+
+target_link_libraries(TestRTPTransmitter PRIVATE "-framework Accelerate")
+
+# Test: PTP Clock
+add_executable(TestPTPClock
+    TestPTPClock.cpp
+    ../NetworkEngine/PTP/PTPClock.cpp
+    ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PTPSlave.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+
+target_include_directories(TestPTPClock PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+# AudioClockDeviceList/CoreAudioClockSource (pulled in via PTPArbitrator)
+# call CoreAudio/CoreFoundation directly.
+target_link_libraries(TestPTPClock PRIVATE
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+)
+
+target_link_libraries(TestPTPClock PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPClock PRIVATE doctest_headers)
+target_compile_features(TestPTPClock PRIVATE cxx_std_17)
+
+# Test: PTP Master / BMCA — offline only, see TestPTPMaster.cpp's own header
+# comment for why it doesn't touch sockets.
+add_executable(TestPTPMaster
+    TestPTPMaster.cpp
+)
+
+target_include_directories(TestPTPMaster PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPMaster PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPMaster PRIVATE doctest_headers)
+target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
+
+add_executable(TestStreamManager
+    TestStreamManager.cpp
+)
+
+target_include_directories(TestStreamManager PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestStreamManager PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestStreamManager PRIVATE doctest_headers)
+target_compile_features(TestStreamManager PRIVATE cxx_std_17)
+
+add_executable(TestMultiStream
+    TestMultiStream.cpp
+    ../NetworkEngine/PTP/PTPClock.cpp
+    ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PTPSlave.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+
+target_include_directories(TestMultiStream PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestMultiStream PRIVATE
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+)
+
+target_link_libraries(TestMultiStream PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestMultiStream PRIVATE doctest_headers)
+target_compile_features(TestMultiStream PRIVATE cxx_std_17)
+
+# Benchmark: I/O Handler Performance (requires libASPL)
+if(ASPL_FOUND)
+    add_executable(BenchmarkIOHandler
+        BenchmarkIOHandler.cpp
+        ../Driver/AES67IOHandler.cpp
+        ${ASPL_SOURCES}
+    )
+
+    target_include_directories(BenchmarkIOHandler PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${ASPL_INCLUDE_DIR}
+    )
+
+    target_link_libraries(BenchmarkIOHandler PRIVATE aes67_core aes67_net)
+
+    target_link_libraries(BenchmarkIOHandler PRIVATE doctest_headers)
+target_compile_features(BenchmarkIOHandler PRIVATE cxx_std_17)
+
+    # Link libASPL for benchmark (system install case; the submodule case
+    # compiles ASPL_SOURCES directly into the target above instead)
+    if(ASPL_LIBRARY)
+        target_link_libraries(BenchmarkIOHandler PRIVATE ${ASPL_LIBRARY})
+    endif()
+
+    # aspl::Convert and aspl::Driver call into CoreFoundation/CoreAudio
+    # directly (CFURL, CFUUID...); the AES67Driver target links these, this
+    # one didn't.
+    target_link_libraries(BenchmarkIOHandler PRIVATE
+        "-framework CoreAudio"
+        "-framework CoreFoundation"
+        "-framework AudioToolbox"
+    )
+endif()
+
+# Integration Test: Full Audio Path
+add_executable(TestIntegrationAudioPath
+    TestIntegrationAudioPath.cpp
+    ../NetworkEngine/RTP/RTPReceiver.cpp
+    ../NetworkEngine/RTP/RTPTransmitter.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../Driver/AudioThreadPriority.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
+)
+
+target_include_directories(TestIntegrationAudioPath PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestIntegrationAudioPath PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestIntegrationAudioPath PRIVATE doctest_headers)
+target_compile_features(TestIntegrationAudioPath PRIVATE cxx_std_17)
+
+target_link_libraries(TestIntegrationAudioPath PRIVATE "-framework Accelerate")
+
+# Test: PCM Codec (float<->L16/L24, interleave) — pins the DSP behaviour
+add_executable(TestPCMCodec
+    TestPCMCodec.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+)
+target_include_directories(TestPCMCodec PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestPCMCodec PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPCMCodec PRIVATE doctest_headers)
+target_compile_features(TestPCMCodec PRIVATE cxx_std_17)
+target_link_libraries(TestPCMCodec PRIVATE "-framework Accelerate")
+
+# Test: PTP peer table (passive Dolby-via-PTP discovery core) — header-only,
+# socket-free, time-injected. See TestPTPPeerTable.cpp.
+add_executable(TestPTPPeerTable
+    TestPTPPeerTable.cpp
+)
+target_include_directories(TestPTPPeerTable PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestPTPPeerTable PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPPeerTable PRIVATE doctest_headers)
+target_compile_features(TestPTPPeerTable PRIVATE cxx_std_17)
+
+# Test: Dolby model catalog (model -> channels/direction + channel resolver)
+add_executable(TestDolbyModelCatalog
+    TestDolbyModelCatalog.cpp
+)
+target_include_directories(TestDolbyModelCatalog PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(TestDolbyModelCatalog PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestDolbyModelCatalog PRIVATE doctest_headers)
+target_compile_features(TestDolbyModelCatalog PRIVATE cxx_std_17)
+
 add_executable(TestRTCPReceiverTable
     TestRTCPReceiverTable.cpp
 )
 target_include_directories(TestRTCPReceiverTable PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(TestRTCPReceiverTable PRIVATE aes67_core aes67_net)
 
+target_link_libraries(TestRTCPReceiverTable PRIVATE doctest_headers)
 target_compile_features(TestRTCPReceiverTable PRIVATE cxx_std_17)
 
 # Add tests to CTest

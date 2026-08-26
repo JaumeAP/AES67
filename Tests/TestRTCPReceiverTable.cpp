@@ -5,6 +5,9 @@
 // CNAMEs from known bytes, malformed-packet robustness (no OOB), and the
 // reporter aggregation + timeout. Header-only, no sockets.
 //
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/Discovery/RTCPReceiverTable.h"
 
 #include <cstdint>
@@ -13,8 +16,6 @@
 #include <vector>
 
 using namespace AES67;
-static int passed = 0, failed = 0;
-#define CHECK(c,m) if(!(c)){std::cerr<<"FAIL: "<<m<<std::endl;failed++;return false;}else{passed++;}
 using Clock = std::chrono::steady_clock;
 
 static void put32(std::vector<uint8_t>& v, uint32_t x){ v.push_back(x>>24); v.push_back(x>>16); v.push_back(x>>8); v.push_back(x); }
@@ -25,16 +26,16 @@ static std::vector<uint8_t> makeRR(uint32_t ssrc){
     put32(v, ssrc); return v;
 }
 
-bool testParseRR(){
+TEST_CASE("Parse RR") {
     std::cout << "Test: parse a Receiver Report's sender SSRC... ";
     auto p = makeRR(0xDEADBEEF);
     auto r = RTCPReceiverTable::parse(p.data(), p.size());
-    CHECK(r.valid, "RR must parse valid");
-    CHECK(r.reporterSSRCs.size()==1 && r.reporterSSRCs[0]==0xDEADBEEF, "SSRC wrong");
-    std::cout << "PASS" << std::endl; return true;
+    CHECK(r.valid);
+    CHECK((r.reporterSSRCs.size()==1 && r.reporterSSRCs[0]==0xDEADBEEF));
+    std::cout << "PASS" << std::endl;
 }
 
-bool testParseCompoundSRplusSDES(){
+TEST_CASE("Parse Compound S Rplus SDES") {
     std::cout << "Test: compound SR + SDES yields SSRC and CNAME... ";
     // SR: V=2,PT=200,len=1,SSRC.
     std::vector<uint8_t> v; v.push_back(0x80); v.push_back(kRTCP_SR); v.push_back(0); v.push_back(1);
@@ -53,14 +54,14 @@ bool testParseCompoundSRplusSDES(){
     v.insert(v.end(), sdes.begin(), sdes.end());
 
     auto r = RTCPReceiverTable::parse(v.data(), v.size());
-    CHECK(r.valid, "compound must parse");
-    CHECK(r.reporterSSRCs.size()==1 && r.reporterSSRCs[0]==0x11223344, "SR ssrc");
+    CHECK(r.valid);
+    CHECK((r.reporterSSRCs.size()==1 && r.reporterSSRCs[0]==0x11223344));
     bool found=false; for(auto&c:r.cnames) if(c.first==0x11223344 && c.second=="amp-1") found=true;
-    CHECK(found, "CNAME amp-1 not extracted");
-    std::cout << "PASS" << std::endl; return true;
+    CHECK(found);
+    std::cout << "PASS" << std::endl;
 }
 
-bool testMalformedNoCrash(){
+TEST_CASE("Malformed No Crash") {
     std::cout << "Test: malformed/truncated RTCP never reads out of bounds... ";
     std::mt19937 rng(99);
     for(int i=0;i<200000;i++){
@@ -71,36 +72,27 @@ bool testMalformedNoCrash(){
     }
     // A version!=2 packet is rejected.
     std::vector<uint8_t> bad = {0x00,201,0,1,0,0,0,1};
-    CHECK(!RTCPReceiverTable::parse(bad.data(),bad.size()).valid, "version!=2 must be invalid");
+    CHECK(!RTCPReceiverTable::parse(bad.data(),bad.size()).valid);
     // Length field overrunning the buffer -> not fully valid, no crash.
     std::vector<uint8_t> over = {0x80,201,0,99, 1,2,3,4};
     auto ro = RTCPReceiverTable::parse(over.data(), over.size());
-    CHECK(ro.reporterSSRCs.empty(), "overrun packet must yield nothing");
-    std::cout << "PASS" << std::endl; return true;
+    CHECK(ro.reporterSSRCs.empty());
+    std::cout << "PASS" << std::endl;
 }
 
-bool testAggregateAndTimeout(){
+TEST_CASE("Aggregate And Timeout") {
     std::cout << "Test: distinct reporters counted, stale ones evicted... ";
     RTCPReceiverTable t; auto now=Clock::now();
     t.record(1,"10.0.0.1","",now);
     t.record(1,"10.0.0.1","",now); // same reporter twice -> one row
     t.record(2,"10.0.0.2","amp-2",now);
     t.record(3,"10.0.0.3","",now);
-    CHECK(t.size()==3, "three distinct receivers");
+    CHECK(t.size()==3);
     // Let #1 go stale, refresh #2/#3.
     auto later = now + RTCPReceiverTable::kReporterTimeout + std::chrono::seconds(1);
     t.record(2,"10.0.0.2","",later); t.record(3,"10.0.0.3","",later);
     t.sweep(later);
-    CHECK(t.size()==2, "stale reporter evicted");
-    std::cout << "PASS" << std::endl; return true;
+    CHECK(t.size()==2);
+    std::cout << "PASS" << std::endl;
 }
 
-int main(){
-    std::cout << std::endl << "RTCP Receiver Table Tests" << std::endl << std::endl;
-    testParseRR();
-    testParseCompoundSRplusSDES();
-    testMalformedNoCrash();
-    testAggregateAndTimeout();
-    std::cout << std::endl << "Passed: " << passed << ", Failed: " << failed << std::endl;
-    return failed==0?0:1;
-}
