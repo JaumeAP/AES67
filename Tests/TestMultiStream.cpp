@@ -4,6 +4,9 @@
 // Integration tests for multi-stream scenarios
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/StreamChannelMapper.h"
 #include "Driver/SDPParser.h"
@@ -16,17 +19,7 @@
 using namespace AES67;
 
 // Test result counter
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
 //
 // Helper Functions
@@ -74,30 +67,27 @@ ChannelMapping createMapping(const StreamID& streamID,
 // Multi-Stream Configuration Tests
 //
 
-bool testTwoStreamConfiguration() {
+TEST_CASE("Two Stream Configuration") {
     std::cout << "Test: Two-stream configuration... ";
 
     // Stream 1: 8 channels on 239.1.1.1:5004
     SDPSession stream1 = createTestStream("Stream 1", "239.1.1.1", 5004, 8);
-    TEST_ASSERT(stream1.isValid(), "Stream 1 should be valid");
+    CHECK(stream1.isValid());
 
     // Stream 2: 8 channels on 239.1.1.2:5006
     SDPSession stream2 = createTestStream("Stream 2", "239.1.1.2", 5006, 8);
-    TEST_ASSERT(stream2.isValid(), "Stream 2 should be valid");
+    CHECK(stream2.isValid());
 
     // Different multicast addresses
-    TEST_ASSERT(stream1.connectionAddress != stream2.connectionAddress,
-                "Streams should have different addresses");
+    CHECK(stream1.connectionAddress != stream2.connectionAddress);
 
     // Different ports
-    TEST_ASSERT(stream1.port != stream2.port,
-                "Streams should have different ports");
+    CHECK(stream1.port != stream2.port);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testFourStreamConfiguration() {
+TEST_CASE("Four Stream Configuration") {
     std::cout << "Test: Four-stream configuration... ";
 
     // Create 4 streams with different addresses
@@ -112,24 +102,21 @@ bool testFourStreamConfiguration() {
 
     // Validate all streams
     for (const auto& stream : streams) {
-        TEST_ASSERT(stream.isValid(), "All streams should be valid");
+        CHECK(stream.isValid());
     }
 
     // Verify uniqueness
     for (size_t i = 0; i < streams.size(); i++) {
         for (size_t j = i + 1; j < streams.size(); j++) {
-            TEST_ASSERT(streams[i].connectionAddress != streams[j].connectionAddress,
-                       "Each stream should have unique address");
-            TEST_ASSERT(streams[i].port != streams[j].port,
-                       "Each stream should have unique port");
+            CHECK(streams[i].connectionAddress != streams[j].connectionAddress);
+            CHECK(streams[i].port != streams[j].port);
         }
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testMaximumStreams() {
+TEST_CASE("Maximum Streams") {
     std::cout << "Test: Maximum stream configuration (16 streams)... ";
 
     // Create 16 streams x 8 channels = 128 channels total
@@ -142,12 +129,12 @@ bool testMaximumStreams() {
         streams.push_back(createTestStream(name, addr, port, 8));
     }
 
-    TEST_ASSERT(streams.size() == 16, "Should create 16 streams");
+    CHECK(streams.size() == 16);
 
     // Validate all
     for (const auto& stream : streams) {
-        TEST_ASSERT(stream.isValid(), "All streams should be valid");
-        TEST_ASSERT(stream.numChannels == 8, "Each stream should have 8 channels");
+        CHECK(stream.isValid());
+        CHECK(stream.numChannels == 8);
     }
 
     // Calculate total channels
@@ -155,17 +142,16 @@ bool testMaximumStreams() {
     for (const auto& stream : streams) {
         totalChannels += stream.numChannels;
     }
-    TEST_ASSERT(totalChannels == 128, "Total should be 128 channels");
+    CHECK(totalChannels == 128);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Channel Mapping Coordination Tests
 //
 
-bool testNonOverlappingMappings() {
+TEST_CASE("Non Overlapping Mappings") {
     std::cout << "Test: Non-overlapping channel mappings... ";
 
     // Create stream IDs
@@ -178,23 +164,22 @@ bool testNonOverlappingMappings() {
     ChannelMapping map2 = createMapping(id2, "Stream 2", 8, 8);    // 8-15
     ChannelMapping map3 = createMapping(id3, "Stream 3", 8, 16);   // 16-23
 
-    TEST_ASSERT(map1.isValid(), "Mapping 1 should be valid");
-    TEST_ASSERT(map2.isValid(), "Mapping 2 should be valid");
-    TEST_ASSERT(map3.isValid(), "Mapping 3 should be valid");
+    CHECK(map1.isValid());
+    CHECK(map2.isValid());
+    CHECK(map3.isValid());
 
     // Check no overlaps
     uint16_t end1 = map1.getDeviceChannelEnd();
     uint16_t end2 = map2.getDeviceChannelEnd();
     (void)map3.getDeviceChannelEnd();
 
-    TEST_ASSERT(end1 == map2.deviceChannelStart, "Mappings 1 and 2 should be contiguous");
-    TEST_ASSERT(end2 == map3.deviceChannelStart, "Mappings 2 and 3 should be contiguous");
+    CHECK(end1 == map2.deviceChannelStart);
+    CHECK(end2 == map3.deviceChannelStart);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testOverlappingMappingDetection() {
+TEST_CASE("Overlapping Mapping Detection") {
     std::cout << "Test: Overlapping channel mapping detection... ";
 
     StreamID id1 = StreamID::generate();
@@ -205,21 +190,20 @@ bool testOverlappingMappingDetection() {
     ChannelMapping map2 = createMapping(id2, "Stream 2", 16, 8);   // 8-23 (overlaps 8-15)
 
     // Both individually valid
-    TEST_ASSERT(map1.isValid(), "Mapping 1 should be valid individually");
-    TEST_ASSERT(map2.isValid(), "Mapping 2 should be valid individually");
+    CHECK(map1.isValid());
+    CHECK(map2.isValid());
 
     // Detect overlap
     uint16_t end1 = map1.getDeviceChannelEnd();
     bool overlaps = (map1.deviceChannelStart < map2.deviceChannelStart + map2.deviceChannelCount &&
                      map2.deviceChannelStart < end1);
 
-    TEST_ASSERT(overlaps, "Should detect overlap");
+    CHECK(overlaps);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testFullDeviceMappings() {
+TEST_CASE("Full Device Mappings") {
     std::cout << "Test: Full device channel mappings (128 channels)... ";
 
     // Create 16 streams with mappings for all 128 channels
@@ -232,28 +216,27 @@ bool testFullDeviceMappings() {
         mappings.push_back(createMapping(id, name, 8, deviceStart));
     }
 
-    TEST_ASSERT(mappings.size() == 16, "Should create 16 mappings");
+    CHECK(mappings.size() == 16);
 
     // Verify no gaps or overlaps
     for (size_t i = 0; i < mappings.size() - 1; i++) {
         uint16_t end = mappings[i].getDeviceChannelEnd();
         uint16_t nextStart = mappings[i + 1].deviceChannelStart;
-        TEST_ASSERT(end == nextStart, "Mappings should be contiguous with no gaps");
+        CHECK(end == nextStart);
     }
 
     // Verify last mapping ends at 128
     uint16_t lastEnd = mappings[15].getDeviceChannelEnd();
-    TEST_ASSERT(lastEnd == 128, "Last mapping should end at channel 128");
+    CHECK(lastEnd == 128);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Sample Rate Coordination Tests
 //
 
-bool testUniformSampleRate() {
+TEST_CASE("Uniform Sample Rate") {
     std::cout << "Test: Uniform sample rate across streams... ";
 
     uint32_t targetRate = 48000;
@@ -270,15 +253,13 @@ bool testUniformSampleRate() {
 
     // Verify all at same rate
     for (const auto& stream : streams) {
-        TEST_ASSERT(stream.sampleRate == targetRate,
-                   "All streams should be at 48kHz");
+        CHECK(stream.sampleRate == targetRate);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testMixedSampleRateDetection() {
+TEST_CASE("Mixed Sample Rate Detection") {
     std::cout << "Test: Mixed sample rate detection... ";
 
     // Create streams at different rates
@@ -286,24 +267,21 @@ bool testMixedSampleRateDetection() {
     SDPSession stream2 = createTestStream("Stream 2", "239.1.1.2", 5006, 8, 96000);
     SDPSession stream3 = createTestStream("Stream 3", "239.1.1.3", 5008, 8, 48000);
 
-    TEST_ASSERT(stream1.sampleRate != stream2.sampleRate,
-               "Should detect different sample rates");
-    TEST_ASSERT(stream1.sampleRate == stream3.sampleRate,
-               "Streams 1 and 3 should match");
+    CHECK(stream1.sampleRate != stream2.sampleRate);
+    CHECK(stream1.sampleRate == stream3.sampleRate);
 
     // In a real system, this would trigger a warning or require SRC
     bool needsSRC = (stream1.sampleRate != stream2.sampleRate);
-    TEST_ASSERT(needsSRC, "Mixed rates should be detected");
+    CHECK(needsSRC);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Network Configuration Tests
 //
 
-bool testUniqueMulticastAddresses() {
+TEST_CASE("Unique Multicast Addresses") {
     std::cout << "Test: Unique multicast addresses... ";
 
     std::vector<SDPSession> streams;
@@ -314,16 +292,14 @@ bool testUniqueMulticastAddresses() {
     // All use same port but different addresses
     for (size_t i = 0; i < streams.size() - 1; i++) {
         for (size_t j = i + 1; j < streams.size(); j++) {
-            TEST_ASSERT(streams[i].connectionAddress != streams[j].connectionAddress,
-                       "Each stream should have unique multicast address");
+            CHECK(streams[i].connectionAddress != streams[j].connectionAddress);
         }
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testUniquePortNumbers() {
+TEST_CASE("Unique Port Numbers") {
     std::cout << "Test: Unique port numbers... ";
 
     // Same address, different ports
@@ -335,16 +311,14 @@ bool testUniquePortNumbers() {
     // All use same address but different ports
     for (size_t i = 0; i < streams.size() - 1; i++) {
         for (size_t j = i + 1; j < streams.size(); j++) {
-            TEST_ASSERT(streams[i].port != streams[j].port,
-                       "Each stream should have unique port");
+            CHECK(streams[i].port != streams[j].port);
         }
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPortConflictDetection() {
+TEST_CASE("Port Conflict Detection") {
     std::cout << "Test: Port conflict detection... ";
 
     // Create two streams with same address AND port - conflict!
@@ -355,17 +329,16 @@ bool testPortConflictDetection() {
     bool conflict = (stream1.connectionAddress == stream2.connectionAddress &&
                     stream1.port == stream2.port);
 
-    TEST_ASSERT(conflict, "Should detect address/port conflict");
+    CHECK(conflict);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // PTP Synchronization Tests
 //
 
-bool testUnifiedPTPDomain() {
+TEST_CASE("Unified PTP Domain") {
     std::cout << "Test: Unified PTP domain across streams... ";
 
     int32_t ptpDomain = 0;
@@ -384,15 +357,13 @@ bool testUnifiedPTPDomain() {
 
     // Verify all use same PTP domain
     for (const auto& stream : streams) {
-        TEST_ASSERT(stream.ptpDomain == ptpDomain,
-                   "All streams should use PTP domain 0");
+        CHECK(stream.ptpDomain == ptpDomain);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testMultiplePTPDomains() {
+TEST_CASE("Multiple PTP Domains") {
     std::cout << "Test: Multiple PTP domains... ";
 
     // Create streams using different PTP domains
@@ -405,19 +376,17 @@ bool testMultiplePTPDomains() {
     SDPSession stream3 = createTestStream("Stream 3", "239.1.1.3", 5008, 8);
     stream3.ptpDomain = 0;
 
-    TEST_ASSERT(stream1.ptpDomain == 0, "Stream 1 in domain 0");
-    TEST_ASSERT(stream2.ptpDomain == 1, "Stream 2 in domain 1");
-    TEST_ASSERT(stream3.ptpDomain == 0, "Stream 3 in domain 0");
+    CHECK(stream1.ptpDomain == 0);
+    CHECK(stream2.ptpDomain == 1);
+    CHECK(stream3.ptpDomain == 0);
 
     // Streams 1 and 3 share domain 0
-    TEST_ASSERT(stream1.ptpDomain == stream3.ptpDomain,
-               "Streams 1 and 3 should share PTP domain");
+    CHECK(stream1.ptpDomain == stream3.ptpDomain);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testNoPTPStreams() {
+TEST_CASE("No PTP Streams") {
     std::cout << "Test: Streams without PTP... ";
 
     // Create streams without PTP sync (-1 = no PTP)
@@ -434,18 +403,17 @@ bool testNoPTPStreams() {
 
     // Verify all indicate no PTP
     for (const auto& stream : streams) {
-        TEST_ASSERT(stream.ptpDomain == -1, "Should indicate no PTP");
+        CHECK(stream.ptpDomain == -1);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Stream Capacity Tests
 //
 
-bool testStreamAddition() {
+TEST_CASE("Stream Addition") {
     std::cout << "Test: Progressive stream addition... ";
 
     std::vector<SDPSession> streams;
@@ -458,17 +426,15 @@ bool testStreamAddition() {
 
         streams.push_back(createTestStream(name, addr, port, 8));
 
-        TEST_ASSERT(streams.size() == static_cast<size_t>(i + 1),
-                   "Stream count should match");
+        CHECK(streams.size() == static_cast<size_t>(i + 1));
     }
 
-    TEST_ASSERT(streams.size() == 8, "Should have 8 streams");
+    CHECK(streams.size() == 8);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testStreamRemoval() {
+TEST_CASE("Stream Removal") {
     std::cout << "Test: Stream removal... ";
 
     // Create initial streams
@@ -481,26 +447,25 @@ bool testStreamRemoval() {
         streams.push_back(createTestStream(name, addr, port, 8));
     }
 
-    TEST_ASSERT(streams.size() == 5, "Should start with 5 streams");
+    CHECK(streams.size() == 5);
 
     // Remove middle stream
     streams.erase(streams.begin() + 2);
-    TEST_ASSERT(streams.size() == 4, "Should have 4 streams after removal");
+    CHECK(streams.size() == 4);
 
     // Verify remaining streams still valid
     for (const auto& stream : streams) {
-        TEST_ASSERT(stream.isValid(), "Remaining streams should be valid");
+        CHECK(stream.isValid());
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Mixed Configuration Tests
 //
 
-bool testRealisticStudioConfiguration() {
+TEST_CASE("Realistic Studio Configuration") {
     std::cout << "Test: Realistic studio configuration... ";
 
     // Typical studio: 64 channels total
@@ -511,18 +476,18 @@ bool testRealisticStudioConfiguration() {
     SDPSession fx1 = createTestStream("FX Return 1", "239.1.1.2", 5006, 16, 48000);
     SDPSession fx2 = createTestStream("FX Return 2", "239.1.1.3", 5008, 16, 48000);
 
-    TEST_ASSERT(mixBus.isValid(), "Mix bus should be valid");
-    TEST_ASSERT(fx1.isValid(), "FX 1 should be valid");
-    TEST_ASSERT(fx2.isValid(), "FX 2 should be valid");
+    CHECK(mixBus.isValid());
+    CHECK(fx1.isValid());
+    CHECK(fx2.isValid());
 
     // All at same sample rate
-    TEST_ASSERT(mixBus.sampleRate == 48000, "Mix bus at 48kHz");
-    TEST_ASSERT(fx1.sampleRate == 48000, "FX 1 at 48kHz");
-    TEST_ASSERT(fx2.sampleRate == 48000, "FX 2 at 48kHz");
+    CHECK(mixBus.sampleRate == 48000);
+    CHECK(fx1.sampleRate == 48000);
+    CHECK(fx2.sampleRate == 48000);
 
     // Total channels
     uint16_t total = mixBus.numChannels + fx1.numChannels + fx2.numChannels;
-    TEST_ASSERT(total == 64, "Total should be 64 channels");
+    CHECK(total == 64);
 
     // Create non-overlapping mappings
     StreamID mixID = StreamID::generate();
@@ -533,15 +498,14 @@ bool testRealisticStudioConfiguration() {
     ChannelMapping fx1Map = createMapping(fx1ID, "FX 1", 16, 32);       // 32-47
     ChannelMapping fx2Map = createMapping(fx2ID, "FX 2", 16, 48);       // 48-63
 
-    TEST_ASSERT(mixMap.getDeviceChannelEnd() == 32, "Mix ends at 32");
-    TEST_ASSERT(fx1Map.getDeviceChannelEnd() == 48, "FX1 ends at 48");
-    TEST_ASSERT(fx2Map.getDeviceChannelEnd() == 64, "FX2 ends at 64");
+    CHECK(mixMap.getDeviceChannelEnd() == 32);
+    CHECK(fx1Map.getDeviceChannelEnd() == 48);
+    CHECK(fx2Map.getDeviceChannelEnd() == 64);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testRealisticBroadcastConfiguration() {
+TEST_CASE("Realistic Broadcast Configuration") {
     std::cout << "Test: Realistic broadcast configuration... ";
 
     // Broadcast facility: 128 channels
@@ -562,86 +526,25 @@ bool testRealisticBroadcastConfiguration() {
     }
 
     // Verify all programs
-    TEST_ASSERT(programs.size() == 4, "Should have 4 programs");
+    CHECK(programs.size() == 4);
 
     for (const auto& program : programs) {
-        TEST_ASSERT(program.isValid(), "Program should be valid");
-        TEST_ASSERT(program.numChannels == 32, "Each program 32 channels");
-        TEST_ASSERT(program.sampleRate == 48000, "All at 48kHz");
+        CHECK(program.isValid());
+        CHECK(program.numChannels == 32);
+        CHECK(program.sampleRate == 48000);
     }
 
     // Verify mappings fill entire device
-    TEST_ASSERT(mappings[0].deviceChannelStart == 0, "Program 1 starts at 0");
-    TEST_ASSERT(mappings[1].deviceChannelStart == 32, "Program 2 starts at 32");
-    TEST_ASSERT(mappings[2].deviceChannelStart == 64, "Program 3 starts at 64");
-    TEST_ASSERT(mappings[3].deviceChannelStart == 96, "Program 4 starts at 96");
-    TEST_ASSERT(mappings[3].getDeviceChannelEnd() == 128, "Last ends at 128");
+    CHECK(mappings[0].deviceChannelStart == 0);
+    CHECK(mappings[1].deviceChannelStart == 32);
+    CHECK(mappings[2].deviceChannelStart == 64);
+    CHECK(mappings[3].deviceChannelStart == 96);
+    CHECK(mappings[3].getDeviceChannelEnd() == 128);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Main Test Runner
 //
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 Multi-Stream Integration Tests" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "Multi-Stream Configuration Tests:" << std::endl;
-    std::cout << "--------------------------------" << std::endl;
-    testTwoStreamConfiguration();
-    testFourStreamConfiguration();
-    testMaximumStreams();
-    std::cout << std::endl;
-
-    std::cout << "Channel Mapping Coordination Tests:" << std::endl;
-    std::cout << "-----------------------------------" << std::endl;
-    testNonOverlappingMappings();
-    testOverlappingMappingDetection();
-    testFullDeviceMappings();
-    std::cout << std::endl;
-
-    std::cout << "Sample Rate Coordination Tests:" << std::endl;
-    std::cout << "-------------------------------" << std::endl;
-    testUniformSampleRate();
-    testMixedSampleRateDetection();
-    std::cout << std::endl;
-
-    std::cout << "Network Configuration Tests:" << std::endl;
-    std::cout << "---------------------------" << std::endl;
-    testUniqueMulticastAddresses();
-    testUniquePortNumbers();
-    testPortConflictDetection();
-    std::cout << std::endl;
-
-    std::cout << "PTP Synchronization Tests:" << std::endl;
-    std::cout << "-------------------------" << std::endl;
-    testUnifiedPTPDomain();
-    testMultiplePTPDomains();
-    testNoPTPStreams();
-    std::cout << std::endl;
-
-    std::cout << "Stream Capacity Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testStreamAddition();
-    testStreamRemoval();
-    std::cout << std::endl;
-
-    std::cout << "Realistic Configuration Tests:" << std::endl;
-    std::cout << "-----------------------------" << std::endl;
-    testRealisticStudioConfiguration();
-    testRealisticBroadcastConfiguration();
-    std::cout << std::endl;
-
-    std::cout << "========================================" << std::endl;
-    std::cout << "Test Results:" << std::endl;
-    std::cout << "  Passed: " << testsPassed << std::endl;
-    std::cout << "  Failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
-
-    return testsFailed == 0 ? 0 : 1;
-}
