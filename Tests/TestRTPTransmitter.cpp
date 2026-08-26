@@ -4,6 +4,9 @@
 // Unit tests for RTP packet transmitter
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include "Driver/SDPParser.h"
 #include "NetworkEngine/StreamChannelMapper.h"
@@ -16,40 +19,29 @@ using namespace AES67;
 using namespace AES67::RTP;
 
 // Test result counter
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
 //
 // RTP Header Tests
 //
 
-bool testRTPHeaderInitialization() {
+TEST_CASE("RTP Header Initialization") {
     std::cout << "Test: RTP header initialization... ";
 
     RTPPacket packet;
 
     // Default values
-    TEST_ASSERT(packet.header.version == 2, "RTP version should be 2");
-    TEST_ASSERT(packet.header.padding == 0, "Padding should be disabled by default");
-    TEST_ASSERT(packet.header.extension == 0, "Extension should be disabled by default");
-    TEST_ASSERT(packet.header.cc == 0, "CSRC count should be 0");
-    TEST_ASSERT(packet.header.marker == 0, "Marker should be 0 by default");
-    TEST_ASSERT(packet.header.payloadType == PT_AES67_L16, "Default payload should be L16");
+    CHECK(packet.header.version == 2);
+    CHECK(packet.header.padding == 0);
+    CHECK(packet.header.extension == 0);
+    CHECK(packet.header.cc == 0);
+    CHECK(packet.header.marker == 0);
+    CHECK(packet.header.payloadType == PT_AES67_L16);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testRTPHeaderNetworkByteOrder() {
+TEST_CASE("RTP Header Network Byte Order") {
     std::cout << "Test: RTP header network byte order conversion... ";
 
     RTPPacket packet;
@@ -70,47 +62,45 @@ bool testRTPHeaderNetworkByteOrder() {
     // but we can test round-trip
     packet.header.toHostOrder();
 
-    TEST_ASSERT(packet.header.sequenceNumber == origSeq, "Sequence number round-trip");
-    TEST_ASSERT(packet.header.timestamp == origTs, "Timestamp round-trip");
-    TEST_ASSERT(packet.header.ssrc == origSsrc, "SSRC round-trip");
+    CHECK(packet.header.sequenceNumber == origSeq);
+    CHECK(packet.header.timestamp == origTs);
+    CHECK(packet.header.ssrc == origSsrc);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Sequence Number Tests
 //
 
-bool testSequenceNumberIncrement() {
+TEST_CASE("Sequence Number Increment") {
     std::cout << "Test: Sequence number increment and wrap... ";
 
     uint16_t seq = 0;
 
     // Normal increment
     for (int i = 0; i < 100; ++i) {
-        TEST_ASSERT(seq == i, "Sequence should increment normally");
+        CHECK(seq == i);
         seq++;
     }
 
     // Test wrap-around
     seq = 65534;
     seq++;
-    TEST_ASSERT(seq == 65535, "Sequence at boundary");
+    CHECK(seq == 65535);
     seq++;
-    TEST_ASSERT(seq == 0, "Sequence should wrap to 0");
+    CHECK(seq == 0);
     seq++;
-    TEST_ASSERT(seq == 1, "Sequence should continue after wrap");
+    CHECK(seq == 1);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Timestamp Tests
 //
 
-bool testTimestampIncrement() {
+TEST_CASE("Timestamp Increment") {
     std::cout << "Test: Timestamp increment... ";
 
     // At 48kHz, 1ms packet = 48 samples
@@ -118,40 +108,38 @@ bool testTimestampIncrement() {
     uint32_t timestamp = 0;
 
     // First packet
-    TEST_ASSERT(timestamp == 0, "Initial timestamp should be 0");
+    CHECK(timestamp == 0);
 
     // Advance by packet interval
     timestamp += samplesPerPacket;
-    TEST_ASSERT(timestamp == 48, "Should advance by samples per packet");
+    CHECK(timestamp == 48);
 
     // Simulate 1 second of packets (1000 packets @ 1ms each)
     for (int i = 0; i < 999; ++i) {
         timestamp += samplesPerPacket;
     }
-    TEST_ASSERT(timestamp == 48000, "1000 packets should equal sample rate");
+    CHECK(timestamp == 48000);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testTimestampWrap() {
+TEST_CASE("Timestamp Wrap") {
     std::cout << "Test: Timestamp wrap-around... ";
 
     // Test timestamp wrap (32-bit)
     uint32_t timestamp = 0xFFFFFFF0;
     timestamp += 0x20;  // Will wrap
 
-    TEST_ASSERT(timestamp == 0x10, "Timestamp should wrap around");
+    CHECK(timestamp == 0x10);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Audio Encoding Tests
 //
 
-bool testL16EncodingPrecision() {
+TEST_CASE("L16 Encoding Precision") {
     std::cout << "Test: L16 encoding precision... ";
 
     // Create test audio with various amplitudes
@@ -171,14 +159,13 @@ bool testL16EncodingPrecision() {
     // Verify round-trip
     for (int i = 0; i < 8; ++i) {
         float diff = std::abs(decoded[i] - audio[i]);
-        TEST_ASSERT(diff < 0.01f, "L16 round-trip precision");
+        CHECK(diff < 0.01f);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testL24EncodingPrecision() {
+TEST_CASE("L24 Encoding Precision") {
     std::cout << "Test: L24 encoding precision... ";
 
     // Create test audio with various amplitudes
@@ -198,18 +185,17 @@ bool testL24EncodingPrecision() {
     // Verify round-trip (L24 should have better precision than L16)
     for (int i = 0; i < 8; ++i) {
         float diff = std::abs(decoded[i] - audio[i]);
-        TEST_ASSERT(diff < 0.001f, "L24 round-trip high precision");
+        CHECK(diff < 0.001f);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Payload Size Tests
 //
 
-bool testPayloadSizes() {
+TEST_CASE("Payload Sizes") {
     std::cout << "Test: RTP payload size calculations... ";
 
     // Common AES67 configurations
@@ -234,22 +220,21 @@ bool testPayloadSizes() {
 
     for (const auto& cfg : configs) {
         size_t calculatedSize = cfg.channels * cfg.samples * cfg.bytesPerSample;
-        TEST_ASSERT(calculatedSize == cfg.expectedSize, "Payload size calculation");
+        CHECK(calculatedSize == cfg.expectedSize);
 
         // Verify payload fits in MTU
         constexpr size_t MAX_PAYLOAD = 1460;  // 1500 - 20 IP - 8 UDP - 12 RTP
-        TEST_ASSERT(calculatedSize <= MAX_PAYLOAD, "Payload should fit in MTU");
+        CHECK(calculatedSize <= MAX_PAYLOAD);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Packet Timing Tests
 //
 
-bool testPacketInterval() {
+TEST_CASE("Packet Interval") {
     std::cout << "Test: Packet interval calculation... ";
 
     struct TimingConfig {
@@ -267,18 +252,17 @@ bool testPacketInterval() {
 
     for (const auto& cfg : configs) {
         uint64_t intervalUs = (cfg.samplesPerPacket * 1000000ULL) / cfg.sampleRate;
-        TEST_ASSERT(intervalUs == cfg.expectedIntervalUs, "Packet interval calculation");
+        CHECK(intervalUs == cfg.expectedIntervalUs);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // SSRC Tests
 //
 
-bool testSSRCGeneration() {
+TEST_CASE("SSRC Generation") {
     std::cout << "Test: SSRC generation... ";
 
     // SSRCs should be unique (randomly generated)
@@ -290,19 +274,18 @@ bool testSSRCGeneration() {
     packet2.header.ssrc = 0xABCDEF01;
     packet3.header.ssrc = 0x87654321;
 
-    TEST_ASSERT(packet1.header.ssrc != packet2.header.ssrc, "SSRCs should be different");
-    TEST_ASSERT(packet2.header.ssrc != packet3.header.ssrc, "SSRCs should be different");
-    TEST_ASSERT(packet1.header.ssrc != packet3.header.ssrc, "SSRCs should be different");
+    CHECK(packet1.header.ssrc != packet2.header.ssrc);
+    CHECK(packet2.header.ssrc != packet3.header.ssrc);
+    CHECK(packet1.header.ssrc != packet3.header.ssrc);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // SDP Generation Tests
 //
 
-bool testSDPForTransmit() {
+TEST_CASE("SDP For Transmit") {
     std::cout << "Test: SDP session for transmission... ";
 
     // Create transmit SDP
@@ -316,19 +299,18 @@ bool testSDPForTransmit() {
         "L24"               // Encoding
     );
 
-    TEST_ASSERT(sdp.sessionName == "Test TX Stream", "Session name should be set");
-    TEST_ASSERT(sdp.port == 5004, "Port should be set");
-    TEST_ASSERT(sdp.encoding == "L24", "Encoding should be set");
-    TEST_ASSERT(sdp.sampleRate == 48000, "Sample rate should be set");
-    TEST_ASSERT(sdp.numChannels == 8, "Channel count should be set");
-    TEST_ASSERT(sdp.connectionAddress == "239.1.2.1", "Multicast address should be set");
-    TEST_ASSERT(sdp.originAddress == "192.168.1.100", "Source address should be set");
+    CHECK(sdp.sessionName == "Test TX Stream");
+    CHECK(sdp.port == 5004);
+    CHECK(sdp.encoding == "L24");
+    CHECK(sdp.sampleRate == 48000);
+    CHECK(sdp.numChannels == 8);
+    CHECK(sdp.connectionAddress == "239.1.2.1");
+    CHECK(sdp.originAddress == "192.168.1.100");
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testSDPStringGeneration() {
+TEST_CASE("SDP String Generation") {
     std::cout << "Test: SDP string generation... ";
 
     SDPSession sdp;
@@ -342,21 +324,20 @@ bool testSDPStringGeneration() {
 
     std::string sdpString = SDPParser::generate(sdp);
 
-    TEST_ASSERT(!sdpString.empty(), "SDP string should not be empty");
-    TEST_ASSERT(sdpString.find("v=0") == 0, "Should start with version");
-    TEST_ASSERT(sdpString.find("s=Test Stream") != std::string::npos, "Should contain session name");
-    TEST_ASSERT(sdpString.find("m=audio 5004") != std::string::npos, "Should contain media line");
-    TEST_ASSERT(sdpString.find("c=IN IP4 239.1.1.1") != std::string::npos, "Should contain connection");
+    CHECK(!sdpString.empty());
+    CHECK(sdpString.find("v=0") == 0);
+    CHECK(sdpString.find("s=Test Stream") != std::string::npos);
+    CHECK(sdpString.find("m=audio 5004") != std::string::npos);
+    CHECK(sdpString.find("c=IN IP4 239.1.1.1") != std::string::npos);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Channel Interleaving Tests
 //
 
-bool testChannelInterleaving() {
+TEST_CASE("Channel Interleaving") {
     std::cout << "Test: Channel interleaving... ";
 
     // Simulate 2 channels, 4 samples each
@@ -376,77 +357,13 @@ bool testChannelInterleaving() {
     // Verify interleaving
     float expected[8] = {1.0f, 5.0f, 2.0f, 6.0f, 3.0f, 7.0f, 4.0f, 8.0f};
     for (int i = 0; i < 8; ++i) {
-        TEST_ASSERT(interleaved[i] == expected[i], "Interleaving should be correct");
+        CHECK(interleaved[i] == expected[i]);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Main Test Runner
 //
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 RTP Transmitter Unit Tests" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "RTP Header Tests:" << std::endl;
-    std::cout << "----------------" << std::endl;
-    testRTPHeaderInitialization();
-    testRTPHeaderNetworkByteOrder();
-    std::cout << std::endl;
-
-    std::cout << "Sequence Number Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testSequenceNumberIncrement();
-    std::cout << std::endl;
-
-    std::cout << "Timestamp Tests:" << std::endl;
-    std::cout << "---------------" << std::endl;
-    testTimestampIncrement();
-    testTimestampWrap();
-    std::cout << std::endl;
-
-    std::cout << "Audio Encoding Tests:" << std::endl;
-    std::cout << "--------------------" << std::endl;
-    testL16EncodingPrecision();
-    testL24EncodingPrecision();
-    std::cout << std::endl;
-
-    std::cout << "Payload Size Tests:" << std::endl;
-    std::cout << "------------------" << std::endl;
-    testPayloadSizes();
-    std::cout << std::endl;
-
-    std::cout << "Packet Timing Tests:" << std::endl;
-    std::cout << "-------------------" << std::endl;
-    testPacketInterval();
-    std::cout << std::endl;
-
-    std::cout << "SSRC Tests:" << std::endl;
-    std::cout << "----------" << std::endl;
-    testSSRCGeneration();
-    std::cout << std::endl;
-
-    std::cout << "SDP Generation Tests:" << std::endl;
-    std::cout << "--------------------" << std::endl;
-    testSDPForTransmit();
-    testSDPStringGeneration();
-    std::cout << std::endl;
-
-    std::cout << "Channel Processing Tests:" << std::endl;
-    std::cout << "------------------------" << std::endl;
-    testChannelInterleaving();
-    std::cout << std::endl;
-
-    std::cout << "========================================" << std::endl;
-    std::cout << "Test Results:" << std::endl;
-    std::cout << "  Passed: " << testsPassed << std::endl;
-    std::cout << "  Failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
-
-    return testsFailed == 0 ? 0 : 1;
-}

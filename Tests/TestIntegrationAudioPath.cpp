@@ -8,6 +8,9 @@
 // using localhost multicast and real component instances.
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include "NetworkEngine/RTP/RTPReceiver.h"
 #include "NetworkEngine/RTP/RTPTransmitter.h"
@@ -31,17 +34,7 @@ using namespace AES67;
 using namespace AES67::RTP;
 
 // Test result counter
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
 // ============================================================================
 // Helper: Create initialized ring buffer array (128 channels)
@@ -184,7 +177,7 @@ static bool sendRawRTPPacket(
 // Test 1: RTP Receive -> Ring Buffer
 // ============================================================================
 
-bool testRTPReceiveToRingBuffer() {
+TEST_CASE("RTP Receive To Ring Buffer") {
     std::cout << "Test: RTP Receive -> Ring Buffer... ";
 
     // Create ring buffers
@@ -201,11 +194,11 @@ bool testRTPReceiveToRingBuffer() {
 
     // Create receiver
     RTPReceiver receiver(rxSDP, rxMapping, deviceBuffers);
-    TEST_ASSERT(!receiver.isRunning(), "Receiver should not be running before start");
+    CHECK(!receiver.isRunning());
 
     bool started = receiver.start();
-    TEST_ASSERT(started, "Receiver should start successfully");
-    TEST_ASSERT(receiver.isRunning(), "Receiver should be running after start");
+    CHECK(started);
+    CHECK(receiver.isRunning());
 
     // Give the receiver threads time to initialize
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -237,7 +230,7 @@ bool testRTPReceiveToRingBuffer() {
             l16Payload.data(),
             l16Payload.size()
         );
-        TEST_ASSERT(sent, "RTP packet should be sent successfully");
+        CHECK(sent);
         // Small delay between packets to simulate real RTP timing
         std::this_thread::sleep_for(std::chrono::microseconds(500));
     }
@@ -249,13 +242,13 @@ bool testRTPReceiveToRingBuffer() {
     size_t ch0Available = deviceBuffers[0].available();
     size_t ch1Available = deviceBuffers[1].available();
 
-    TEST_ASSERT(ch0Available > 0, "Channel 0 ring buffer should have data");
-    TEST_ASSERT(ch1Available > 0, "Channel 1 ring buffer should have data");
+    CHECK(ch0Available > 0);
+    CHECK(ch1Available > 0);
 
     // Read and verify sample values from channel 0
     std::vector<float> readBuffer(ch0Available);
     size_t ch0Read = deviceBuffers[0].read(readBuffer.data(), ch0Available);
-    TEST_ASSERT(ch0Read > 0, "Should read data from channel 0");
+    CHECK(ch0Read > 0);
 
     // Verify the samples are approximately 0.5 (L16 has limited precision)
     bool ch0ValuesCorrect = true;
@@ -265,12 +258,12 @@ bool testRTPReceiveToRingBuffer() {
             break;
         }
     }
-    TEST_ASSERT(ch0ValuesCorrect, "Channel 0 samples should be ~0.5f");
+    CHECK(ch0ValuesCorrect);
 
     // Read and verify channel 1
     readBuffer.resize(ch1Available);
     size_t ch1Read = deviceBuffers[1].read(readBuffer.data(), ch1Available);
-    TEST_ASSERT(ch1Read > 0, "Should read data from channel 1");
+    CHECK(ch1Read > 0);
 
     bool ch1ValuesCorrect = true;
     for (size_t i = 0; i < ch1Read; ++i) {
@@ -279,28 +272,27 @@ bool testRTPReceiveToRingBuffer() {
             break;
         }
     }
-    TEST_ASSERT(ch1ValuesCorrect, "Channel 1 samples should be ~-0.5f");
+    CHECK(ch1ValuesCorrect);
 
     // Verify unmapped channels remain empty
-    TEST_ASSERT(deviceBuffers[2].available() == 0, "Unmapped channel 2 should be empty");
-    TEST_ASSERT(deviceBuffers[3].available() == 0, "Unmapped channel 3 should be empty");
+    CHECK(deviceBuffers[2].available() == 0);
+    CHECK(deviceBuffers[3].available() == 0);
 
     // Check receiver statistics
     StatisticsSnapshot stats = receiver.getStatistics();
-    TEST_ASSERT(stats.packetsReceived > 0, "Should report received packets");
+    CHECK(stats.packetsReceived > 0);
 
     receiver.stop();
-    TEST_ASSERT(!receiver.isRunning(), "Receiver should stop");
+    CHECK(!receiver.isRunning());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 2: Ring Buffer -> RTP Transmit
 // ============================================================================
 
-bool testRingBufferToRTPTransmit() {
+TEST_CASE("Ring Buffer To RTP Transmit") {
     std::cout << "Test: Ring Buffer -> RTP Transmit... ";
 
     // Create ring buffers
@@ -328,42 +320,41 @@ bool testRingBufferToRTPTransmit() {
 
     size_t written8 = deviceBuffers[8].write(ch8Data.data(), prefillFrames);
     size_t written9 = deviceBuffers[9].write(ch9Data.data(), prefillFrames);
-    TEST_ASSERT(written8 == prefillFrames, "Should write all frames to channel 8");
-    TEST_ASSERT(written9 == prefillFrames, "Should write all frames to channel 9");
+    CHECK(written8 == prefillFrames);
+    CHECK(written9 == prefillFrames);
 
     // Create transmitter
     RTPTransmitter transmitter(txSDP, txMapping, deviceBuffers);
-    TEST_ASSERT(!transmitter.isRunning(), "Transmitter should not be running before start");
+    CHECK(!transmitter.isRunning());
 
     bool started = transmitter.start();
-    TEST_ASSERT(started, "Transmitter should start successfully");
-    TEST_ASSERT(transmitter.isRunning(), "Transmitter should be running after start");
+    CHECK(started);
+    CHECK(transmitter.isRunning());
 
     // Let the transmitter send packets for a brief period
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     transmitter.stop();
-    TEST_ASSERT(!transmitter.isRunning(), "Transmitter should stop");
+    CHECK(!transmitter.isRunning());
 
     // Verify transmitter sent packets
     StatisticsSnapshot stats = transmitter.getStatistics();
-    TEST_ASSERT(stats.bytesSent > 0, "Transmitter should have sent bytes");
+    CHECK(stats.bytesSent > 0);
 
     // Verify the ring buffers were consumed
     size_t remaining8 = deviceBuffers[8].available();
     size_t remaining9 = deviceBuffers[9].available();
-    TEST_ASSERT(remaining8 < prefillFrames, "Channel 8 buffer should be partially consumed");
-    TEST_ASSERT(remaining9 < prefillFrames, "Channel 9 buffer should be partially consumed");
+    CHECK(remaining8 < prefillFrames);
+    CHECK(remaining9 < prefillFrames);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 3: Full Loopback (TX -> Network -> RX)
 // ============================================================================
 
-bool testFullLoopback() {
+TEST_CASE("Full Loopback") {
     std::cout << "Test: Full Loopback (TX -> Network -> RX)... ";
 
     // Create separate buffer arrays for TX and RX
@@ -396,7 +387,7 @@ bool testFullLoopback() {
     // Start receiver first so it binds to the multicast group
     RTPReceiver receiver(rxSDP, rxMapping, rxBuffers);
     bool rxStarted = receiver.start();
-    TEST_ASSERT(rxStarted, "Loopback receiver should start");
+    CHECK(rxStarted);
 
     // Give receiver time to bind socket
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -404,7 +395,7 @@ bool testFullLoopback() {
     // Start transmitter
     RTPTransmitter transmitter(txSDP, txMapping, txBuffers);
     bool txStarted = transmitter.start();
-    TEST_ASSERT(txStarted, "Loopback transmitter should start");
+    CHECK(txStarted);
 
     // Let the loopback run for enough time for packets to flow
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -415,17 +406,17 @@ bool testFullLoopback() {
 
     // Verify TX sent data
     StatisticsSnapshot txStats = transmitter.getStatistics();
-    TEST_ASSERT(txStats.bytesSent > 0, "TX should have sent bytes");
+    CHECK(txStats.bytesSent > 0);
 
     // Verify RX received data
     StatisticsSnapshot rxStats = receiver.getStatistics();
-    TEST_ASSERT(rxStats.packetsReceived > 0, "RX should have received packets");
+    CHECK(rxStats.packetsReceived > 0);
 
     // Verify data arrived in RX ring buffers
     size_t rxCh0Available = rxBuffers[0].available();
     size_t rxCh1Available = rxBuffers[1].available();
-    TEST_ASSERT(rxCh0Available > 0, "RX channel 0 should have data");
-    TEST_ASSERT(rxCh1Available > 0, "RX channel 1 should have data");
+    CHECK(rxCh0Available > 0);
+    CHECK(rxCh1Available > 0);
 
     // Read received data and verify integrity
     std::vector<float> rxCh0Data(rxCh0Available);
@@ -442,7 +433,7 @@ bool testFullLoopback() {
             break;
         }
     }
-    TEST_ASSERT(ch0Correct, "Loopback channel 0 data should match (~0.25f)");
+    CHECK(ch0Correct);
 
     bool ch1Correct = true;
     for (size_t i = 0; i < rxCh1Available; ++i) {
@@ -451,17 +442,16 @@ bool testFullLoopback() {
             break;
         }
     }
-    TEST_ASSERT(ch1Correct, "Loopback channel 1 data should match (~-0.75f)");
+    CHECK(ch1Correct);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 4: Underrun Behavior
 // ============================================================================
 
-bool testUnderrunBehavior() {
+TEST_CASE("Underrun Behavior") {
     std::cout << "Test: Underrun Behavior (empty ring buffers -> silence)... ";
 
     // Create ring buffers - leave them EMPTY (no data written)
@@ -469,7 +459,7 @@ bool testUnderrunBehavior() {
 
     // Verify all buffers start empty
     for (size_t ch = 0; ch < kNumChannels; ++ch) {
-        TEST_ASSERT(deviceBuffers[ch].isEmpty(), "All buffers should start empty");
+        CHECK(deviceBuffers[ch].isEmpty());
     }
 
     // Simulate what the IO handler does when reading from empty input buffers:
@@ -483,7 +473,7 @@ bool testUnderrunBehavior() {
 
     // Read from empty ring buffer -- should return 0 (no data available)
     size_t samplesRead = deviceBuffers[0].read(readBuffer.data(), frameCount);
-    TEST_ASSERT(samplesRead == 0, "Read from empty buffer should return 0");
+    CHECK(samplesRead == 0);
 
     // The IO handler would fill with silence here:
     if (samplesRead < frameCount) {
@@ -498,7 +488,7 @@ bool testUnderrunBehavior() {
             break;
         }
     }
-    TEST_ASSERT(allZeros, "Underrun should result in silence (all zeros)");
+    CHECK(allZeros);
 
     // Now test with an actual RTPReceiver that is connected but gets no data
     // after the initial packets. The consume loop should increment underruns.
@@ -508,7 +498,7 @@ bool testUnderrunBehavior() {
 
     RTPReceiver receiver(sdp, mapping, deviceBuffers);
     bool started = receiver.start();
-    TEST_ASSERT(started, "Underrun test receiver should start");
+    CHECK(started);
 
     // Send a few packets to connect, then stop sending
     const size_t samples = 48 * 2;
@@ -528,20 +518,18 @@ bool testUnderrunBehavior() {
     StatisticsSnapshot stats = receiver.getStatistics();
     // The receiver should have detected underruns in the consume loop
     // because the jitter buffer becomes empty after the initial packets
-    TEST_ASSERT(stats.underruns > 0 || stats.packetsReceived > 0,
-                "Should detect underruns or have received initial packets");
+    CHECK((stats.underruns > 0 || stats.packetsReceived > 0));
 
     receiver.stop();
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 5: Overrun Behavior
 // ============================================================================
 
-bool testOverrunBehavior() {
+TEST_CASE("Overrun Behavior") {
     std::cout << "Test: Overrun Behavior (ring buffer overflow)... ";
 
     // Create ring buffers with a SMALL capacity to easily trigger overrun
@@ -553,18 +541,18 @@ bool testOverrunBehavior() {
     // Fill the ring buffer to capacity
     std::vector<float> fillData(smallCapacity, 0.5f);
     size_t written = deviceBuffers[0].write(fillData.data(), smallCapacity);
-    TEST_ASSERT(written == smallCapacity, "Should fill buffer to capacity");
-    TEST_ASSERT(deviceBuffers[0].isFull(), "Buffer should be full after fill");
+    CHECK(written == smallCapacity);
+    CHECK(deviceBuffers[0].isFull());
 
     // Try to write more -- should return 0 (overrun)
     float extraSample = 0.99f;
     size_t overflowWritten = deviceBuffers[0].write(&extraSample, 1);
-    TEST_ASSERT(overflowWritten == 0, "Write to full buffer should return 0 (overrun)");
+    CHECK(overflowWritten == 0);
 
     // Verify the buffer data is intact (old data preserved, not corrupted)
     std::vector<float> readBack(smallCapacity);
     size_t readCount = deviceBuffers[0].read(readBack.data(), smallCapacity);
-    TEST_ASSERT(readCount == smallCapacity, "Should read back all original data");
+    CHECK(readCount == smallCapacity);
 
     bool dataIntact = true;
     for (size_t i = 0; i < readCount; ++i) {
@@ -573,7 +561,7 @@ bool testOverrunBehavior() {
             break;
         }
     }
-    TEST_ASSERT(dataIntact, "Original data should be preserved after overrun");
+    CHECK(dataIntact);
 
     // Test overrun tracking: simulate Core Audio writing to output buffers
     // when the network consumer is too slow. Fill all channels, then try
@@ -596,18 +584,16 @@ bool testOverrunBehavior() {
         }
     }
 
-    TEST_ASSERT(overrunCounter.load() == 2,
-                "Should detect overrun on both channels");
+    CHECK(overrunCounter.load() == 2);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 6: Multi-Stream Channel Isolation
 // ============================================================================
 
-bool testMultiStreamChannelIsolation() {
+TEST_CASE("Multi Stream Channel Isolation") {
     std::cout << "Test: Multi-Stream Channel Isolation... ";
 
     // Create ring buffers
@@ -631,8 +617,8 @@ bool testMultiStreamChannelIsolation() {
 
     bool startedA = receiverA.start();
     bool startedB = receiverB.start();
-    TEST_ASSERT(startedA, "Receiver A should start");
-    TEST_ASSERT(startedB, "Receiver B should start");
+    CHECK(startedA);
+    CHECK(startedB);
 
     // Give receivers time to bind
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -667,20 +653,18 @@ bool testMultiStreamChannelIsolation() {
     // Check Stream A data arrived in channels 0-1 only
     size_t aCh0 = deviceBuffers[0].available();
     size_t aCh1 = deviceBuffers[1].available();
-    TEST_ASSERT(aCh0 > 0, "Stream A: channel 0 should have data");
-    TEST_ASSERT(aCh1 > 0, "Stream A: channel 1 should have data");
+    CHECK(aCh0 > 0);
+    CHECK(aCh1 > 0);
 
     // Check Stream B data arrived in channels 4-5 only
     size_t bCh4 = deviceBuffers[4].available();
     size_t bCh5 = deviceBuffers[5].available();
-    TEST_ASSERT(bCh4 > 0, "Stream B: channel 4 should have data");
-    TEST_ASSERT(bCh5 > 0, "Stream B: channel 5 should have data");
+    CHECK(bCh4 > 0);
+    CHECK(bCh5 > 0);
 
     // Verify isolation: channels 2-3 (between A and B) should be empty
-    TEST_ASSERT(deviceBuffers[2].available() == 0,
-                "Channel 2 (gap between streams) should be empty");
-    TEST_ASSERT(deviceBuffers[3].available() == 0,
-                "Channel 3 (gap between streams) should be empty");
+    CHECK(deviceBuffers[2].available() == 0);
+    CHECK(deviceBuffers[3].available() == 0);
 
     // Verify Stream A data is correct (~0.3f)
     std::vector<float> aCh0Data(aCh0);
@@ -692,7 +676,7 @@ bool testMultiStreamChannelIsolation() {
             break;
         }
     }
-    TEST_ASSERT(aCorrect, "Stream A channel 0 values should be ~0.3f");
+    CHECK(aCorrect);
 
     // Verify Stream B data is correct (~-0.7f)
     std::vector<float> bCh4Data(bCh4);
@@ -704,29 +688,27 @@ bool testMultiStreamChannelIsolation() {
             break;
         }
     }
-    TEST_ASSERT(bCorrect, "Stream B channel 4 values should be ~-0.7f");
+    CHECK(bCorrect);
 
     // Verify no cross-contamination: Stream A data should NOT appear in Stream B channels
     // and vice versa. We already confirmed the gap channels are empty.
     // Additionally verify that Stream A's values are distinct from Stream B's
-    TEST_ASSERT(std::abs(0.3f - (-0.7f)) > 0.5f,
-                "Stream A and B values should be clearly distinct");
+    CHECK(std::abs(0.3f - (-0.7f)) > 0.5f);
 
     // Stop both receivers
     receiverA.stop();
     receiverB.stop();
-    TEST_ASSERT(!receiverA.isRunning(), "Receiver A should stop");
-    TEST_ASSERT(!receiverB.isRunning(), "Receiver B should stop");
+    CHECK(!receiverA.isRunning());
+    CHECK(!receiverB.isRunning());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 7: L16 vs L24 Encoding Round-Trip via Ring Buffers
 // ============================================================================
 
-bool testEncodingRoundTrip() {
+TEST_CASE("Encoding Round Trip") {
     std::cout << "Test: L16/L24 Encoding Round-Trip via Ring Buffers... ";
 
     // Test that encoding -> ring buffer -> decoding preserves audio data
@@ -749,18 +731,18 @@ bool testEncodingRoundTrip() {
         // Write decoded to ring buffer and read back
         SPSCRingBuffer<float> ringBuffer(kRingBufferSize);
         size_t written = ringBuffer.write(decoded.data(), numSamples);
-        TEST_ASSERT(written == numSamples, "L16: should write all samples to ring buffer");
+        CHECK(written == numSamples);
 
         std::vector<float> readBack(numSamples);
         size_t readCount = ringBuffer.read(readBack.data(), numSamples);
-        TEST_ASSERT(readCount == numSamples, "L16: should read all samples from ring buffer");
+        CHECK(readCount == numSamples);
 
         // Verify L16 precision (~0.01 tolerance)
         double maxError = 0.0;
         for (size_t i = 0; i < numSamples; ++i) {
             maxError = std::max(maxError, static_cast<double>(std::abs(readBack[i] - original[i])));
         }
-        TEST_ASSERT(maxError < 0.01, "L16 round-trip error should be < 0.01");
+        CHECK(maxError < 0.01);
     }
 
     // L24 round-trip via codec
@@ -774,29 +756,28 @@ bool testEncodingRoundTrip() {
         // Write decoded to ring buffer and read back
         SPSCRingBuffer<float> ringBuffer(kRingBufferSize);
         size_t written = ringBuffer.write(decoded.data(), numSamples);
-        TEST_ASSERT(written == numSamples, "L24: should write all samples to ring buffer");
+        CHECK(written == numSamples);
 
         std::vector<float> readBack(numSamples);
         size_t readCount = ringBuffer.read(readBack.data(), numSamples);
-        TEST_ASSERT(readCount == numSamples, "L24: should read all samples from ring buffer");
+        CHECK(readCount == numSamples);
 
         // Verify L24 precision (~0.001 tolerance)
         double maxError = 0.0;
         for (size_t i = 0; i < numSamples; ++i) {
             maxError = std::max(maxError, static_cast<double>(std::abs(readBack[i] - original[i])));
         }
-        TEST_ASSERT(maxError < 0.001, "L24 round-trip error should be < 0.001");
+        CHECK(maxError < 0.001);
     }
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 8: Channel Mapping Correctness Through Receiver
 // ============================================================================
 
-bool testChannelMappingThroughReceiver() {
+TEST_CASE("Channel Mapping Through Receiver") {
     std::cout << "Test: Channel Mapping Correctness (offset mapping)... ";
 
     auto deviceBuffers = MakeRingBufferArray<kNumChannels>(kRingBufferSize);
@@ -809,7 +790,7 @@ bool testChannelMappingThroughReceiver() {
 
     RTPReceiver receiver(sdp, mapping, deviceBuffers);
     bool started = receiver.start();
-    TEST_ASSERT(started, "Mapped receiver should start");
+    CHECK(started);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -838,19 +819,17 @@ bool testChannelMappingThroughReceiver() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     // Verify data landed in device channels 16-19
-    TEST_ASSERT(deviceBuffers[16].available() > 0, "Device channel 16 should have data");
-    TEST_ASSERT(deviceBuffers[17].available() > 0, "Device channel 17 should have data");
-    TEST_ASSERT(deviceBuffers[18].available() > 0, "Device channel 18 should have data");
-    TEST_ASSERT(deviceBuffers[19].available() > 0, "Device channel 19 should have data");
+    CHECK(deviceBuffers[16].available() > 0);
+    CHECK(deviceBuffers[17].available() > 0);
+    CHECK(deviceBuffers[18].available() > 0);
+    CHECK(deviceBuffers[19].available() > 0);
 
     // Verify channels 0-15 and 20+ are empty
     for (int ch = 0; ch < 16; ++ch) {
-        TEST_ASSERT(deviceBuffers[ch].available() == 0,
-                    "Channels below mapping range should be empty");
+        CHECK(deviceBuffers[ch].available() == 0);
     }
     for (int ch = 20; ch < 24; ++ch) {
-        TEST_ASSERT(deviceBuffers[ch].available() == 0,
-                    "Channels above mapping range should be empty");
+        CHECK(deviceBuffers[ch].available() == 0);
     }
 
     // Verify per-channel data correctness
@@ -860,14 +839,10 @@ bool testChannelMappingThroughReceiver() {
         deviceBuffers[devCh].read(data.data(), avail);
         for (size_t i = 0; i < avail; ++i) {
             if (std::abs(data[i] - expectedVal) > 0.02f) {
-                std::cerr << "FAIL: " << desc << " (sample " << i
-                          << " = " << data[i] << ", expected ~" << expectedVal << ")" << std::endl;
-                testsFailed++;
-                return false;
+                FAIL_CHECK(desc << " (sample " << i << " = " << data[i]
+                                << ", expected ~" << expectedVal << ")");
             }
         }
-        testsPassed++;
-        return true;
     };
 
     verifyChannel(16, 0.1f, "Device ch16 should have stream ch0 data (~0.1)");
@@ -878,14 +853,13 @@ bool testChannelMappingThroughReceiver() {
     receiver.stop();
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 9: Receiver Statistics Accuracy
 // ============================================================================
 
-bool testReceiverStatistics() {
+TEST_CASE("Receiver Statistics") {
     std::cout << "Test: Receiver Statistics Accuracy... ";
 
     auto deviceBuffers = MakeRingBufferArray<kNumChannels>(kRingBufferSize);
@@ -916,14 +890,13 @@ bool testReceiverStatistics() {
     StatisticsSnapshot stats = receiver.getStatistics();
 
     // Should have received all 10 packets
-    TEST_ASSERT(stats.packetsReceived >= 8,
-                "Should receive most of the 10 packets sent");
+    CHECK(stats.packetsReceived >= 8);
 
     // Bytes received should be > 0
-    TEST_ASSERT(stats.bytesReceived > 0, "Should track bytes received");
+    CHECK(stats.bytesReceived > 0);
 
     // No malformed packets (we sent valid ones)
-    TEST_ASSERT(stats.malformedPackets == 0, "Should have no malformed packets");
+    CHECK(stats.malformedPackets == 0);
 
     // Now send a gap: skip sequence numbers 10-14, send 15
     sendRawRTPPacket("239.69.69.8", 15018, 15, 15 * 48, 0x44444444,
@@ -933,8 +906,7 @@ bool testReceiverStatistics() {
 
     StatisticsSnapshot stats2 = receiver.getStatistics();
     // The receiver should detect the gap (packets 10-14 lost)
-    TEST_ASSERT(stats2.packetsLost > 0 || stats2.packetsReceived > stats.packetsReceived,
-                "Should detect gap or receive the new packet");
+    CHECK((stats2.packetsLost > 0 || stats2.packetsReceived > stats.packetsReceived));
 
     receiver.stop();
 
@@ -942,14 +914,13 @@ bool testReceiverStatistics() {
     receiver.resetStatistics();
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Test 10: Transmitter Continuous Packet Flow
 // ============================================================================
 
-bool testTransmitterContinuousFlow() {
+TEST_CASE("Transmitter Continuous Flow") {
     std::cout << "Test: Transmitter Continuous Packet Flow (silence on empty)... ";
 
     // AES67 requires continuous packets even when ring buffers are empty.
@@ -964,82 +935,20 @@ bool testTransmitterContinuousFlow() {
 
     RTPTransmitter transmitter(sdp, mapping, deviceBuffers);
     bool started = transmitter.start();
-    TEST_ASSERT(started, "Transmitter should start even with empty buffers");
+    CHECK(started);
 
     // Let it run for 50ms -- it should still be sending packets (silence)
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     StatisticsSnapshot stats = transmitter.getStatistics();
-    TEST_ASSERT(stats.bytesSent > 0,
-                "Transmitter should send silence packets even with empty buffers");
+    CHECK(stats.bytesSent > 0);
 
     transmitter.stop();
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 // ============================================================================
 // Main Test Runner
 // ============================================================================
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 Integration Tests: Full Audio Path" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "RTP Receive Path Tests:" << std::endl;
-    std::cout << "----------------------" << std::endl;
-    testRTPReceiveToRingBuffer();
-    std::cout << std::endl;
-
-    std::cout << "RTP Transmit Path Tests:" << std::endl;
-    std::cout << "-----------------------" << std::endl;
-    testRingBufferToRTPTransmit();
-    std::cout << std::endl;
-
-    std::cout << "Full Loopback Tests:" << std::endl;
-    std::cout << "-------------------" << std::endl;
-    testFullLoopback();
-    std::cout << std::endl;
-
-    std::cout << "Buffer Edge Case Tests:" << std::endl;
-    std::cout << "----------------------" << std::endl;
-    testUnderrunBehavior();
-    testOverrunBehavior();
-    std::cout << std::endl;
-
-    std::cout << "Channel Isolation Tests:" << std::endl;
-    std::cout << "-----------------------" << std::endl;
-    testMultiStreamChannelIsolation();
-    std::cout << std::endl;
-
-    std::cout << "Encoding Round-Trip Tests:" << std::endl;
-    std::cout << "-------------------------" << std::endl;
-    testEncodingRoundTrip();
-    std::cout << std::endl;
-
-    std::cout << "Channel Mapping Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testChannelMappingThroughReceiver();
-    std::cout << std::endl;
-
-    std::cout << "Statistics Tests:" << std::endl;
-    std::cout << "----------------" << std::endl;
-    testReceiverStatistics();
-    std::cout << std::endl;
-
-    std::cout << "Continuous Flow Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testTransmitterContinuousFlow();
-    std::cout << std::endl;
-
-    std::cout << "========================================" << std::endl;
-    std::cout << "Test Results:" << std::endl;
-    std::cout << "  Passed: " << testsPassed << std::endl;
-    std::cout << "  Failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
-
-    return testsFailed == 0 ? 0 : 1;
-}

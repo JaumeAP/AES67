@@ -4,6 +4,9 @@
 // Unit tests for PTP clock synchronization
 //
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "NetworkEngine/PTP/PTPClock.h"
 #include "Driver/SDPParser.h"
 #include <iostream>
@@ -14,58 +17,46 @@
 using namespace AES67;
 
 // Test result counter
-static int testsPassed = 0;
-static int testsFailed = 0;
 
-#define TEST_ASSERT(condition, message) \
-    if (!(condition)) { \
-        std::cerr << "FAIL: " << message << std::endl; \
-        testsFailed++; \
-        return false; \
-    } else { \
-        testsPassed++; \
-    }
 
 //
 // LocalClock Tests
 //
 
-bool testLocalClockCreation() {
+TEST_CASE("Local Clock Creation") {
     std::cout << "Test: LocalClock creation... ";
 
     LocalClock clock;
 
     // Should be able to create local clock
-    TEST_ASSERT(true, "LocalClock should construct successfully");
+    CHECK(true);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testLocalClockTimeRetrieval() {
+TEST_CASE("Local Clock Time Retrieval") {
     std::cout << "Test: LocalClock time retrieval... ";
 
     LocalClock clock;
 
     // Get time in nanoseconds
     uint64_t timeNs = clock.getTime();
-    TEST_ASSERT(timeNs > 0, "Time in nanoseconds should be positive");
+    CHECK(timeNs > 0);
 
     // Get time in microseconds
     uint64_t timeUs = clock.getTimeMicroseconds();
-    TEST_ASSERT(timeUs > 0, "Time in microseconds should be positive");
+    CHECK(timeUs > 0);
 
     // Microseconds should be roughly nanoseconds / 1000
     // Allow some tolerance for execution time
     uint64_t calculatedUs = timeNs / 1000;
     int64_t diff = static_cast<int64_t>(timeUs) - static_cast<int64_t>(calculatedUs);
-    TEST_ASSERT(std::abs(diff) < 1000, "Microseconds should match nanoseconds / 1000");
+    CHECK(std::abs(diff) < 1000);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testLocalClockMonotonic() {
+TEST_CASE("Local Clock Monotonic") {
     std::cout << "Test: LocalClock monotonic behavior... ";
 
     LocalClock clock;
@@ -78,38 +69,36 @@ bool testLocalClockMonotonic() {
     uint64_t t3 = clock.getTime();
 
     // Time should always increase (monotonic)
-    TEST_ASSERT(t2 > t1, "Time should increase monotonically");
-    TEST_ASSERT(t3 > t2, "Time should continue to increase");
+    CHECK(t2 > t1);
+    CHECK(t3 > t2);
 
     // Check that elapsed time makes sense (~10ms between samples)
     uint64_t elapsed1 = (t2 - t1) / 1000000;  // Convert to milliseconds
     uint64_t elapsed2 = (t3 - t2) / 1000000;
-    TEST_ASSERT(elapsed1 >= 8 && elapsed1 <= 15, "Elapsed time should be ~10ms");
-    TEST_ASSERT(elapsed2 >= 8 && elapsed2 <= 15, "Elapsed time should be ~10ms");
+    CHECK((elapsed1 >= 8 && elapsed1 <= 15));
+    CHECK((elapsed2 >= 8 && elapsed2 <= 15));
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // PTPClock Tests
 //
 
-bool testPTPClockCreation() {
+TEST_CASE("PTP Clock Creation") {
     std::cout << "Test: PTPClock creation... ";
 
     // Create PTP clock for domain 0
     PTPClock clock(0);
 
-    TEST_ASSERT(!clock.isRunning(), "Clock should not be running initially");
-    TEST_ASSERT(!clock.isLocked(), "Clock should not be locked initially");
-    TEST_ASSERT(clock.getDomain() == 0, "Domain should be 0");
+    CHECK(!clock.isRunning());
+    CHECK(!clock.isLocked());
+    CHECK(clock.getDomain() == 0);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockMultipleDomains() {
+TEST_CASE("PTP Clock Multiple Domains") {
     std::cout << "Test: PTPClock multiple domains... ";
 
     // Create clocks for different domains
@@ -117,49 +106,46 @@ bool testPTPClockMultipleDomains() {
     PTPClock clock1(1);
     PTPClock clock2(127);
 
-    TEST_ASSERT(clock0.getDomain() == 0, "Clock 0 should have domain 0");
-    TEST_ASSERT(clock1.getDomain() == 1, "Clock 1 should have domain 1");
-    TEST_ASSERT(clock2.getDomain() == 127, "Clock 2 should have domain 127");
+    CHECK(clock0.getDomain() == 0);
+    CHECK(clock1.getDomain() == 1);
+    CHECK(clock2.getDomain() == 127);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockTimeRetrieval() {
+TEST_CASE("PTP Clock Time Retrieval") {
     std::cout << "Test: PTPClock time retrieval... ";
 
     PTPClock clock(0);
 
     // Should be able to get time even when not running
     uint64_t timeNs = clock.getTime();
-    TEST_ASSERT(timeNs > 0, "Time should be positive");
+    CHECK(timeNs > 0);
 
     uint64_t timeUs = clock.getTimeMicroseconds();
-    TEST_ASSERT(timeUs > 0, "Time in microseconds should be positive");
+    CHECK(timeUs > 0);
 
     // Check conversion
     uint64_t calculatedUs = timeNs / 1000;
     int64_t diff = static_cast<int64_t>(timeUs) - static_cast<int64_t>(calculatedUs);
-    TEST_ASSERT(std::abs(diff) < 1000, "Microseconds conversion should be accurate");
+    CHECK(std::abs(diff) < 1000);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockOffset() {
+TEST_CASE("PTP Clock Offset") {
     std::cout << "Test: PTPClock offset tracking... ";
 
     PTPClock clock(0);
 
     // Initial offset should be 0 when not locked
     int64_t offset = clock.getOffsetNs();
-    TEST_ASSERT(offset == 0, "Initial offset should be 0");
+    CHECK(offset == 0);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockQuality() {
+TEST_CASE("PTP Clock Quality") {
     std::cout << "Test: PTPClock quality parameters... ";
 
     PTPClock clock(0);
@@ -169,14 +155,13 @@ bool testPTPClockQuality() {
     uint8_t clockAccuracy = clock.getClockAccuracy();
 
     // Default values for unlocked clock
-    TEST_ASSERT(clockClass == 248, "Default clock class should be 248 (unlocked)");
-    TEST_ASSERT(clockAccuracy == 254, "Default accuracy should be 254 (unknown)");
+    CHECK(clockClass == 248);
+    CHECK(clockAccuracy == 254);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockMasterID() {
+TEST_CASE("PTP Clock Master ID") {
     std::cout << "Test: PTPClock master ID retrieval... ";
 
     PTPClock clock(0);
@@ -185,74 +170,69 @@ bool testPTPClockMasterID() {
     std::string masterID = clock.getMasterClockID();
 
     // When not locked, master ID should be empty or indicate stub mode
-    TEST_ASSERT(masterID.empty() || masterID.find("STUB") != std::string::npos,
-                "Master ID should be empty or indicate stub mode when not locked");
+    CHECK((masterID.empty() || masterID.find("STUB") != std::string::npos));
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // PTPClockManager Tests
 //
 
-bool testPTPClockManagerSingleton() {
+TEST_CASE("PTP Clock Manager Singleton") {
     std::cout << "Test: PTPClockManager singleton pattern... ";
 
     // Get instance multiple times - should return same instance
     PTPClockManager& mgr1 = PTPClockManager::getInstance();
     PTPClockManager& mgr2 = PTPClockManager::getInstance();
 
-    TEST_ASSERT(&mgr1 == &mgr2, "Singleton should return same instance");
+    CHECK(&mgr1 == &mgr2);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerGlobalEnable() {
+TEST_CASE("PTP Clock Manager Global Enable") {
     std::cout << "Test: PTPClockManager global enable/disable... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
 
     // Should be enabled by default
-    TEST_ASSERT(mgr.isPTPEnabled(), "PTP should be enabled by default");
+    CHECK(mgr.isPTPEnabled());
 
     // Disable
     mgr.setPTPEnabled(false);
-    TEST_ASSERT(!mgr.isPTPEnabled(), "PTP should be disabled");
+    CHECK(!mgr.isPTPEnabled());
 
     // Re-enable
     mgr.setPTPEnabled(true);
-    TEST_ASSERT(mgr.isPTPEnabled(), "PTP should be enabled again");
+    CHECK(mgr.isPTPEnabled());
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerDomainManagement() {
+TEST_CASE("PTP Clock Manager Domain Management") {
     std::cout << "Test: PTPClockManager domain management... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
 
     // Get clock for domain 0
     auto clock0 = mgr.getClockForDomain(0);
-    TEST_ASSERT(clock0 != nullptr, "Should create clock for domain 0");
-    TEST_ASSERT(clock0->getDomain() == 0, "Clock should have correct domain");
+    CHECK(clock0 != nullptr);
+    CHECK(clock0->getDomain() == 0);
 
     // Get same domain again - should return same instance
     auto clock0_again = mgr.getClockForDomain(0);
-    TEST_ASSERT(clock0 == clock0_again, "Should return same clock instance");
+    CHECK(clock0 == clock0_again);
 
     // Get different domain
     auto clock1 = mgr.getClockForDomain(1);
-    TEST_ASSERT(clock1 != nullptr, "Should create clock for domain 1");
-    TEST_ASSERT(clock1 != clock0, "Different domain should return different clock");
+    CHECK(clock1 != nullptr);
+    CHECK(clock1 != clock0);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerActiveDomains() {
+TEST_CASE("PTP Clock Manager Active Domains") {
     std::cout << "Test: PTPClockManager active domains tracking... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
@@ -267,71 +247,67 @@ bool testPTPClockManagerActiveDomains() {
 
     // Should have at least the domains we created
     // (May have more from previous tests)
-    TEST_ASSERT(domains.size() >= 3, "Should have at least 3 active domains");
+    CHECK(domains.size() >= 3);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerRemoveClock() {
+TEST_CASE("PTP Clock Manager Remove Clock") {
     std::cout << "Test: PTPClockManager clock removal... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
 
     // Create clock for domain 99
     auto clock = mgr.getClockForDomain(99);
-    TEST_ASSERT(clock != nullptr, "Should create clock");
+    CHECK(clock != nullptr);
 
     // Remove it
     mgr.removeClock(99);
 
     // Should be able to remove (no crash)
-    TEST_ASSERT(true, "Should remove clock successfully");
+    CHECK(true);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerLocalTime() {
+TEST_CASE("PTP Clock Manager Local Time") {
     std::cout << "Test: PTPClockManager local time fallback... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
 
     // Get local fallback time
     uint64_t localTime = mgr.getLocalTime();
-    TEST_ASSERT(localTime > 0, "Local time should be positive");
+    CHECK(localTime > 0);
 
     // Should be monotonic
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
     uint64_t localTime2 = mgr.getLocalTime();
-    TEST_ASSERT(localTime2 > localTime, "Local time should be monotonic");
+    CHECK(localTime2 > localTime);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerTimeForDomain() {
+TEST_CASE("PTP Clock Manager Time For Domain") {
     std::cout << "Test: PTPClockManager time for domain... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
 
     // Get time for domain 0
     uint64_t time0 = mgr.getTimeForDomain(0);
-    TEST_ASSERT(time0 > 0, "Time for domain 0 should be positive");
+    CHECK(time0 > 0);
 
     // Get time for domain 1
     uint64_t time1 = mgr.getTimeForDomain(1);
-    TEST_ASSERT(time1 > 0, "Time for domain 1 should be positive");
+    CHECK(time1 > 0);
 
     // Times should be similar (within 1ms) since using local clock
     int64_t diff = static_cast<int64_t>(time1) - static_cast<int64_t>(time0);
-    TEST_ASSERT(std::abs(diff) < 1000000, "Times should be within 1ms");
+    CHECK(std::abs(diff) < 1000000);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
-bool testPTPClockManagerTimeForStream() {
+TEST_CASE("PTP Clock Manager Time For Stream") {
     std::cout << "Test: PTPClockManager time for stream... ";
 
     PTPClockManager& mgr = PTPClockManager::getInstance();
@@ -343,151 +319,89 @@ bool testPTPClockManagerTimeForStream() {
 
     // Get time for stream
     uint64_t streamTime = mgr.getTimeForStream(sdp);
-    TEST_ASSERT(streamTime > 0, "Stream time should be positive");
+    CHECK(streamTime > 0);
 
     // Test with different PTP domain
     sdp.ptpDomain = 1;
     uint64_t streamTime2 = mgr.getTimeForStream(sdp);
-    TEST_ASSERT(streamTime2 > 0, "Stream time should be positive");
+    CHECK(streamTime2 > 0);
 
     // Test with no PTP (domain -1)
     sdp.ptpDomain = -1;
     uint64_t streamTime3 = mgr.getTimeForStream(sdp);
-    TEST_ASSERT(streamTime3 > 0, "Stream time should fallback to local");
+    CHECK(streamTime3 > 0);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Time Conversion Tests
 //
 
-bool testTimeConversions() {
+TEST_CASE("Time Conversions") {
     std::cout << "Test: Time unit conversions... ";
 
     // Test nanoseconds to microseconds
     uint64_t ns = 1000000000;  // 1 second
     uint64_t us = ns / 1000;
-    TEST_ASSERT(us == 1000000, "1 second = 1,000,000 microseconds");
+    CHECK(us == 1000000);
 
     // Test microseconds to milliseconds
     uint64_t ms = us / 1000;
-    TEST_ASSERT(ms == 1000, "1 second = 1,000 milliseconds");
+    CHECK(ms == 1000);
 
     // Test various conversions
-    TEST_ASSERT(1000000 / 1000 == 1000, "1ms in ns = 1000us");
-    TEST_ASSERT(1000 / 1000 == 1, "1us in ns = 1ms");
+    CHECK(1000000 / 1000 == 1000);
+    CHECK(1000 / 1000 == 1);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Domain Validation Tests
 //
 
-bool testPTPDomainRanges() {
+TEST_CASE("PTP Domain Ranges") {
     std::cout << "Test: PTP domain range validation... ";
 
     // Valid domains are 0-127 (IEEE 1588)
 
     // Test boundary values
     PTPClock clock0(0);
-    TEST_ASSERT(clock0.getDomain() == 0, "Domain 0 should be valid");
+    CHECK(clock0.getDomain() == 0);
 
     PTPClock clock127(127);
-    TEST_ASSERT(clock127.getDomain() == 127, "Domain 127 should be valid");
+    CHECK(clock127.getDomain() == 127);
 
     // Test typical AES67 domain (usually 0)
     PTPClock clockAES67(0);
-    TEST_ASSERT(clockAES67.getDomain() == 0, "AES67 typically uses domain 0");
+    CHECK(clockAES67.getDomain() == 0);
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Clock State Tests
 //
 
-bool testPTPClockStates() {
+TEST_CASE("PTP Clock States") {
     std::cout << "Test: PTP clock state transitions... ";
 
     PTPClock clock(0);
 
     // Initial state: not running, not locked
-    TEST_ASSERT(!clock.isRunning(), "Should not be running initially");
-    TEST_ASSERT(!clock.isLocked(), "Should not be locked initially");
+    CHECK(!clock.isRunning());
+    CHECK(!clock.isLocked());
 
     // States should be independent
     bool running = clock.isRunning();
     bool locked = clock.isLocked();
-    TEST_ASSERT(!running || locked || true, "States should be queryable independently");
+    CHECK((!running || locked || true));
 
     std::cout << "PASS" << std::endl;
-    return true;
 }
 
 //
 // Main Test Runner
 //
 
-int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "AES67 PTP Clock Unit Tests" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "LocalClock Tests:" << std::endl;
-    std::cout << "----------------" << std::endl;
-    testLocalClockCreation();
-    testLocalClockTimeRetrieval();
-    testLocalClockMonotonic();
-    std::cout << std::endl;
-
-    std::cout << "PTPClock Tests:" << std::endl;
-    std::cout << "--------------" << std::endl;
-    testPTPClockCreation();
-    testPTPClockMultipleDomains();
-    testPTPClockTimeRetrieval();
-    testPTPClockOffset();
-    testPTPClockQuality();
-    testPTPClockMasterID();
-    std::cout << std::endl;
-
-    std::cout << "PTPClockManager Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testPTPClockManagerSingleton();
-    testPTPClockManagerGlobalEnable();
-    testPTPClockManagerDomainManagement();
-    testPTPClockManagerActiveDomains();
-    testPTPClockManagerRemoveClock();
-    testPTPClockManagerLocalTime();
-    testPTPClockManagerTimeForDomain();
-    testPTPClockManagerTimeForStream();
-    std::cout << std::endl;
-
-    std::cout << "Time Conversion Tests:" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    testTimeConversions();
-    std::cout << std::endl;
-
-    std::cout << "Domain Validation Tests:" << std::endl;
-    std::cout << "-----------------------" << std::endl;
-    testPTPDomainRanges();
-    std::cout << std::endl;
-
-    std::cout << "Clock State Tests:" << std::endl;
-    std::cout << "-----------------" << std::endl;
-    testPTPClockStates();
-    std::cout << std::endl;
-
-    std::cout << "========================================" << std::endl;
-    std::cout << "Test Results:" << std::endl;
-    std::cout << "  Passed: " << testsPassed << std::endl;
-    std::cout << "  Failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
-
-    return testsFailed == 0 ? 0 : 1;
-}

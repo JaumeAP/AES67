@@ -4,8 +4,8 @@
 // Demonstration of Stream-to-Channel Mapping
 //
 
-#include "../NetworkEngine/StreamChannelMapper.h"
-#include "../Driver/SDPParser.h"
+#include "NetworkEngine/StreamChannelMapper.h"
+#include "Driver/SDPParser.h"
 #include <iostream>
 #include <iomanip>
 

@@ -34,7 +34,7 @@
 #include <unistd.h>
 
 // Use the project's RTP header for consistency
-#include "../NetworkEngine/RTP/SimpleRTP.h"
+#include "NetworkEngine/RTP/SimpleRTP.h"
 
 // ── Globals ──────────────────────────────────────────────────────────
 static std::atomic<bool> g_running{true};
