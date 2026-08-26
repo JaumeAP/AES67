@@ -1,0 +1,49 @@
+# Checks that look for defects, not for style.
+#
+# The style families -- readability-*, modernize-*, google-* -- are left off
+# deliberately. They produce hundreds of findings on this code, none of which
+# is a bug, and a check that reports mostly noise gets ignored, which is worse
+# than not running it.
+#
+# Three exclusions inside the defect families, each for a reason:
+#
+#   bugprone-easily-swappable-parameters: fires on every function taking two
+#     doubles. True, unfixable without changing every signature, and it says
+#     nothing about whether the code is right.
+#   bugprone-narrowing-conversions: audio code converts between float, double
+#     and integer sample formats constantly and on purpose.
+#   cert-err58-cpp: static objects with throwing constructors. This library has
+#     them by design in the lookup tables.
+#   performance-avoid-endl: 59 findings in this repository, all in logging and
+#     diagnostics. std::endl flushes, and for a driver whose last log line
+#     before a crash is the evidence, flushing is the point rather than the
+#     cost.
+#   performance-enum-size: 16 findings, all of the form "this enum would fit in
+#     a uint8_t". True, and worth nothing: these enums live in configuration
+#     structs, not in packed wire formats, and narrowing them would change ABI
+#     across the submodule boundary for no measurable gain.
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -cert-err58-cpp,
+  -performance-enum-size,
+  -performance-avoid-endl
+
+WarningsAsErrors: >
+  bugprone-incorrect-roundings,
+  bugprone-implicit-widening-of-multiplication-result,
+  bugprone-empty-catch,
+  bugprone-infinite-loop,
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  clang-analyzer-core.*,
+  clang-analyzer-cplusplus.*
+
+# This repository's own headers only: external/ carries aes67-core and doctest,
+# and neither is this project's to fix.
+HeaderFilterRegex: '(Driver|NetworkEngine|Shared)/.*'

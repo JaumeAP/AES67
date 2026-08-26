@@ -4,6 +4,7 @@
 // See CoreAudioClockSource.h for the design and the honest caveats.
 //
 #include "CoreAudioClockSource.h"
+#include <cmath>
 
 #include "Driver/DebugLog.h"
 
@@ -147,7 +148,10 @@ uint64_t CoreAudioClockSource::currentTimeNs() const {
     const double elapsedSamples = sampleTime - anchorSample_;
     const double elapsedNs = (elapsedSamples / nominalRate_) * 1.0e9;
     locked_.store(true, std::memory_order_relaxed);
-    return emit(anchorNs_ + static_cast<uint64_t>(elapsedNs + 0.5));
+    // lround rather than a cast of (x + 0.5): elapsedNs is derived from a
+    // sample count over a rate, so it is non-negative in practice, but the cast
+    // rounds the wrong way for negatives and nothing here enforces that.
+    return emit(anchorNs_ + static_cast<uint64_t>(std::llround(elapsedNs)));
 }
 
 } // namespace AES67

@@ -43,7 +43,18 @@ uint16_t hashSdp(const std::string& sdp) {
 
 class SAPAnnouncer::Impl {
 public:
-    ~Impl() { stop(); }
+    ~Impl() {
+        // stop() joins the announce thread and closes the socket; both can
+        // throw, and an exception escaping a destructor during unwinding ends
+        // the process.
+        try {
+            stop();
+        } catch (const std::exception& e) {
+            std::cerr << "SAPAnnouncer: teardown threw: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "SAPAnnouncer: teardown threw a non-standard exception\n";
+        }
+    }
 
     bool initialize(const std::string& interfaceIp) {
         sockFd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
