@@ -29,6 +29,19 @@ replace: `NetworkEngine/RTP/PCMCodec.cpp` (Accelerate),
 `NetworkEngine/PTP/AudioClockDeviceList.cpp` and
 `NetworkEngine/PTP/CoreAudioClockSource.cpp` (CoreFoundation, CoreAudio).
 
+### What consuming it costs
+
+This repository is GPL-3.0, and that stays. A project that links `aes67_core`
+or `aes67_net` and is then **distributed** — firmware on a board handed to
+someone, a binary shipped — has to be GPL-3.0 too, sources included. Used
+in-house, on your own machines and boards, the licence obliges nothing.
+
+So the split above is an offer of code, not an offer of terms. If a consumer
+cannot be GPL, the options are the usual ones: reimplement the part it needs,
+or keep it in-house. `dts-dsp`, the DTS decoding library, is LGPL-2.1 instead
+and is the easier dependency for a closed consumer — linking is what that
+licence exists to permit.
+
 The split is checked, not asserted: `scripts/ci-local.sh` fails if anything
 reachable from `aes67_core` — including through a header two levels down —
 includes an Apple framework or a socket header. That check earned its place
