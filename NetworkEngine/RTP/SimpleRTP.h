@@ -7,81 +7,18 @@
 #pragma once
 
 #include <cstdint>
+
+// The wire format lives in its own header, free of sockets, so that consumers
+// that only need to build or read an RTP header do not have to take the
+// transport with it. See RTPHeader.h.
+#include "RTPHeader.h"
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 namespace AES67 {
 namespace RTP {
-
-//
-// RTP Header (RFC 3550 Section 5.1)
-//
-// 0                   1                   2                   3
-// 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |V=2|P|X|  CC   |M|     PT      |       sequence number         |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                           timestamp                           |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |           synchronization source (SSRC) identifier            |
-// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-//
-#pragma pack(push, 1)
-struct RTPHeader {
-    // Byte 0
-    uint8_t cc:4;          // CSRC count
-    uint8_t extension:1;   // Extension bit
-    uint8_t padding:1;     // Padding bit
-    uint8_t version:2;     // Version (always 2)
-
-    // Byte 1
-    uint8_t payloadType:7; // Payload type
-    uint8_t marker:1;      // Marker bit
-
-    // Bytes 2-3
-    uint16_t sequenceNumber;
-
-    // Bytes 4-7
-    uint32_t timestamp;
-
-    // Bytes 8-11
-    uint32_t ssrc;
-
-    // Convert to network byte order
-    void toNetworkOrder() {
-        sequenceNumber = htons(sequenceNumber);
-        timestamp = htonl(timestamp);
-        ssrc = htonl(ssrc);
-    }
-
-    // Convert from network byte order
-    void toHostOrder() {
-        sequenceNumber = ntohs(sequenceNumber);
-        timestamp = ntohl(timestamp);
-        ssrc = ntohl(ssrc);
-    }
-};
-#pragma pack(pop)
-
-static_assert(sizeof(RTPHeader) == 12, "RTP header must be 12 bytes");
-
-//
-// RTP Payload Types (RFC 3551)
-//
-constexpr uint8_t PT_PCMU = 0;      // G.711 μ-law
-constexpr uint8_t PT_GSM = 3;       // GSM
-constexpr uint8_t PT_G723 = 4;      // G.723
-constexpr uint8_t PT_PCMA = 8;      // G.711 A-law
-constexpr uint8_t PT_L16_2CH = 10;  // L16 stereo
-constexpr uint8_t PT_L16_1CH = 11;  // L16 mono
-constexpr uint8_t PT_DYNAMIC = 96;  // Dynamic payload types start here
-
-//
-// AES67 uses dynamic payload types (96-127) for L16/L24
-//
-constexpr uint8_t PT_AES67_L16 = 96;
-constexpr uint8_t PT_AES67_L24 = 97;
 
 //
 // RTP Packet
