@@ -73,7 +73,12 @@ void* Create() {
         auto driver = new aspl::Driver(context, plugin);
         AES67_LOG("Step 3: Driver created successfully");
 
-        void* ref = driver->GetReference();
+        // Explicit cast: GetReference() returns AudioServerPlugInDriverRef, which
+        // is a pointer to a pointer, and CoreAudio's factory signature wants
+        // void*. The conversion is the contract, but an implicit multilevel
+        // pointer conversion is worth spelling out rather than letting it
+        // happen quietly.
+        void* ref = static_cast<void*>(driver->GetReference());
         AES67_LOGF("Step 4: Got driver reference: %p", ref);
 
         AES67_LOG("=== Create() completed successfully ===");

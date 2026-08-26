@@ -109,8 +109,24 @@ extern std::unique_ptr<ResourceCleanupManager> g_resourceCleanupManager;
         AES67::g_resourceCleanupManager->registerCleanup(func); \
     }
 
+// `resource` is parenthesised in the capture and `cleanup_expr` is not, on
+// purpose: a lambda capture cannot take a parenthesised name, while the
+// expression can and must, or an argument containing a comma or a low-priority
+// operator would bind wrongly at the expansion site.
+// `resource` names a variable to capture by reference, and a lambda capture list
+// cannot take a parenthesised name -- so this one exclusion is not a style
+// preference, it is what the language allows. The expression argument is
+// parenthesised, which is the half that can be.
+//
+// The suppression is a begin/end pair rather than a next-line one because the
+// warning lands on the macro body, not on the #define. And the directive names
+// are kept out of this prose: clang-tidy scans comments for them literally, so
+// writing one in a sentence opens a block that never closes.
+//
+// NOLINTBEGIN(bugprone-macro-parentheses)
 #define WITH_CLEANUP(resource, cleanup_expr) \
-    AES67::ResourceGuard guard([&resource]() { cleanup_expr; })
+    AES67::ResourceGuard guard([&resource]() { (cleanup_expr); })
+// NOLINTEND(bugprone-macro-parentheses)
 
 } // namespace AES67
 
