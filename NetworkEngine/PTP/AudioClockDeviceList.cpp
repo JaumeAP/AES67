@@ -34,13 +34,15 @@ bool hasOwnClockDomain(AudioDeviceID deviceID) {
 
 std::string deviceName(AudioDeviceID deviceID) {
     CFStringRef name = nullptr;
-    UInt32 size = sizeof(name);
+    // sizeof on a pointer is what CoreAudio wants here: the call writes a
+    // CFStringRef into the buffer, so the buffer is one pointer wide.
+    UInt32 size = sizeof(name);  // NOLINT(bugprone-sizeof-expression)
     AudioObjectPropertyAddress addr{
         kAudioObjectPropertyName,
         kAudioObjectPropertyScopeGlobal,
         kAudioObjectPropertyElementMain
     };
-    if (AudioObjectGetPropertyData(deviceID, &addr, 0, nullptr, &size, &name) != noErr || !name) {
+    if (AudioObjectGetPropertyData(deviceID, &addr, 0, nullptr, &size, static_cast<void*>(&name)) != noErr || !name) {
         return "(unnamed device)";
     }
     std::string result = cfStringToStd(name);
@@ -50,13 +52,13 @@ std::string deviceName(AudioDeviceID deviceID) {
 
 std::string deviceUID(AudioDeviceID deviceID) {
     CFStringRef uid = nullptr;
-    UInt32 size = sizeof(uid);
+    UInt32 size = sizeof(uid);  // NOLINT(bugprone-sizeof-expression) -- see deviceName()
     AudioObjectPropertyAddress addr{
         kAudioDevicePropertyDeviceUID,
         kAudioObjectPropertyScopeGlobal,
         kAudioObjectPropertyElementMain
     };
-    if (AudioObjectGetPropertyData(deviceID, &addr, 0, nullptr, &size, &uid) != noErr || !uid) {
+    if (AudioObjectGetPropertyData(deviceID, &addr, 0, nullptr, &size, static_cast<void*>(&uid)) != noErr || !uid) {
         return "";
     }
     std::string result = cfStringToStd(uid);
@@ -109,8 +111,8 @@ AudioDeviceID resolveAudioDeviceUID(const std::string& uid) {
 
     AudioDeviceID deviceID = kAudioObjectUnknown;
     AudioValueTranslation translation{};
-    translation.mInputData = &uidRef;
-    translation.mInputDataSize = sizeof(uidRef);
+    translation.mInputData = static_cast<void*>(&uidRef);
+    translation.mInputDataSize = sizeof(uidRef);  // NOLINT(bugprone-sizeof-expression) -- pointer-wide by contract
     translation.mOutputData = &deviceID;
     translation.mOutputDataSize = sizeof(deviceID);
 

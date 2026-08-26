@@ -30,7 +30,9 @@ RTPTransmitter::RTPTransmitter(
     , sourcePort_(sourcePort)
     , dscp_(dscp)
 {
-    std::memset(&stats_, 0, sizeof(stats_));
+    // See RTPReceiver: Statistics holds atomics, so memset over it is undefined
+    // behaviour. reset() stores zero into each counter.
+    stats_.reset();
 
     // Generate random SSRC
     std::random_device rd;
@@ -44,7 +46,10 @@ RTPTransmitter::RTPTransmitter(
 
     // Payload buffer: RTP header (12 bytes) + max audio payload
     // L24 is largest: 3 bytes/sample × channels × frames
-    const size_t maxPayloadSize = 3 * sdp_.numChannels * maxFrames;
+    // size_t throughout: 3 * channels * frames is a buffer size, and an int
+    // product overflows long before size_t would.
+    const size_t maxPayloadSize =
+        size_t{3} * static_cast<size_t>(sdp_.numChannels) * static_cast<size_t>(maxFrames);
     payloadBuffer_.resize(12 + maxPayloadSize);
 
     // Packet interval and payload size must agree, or the stream drifts:

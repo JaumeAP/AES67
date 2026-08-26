@@ -1,4 +1,5 @@
 #include "ResourceCleanupManager.h"
+#include "Driver/DebugLog.h"
 #include "Shared/NonBlockingLogger.h"
 #include <sys/socket.h>
 #include <unistd.h>
@@ -92,8 +93,18 @@ MemoryGuard::MemoryGuard(void* ptr, std::function<void(void*)> deleter)
     : ptr_(ptr), deleter_(std::move(deleter)), active_(true) {}
 
 MemoryGuard::~MemoryGuard() {
+    // The deleter is caller-supplied, so it can throw whatever it likes. A
+    // destructor that lets an exception out while another one is unwinding
+    // ends the process in std::terminate -- and this guard exists precisely to
+    // run during unwinding.
     if (active_) {
-        free();
+        try {
+            free();
+        } catch (const std::exception& e) {
+            AES67_LOGF("MemoryGuard: deleter threw during cleanup: %s", e.what());
+        } catch (...) {
+            AES67_LOG("MemoryGuard: deleter threw a non-standard exception during cleanup");
+        }
     }
 }
 

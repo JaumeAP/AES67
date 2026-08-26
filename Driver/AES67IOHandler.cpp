@@ -114,7 +114,12 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
     float channelBuffer[kMaxFramesPerBuffer];
 
     if (frameCount > kMaxFramesPerBuffer) {
-        std::memset(outputData, 0, frameCount * channelCount * sizeof(float));
+        // size_t product: this is a byte count, and computing it in UInt32
+        // truncates before the widening. Guarded above, so unreachable today
+        // with sane values -- but this is the real-time path, and the guard is
+        // the only thing standing between a bad frame count and a wild memset.
+        std::memset(outputData, 0,
+                    static_cast<size_t>(frameCount) * static_cast<size_t>(channelCount) * sizeof(float));
         return;
     }
 
@@ -137,7 +142,7 @@ void AES67IOHandler::processInput(float* outputData, UInt32 frameCount, UInt32 c
         // Interleave into output
         // outputData layout: [ch0_f0, ch1_f0, ..., ch127_f0, ch0_f1, ch1_f1, ...]
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
-            outputData[frame * channelCount + ch] = channelBuffer[frame];
+            outputData[static_cast<size_t>(frame) * channelCount + ch] = channelBuffer[frame];
         }
     }
 }
@@ -157,7 +162,7 @@ void AES67IOHandler::processOutput(const float* inputData, UInt32 frameCount, UI
 
     for (size_t ch = 0; ch < channelCount; ++ch) {
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
-            channelBuffer[frame] = inputData[frame * channelCount + ch];
+            channelBuffer[frame] = inputData[static_cast<size_t>(frame) * channelCount + ch];
         }
 
         const size_t samplesWritten = outputBuffers[ch].write(channelBuffer, frameCount);

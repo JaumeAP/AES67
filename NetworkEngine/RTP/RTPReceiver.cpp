@@ -52,7 +52,11 @@ RTPReceiver::RTPReceiver(
         prefillPacketCount_ = std::max<size_t>(packets, 1); // a zero cushion starves immediately
     }
 
-    std::memset(&stats_, 0, sizeof(stats_));
+    // stats_.reset(), not memset: Statistics is eleven std::atomic members, so
+    // writing over it with memset is undefined behaviour -- and the counters are
+    // read from another thread while the receiver runs, which is exactly where
+    // that bites. reset() stores zero into each one.
+    stats_.reset();
 
     // Pre-allocate audio buffer to avoid allocations in receiveLoop()
     // Max 512 frames × stream channels (e.g., 512 × 8 = 4096 floats)
