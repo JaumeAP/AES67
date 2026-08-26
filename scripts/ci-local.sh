@@ -17,8 +17,12 @@ cd "$repo_root"
 
 build_dir="build"
 sanitize=""
+analyse=0
 for arg in "$@"; do
   case "$arg" in
+    --analyse|--analyze)
+      analyse=1
+      ;;
     --clean)
       echo "==> Removing $build_dir (clean run)"
       rm -rf "$build_dir"
@@ -119,11 +123,20 @@ else
   exit 1
 fi
 
-# Static analysis. Not informational: .clang-tidy decides which checks fail the
-# gate and which only report, and the failing set is the one verified here not
-# to be noisy. It found five defects in the real-time path the day it was added.
-echo "==> Static analysis"
-scripts/check-tidy.sh "$build_dir" || { echo "FAIL: clang-tidy" >&2; exit 1; }
+# Static analysis, and only when asked for. It is the expensive part -- minutes
+# against seconds for the tests -- and it is not where regressions appear:
+# clang-tidy finds latent defects, the kind that have been there for months,
+# not something that broke between two commits. Paying for it on every push
+# taxes the wrong moment.
+#
+# AES67_ANALYSE=1 turns it on; scripts/ci-local.sh --analyse does the same.
+# .githooks/pre-push sets it when the push is going to main, after asking.
+if [ "${AES67_ANALYSE:-0}" = "1" ] || [ "$analyse" = "1" ]; then
+  echo "==> Static analysis"
+  scripts/check-tidy.sh "$build_dir" || { echo "FAIL: clang-tidy" >&2; exit 1; }
+else
+  echo "==> Static analysis skipped (AES67_ANALYSE=1 or --analyse to run it)"
+fi
 
 # Both checks below are informational: the workflow's lint job never failed on
 # them either, it only printed what it found.
