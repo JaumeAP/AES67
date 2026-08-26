@@ -10,22 +10,30 @@ Git workflow: autonomous local merge (no PR) per git-rules. Response style: Cata
 
 Architecture invariants: RT-safe thread boundaries (IO thread touches only RTSafeStreamInterface + lock-free ring buffers, never StreamManager), AudioServerPlugIn via libASPL. Stream configs persist as JSON.
 
-Build/test: macOS (Apple Silicon + x86_64) + cross-platform tests, CMake out-of-source, per-subsystem CTests. Run via `ctest --output-on-failure`; exclude network tests: `ctest -E "RingBuffer|PTPClock|IntegrationAudioPath"`.
+Platform-free core: extracted to `JaumeAP/aes67-core`, consumed as the `external/aes67-core` submodule — SDP, RTP wire header, jitter buffer, packet pool, PLL, resampling, channel mapping, configuration. What stays here is macOS-specific plus `aes67_net`, the socket layer, which supplies the four `NetworkUtils` symbols the core declares without implementing. Clone with `--recurse-submodules`.
 
-CI: local only. `scripts/ci-local.sh` is the gate, run automatically by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). GitHub Actions is disabled and its workflow deleted. The gate builds the driver, the tests and `ManagerApp`, and runs `ctest -LE timing`; last green run 16/16. `--sanitize` and `--tsan` run everything but `network` (18/18 green, no findings). `scripts/coverage.sh` reports llvm-cov: currently 30.12% of lines, with only SDPParser, CompatibilityProfile, NetworkUtils and PCMCodec covered at all.
+Build/test: macOS (Apple Silicon + x86_64), CMake out-of-source. 13 doctest suites, labelled `unit`/`timing`/`network`/`integration`, each with `TIMEOUT 60`. `IntegrationAudioPath` needs real multicast and fails outside the gate by design.
+
+CI: local only, GitHub Actions disabled and deleted. `scripts/ci-local.sh` is the gate — build, `ctest -LE timing`, the core's own platform contract, and clang-tidy — run by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). `--sanitize` and `--tsan` run everything but `network`. `scripts/coverage.sh` reports llvm-cov.
+
+Static analysis: `.clang-tidy` runs the defect families and leaves style off; `WarningsAsErrors` is deliberately narrower than `Checks`. clang-tidy is not in the Command Line Tools — install with `python3 -m venv ~/.local/venvs/cpptools && ~/.local/venvs/cpptools/bin/pip install clang-tidy==21.1.6`, matching the system compiler. The script skips itself with a message when it finds none.
 
 Manager app previews: `#Preview` blocks live in `ManagerApp/Views/Previews/`, kept out of `build.sh`'s source list because the macro needs full Xcode. New previews go there, and into the Xcode target, never into `build.sh`.
 
-## Session summary — Workflow-skill plugin migration and doc sync (2026-08-25)
+## Session summary — Core extraction, doctest, static analysis (2026-08-26)
 
-Audited the session-rules skills and their hooks. Two of the six hooks were dead — the Stop hook emitted a field that event's output schema does not accept, and the periodic re-read reminder aborted silently in every repo — and nothing had degraded while they were, so the set was cut to two: the PreToolUse gate that denies every tool call until `HANDOFF.md` has been read, and the PostToolUse companion that releases it. The gate now also clears on a Bash read; it previously deadlocked any session running in a Bash-preferring mode.
+The platform-free core moved to its own repository so the firmware, a Linux daemon and this driver are peers rather than consumers of a macOS driver, and this repo now takes it back as a submodule. The extraction surfaced a link-time seam the header check could not see: `StreamConfig` calls `NetworkUtils`, whose implementation opens sockets.
 
-Packaged the plugin as a marketplace release: `JaumeAP/claude-plugins` (private), installed as `session-rules@jaumeap` 0.2.1, tagged `session-rules--v0.2.1`. The plugin cache is keyed by version, so any content change needs a version bump to reach an installation.
+All thirteen suites moved to doctest — 3055 assertions run where 833 were written, because checks inside loops now count per execution. The same migration went through `aes67-core`, `dts-dsp`, `llibreries`, `subtitle-sync` and `DTS-Player-MacOS`; the firmware keeps Unity.
 
-In this repo, CLAUDE.md and HANDOFF.md still described the old skills-dir layout and six hooks. Both corrected, along with a stale active branch and a stale "no open items", then merged to `main` (ae1bdcd).
+clang-tidy ran here for the first time and found nine real defects, three in the real-time path: products computed in `UInt32` then used as `size_t` byte counts and indices, `std::memset` over a struct of eleven atomics read from another thread, and three destructors that could let an exception out during unwinding.
+
+One self-inflicted failure worth remembering: a regex edit to `Tests/CMakeLists.txt` deleted twelve of thirteen `add_executable` blocks, and nothing noticed because stale binaries in `build/` kept passing. `Examples/` and `Tools/` had also been broken since the extraction, invisible because the gate builds with both off.
 
 ## Open items
 
 1. `ManagerApp` builds and is signed, but remains unverified against a live driver, per README.
-2. Test suites still on a hand-written `main`: 21 of 22. `Tests/TestSDPParser.cpp` is the doctest reference to copy; convert one per commit.
-3. Coverage is 30% of lines. Whole subsystems sit at 0%: every PTP file, the jitter buffers, the packet pool, `AES67IOHandler`, `NetworkInterfaceDetection`.
+2. Coverage of this repository's own code is 9.5% of lines. `RTPReceiver`, `RTPTransmitter`, `PTPSlave`, `PTPMaster`, `AES67IOHandler`, `NetworkUtils` and the CoreAudio clock sources are all at 0%. Raising it needs a seam for the transport and the clock, the way `NetworkUtils` already has one — not more mechanical tests.
+3. `NetworkErrorHandler::attemptRecovery` in the core clears its own latch before returning, so `isInRecovery()` is false wherever a caller can observe it and a second recovery always starts. Pinned by a test that documents the behaviour rather than the comment; making the latch real is a behaviour change.
+4. The firmware PR `JaumeAP/DTS-Player#33` needs `pio test -e native` before merging, and a decision on `-DDTS_DSP_QMF_FLOAT`: the default `double` is bit-exact with the reference, `float` costs 3 samples in 2048 and buys back software-emulated double on the P4's single-precision FPU.
+5. `dts-dsp` needs `COPYING.LESSER` — the LGPL-2.1 text — which nobody has downloaded yet.
