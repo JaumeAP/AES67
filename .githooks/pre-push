@@ -3,12 +3,20 @@
 # GitHub Actions workflow: nothing verifies these commits server-side any more,
 # so this is the only gate left.
 #
-# Skip one push with `git push --no-verify` or SKIP_LOCAL_CI=1.
+# Two speeds, on purpose. A push to a working branch gets the cheap half --
+# build and tests, seconds -- because that is where regressions show. A push to
+# the default branch is the result somebody else will pull, so it is worth the
+# full gate with static analysis, which costs minutes. The hook asks first
+# rather than deciding for you.
 #
-# Note for the close/sync git sequence (git-sync-and-merge): its second Bash
-# call chains the pushes behind `|| echo "PUSH FAILED - continuing"`, so a red
-# build here does not abort the chain -- it leaves the refs unpushed and the
-# guard reports it. Read that line rather than assuming the push landed.
+# Answering is optional in every direction:
+#   AES67_ANALYSE=1   run the analysis without being asked
+#   AES67_ANALYSE=0   skip it without being asked
+#   SKIP_LOCAL_CI=1   skip the whole gate (or push with --no-verify)
+#
+# Without a terminal -- a script, an agent, CI of any kind -- the question
+# cannot be answered, so it is not asked: the analysis is skipped and the push
+# proceeds. A hook that blocks on a prompt nobody can see is a hung push.
 set -uo pipefail
 
 if [ "${SKIP_LOCAL_CI:-0}" = "1" ]; then
@@ -18,19 +26,53 @@ fi
 
 repo_root="$(git rev-parse --show-toplevel)"
 
-# A pure branch/tag deletion has nothing to build.
+# Three things come off stdin: whether anything is being pushed at all, whether
+# it is only deletions, and whether the default branch is among the targets.
+# No lines means git found nothing to send -- "everything up-to-date" -- which
+# is not the same as a deletion, and saying so avoids a message that reads like
+# a bug report.
+saw_refs=0
 only_deletes=1
-while read -r _local_ref local_sha _remote_ref _remote_sha; do
+to_default_branch=0
+default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+default_branch="${default_branch:-main}"
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   [ -z "${local_sha:-}" ] && continue
+  saw_refs=1
   [ "$local_sha" = "0000000000000000000000000000000000000000" ] || only_deletes=0
+  [ "${remote_ref:-}" = "refs/heads/$default_branch" ] && to_default_branch=1
 done
+
+if [ "$saw_refs" = "0" ]; then
+  echo "pre-push: nothing to push"
+  exit 0
+fi
+
 if [ "$only_deletes" = "1" ]; then
   echo "pre-push: deletion only, nothing to build"
   exit 0
 fi
 
+analyse="${AES67_ANALYSE:-}"
+if [ -z "$analyse" ] && [ "$to_default_branch" = "1" ]; then
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    printf 'pre-push: pushing to %s. Run the full gate with static analysis? [Y/n] ' \
+      "$default_branch" > /dev/tty
+    read -r answer < /dev/tty || answer=""
+    case "$answer" in
+      [Nn]*) analyse=0 ;;
+      *)     analyse=1 ;;
+    esac
+  else
+    echo "pre-push: pushing to $default_branch with no terminal to ask on; skipping analysis (AES67_ANALYSE=1 to force)"
+    analyse=0
+  fi
+fi
+analyse="${analyse:-0}"
+
 echo "pre-push: running scripts/ci-local.sh"
-if "$repo_root/scripts/ci-local.sh"; then
+if AES67_ANALYSE="$analyse" "$repo_root/scripts/ci-local.sh"; then
   exit 0
 fi
 echo "pre-push: build or tests failed -- push aborted. Fix, or push with --no-verify." >&2
