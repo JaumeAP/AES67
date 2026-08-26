@@ -14,7 +14,7 @@ Platform-free core: extracted to `JaumeAP/aes67-core`, consumed as the `external
 
 Build/test: macOS (Apple Silicon + x86_64), CMake out-of-source. 13 doctest suites, labelled `unit`/`timing`/`network`/`integration`, each with `TIMEOUT 60`. `IntegrationAudioPath` needs real multicast and fails outside the gate by design.
 
-CI: local only, GitHub Actions disabled and deleted. `scripts/ci-local.sh` is the gate — build, `ctest -LE timing`, the core's own platform contract, and clang-tidy — run by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). `--sanitize` and `--tsan` run everything but `network`. `scripts/coverage.sh` reports llvm-cov.
+CI: local only, GitHub Actions disabled and deleted. `scripts/ci-local.sh` is the gate, run by `.githooks/pre-push` (opt in per clone with `git config core.hooksPath .githooks`). Two speeds: build, `ctest -LE timing` and the core's platform contract by default, about a second; clang-tidy only with `--analyse` or `AES67_ANALYSE=1`, minutes. The hook asks before a push to the default branch and skips the question when there is no terminal. `--sanitize` and `--tsan` run everything but `network`. `scripts/coverage.sh` reports llvm-cov.
 
 Static analysis: `.clang-tidy` runs the defect families and leaves style off; `WarningsAsErrors` is deliberately narrower than `Checks`. clang-tidy is not in the Command Line Tools — install with `python3 -m venv ~/.local/venvs/cpptools && ~/.local/venvs/cpptools/bin/pip install clang-tidy==21.1.6`, matching the system compiler. The script skips itself with a message when it finds none.
 
