@@ -59,11 +59,21 @@ if [ -z "$analyse" ] && [ "$to_default_branch" = "1" ]; then
   if [ -r /dev/tty ] && [ -w /dev/tty ]; then
     printf 'pre-push: pushing to %s. Run the full gate with static analysis? [Y/n] ' \
       "$default_branch" > /dev/tty
-    read -r answer < /dev/tty || answer=""
-    case "$answer" in
-      [Nn]*) analyse=0 ;;
-      *)     analyse=1 ;;
-    esac
+    # Three outcomes, not two. A person pressing enter means yes, so an empty
+    # line accepts. But read failing -- end of file, nothing on the other side
+    # -- and read timing out both mean nobody is there, and nobody there must
+    # not mean yes: a terminal can exist with no human attached to it, which is
+    # exactly what an agent or a CI shell looks like. Answering for them by
+    # default is how a "fast push" spends three minutes on analysis.
+    if read -r -t 30 answer < /dev/tty; then
+      case "$answer" in
+        [Nn]*) analyse=0 ;;
+        *)     analyse=1 ;;
+      esac
+    else
+      printf '\npre-push: no answer; skipping analysis (AES67_ANALYSE=1 to force)\n' > /dev/tty
+      analyse=0
+    fi
   else
     echo "pre-push: pushing to $default_branch with no terminal to ask on; skipping analysis (AES67_ANALYSE=1 to force)"
     analyse=0
