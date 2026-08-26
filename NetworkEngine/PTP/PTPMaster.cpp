@@ -8,7 +8,7 @@
 //
 
 #include "PTPMaster.h"
-#include "../../Driver/AudioThreadPriority.h"
+#include "Driver/AudioThreadPriority.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>

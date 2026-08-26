@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
-#include "../MulticastRejoiner.h"
+#include "NetworkEngine/MulticastRejoiner.h"
 
 namespace AES67 {
 

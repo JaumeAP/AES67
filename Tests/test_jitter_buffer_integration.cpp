@@ -3,7 +3,7 @@
 // Test for jitter buffer integration in RTP receiver
 //
 
-#include "../NetworkEngine/RTP/LockFreeCircularJitterBuffer.h"
+#include "NetworkEngine/RTP/LockFreeCircularJitterBuffer.h"
 #include <iostream>
 #include <cassert>
 #include <stdexcept>

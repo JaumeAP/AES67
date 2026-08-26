@@ -4,9 +4,9 @@
 // Performance benchmark for I/O handler batch processing
 //
 
-#include "../Driver/AES67IOHandler.h"
-#include "../NetworkEngine/RTSafeStreamInterface.h"
-#include "../Shared/RingBuffer.hpp"
+#include "Driver/AES67IOHandler.h"
+#include "NetworkEngine/RTSafeStreamInterface.h"
+#include "Shared/RingBuffer.hpp"
 #include <iostream>
 #include <iomanip>
 #include <chrono>

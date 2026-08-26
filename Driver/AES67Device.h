@@ -7,14 +7,14 @@
 
 #pragma once
 
-#include "../Shared/Types.h"
-#include "../Shared/RingBuffer.hpp"
-#include "../NetworkEngine/StreamManager.h"
-#include "../NetworkEngine/Discovery/SAPListener.h"
-#include "../NetworkEngine/Discovery/SAPAnnouncer.h"
-#include "../NetworkEngine/PTP/PTPPeerObserver.h"
-#include "../NetworkEngine/Discovery/RTCPMonitor.h"
-#include "../NetworkEngine/RTSafeStreamInterface.h"
+#include "Shared/Types.h"
+#include "Shared/RingBuffer.hpp"
+#include "NetworkEngine/StreamManager.h"
+#include "NetworkEngine/Discovery/SAPListener.h"
+#include "NetworkEngine/Discovery/SAPAnnouncer.h"
+#include "NetworkEngine/PTP/PTPPeerObserver.h"
+#include "NetworkEngine/Discovery/RTCPMonitor.h"
+#include "NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
 #include <aspl/Stream.hpp>
 #include <aspl/Context.hpp>

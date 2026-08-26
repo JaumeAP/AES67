@@ -10,7 +10,7 @@
 // exclusion from the gate. Run them deliberately: `ctest -L timing`.
 //
 
-#include "../Shared/RingBuffer.hpp"
+#include "Shared/RingBuffer.hpp"
 #include <iostream>
 #include <thread>
 #include <chrono>

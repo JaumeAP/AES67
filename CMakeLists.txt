@@ -154,16 +154,11 @@ endif()
 
 # Common source files for both driver and tests
 set(SHARED_SOURCES
-    Shared/Types.cpp
-    Shared/Config.cpp
-    Shared/NonBlockingLogger.cpp
     Shared/ResourceCleanupManager.cpp
-    Shared/ErrorRecoveryManager.cpp
 )
 
 # Driver source files
 set(DRIVER_SOURCES
-    Driver/SDPParser.cpp
     Driver/AES67Device.cpp
     Driver/AES67IOHandler.cpp
     Driver/AudioThreadPriority.cpp
@@ -171,19 +166,11 @@ set(DRIVER_SOURCES
 
 # Network Engine source files
 set(NETWORK_SOURCES
-    NetworkEngine/StreamChannelMapper.cpp
     NetworkEngine/StreamManager.cpp
-    NetworkEngine/StreamConfig.cpp
-    NetworkEngine/DeviceChannelSettings.cpp
-    NetworkEngine/AmplifierUnitSettings.cpp
-    NetworkEngine/CompatibilityProfile.cpp
     NetworkEngine/RTP/SimpleRTP.cpp
     NetworkEngine/RTP/RTPReceiver.cpp
     NetworkEngine/RTP/RTPTransmitter.cpp
     NetworkEngine/RTP/PCMCodec.cpp
-    NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
-    NetworkEngine/RTP/LockFreePacketPool.cpp
-    NetworkEngine/RTP/BufferStatusMonitor.cpp
     NetworkEngine/PTP/PTPClock.cpp
     NetworkEngine/PTP/PTPDInterface.cpp
     NetworkEngine/PTP/PTPSlave.cpp
@@ -191,18 +178,9 @@ set(NETWORK_SOURCES
     NetworkEngine/PTP/PTPArbitrator.cpp
     NetworkEngine/PTP/CoreAudioClockSource.cpp
     NetworkEngine/PTP/PTPPeerObserver.cpp
-    NetworkEngine/PTP/PTPMasterSettings.cpp
     NetworkEngine/PTP/AudioClockDeviceList.cpp
-    NetworkEngine/PTP/CustomSys.cpp
-    NetworkEngine/PTP/PhaseLockedLoop.cpp
-    NetworkEngine/Resampling/Resampler.cpp
-    NetworkEngine/Resampling/ClockAdjustmentController.cpp
-    NetworkEngine/Resampling/SmoothedPIController.cpp
-    NetworkEngine/Resampling/SampleRateAdapter.cpp
     NetworkEngine/NetworkUtils.cpp
-    NetworkEngine/NetworkErrorHandler.cpp
     NetworkEngine/NetworkInterfaceDetection.cpp
-    NetworkEngine/DoPDecoder.cpp
     NetworkEngine/Discovery/SAPListener.cpp
     NetworkEngine/Discovery/SAPAnnouncer.cpp
     NetworkEngine/Discovery/RTCPMonitor.cpp
@@ -210,62 +188,31 @@ set(NETWORK_SOURCES
 )
 
 # ============================================================================
-# Consumable core (see README, "Consuming this repository")
+# The platform-free core, from its own repository
 # ============================================================================
 #
-# This repository is the base other projects build on -- the ESP32-P4 firmware
-# in JaumeAP/DTS-Player among them -- by adding it as a submodule. These two
-# lists are the contract: what a consumer can compile without being on macOS.
+# What used to be AES67_CORE_SOURCES here now lives in JaumeAP/aes67-core and
+# arrives as a submodule. The reason for moving it out rather than exposing it
+# from inside: while the core lived here, every other implementation that wanted
+# a jitter buffer or an SDP parser had to consume a macOS driver. The firmware,
+# a Linux daemon and this driver are peers.
 #
-# AES67_CORE_SOURCES is platform-free: no Apple frameworks, no sockets, nothing
-# that assumes an operating system -- checked transitively, through the headers
-# each file includes, not just the file itself. It is the SDP parser, the jitter
-# buffer and packet pool, the PLL and the PTP settings, the resampling chain,
-# the channel mapper and the configuration bookkeeping.
-#
-# What is NOT here, and why, since the surprises are instructive: the RTP layer
-# (SimpleRTP.h opens sockets, and RTPReceiver/RTPTransmitter include it),
-# StreamManager (same), and PTPClock, PTPArbitrator and PTPDInterface, which
-# reach CoreAudio through PTPClockSource.h. None of that shows in the .cpp
-# files; it arrives through a header two levels down. A first pass at this list
-# that only looked at the .cpp files got five of them wrong.
-#
-# AES67_NET_SOURCES adds BSD sockets. Portable in practice -- lwIP gives an
-# ESP32 the same API -- but a consumer may want its own transport, so it is a
-# separate target rather than folded into the core.
-#
-# Three files are in neither, and they are the ones a non-Apple consumer has to
-# replace: RTP/PCMCodec.cpp (Accelerate), PTP/AudioClockDeviceList.cpp and
-# PTP/CoreAudioClockSource.cpp (CoreFoundation, CoreAudio).
-#
-# The rule that keeps this honest: nothing reachable from AES67_CORE_SOURCES may
-# include an Apple framework or a socket header. scripts/ci-local.sh checks it,
-# because a contract nobody verifies drifts the first time someone is in a hurry.
-set(AES67_CORE_SOURCES
-    Shared/Types.cpp
-    Shared/Config.cpp
-    Shared/NonBlockingLogger.cpp
-    Shared/ErrorRecoveryManager.cpp
-    Driver/SDPParser.cpp
-    NetworkEngine/StreamChannelMapper.cpp
-    NetworkEngine/StreamConfig.cpp
-    NetworkEngine/DeviceChannelSettings.cpp
-    NetworkEngine/AmplifierUnitSettings.cpp
-    NetworkEngine/CompatibilityProfile.cpp
-    NetworkEngine/NetworkErrorHandler.cpp
-    NetworkEngine/DoPDecoder.cpp
-    NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
-    NetworkEngine/RTP/LockFreePacketPool.cpp
-    NetworkEngine/RTP/BufferStatusMonitor.cpp
-    NetworkEngine/PTP/PTPMasterSettings.cpp
-    NetworkEngine/PTP/PhaseLockedLoop.cpp
-    NetworkEngine/PTP/CustomSys.cpp
-    NetworkEngine/Resampling/Resampler.cpp
-    NetworkEngine/Resampling/PIController.cpp
-    NetworkEngine/Resampling/SmoothedPIController.cpp
-    NetworkEngine/Resampling/ClockAdjustmentController.cpp
-    NetworkEngine/Resampling/SampleRateAdapter.cpp
-)
+# What stays here is what is genuinely macOS -- the AudioServerPlugIn, libASPL,
+# the CoreAudio clock sources, the Accelerate codec -- plus the socket layer in
+# AES67_NET_SOURCES, which is portable in practice but is not the core's
+# business.
+# Its tests stay off here: they run in that repository, against that
+# repository's gate. Building them from this side would duplicate the targets
+# and, worse, suggest this project is where they are maintained.
+set(AES67_CORE_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(external/aes67-core EXCLUDE_FROM_ALL)
+
+# Includes are written relative to the repository root now, not to the file
+# doing the including. That became necessary when the core moved out: a header
+# that says "Shared/Types.h" resolves the same whether Shared/ is here or in
+# external/aes67-core, while "../Shared/Types.h" only resolved while the two
+# sat side by side.
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 set(AES67_NET_SOURCES
     Shared/ResourceCleanupManager.cpp
@@ -284,13 +231,8 @@ set(AES67_NET_SOURCES
     NetworkEngine/Discovery/RTSPClient.cpp
 )
 
-add_library(aes67_core STATIC ${AES67_CORE_SOURCES})
-target_include_directories(aes67_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_features(aes67_core PUBLIC cxx_std_17)
-
 add_library(aes67_net STATIC ${AES67_NET_SOURCES})
 target_link_libraries(aes67_net PUBLIC aes67_core)
-
 
 # Combine all C++ sources
 set(ALL_CPP_SOURCES
@@ -298,6 +240,8 @@ set(ALL_CPP_SOURCES
     ${DRIVER_SOURCES}
     ${NETWORK_SOURCES}
 )
+# The core's translation units are no longer in these lists; targets link the
+# aes67_core library from the submodule instead.
 
 # ============================================================================
 # AudioServerPlugIn Bundle (macOS only)
@@ -317,6 +261,7 @@ if(APPLE AND ASPL_FOUND)
     )
 
     target_link_libraries(AES67Driver PRIVATE
+        aes67_core
         ${ASPL_LIBRARY}
         # ptpd_obj disabled - using stub PTP implementation
         "-framework CoreAudio"

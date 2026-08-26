@@ -8,26 +8,27 @@
 
 A work-in-progress open-source virtual audio driver for macOS that aims to provide AES67 network audio support. Built as a user-space AudioServerPlugIn using the libASPL framework.
 
-## Consuming this repository
+## Where the portable code went
 
-Other projects build on this one by adding it as a submodule — the ESP32-P4
-firmware in `JaumeAP/DTS-Player` among them:
+The platform-free core is no longer here. It lives in
+[`JaumeAP/aes67-core`](https://github.com/JaumeAP/aes67-core) and arrives as the
+`external/aes67-core` submodule: SDP parsing, the RTP wire header, the jitter
+buffer and packet pool, the media-clock PLL, the resampling chain, channel
+mapping, compatibility profiles and stream configuration.
 
-```bash
-git submodule add https://github.com/JaumeAP/aes67_macos_driver.git third_party/aes67
-```
+It moved out because while it lived here, every other implementation that
+wanted a jitter buffer had to consume a macOS driver. The ESP32-P4 firmware, a
+Linux daemon and this driver are peers.
 
-Two CMake targets say what is safe to take:
+What stays here is what is genuinely macOS — the `AudioServerPlugIn`, libASPL,
+the CoreAudio clock sources, the Accelerate codec — plus `aes67_net`, the socket
+layer, which is portable in practice but is not the core's business and which
+supplies the three `NetworkUtils` symbols the core declares without
+implementing.
 
-| Target | What it holds | Needs |
-|---|---|---|
-| `aes67_core` | 23 files: SDP parsing, jitter buffer and packet pool, the PLL and PTP settings, the resampling chain, the channel mapper, configuration | a C++17 compiler, nothing else |
-| `aes67_net` | 14 more: the RTP layer, `StreamManager`, PTP slave and master, SAP/RTSP/RTCP discovery | BSD sockets (lwIP provides them on an ESP32) |
-
-Three files are in neither, and they are what a non-Apple consumer has to
-replace: `NetworkEngine/RTP/PCMCodec.cpp` (Accelerate),
-`NetworkEngine/PTP/AudioClockDeviceList.cpp` and
-`NetworkEngine/PTP/CoreAudioClockSource.cpp` (CoreFoundation, CoreAudio).
+Clone with `--recurse-submodules`, or run `git submodule update --init
+--recursive` afterwards. `scripts/ci-local.sh` runs the core's own contract
+check, so a platform header finding its way in fails here too.
 
 ### What consuming it costs
 

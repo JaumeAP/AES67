@@ -5,7 +5,7 @@
 // direction filtering, and the channel-sum resolver that will drive the
 // driver's I/O layout from the found-elements list. Header-only, no linkage.
 //
-#include "../NetworkEngine/DolbyModelCatalog.h"
+#include "NetworkEngine/DolbyModelCatalog.h"
 
 #include <iostream>
 

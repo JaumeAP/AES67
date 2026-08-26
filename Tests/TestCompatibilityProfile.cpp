@@ -21,7 +21,7 @@
 // the same reason.
 //
 
-#include "../NetworkEngine/CompatibilityProfile.h"
+#include "NetworkEngine/CompatibilityProfile.h"
 
 #include <cmath>
 #include <iostream>
