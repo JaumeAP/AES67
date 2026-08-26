@@ -51,6 +51,20 @@ target_include_directories(TestChannelMapper PRIVATE
 
 target_compile_features(TestChannelMapper PRIVATE cxx_std_17)
 
+# Test: RTP wire header, on its own -- no transport, no sockets. doctest, like
+# TestSDPParser.
+add_executable(TestRTPHeader
+    TestRTPHeader.cpp
+)
+
+target_include_directories(TestRTPHeader PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTPHeader PRIVATE doctest_headers)
+
+target_compile_features(TestRTPHeader PRIVATE cxx_std_17)
+
 # Test: Ring Buffer
 add_executable(TestRingBuffer
     TestRingBuffer.cpp
@@ -349,6 +363,7 @@ target_compile_features(TestRTCPReceiverTable PRIVATE cxx_std_17)
 enable_testing()
 add_test(NAME SDPParser COMMAND TestSDPParser)
 add_test(NAME ChannelMapper COMMAND TestChannelMapper)
+add_test(NAME RTPHeader COMMAND TestRTPHeader)
 add_test(NAME RingBuffer COMMAND TestRingBuffer)
 add_test(NAME RingBufferTiming COMMAND TestRingBufferTiming)
 add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
@@ -383,6 +398,7 @@ add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 # of magnitude and still bounded.
 set_tests_properties(SDPParser PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(ChannelMapper PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RTPHeader PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RingBuffer PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RingBufferTiming PROPERTIES LABELS "timing" TIMEOUT 60)
 set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
