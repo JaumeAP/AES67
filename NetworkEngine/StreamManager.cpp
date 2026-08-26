@@ -5,8 +5,8 @@
 //
 
 #include "StreamManager.h"
-#include "NetworkUtils.h"
-#include "../Driver/DebugLog.h"
+#include "NetworkEngine/NetworkUtils.h"
+#include "Driver/DebugLog.h"
 #include <algorithm>
 #include <fstream>
 #include <sstream>

@@ -17,8 +17,8 @@
 // pass.
 //
 
-#include "../NetworkEngine/PTP/PTPBMCA.h"
-#include "../NetworkEngine/PTP/PTPClockSource.h"
+#include "NetworkEngine/PTP/PTPBMCA.h"
+#include "NetworkEngine/PTP/PTPClockSource.h"
 
 #include <iostream>
 

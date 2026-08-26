@@ -8,13 +8,13 @@
 // using localhost multicast and real component instances.
 //
 
-#include "../NetworkEngine/RTP/SimpleRTP.h"
-#include "../NetworkEngine/RTP/RTPReceiver.h"
-#include "../NetworkEngine/RTP/RTPTransmitter.h"
-#include "../NetworkEngine/StreamChannelMapper.h"
-#include "../Driver/SDPParser.h"
-#include "../Shared/RingBuffer.hpp"
-#include "../Shared/Types.h"
+#include "NetworkEngine/RTP/SimpleRTP.h"
+#include "NetworkEngine/RTP/RTPReceiver.h"
+#include "NetworkEngine/RTP/RTPTransmitter.h"
+#include "NetworkEngine/StreamChannelMapper.h"
+#include "Driver/SDPParser.h"
+#include "Shared/RingBuffer.hpp"
+#include "Shared/Types.h"
 #include <iostream>
 #include <cassert>
 #include <vector>

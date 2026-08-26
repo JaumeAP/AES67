@@ -4,8 +4,8 @@
 // Unit tests for StreamConfig: persistence, JSON serialization, path management
 //
 
-#include "../NetworkEngine/StreamConfig.h"
-#include "../Driver/SDPParser.h"
+#include "NetworkEngine/StreamConfig.h"
+#include "Driver/SDPParser.h"
 #include <iostream>
 #include <cassert>
 #include <cstring>

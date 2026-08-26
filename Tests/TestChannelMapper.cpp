@@ -4,7 +4,7 @@
 // Unit tests for Stream-to-Channel Mapper
 //
 
-#include "../NetworkEngine/StreamChannelMapper.h"
+#include "NetworkEngine/StreamChannelMapper.h"
 #include <iostream>
 #include <cassert>
 #include <stdexcept>

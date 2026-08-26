@@ -5,7 +5,7 @@
 //
 #include "CoreAudioClockSource.h"
 
-#include "../../Driver/DebugLog.h"
+#include "Driver/DebugLog.h"
 
 namespace AES67 {
 

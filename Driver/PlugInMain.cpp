@@ -5,7 +5,7 @@
 //
 
 #include "AES67Device.h"
-#include "DebugLog.h"
+#include "Driver/DebugLog.h"
 #include <aspl/Plugin.hpp>
 #include <aspl/Driver.hpp>
 #include <CoreAudio/AudioServerPlugIn.h>

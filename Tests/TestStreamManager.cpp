@@ -4,8 +4,8 @@
 // Unit tests for StreamManager
 //
 
-#include "../NetworkEngine/StreamManager.h"
-#include "../Driver/SDPParser.h"
+#include "NetworkEngine/StreamManager.h"
+#include "Driver/SDPParser.h"
 #include <iostream>
 #include <cassert>
 
