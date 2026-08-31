@@ -19,6 +19,26 @@
 
 namespace AES67 {
 
+namespace {
+// Parse an RTSP Content-Length value defensively: the header arrives from
+// an unauthenticated server, std::stoul throws on garbage, and this code
+// runs inside coreaudiod where an uncaught exception is std::terminate for
+// the whole audio daemon (2026-08-31 audit). Bounded because the value
+// also drives a body resize(): an SDP answer is bytes, not megabytes.
+constexpr size_t kMaxRTSPBodyBytes = 1 << 20; // 1 MiB
+
+bool parseContentLength(const std::string& text, size_t& out) {
+    errno = 0;
+    char* end = nullptr;
+    unsigned long value = std::strtoul(text.c_str(), &end, 10);
+    if (end == text.c_str() || errno == ERANGE) return false;
+    if (value > kMaxRTSPBodyBytes) return false;
+    out = static_cast<size_t>(value);
+    return true;
+}
+} // namespace
+
+
 //
 // Constructor
 //
@@ -260,7 +280,10 @@ std::optional<RTSPResponse> RTSPClient::parseResponse(const std::string& respons
     // Read body if Content-Length is present
     auto contentLengthIt = response.headers.find("Content-Length");
     if (contentLengthIt != response.headers.end()) {
-        size_t contentLength = std::stoul(contentLengthIt->second);
+        size_t contentLength = 0;
+        if (!parseContentLength(contentLengthIt->second, contentLength)) {
+            return response; // malformed or absurd Content-Length: no body
+        }
         if (contentLength > 0) {
             response.body.resize(contentLength);
             stream.read(&response.body[0], contentLength);
@@ -409,7 +432,9 @@ std::optional<std::string> RTSPClient::readResponse() {
                     // Trim whitespace
                     size_t start = clStr.find_first_not_of(" \t");
                     if (start != std::string::npos) {
-                        contentLength = std::stoul(clStr.substr(start));
+                        if (!parseContentLength(clStr.substr(start), contentLength)) {
+                            contentLength = 0; // malformed/absurd: read no body
+                        }
                     }
                 }
             }

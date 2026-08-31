@@ -699,36 +699,38 @@ void PTPSlave::handleDelayResp(const PTPHeader& header, const uint8_t* data, siz
 
     delayRespCount_.fetch_add(1, std::memory_order_relaxed);
 
-    std::lock_guard<std::mutex> lock(delayMutex_);
-
-    // Must match our Delay_Req
-    if (!waitingForDelayResp_) return;
-    if (header.sequenceId != delayReqSequenceId_) return;
-
-    // Verify the requesting port identity matches ours (bytes 44-53)
-    PTPPortIdentity requestingPort;
-    parsePortIdentity(data, 44, requestingPort);
-    if (!(requestingPort == selfPortId_)) return;
-
-    // Parse t4 (master's receive timestamp of our Delay_Req)
-    parseTimestamp(data, kTimestampOffset, t4_delayRespReceiveTimestamp_);
-
-    // Apply correction field
-    int64_t correctionNs = header.correctionField >> 16;
-    uint64_t t4Ns = t4_delayRespReceiveTimestamp_.toNanoseconds();
-    t4Ns += static_cast<uint64_t>(correctionNs);
-    t4_delayRespReceiveTimestamp_ = PTPTimestamp(t4Ns);
-
-    waitingForDelayResp_ = false;
-
-    // Now we have all four timestamps — recalculate with full path delay
+    // delayMutex_ is scoped to the parse-and-record block and MUST be
+    // released before calculateOffsetAndDelay(), which re-acquires it
+    // itself (line ~913). The old code declared the guard at function
+    // scope with only a comment claiming "we release delay first":
+    // std::mutex is non-recursive, so the first real Delay_Resp
+    // self-deadlocked the PTP receive thread forever, and stop()'s
+    // join() with it (2026-08-31 audit, confirmed twice over).
     {
-        // Need sync mutex too for the full calculation
-        // But we already hold delayMutex_, so acquire syncMutex_ carefully
-        // Actually the calculation function acquires its own locks, so we release delay first
+        std::lock_guard<std::mutex> lock(delayMutex_);
+
+        // Must match our Delay_Req
+        if (!waitingForDelayResp_) return;
+        if (header.sequenceId != delayReqSequenceId_) return;
+
+        // Verify the requesting port identity matches ours (bytes 44-53)
+        PTPPortIdentity requestingPort;
+        parsePortIdentity(data, 44, requestingPort);
+        if (!(requestingPort == selfPortId_)) return;
+
+        // Parse t4 (master's receive timestamp of our Delay_Req)
+        parseTimestamp(data, kTimestampOffset, t4_delayRespReceiveTimestamp_);
+
+        // Apply correction field
+        int64_t correctionNs = header.correctionField >> 16;
+        uint64_t t4Ns = t4_delayRespReceiveTimestamp_.toNanoseconds();
+        t4Ns += static_cast<uint64_t>(correctionNs);
+        t4_delayRespReceiveTimestamp_ = PTPTimestamp(t4Ns);
+
+        waitingForDelayResp_ = false;
     }
 
-    // Calculate with new delay information
+    // Calculate with new delay information (acquires its own locks)
     calculateOffsetAndDelay();
 }
 

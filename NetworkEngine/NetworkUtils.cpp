@@ -10,6 +10,35 @@
 
 namespace AES67 {
 
+namespace {
+// Resolve `interfaceName` (an interface name like "en0", or a literal IPv4
+// address) into mreq's ifindex/address. Factored out 2026-08-31: join and
+// leave carried byte-identical copies of this block, the classic spot
+// where a fix lands in one and silently misses the other.
+void resolveMulticastInterface(const std::string& interfaceName, struct ip_mreqn& mreq) {
+    mreq.imr_ifindex = if_nametoindex(interfaceName.c_str());
+    if (mreq.imr_ifindex != 0) return;
+    struct in_addr interfaceAddr;
+    if (inet_aton(interfaceName.c_str(), &interfaceAddr) != 0) {
+        mreq.imr_address = interfaceAddr;
+        return;
+    }
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET &&
+                interfaceName == ifa->ifa_name) {
+                mreq.imr_address = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+                break;
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+}
+} // namespace
+
+
 bool NetworkUtils::joinMulticastGroup(int sockfd, const std::string& multicastAddr, 
                                       const std::string& interfaceName) {
     struct ip_mreqn mreq;
@@ -21,30 +50,9 @@ bool NetworkUtils::joinMulticastGroup(int sockfd, const std::string& multicastAd
         return false; // Invalid address
     }
     
-    // Set interface for multicast traffic
-    mreq.imr_ifindex = if_nametoindex(interfaceName.c_str());
-    if (mreq.imr_ifindex == 0) {
-        // If if_nametoindex fails, try using the legacy approach
-        struct in_addr interfaceAddr;
-        if (inet_aton(interfaceName.c_str(), &interfaceAddr) == 0) {
-            // Try to get the interface address
-            struct ifaddrs *ifaddrs_ptr, *ifa;
-            if (getifaddrs(&ifaddrs_ptr) == 0) {
-                for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
-                    if (ifa->ifa_addr == nullptr) continue;
-                    if (ifa->ifa_addr->sa_family == AF_INET && 
-                        interfaceName == ifa->ifa_name) {
-                        mreq.imr_address = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
-                        break;
-                    }
-                }
-                freeifaddrs(ifaddrs_ptr);
-            }
-        } else {
-            mreq.imr_address = interfaceAddr;
-        }
-    }
-    
+    // Set interface
+    resolveMulticastInterface(interfaceName, mreq);
+
     // Join multicast group
     if (setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         perror("Failed to join multicast group");
@@ -66,28 +74,8 @@ bool NetworkUtils::leaveMulticastGroup(int sockfd, const std::string& multicastA
     }
     
     // Set interface
-    mreq.imr_ifindex = if_nametoindex(interfaceName.c_str());
-    if (mreq.imr_ifindex == 0) {
-        struct in_addr interfaceAddr;
-        if (inet_aton(interfaceName.c_str(), &interfaceAddr) == 0) {
-            // Try to get the interface address
-            struct ifaddrs *ifaddrs_ptr, *ifa;
-            if (getifaddrs(&ifaddrs_ptr) == 0) {
-                for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
-                    if (ifa->ifa_addr == nullptr) continue;
-                    if (ifa->ifa_addr->sa_family == AF_INET && 
-                        interfaceName == ifa->ifa_name) {
-                        mreq.imr_address = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
-                        break;
-                    }
-                }
-                freeifaddrs(ifaddrs_ptr);
-            }
-        } else {
-            mreq.imr_address = interfaceAddr;
-        }
-    }
-    
+    resolveMulticastInterface(interfaceName, mreq);
+
     // Leave multicast group
     if (setsockopt(sockfd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         perror("Failed to leave multicast group");

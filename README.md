@@ -130,7 +130,6 @@ AES67Driver/
 │   │   ├── PTPSlave         # IEEE 1588 slave-only (written, untested)
 │   │   ├── PhaseLockedLoop  # Audio clock drift tracking
 │   │   ├── PTPDInterface    # PTP interface (stub fallback available)
-│   │   └── vendor/ptpd/     # Vendored ptpd source (not used)
 │   ├── StreamManager        # RX/TX stream lifecycle, IO-gated start/stop
 │   ├── Resampling/          # Sample rate conversion
 │   └── Discovery/           # SAP stream discovery (RFC 2974)
