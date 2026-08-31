@@ -425,24 +425,36 @@ TEST_CASE("Full Loopback") {
     rxBuffers[1].read(rxCh1Data.data(), rxCh1Available);
 
     // Check that received values match sent values within L24 precision
-    // L24 round-trip tolerance: ~0.001
+    // (L24 round-trip tolerance ~0.001). Only the first prefillFrames
+    // samples carry the pattern: the transmitter keeps sending after the
+    // TX ring runs dry, silence-filling as AES67's continuous-flow rule
+    // requires (see the "Continuous Packet Flow (silence on empty)"
+    // case, which asserts exactly that). This test predated that
+    // behavior and demanded pattern everywhere, so it failed on the
+    // silence tail with zero actual corruption (diagnosed 2026-08-31:
+    // 960 pattern samples bit-exact, then only zeros).
     bool ch0Correct = true;
     for (size_t i = 0; i < rxCh0Available; ++i) {
-        if (std::abs(rxCh0Data[i] - 0.25f) > 0.01f) {
+        const float expected = i < prefillFrames ? 0.25f : 0.0f;
+        if (std::abs(rxCh0Data[i] - expected) > 0.01f) {
             ch0Correct = false;
             break;
         }
     }
     CHECK(ch0Correct);
+    // The pattern must actually have arrived, not just silence.
+    CHECK(rxCh0Available >= prefillFrames);
 
     bool ch1Correct = true;
     for (size_t i = 0; i < rxCh1Available; ++i) {
-        if (std::abs(rxCh1Data[i] - (-0.75f)) > 0.01f) {
+        const float expected = i < prefillFrames ? -0.75f : 0.0f;
+        if (std::abs(rxCh1Data[i] - expected) > 0.01f) {
             ch1Correct = false;
             break;
         }
     }
     CHECK(ch1Correct);
+    CHECK(rxCh1Available >= prefillFrames);
 
     std::cout << "PASS" << std::endl;
 }
