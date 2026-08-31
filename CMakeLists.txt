@@ -178,6 +178,7 @@ set(NETWORK_SOURCES
     NetworkEngine/NetworkUtils.cpp
     NetworkEngine/NetworkInterfaceDetection.cpp
     NetworkEngine/Discovery/SAPListener.cpp
+    NetworkEngine/Discovery/MDNSBrowser.cpp
     NetworkEngine/Discovery/SAPAnnouncer.cpp
     NetworkEngine/Discovery/RTCPMonitor.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
@@ -222,6 +223,7 @@ set(AES67_NET_SOURCES
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPPeerObserver.cpp
     NetworkEngine/Discovery/SAPListener.cpp
+    NetworkEngine/Discovery/MDNSBrowser.cpp
     NetworkEngine/Discovery/SAPAnnouncer.cpp
     NetworkEngine/Discovery/RTCPMonitor.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
