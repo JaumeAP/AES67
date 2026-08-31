@@ -122,6 +122,21 @@ target_link_libraries(TestPTPMaster PRIVATE aes67_core aes67_net)
 target_link_libraries(TestPTPMaster PRIVATE doctest_headers)
 target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
 
+# Test: RTSP DESCRIBE endpoint — real loopback TCP, ephemeral port
+# (2026-08-31).
+add_executable(TestRTSPServer
+    TestRTSPServer.cpp
+)
+
+target_include_directories(TestRTSPServer PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTSPServer PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTSPServer PRIVATE doctest_headers)
+target_compile_features(TestRTSPServer PRIVATE cxx_std_17)
+
 # Test: mDNS browser — talks to the real system responder; skips itself
 # where mDNS is unreachable (2026-08-31).
 add_executable(TestMDNSBrowser
@@ -302,6 +317,7 @@ add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME PTPMaster COMMAND TestPTPMaster)
 add_test(NAME PTPLoopback COMMAND TestPTPLoopback)
 add_test(NAME MDNSBrowser COMMAND TestMDNSBrowser)
+add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
@@ -339,6 +355,7 @@ set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)
 set_tests_properties(MDNSBrowser PROPERTIES LABELS "integration;network" TIMEOUT 60)
+set_tests_properties(RTSPServer PROPERTIES LABELS "integration;network" TIMEOUT 60)
 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")
