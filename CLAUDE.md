@@ -238,7 +238,6 @@ Audio channel buffers (`DeviceChannelBuffers = std::array<SPSCRingBuffer<float>,
 
 - **`PTPClock`** (media clock recovery, AES67-2018 §8.2): correlates RTP timestamps against local time via a PLL (`PhaseLockedLoop`) to track drift between a remote source and local hardware clock. This is implemented and usable today via local-clock fallback — sufficient for single-device operation.
 - **`PTPSlave`** (network IEEE 1588 slave-only sync): full Sync/Follow_Up/Delay_Req/Delay_Resp exchange on 224.0.1.129:319/320, feeding measurements into the same PLL via `PTPDInterface`. Code is complete but **has never been run against a real grandmaster**; it auto-falls back to stub mode without root (can't bind privileged multicast ports).
-- `NetworkEngine/PTP/vendor/ptpd/` is a vendored ptpd C implementation that is **explicitly unused** — real PTP sync is native C++17 in `PTPSlave.cpp`. Don't wire it in or treat it as live code.
 
 #### Dead code to be aware of (not in the CMake build)
 

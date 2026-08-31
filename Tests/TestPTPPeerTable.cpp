@@ -105,3 +105,37 @@ TEST_CASE("Timeout Eviction") {
     std::cout << "PASS" << std::endl;
 }
 
+TEST_CASE("Size Cap Evicts Least Recently Seen") {
+    std::cout << "Test: a spoof flood cannot grow the table past kMaxPeers... ";
+    PTPPeerTable t;
+    auto t0 = Clock::now();
+
+    // Fill to the cap with distinct identities, each seen later than the
+    // previous one, so the very first row is the least recently seen.
+    for (size_t i = 0; i < PTPPeerTable::kMaxPeers; ++i) {
+        auto id = idWithOui(0xAA, 0xBB, static_cast<uint8_t>(i), 0x01);
+        t.record(id, 0x0B, "10.0.0.9", 0, t0 + std::chrono::milliseconds(i));
+    }
+    CHECK(t.size() == PTPPeerTable::kMaxPeers);
+
+    // One more distinct identity: the table stays at the cap, and the
+    // oldest row (index 0) is the one that made room.
+    auto newcomer = idWithOui(0xCC, 0xDD, 0xEE, 0x01);
+    t.record(newcomer, 0x0B, "10.0.0.10",
+             0, t0 + std::chrono::seconds(5));
+    CHECK(t.size() == PTPPeerTable::kMaxPeers);
+    bool sawNewcomer = false, sawEvicted = false;
+    auto evicted = idWithOui(0xAA, 0xBB, 0x00, 0x01);
+    for (const auto& peer : t.peers()) {
+        if (peer.clockId == newcomer) sawNewcomer = true;
+        if (peer.clockId == evicted) sawEvicted = true;
+    }
+    CHECK(sawNewcomer);
+    CHECK(!sawEvicted);
+
+    // A known identity keeps updating in place at the cap.
+    t.record(newcomer, 0x0B, "10.0.0.10", 0, t0 + std::chrono::seconds(6));
+    CHECK(t.size() == PTPPeerTable::kMaxPeers);
+    std::cout << "PASS" << std::endl;
+}
+
