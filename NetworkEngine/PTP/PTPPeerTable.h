@@ -110,12 +110,23 @@ public:
     // rule SAPListener uses at its own interval.
     static constexpr std::chrono::seconds kPeerTimeout{10};
 
+    // Hard ceiling on tracked peers. The clock identity is copied verbatim
+    // from every inbound multicast PTP message, and sweep() only runs when
+    // someone queries -- so without a cap, any host on the segment could
+    // spoof distinct identities and grow this map without bound between
+    // queries (2026-08-31 audit). Same backstop pattern SAPListener uses
+    // for discovered sessions: evict the least-recently-seen row.
+    static constexpr size_t kMaxPeers{64};
+
     // Record one observed message. Creates the row on first sight, otherwise
     // updates it (adds the message type, refreshes source IP / domain /
     // lastSeen, bumps the count).
     void record(const std::array<uint8_t, 8>& clockId, uint8_t messageType,
                 const std::string& sourceIp, int domain,
                 std::chrono::steady_clock::time_point now) {
+        if (rows_.find(clockId) == rows_.end() && rows_.size() >= kMaxPeers) {
+            evictLeastRecentlySeen();
+        }
         auto& row = rows_[clockId];
         if (row.messageCount == 0) {
             row.clockId = clockId;
@@ -158,6 +169,14 @@ public:
     void clear() { rows_.clear(); }
 
 private:
+    void evictLeastRecentlySeen() {
+        auto oldest = rows_.begin();
+        for (auto it = rows_.begin(); it != rows_.end(); ++it) {
+            if (it->second.lastSeen < oldest->second.lastSeen) oldest = it;
+        }
+        if (oldest != rows_.end()) rows_.erase(oldest);
+    }
+
     std::map<std::array<uint8_t, 8>, PTPPeerObservation> rows_;
 };
 

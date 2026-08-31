@@ -96,3 +96,23 @@ TEST_CASE("Aggregate And Timeout") {
     std::cout << "PASS" << std::endl;
 }
 
+TEST_CASE("Size Cap Evicts Least Recently Seen") {
+    std::cout << "Test: an SSRC spoof flood cannot grow the table past kMaxReporters... ";
+    RTCPReceiverTable t; auto now=Clock::now();
+    for (uint32_t i = 0; i < RTCPReceiverTable::kMaxReporters; ++i) {
+        t.record(i, "10.0.0.9", "", now + std::chrono::milliseconds(i));
+    }
+    CHECK(t.size() == RTCPReceiverTable::kMaxReporters);
+    // One more distinct SSRC: stays at the cap, oldest row (ssrc 0) gone.
+    t.record(0xFFFFFFFF, "10.0.0.10", "flood", now + std::chrono::seconds(5));
+    CHECK(t.size() == RTCPReceiverTable::kMaxReporters);
+    bool sawNew=false, sawEvicted=false;
+    for (const auto& r : t.reporters()) {
+        if (r.ssrc == 0xFFFFFFFF) sawNew = true;
+        if (r.ssrc == 0) sawEvicted = true;
+    }
+    CHECK(sawNew);
+    CHECK(!sawEvicted);
+    std::cout << "PASS" << std::endl;
+}
+

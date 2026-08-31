@@ -76,3 +76,13 @@ ManagerApp/.build/
 # npx-skills universal-format mirror of .claude/skills/ (not read by any
 # tooling in this repo; .claude/skills/ is the copy that matters)
 .agents/
+
+# In-source CMake runs must never recommit their artifacts (2026-08-31;
+# the root-level ones are documented stale, these rules stop new ones)
+Tests/Makefile
+Tests/CTestTestfile.cmake
+Tests/Testing/
+Tests/Test*
+!Tests/Test*.cpp
+Tests/Benchmark*
+!Tests/Benchmark*.cpp

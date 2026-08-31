@@ -144,10 +144,6 @@ else()
     endif()
 endif()
 
-# NOTE: The vendored ptpd C code is NOT used. PTP synchronization is implemented
-# natively in C++17 via PTPSlave.cpp (IEEE 1588 slave-only mode). The vendored
-# ptpd source in NetworkEngine/PTP/vendor/ptpd/ is kept for reference only.
-
 # ============================================================================
 # Shared Library
 # ============================================================================
