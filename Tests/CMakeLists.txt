@@ -122,6 +122,23 @@ target_link_libraries(TestPTPMaster PRIVATE aes67_core aes67_net)
 target_link_libraries(TestPTPMaster PRIVATE doctest_headers)
 target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
 
+# Test: PTP loopback — real master and slave over lo0 multicast on
+# unprivileged high ports; the only test that runs the full §11.3
+# delay exchange end to end (2026-08-31).
+add_executable(TestPTPLoopback
+    TestPTPLoopback.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+
+target_include_directories(TestPTPLoopback PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPLoopback PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPLoopback PRIVATE doctest_headers)
+target_compile_features(TestPTPLoopback PRIVATE cxx_std_17)
+
 add_executable(TestStreamManager
     TestStreamManager.cpp
 )
@@ -268,6 +285,7 @@ add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME PTPMaster COMMAND TestPTPMaster)
+add_test(NAME PTPLoopback COMMAND TestPTPLoopback)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
@@ -303,6 +321,7 @@ set_tests_properties(DolbyModelCatalog PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTCPReceiverTable PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
+set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)
 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")
