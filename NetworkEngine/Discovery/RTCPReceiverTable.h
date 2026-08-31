@@ -101,8 +101,21 @@ public:
         return out;
     }
 
+    // Hard ceiling on tracked reporters: the SSRC is attacker-controlled
+    // (any SR/RR on the monitored port) and sweep() only runs on query, so
+    // an uncapped map grows without bound under a spoof flood (2026-08-31
+    // audit; same least-recently-seen backstop as SAPListener/PTPPeerTable).
+    static constexpr size_t kMaxReporters{256};
+
     void record(uint32_t ssrc, const std::string& sourceIp, const std::string& cname,
                 std::chrono::steady_clock::time_point now) {
+        if (rows_.find(ssrc) == rows_.end() && rows_.size() >= kMaxReporters) {
+            auto oldest = rows_.begin();
+            for (auto it = rows_.begin(); it != rows_.end(); ++it) {
+                if (it->second.lastSeen < oldest->second.lastSeen) oldest = it;
+            }
+            if (oldest != rows_.end()) rows_.erase(oldest);
+        }
         auto& r = rows_[ssrc];
         if (r.packetCount == 0) { r.ssrc = ssrc; r.firstSeen = now; }
         if (!sourceIp.empty()) r.sourceIp = sourceIp;

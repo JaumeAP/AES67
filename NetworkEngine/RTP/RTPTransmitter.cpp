@@ -66,6 +66,19 @@ RTPTransmitter::RTPTransmitter(
         ? sdp_.framecount
         : static_cast<uint32_t>((static_cast<uint64_t>(sdp_.sampleRate) * sdp_.ptimeUs) / 1000000ULL);
     if (samplesPerPacket_ == 0) samplesPerPacket_ = 1; // never a zero-length packet
+    // Clamp to the buffers sized above: framecount/ptime arrive from the
+    // SDP or streams.json unvalidated, and transmitLoop() encodes
+    // samplesPerPacket_ frames into audioBuffer_/payloadBuffer_
+    // unconditionally -- past maxFrames that is a heap overflow (2026-08-31
+    // audit; the receive side already rejects frameCount > 512 in
+    // decodeL16/decodeL24, this is the transmit twin of that guard).
+    // Ordinary profiles can exceed it too: 20 ms at 48 kHz is 960 frames.
+    if (samplesPerPacket_ > maxFrames) {
+        AES67_LOGF("RTPTransmitter: samplesPerPacket %u exceeds buffer ceiling %zu"
+                   " - clamping (stream=%s; check ptime/framecount)",
+                   samplesPerPacket_, maxFrames, sdp_.sessionName.c_str());
+        samplesPerPacket_ = static_cast<uint32_t>(maxFrames);
+    }
 
     const uint64_t intervalUs =
         (static_cast<uint64_t>(samplesPerPacket_) * 1000000ULL) / std::max<uint32_t>(sdp_.sampleRate, 1);
