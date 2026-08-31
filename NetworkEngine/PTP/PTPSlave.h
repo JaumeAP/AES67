@@ -161,6 +161,20 @@ struct PTPSlaveConfig {
     int announceTimeoutMultiplier = 3;           // Announce receipt timeout multiplier
     int announceIntervalMs = 1000;               // Expected announce interval
     bool twoStepOnly = true;                     // Only accept two-step clocks (AES67)
+
+    // IEEE 1588-2008 §13.1 ports; overridable for the unprivileged
+    // loopback test (2026-08-31), same knob as PTPMasterConfig's.
+    uint16_t eventPort = 319;
+    uint16_t generalPort = 320;
+
+    // IP_MULTICAST_LOOP on the sending socket. Off in production, and
+    // that is the right default: a slave has no use for its own
+    // Delay_Req coming back, and on a busy segment it is pure noise.
+    // On only for a same-host master/slave pair (TestPTPLoopback), where
+    // the kernel would otherwise never deliver the slave's Delay_Req to
+    // a master in another process on this machine -- measured
+    // 2026-08-31: 39 Delay_Req sent, 0 seen by the master.
+    bool multicastLoopback = false;
 };
 
 // ============================================================================

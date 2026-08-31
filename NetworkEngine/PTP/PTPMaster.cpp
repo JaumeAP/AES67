@@ -24,8 +24,8 @@ namespace AES67 {
 
 namespace {
     constexpr const char* kPTPPrimaryMulticast = "224.0.1.129";
-    constexpr uint16_t kPTPEventPort   = 319;
-    constexpr uint16_t kPTPGeneralPort = 320;
+    // Ports come from PTPMasterConfig since 2026-08-31 (overridable for
+    // the unprivileged loopback test); these header/size constants stay.
     constexpr uint8_t  kPTPVersion = 2;
     constexpr uint16_t kFlagTwoStep = 0x0200;
     constexpr size_t   kMaxPTPMessageSize = 1500;
@@ -45,6 +45,9 @@ namespace {
     constexpr size_t kAnnounceMessageSize = 64;
     constexpr size_t kSyncMessageSize = 44;
     constexpr size_t kFollowUpMessageSize = 44;
+    // Delay_Resp: header (34) + receiveTimestamp (10) + requestingPortIdentity
+    // (10) — the exact layout PTPSlave::handleDelayResp parses.
+    constexpr size_t kDelayRespMessageSize = 54;
 }
 
 // ============================================================================
@@ -125,14 +128,24 @@ bool PTPMaster::createSockets() {
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     }
 
-    // Bind general socket (that's the one we also receive foreign Announce
-    // on — Announce is a general message, IEEE 1588-2008 Table 15).
+    // Bind BOTH sockets: general for foreign Announce (BMCA input), event
+    // for inbound Delay_Req (2026-08-31 — unbound, the master could never
+    // hear a slave's Delay_Req, so no slave could measure path delay).
     struct sockaddr_in genAddr{};
     genAddr.sin_family = AF_INET;
     genAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    genAddr.sin_port = htons(kPTPGeneralPort);
+    genAddr.sin_port = htons(config_.generalPort);
     if (bind(generalSocket_, reinterpret_cast<struct sockaddr*>(&genAddr), sizeof(genAddr)) < 0) {
         std::cerr << "[PTPMaster] Failed to bind general socket: " << strerror(errno) << std::endl;
+        closeSockets();
+        return false;
+    }
+    struct sockaddr_in evtAddr{};
+    evtAddr.sin_family = AF_INET;
+    evtAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    evtAddr.sin_port = htons(config_.eventPort);
+    if (bind(eventSocket_, reinterpret_cast<struct sockaddr*>(&evtAddr), sizeof(evtAddr)) < 0) {
+        std::cerr << "[PTPMaster] Failed to bind event socket: " << strerror(errno) << std::endl;
         closeSockets();
         return false;
     }
@@ -152,11 +165,13 @@ bool PTPMaster::createSockets() {
         freeifaddrs(ifaddrs_ptr);
     }
 
-    if (setsockopt(generalSocket_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-        std::cerr << "[PTPMaster] Failed to join multicast on general socket: "
-                  << strerror(errno) << std::endl;
-        closeSockets();
-        return false;
+    for (int sock : {generalSocket_, eventSocket_}) {
+        if (setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+            std::cerr << "[PTPMaster] Failed to join multicast: "
+                      << strerror(errno) << std::endl;
+            closeSockets();
+            return false;
+        }
     }
 
     unsigned char ttl = 1; // Same-segment only — no PTP boundary clock routing here.
@@ -295,21 +310,36 @@ void PTPMaster::receiveThread() {
 
     uint8_t buf[kMaxPTPMessageSize];
     while (running_.load(std::memory_order_acquire)) {
-        ssize_t received = recv(generalSocket_, buf, sizeof(buf), 0);
-        if (received <= 0) continue; // timeout or error — loop re-checks running_
+        // Both sockets, one thread: general carries foreign Announce (BMCA
+        // input), event carries inbound Delay_Req. The 250 ms SO_RCVTIMEO
+        // set in createSockets() keeps each read from blocking past the
+        // running_ check; reading them alternately is enough at PTP rates
+        // (a handful of messages per second per socket).
+        for (int sock : {generalSocket_, eventSocket_}) {
+            ssize_t received = recv(sock, buf, sizeof(buf), 0);
+            if (received <= 0) continue; // timeout or error — loop re-checks running_
 
-        if (static_cast<size_t>(received) < 34) continue; // shorter than a PTP header
+            if (static_cast<size_t>(received) < 34) continue; // shorter than a PTP header
+            // t4 for a Delay_Req: sampled as close to reception as we get.
+            const uint64_t receiptNs = clockSource_.currentTimeNs();
 
-        PTPHeader header{};
-        header.transportAndType = buf[0];
-        header.versionPTP = buf[1];
-        header.domainNumber = buf[4];
-        header.logMessageInterval = static_cast<int8_t>(buf[33]);
-        for (size_t i = 0; i < 8; ++i) header.sourcePortIdentity.clockIdentity.id[i] = buf[20 + i];
-        header.sourcePortIdentity.portNumber = static_cast<uint16_t>((buf[28] << 8) | buf[29]);
+            PTPHeader header{};
+            header.transportAndType = buf[0];
+            header.versionPTP = buf[1];
+            header.domainNumber = buf[4];
+            header.logMessageInterval = static_cast<int8_t>(buf[33]);
+            for (size_t i = 0; i < 8; ++i) header.sourcePortIdentity.clockIdentity.id[i] = buf[20 + i];
+            header.sourcePortIdentity.portNumber = static_cast<uint16_t>((buf[28] << 8) | buf[29]);
+            const uint16_t sequenceId = static_cast<uint16_t>((buf[30] << 8) | buf[31]);
 
-        if (header.getMessageType() == PTPMessageType::Announce) {
-            handleForeignAnnounce(header, buf, static_cast<size_t>(received));
+            if (header.getMessageType() == PTPMessageType::Announce) {
+                handleForeignAnnounce(header, buf, static_cast<size_t>(received));
+            } else if (header.getMessageType() == PTPMessageType::Delay_Req) {
+                if (header.domainNumber == static_cast<uint8_t>(config_.domain) &&
+                    role_.load(std::memory_order_acquire) == PTPMasterRole::Master) {
+                    handleDelayReq(header, sequenceId, receiptNs);
+                }
+            }
         }
     }
 }
@@ -390,7 +420,7 @@ bool PTPMaster::sendAnnounce() {
     struct sockaddr_in dest{};
     dest.sin_family = AF_INET;
     dest.sin_addr.s_addr = inet_addr(kPTPPrimaryMulticast);
-    dest.sin_port = htons(kPTPGeneralPort);
+    dest.sin_port = htons(config_.generalPort);
 
     ssize_t sent = sendto(generalSocket_, msg, sizeof(msg), 0,
                           reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest));
@@ -432,7 +462,7 @@ bool PTPMaster::sendSyncAndFollowUp() {
     // t1: our clock, sampled as close to the send() call as practical.
     const uint64_t t1 = clockSource_.currentTimeNs();
 
-    dest.sin_port = htons(kPTPEventPort);
+    dest.sin_port = htons(config_.eventPort);
     if (sendto(eventSocket_, sync, sizeof(sync), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
         std::cerr << "[PTPMaster] Failed to send Sync: " << strerror(errno) << std::endl;
@@ -466,7 +496,7 @@ bool PTPMaster::sendSyncAndFollowUp() {
     followUp[42] = static_cast<uint8_t>((t1ts.nanoseconds >> 8) & 0xFF);
     followUp[43] = static_cast<uint8_t>(t1ts.nanoseconds & 0xFF);
 
-    dest.sin_port = htons(kPTPGeneralPort);
+    dest.sin_port = htons(config_.generalPort);
     if (sendto(generalSocket_, followUp, sizeof(followUp), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
         std::cerr << "[PTPMaster] Failed to send Follow_Up: " << strerror(errno) << std::endl;
@@ -475,6 +505,58 @@ bool PTPMaster::sendSyncAndFollowUp() {
 
     syncSentCount_.fetch_add(1, std::memory_order_relaxed);
     return true;
+}
+
+void PTPMaster::handleDelayReq(const PTPHeader& header, uint16_t sequenceId, uint64_t t4Ns) {
+    if (generalSocket_ < 0) return;
+
+    uint8_t msg[kDelayRespMessageSize];
+    std::memset(msg, 0, sizeof(msg));
+
+    msg[0] = static_cast<uint8_t>(PTPMessageType::Delay_Resp);
+    msg[1] = kPTPVersion;
+    msg[2] = 0; msg[3] = static_cast<uint8_t>(kDelayRespMessageSize);
+    msg[4] = static_cast<uint8_t>(config_.domain);
+    for (int i = 0; i < 8; ++i) msg[20 + i] = selfPortId_.clockIdentity.id[i];
+    msg[28] = static_cast<uint8_t>((selfPortId_.portNumber >> 8) & 0xFF);
+    msg[29] = static_cast<uint8_t>(selfPortId_.portNumber & 0xFF);
+    // sequenceId echoes the Delay_Req's — that is how the slave matches
+    // the answer to its own request (PTPSlave::handleDelayResp).
+    msg[30] = static_cast<uint8_t>((sequenceId >> 8) & 0xFF);
+    msg[31] = static_cast<uint8_t>(sequenceId & 0xFF);
+    msg[32] = 3; // controlField: Delay_Resp, IEEE 1588-2008 Table 23
+    msg[33] = 0;
+
+    // receiveTimestamp: t4, when the Delay_Req reached us.
+    const PTPTimestamp t4ts(t4Ns);
+    msg[34] = static_cast<uint8_t>((t4ts.secondsHi >> 8) & 0xFF);
+    msg[35] = static_cast<uint8_t>(t4ts.secondsHi & 0xFF);
+    msg[36] = static_cast<uint8_t>((t4ts.secondsLo >> 24) & 0xFF);
+    msg[37] = static_cast<uint8_t>((t4ts.secondsLo >> 16) & 0xFF);
+    msg[38] = static_cast<uint8_t>((t4ts.secondsLo >> 8) & 0xFF);
+    msg[39] = static_cast<uint8_t>(t4ts.secondsLo & 0xFF);
+    msg[40] = static_cast<uint8_t>((t4ts.nanoseconds >> 24) & 0xFF);
+    msg[41] = static_cast<uint8_t>((t4ts.nanoseconds >> 16) & 0xFF);
+    msg[42] = static_cast<uint8_t>((t4ts.nanoseconds >> 8) & 0xFF);
+    msg[43] = static_cast<uint8_t>(t4ts.nanoseconds & 0xFF);
+
+    // requestingPortIdentity: the slave's own identity, copied from the
+    // request — the slave rejects a Delay_Resp naming anyone else.
+    for (int i = 0; i < 8; ++i) msg[44 + i] = header.sourcePortIdentity.clockIdentity.id[i];
+    msg[52] = static_cast<uint8_t>((header.sourcePortIdentity.portNumber >> 8) & 0xFF);
+    msg[53] = static_cast<uint8_t>(header.sourcePortIdentity.portNumber & 0xFF);
+
+    struct sockaddr_in dest{};
+    dest.sin_family = AF_INET;
+    dest.sin_addr.s_addr = inet_addr(kPTPPrimaryMulticast);
+    dest.sin_port = htons(config_.generalPort);
+
+    if (sendto(generalSocket_, msg, sizeof(msg), 0,
+               reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
+        std::cerr << "[PTPMaster] Failed to send Delay_Resp: " << strerror(errno) << std::endl;
+        return;
+    }
+    delayRespSentCount_.fetch_add(1, std::memory_order_relaxed);
 }
 
 } // namespace AES67
