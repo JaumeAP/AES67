@@ -12,6 +12,7 @@
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
+#include "NetworkEngine/Discovery/RTSPServer.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/PTP/PTPPeerObserver.h"
 #include "NetworkEngine/Discovery/RTCPMonitor.h"
@@ -40,6 +41,13 @@ public:
     /// activeChannelCount_ (see GetInputChannelCount), which is <= this and
     /// comes from DeviceChannelSettings.
     static constexpr size_t kNumChannels = 128;
+
+    /// The RTSP port this driver actually binds. Not IANA's 554: that is
+    /// privileged, and this driver runs in user space with no root to
+    /// borrow (2026-08-31). Chosen in the registered range, above
+    /// anything the audio path uses, and advertised by mDNS so a client
+    /// that discovers us never has to assume the default.
+    static constexpr uint16_t kUnprivilegedRTSPPort = 8554;
 
     // Supported sample rates
     static constexpr std::array<Float64, 8> kSupportedSampleRates = {
@@ -219,6 +227,10 @@ private:
     /// to sapListener_ so both are destroyed before streamManager_, which
     /// their callbacks reach into (2026-08-31).
     std::unique_ptr<MDNSBrowser> mdnsBrowser_;
+    /// Serves our own transmit streams' SDP over RTSP DESCRIBE, the
+    /// complement of the browsing above: discovery is only half useful
+    /// if nobody can ask US for a description (2026-08-31).
+    std::unique_ptr<RTSPServer> rtspServer_;
     std::unique_ptr<SAPAnnouncer> sapAnnouncer_;
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
     std::unique_ptr<RTCPMonitor> rtcpMonitor_;
