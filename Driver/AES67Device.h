@@ -11,6 +11,7 @@
 #include "Shared/RingBuffer.hpp"
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
+#include "NetworkEngine/Discovery/MDNSBrowser.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/PTP/PTPPeerObserver.h"
 #include "NetworkEngine/Discovery/RTCPMonitor.h"
@@ -212,6 +213,12 @@ private:
     // SAP discovery. Runs for the driver's whole life once Initialize()
     // starts it — passive listening only, it announces nothing.
     std::unique_ptr<SAPListener> sapListener_;
+    /// mDNS/DNS-SD browsing, the discovery half SAP does not cover:
+    /// professional gear publishes its sessions as `_rtsp._tcp` services
+    /// rather than (or as well as) shouting SDP over SAP. Declared next
+    /// to sapListener_ so both are destroyed before streamManager_, which
+    /// their callbacks reach into (2026-08-31).
+    std::unique_ptr<MDNSBrowser> mdnsBrowser_;
     std::unique_ptr<SAPAnnouncer> sapAnnouncer_;
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
     std::unique_ptr<RTCPMonitor> rtcpMonitor_;

@@ -215,6 +215,21 @@ void AES67Device::Initialize() {
         sapListener_.reset();
     }
 
+    // mDNS/DNS-SD browsing, alongside SAP rather than instead of it: the
+    // two see different halves of a real network. A sender that registers
+    // `_rtsp._tcp` but never announces over SAP was invisible to this
+    // driver until now (2026-08-31) — that is how Merging's RAVENNA
+    // driver publishes sessions, and it is what an AES67 device on a
+    // switch with SAP filtered still offers. Same posture as SAP: a
+    // failure to start costs discovery, never audio.
+    mdnsBrowser_ = std::make_unique<MDNSBrowser>(MDNSBrowser::kServiceTypeRTSP);
+    if (mdnsBrowser_->start()) {
+        AES67_LOG("AES67Device: mDNS discovery browsing _rtsp._tcp");
+    } else {
+        AES67_LOG("AES67Device: mDNS discovery unavailable — continuing without it");
+        mdnsBrowser_.reset();
+    }
+
     // SAP announcement of our OWN transmit streams, so remote AES67/Dante
     // receivers can discover and subscribe to what this driver sends.
     // Listening (above) lets us find others; announcing lets others find us.
@@ -353,6 +368,9 @@ AES67Device::~AES67Device() {
     if (sapAnnouncer_) sapAnnouncer_->stop();
     if (ptpPeerObserver_) ptpPeerObserver_->stop();
     if (rtcpMonitor_) rtcpMonitor_->stop();
+    // Same reason as the observers above: the browser's thread can call
+    // back, so it stops before anything it might reach is torn down.
+    if (mdnsBrowser_) mdnsBrowser_->stop();
     // Deactivate streams directly rather than calling StopIO() (which requires
     // framework context). This is safe in the destructor.
     if (inputStream_) {
