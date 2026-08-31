@@ -252,6 +252,51 @@ void AES67Device::Initialize() {
         sapAnnouncer_.reset();
     }
 
+    // RTSP DESCRIBE endpoint for our own transmit streams. SAP is a
+    // broadcast a receiver has to be listening for at the right moment;
+    // DESCRIBE is a question it can ask whenever it likes, and it is how
+    // RAVENNA-class gear expects to fetch a session description
+    // (2026-08-31). Same non-fatal posture as every other discovery
+    // surface here.
+    //
+    // Port 554 is IANA's and needs root, which a user-space driver does
+    // not have: kUnprivilegedRTSPPort is what we actually bind, and it is
+    // what the mDNS registration below advertises, so a client that
+    // discovers us reaches the right port without assuming the default.
+    rtspServer_ = std::make_unique<RTSPServer>(kUnprivilegedRTSPPort);
+    const bool rtspStarted = rtspServer_->start([this]() {
+        std::vector<RTSPPublishedStream> published;
+        if (!streamManager_) return published;
+        for (const auto& session : streamManager_->getTransmitSessions()) {
+            std::string sdp = SDPParser::generate(session);
+            if (sdp.empty()) continue;
+            // One path per session name, plus "/" for the first stream so
+            // a client that asks for the root gets something useful
+            // rather than a 404.
+            RTSPPublishedStream entry;
+            // The path is compared against what a client sends, and the
+            // server percent-decodes that before comparing -- so publish
+            // the decoded form. A session name with a space ("Studio Mic
+            // 1") reaches us as "%20" and matches here.
+            entry.path = "/by-name/" + session.sessionName;
+            entry.sdp = sdp;
+            published.push_back(entry);
+            if (published.size() == 1) {
+                RTSPPublishedStream root;
+                root.path = "/";
+                root.sdp = std::move(sdp);
+                published.push_back(std::move(root));
+            }
+        }
+        return published;
+    });
+    if (rtspStarted) {
+        AES67_LOGF("AES67Device: RTSP DESCRIBE serving on :%u", rtspServer_->boundPort());
+    } else {
+        AES67_LOG("AES67Device: RTSP server unavailable - continuing without it");
+        rtspServer_.reset();
+    }
+
     // Passive PTP peer observer: watches PTP traffic to list which Dolby
     // elements are on the network (see PTPPeerObserver / GetPtpPeersProperty).
     // Independent of our own PTP role and, like SAP discovery, non-fatal if it
@@ -371,6 +416,7 @@ AES67Device::~AES67Device() {
     // Same reason as the observers above: the browser's thread can call
     // back, so it stops before anything it might reach is torn down.
     if (mdnsBrowser_) mdnsBrowser_->stop();
+    if (rtspServer_) rtspServer_->stop();
     // Deactivate streams directly rather than calling StopIO() (which requires
     // framework context). This is safe in the destructor.
     if (inputStream_) {
