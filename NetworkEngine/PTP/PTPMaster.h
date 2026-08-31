@@ -53,6 +53,13 @@ struct PTPMasterConfig {
     int announceReceiptTimeoutMultiplier = 3; // silence this many announce
                                                // intervals before assuming
                                                // we're alone on the segment
+
+    // IEEE 1588-2008 §13.1 ports. Defaults are the spec's; overridable so
+    // an unprivileged loopback test can run a master and a slave against
+    // each other on high ports (2026-08-31 — ports below 1024 need root,
+    // which is why the PTP exchange had never been exercised end to end).
+    uint16_t eventPort = 319;
+    uint16_t generalPort = 320;
 };
 
 class PTPMaster {
@@ -77,6 +84,7 @@ public:
     int announceSentCount() const { return announceSentCount_.load(std::memory_order_relaxed); }
     int syncSentCount() const { return syncSentCount_.load(std::memory_order_relaxed); }
     int foreignAnnounceCount() const { return foreignAnnounceCount_.load(std::memory_order_relaxed); }
+    int delayRespSentCount() const { return delayRespSentCount_.load(std::memory_order_relaxed); }
 
 private:
     bool createSockets();
@@ -88,6 +96,11 @@ private:
     void transmitThread();
 
     void handleForeignAnnounce(const PTPHeader& header, const uint8_t* data, size_t len);
+    // Answers a slave's Delay_Req with a Delay_Resp carrying t4 — the
+    // master half of the delay exchange (2026-08-31; until then the
+    // master never listened on the event port at all, so no slave could
+    // ever measure path delay against us).
+    void handleDelayReq(const PTPHeader& header, uint16_t sequenceId, uint64_t t4Ns);
     void evaluateBMCA();
 
     /// Our own Announce dataset, built from config_ + clockSource_ — what we
@@ -126,6 +139,7 @@ private:
     std::atomic<int> announceSentCount_{0};
     std::atomic<int> syncSentCount_{0};
     std::atomic<int> foreignAnnounceCount_{0};
+    std::atomic<int> delayRespSentCount_{0};
 };
 
 } // namespace AES67

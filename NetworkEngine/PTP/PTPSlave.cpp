@@ -44,8 +44,7 @@ namespace {
     // Peer delay multicast: "224.0.0.107" (reserved for future peer-delay support)
 
     // PTP UDP ports (IEEE 1588-2008 Section 13.1)
-    constexpr uint16_t kPTPEventPort   = 319;
-    constexpr uint16_t kPTPGeneralPort = 320;
+    // Ports come from PTPSlaveConfig since 2026-08-31 (loopback-test knob).
 
     // PTP header size (IEEE 1588-2008 Section 13.3)
     constexpr size_t kPTPHeaderSize = 34;
@@ -298,11 +297,11 @@ bool PTPSlave::createSockets() {
     std::memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(kPTPEventPort);
+    addr.sin_port = htons(config_.eventPort);
 
     if (bind(eventSocket_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
         std::cerr << "[PTPSlave] Failed to bind event socket to port "
-                  << kPTPEventPort << ": " << strerror(errno) << std::endl;
+                  << config_.eventPort << ": " << strerror(errno) << std::endl;
         closeSockets();
         return false;
     }
@@ -341,8 +340,9 @@ bool PTPSlave::createSockets() {
     uint8_t ttl = 128;
     setsockopt(eventSocket_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
 
-    // Disable multicast loopback
-    uint8_t loop = 0;
+    // Multicast loopback: off unless the config asks for it (see
+    // PTPSlaveConfig::multicastLoopback for why the test needs it on).
+    uint8_t loop = config_.multicastLoopback ? 1 : 0;
     setsockopt(eventSocket_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 
     // --- General socket (port 320) ---
@@ -365,11 +365,11 @@ bool PTPSlave::createSockets() {
     std::memset(&gaddr, 0, sizeof(gaddr));
     gaddr.sin_family = AF_INET;
     gaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    gaddr.sin_port = htons(kPTPGeneralPort);
+    gaddr.sin_port = htons(config_.generalPort);
 
     if (bind(generalSocket_, reinterpret_cast<struct sockaddr*>(&gaddr), sizeof(gaddr)) < 0) {
         std::cerr << "[PTPSlave] Failed to bind general socket to port "
-                  << kPTPGeneralPort << ": " << strerror(errno) << std::endl;
+                  << config_.generalPort << ": " << strerror(errno) << std::endl;
         closeSockets();
         return false;
     }
@@ -382,8 +382,8 @@ bool PTPSlave::createSockets() {
         return false;
     }
 
-    std::cout << "[PTPSlave] Sockets created: event=" << kPTPEventPort
-              << " general=" << kPTPGeneralPort
+    std::cout << "[PTPSlave] Sockets created: event=" << config_.eventPort
+              << " general=" << config_.generalPort
               << " multicast=" << kPTPPrimaryMulticast << std::endl;
 
     return true;
@@ -435,7 +435,10 @@ void PTPSlave::receiveThread() {
         }
         if (ret == 0) continue; // Timeout
 
-        // Check event socket (Sync, Delay_Resp)
+        // Check event socket (Sync; Delay_Resp is tolerated here too --
+        // it belongs on the general socket per Table 15, and that is
+        // where it is really handled since 2026-08-31, but accepting it
+        // on 319 costs nothing and covers a master that misplaces it)
         if (eventSocket_ >= 0 && FD_ISSET(eventSocket_, &readfds)) {
             // Use recvmsg to get kernel timestamp
             struct msghdr msg;
@@ -504,6 +507,18 @@ void PTPSlave::receiveThread() {
                                 break;
                             case PTPMessageType::Announce:
                                 handleAnnounce(header, buf, static_cast<size_t>(n));
+                                break;
+                            case PTPMessageType::Delay_Resp:
+                                // Delay_Resp is a GENERAL message (IEEE
+                                // 1588-2008 Table 15, port 320) -- it was
+                                // only handled on the event socket until
+                                // 2026-08-31, so a standards-compliant
+                                // grandmaster's answer was silently
+                                // dropped and the slave could never
+                                // measure path delay. Found by the new
+                                // PTP loopback test: master sent 21
+                                // Delay_Resp, slave counted 0.
+                                handleDelayResp(header, buf, static_cast<size_t>(n));
                                 break;
                             default:
                                 break;
@@ -640,26 +655,34 @@ void PTPSlave::handleSync(const PTPHeader& header, const uint8_t* data, size_t l
 
     bool isTwoStep = (header.flagField & kFlagTwoStep) != 0;
 
-    std::lock_guard<std::mutex> lock(syncMutex_);
+    // syncMutex_ is scoped to the record block: calculateOffsetAndDelay()
+    // re-acquires it itself, and std::mutex is non-recursive (2026-08-31,
+    // second round -- the same family of self-deadlock the delayMutex_ fix
+    // addressed, found by the new PTP loopback test the moment a real
+    // master/slave pair exchanged messages).
+    bool computeNow = false;
+    {
+        std::lock_guard<std::mutex> lock(syncMutex_);
 
-    // Store t2 (our receive timestamp)
-    t2_receiveTimeNs_ = receiveTimeNs;
-    lastSyncSequenceId_ = header.sequenceId;
-    syncCorrectionField_ = header.correctionField;
+        // Store t2 (our receive timestamp)
+        t2_receiveTimeNs_ = receiveTimeNs;
+        lastSyncSequenceId_ = header.sequenceId;
+        syncCorrectionField_ = header.correctionField;
 
-    if (isTwoStep) {
-        // Two-step: wait for Follow_Up with the precise t1
-        waitingForFollowUp_ = true;
-        // Parse origin timestamp from Sync (informational only in two-step)
-        parseTimestamp(data, kTimestampOffset, syncOriginTimestamp_);
-    } else {
-        // One-step: origin timestamp in Sync IS t1
-        parseTimestamp(data, kTimestampOffset, t1_syncOriginTimestamp_);
-        waitingForFollowUp_ = false;
-
-        // Can compute offset immediately with existing delay
-        calculateOffsetAndDelay();
+        if (isTwoStep) {
+            // Two-step: wait for Follow_Up with the precise t1
+            waitingForFollowUp_ = true;
+            // Parse origin timestamp from Sync (informational only in two-step)
+            parseTimestamp(data, kTimestampOffset, syncOriginTimestamp_);
+        } else {
+            // One-step: origin timestamp in Sync IS t1
+            parseTimestamp(data, kTimestampOffset, t1_syncOriginTimestamp_);
+            waitingForFollowUp_ = false;
+            computeNow = true; // with existing delay, outside the lock
+        }
     }
+
+    if (computeNow) calculateOffsetAndDelay();
 }
 
 void PTPSlave::handleFollowUp(const PTPHeader& header, const uint8_t* data, size_t len) {
@@ -667,28 +690,35 @@ void PTPSlave::handleFollowUp(const PTPHeader& header, const uint8_t* data, size
 
     followUpCount_.fetch_add(1, std::memory_order_relaxed);
 
-    std::lock_guard<std::mutex> lock(syncMutex_);
+    // Same scoping rule as handleSync/handleDelayResp: record under the
+    // lock, compute after releasing it. This is the path every two-step
+    // (i.e. every AES67) Follow_Up takes, so holding syncMutex_ across
+    // calculateOffsetAndDelay() deadlocked the slave's receive thread on
+    // the very first Follow_Up from a real master (2026-08-31).
+    {
+        std::lock_guard<std::mutex> lock(syncMutex_);
 
-    // Follow_Up must match the Sync we're waiting for
-    if (!waitingForFollowUp_) return;
-    if (header.sequenceId != lastSyncSequenceId_) return;
+        // Follow_Up must match the Sync we're waiting for
+        if (!waitingForFollowUp_) return;
+        if (header.sequenceId != lastSyncSequenceId_) return;
 
-    // Parse the precise origin timestamp (t1)
-    parseTimestamp(data, kTimestampOffset, t1_syncOriginTimestamp_);
+        // Parse the precise origin timestamp (t1)
+        parseTimestamp(data, kTimestampOffset, t1_syncOriginTimestamp_);
 
-    // Add Follow_Up correction to Sync correction
-    // Both are in nanoseconds * 2^16 fixed point
-    int64_t totalCorrectionFixed = syncCorrectionField_ + header.correctionField;
+        // Add Follow_Up correction to Sync correction
+        // Both are in nanoseconds * 2^16 fixed point
+        int64_t totalCorrectionFixed = syncCorrectionField_ + header.correctionField;
 
-    // Convert correction from fixed-point (ns * 2^16) to nanoseconds
-    int64_t correctionNs = totalCorrectionFixed >> 16;
+        // Convert correction from fixed-point (ns * 2^16) to nanoseconds
+        int64_t correctionNs = totalCorrectionFixed >> 16;
 
-    // Apply correction to t1
-    uint64_t t1Ns = t1_syncOriginTimestamp_.toNanoseconds();
-    t1Ns += static_cast<uint64_t>(correctionNs);
-    t1_syncOriginTimestamp_ = PTPTimestamp(t1Ns);
+        // Apply correction to t1
+        uint64_t t1Ns = t1_syncOriginTimestamp_.toNanoseconds();
+        t1Ns += static_cast<uint64_t>(correctionNs);
+        t1_syncOriginTimestamp_ = PTPTimestamp(t1Ns);
 
-    waitingForFollowUp_ = false;
+        waitingForFollowUp_ = false;
+    }
 
     // Now we have t1 and t2 — compute offset (using existing path delay)
     calculateOffsetAndDelay();
@@ -820,7 +850,15 @@ bool PTPSlave::sendDelayReq() {
     uint16_t seqId;
     {
         std::lock_guard<std::mutex> lock(delayMutex_);
-        seqId = delayReqSequenceId_++;
+        // PRE-increment, so delayReqSequenceId_ holds the id actually
+        // SENT: handleDelayResp matches the answer against this member,
+        // and with post-increment it held sent+1, so every well-formed
+        // Delay_Resp was rejected on sequence mismatch and path delay
+        // stayed 0 forever -- against any master, not just ours
+        // (2026-08-31, found by the PTP loopback test: 21 Delay_Resp
+        // received, 0 accepted). Starting at 1 rather than 0 is
+        // immaterial: PTP sequence ids are opaque and wrap.
+        seqId = ++delayReqSequenceId_;
     }
 
     // Header
@@ -860,7 +898,7 @@ bool PTPSlave::sendDelayReq() {
     std::memset(&dest, 0, sizeof(dest));
     dest.sin_family = AF_INET;
     dest.sin_addr.s_addr = inet_addr(kPTPPrimaryMulticast);
-    dest.sin_port = htons(kPTPEventPort);
+    dest.sin_port = htons(config_.eventPort);
 
     ssize_t sent = sendto(eventSocket_, msg, sizeof(msg), 0,
                           reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest));
