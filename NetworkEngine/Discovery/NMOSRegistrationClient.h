@@ -133,7 +133,8 @@ public:
     /// The node has to be registered first — IS-04 refuses a device whose
     /// node it does not know.
     bool syncResources(const std::vector<NMOSSenderResource>& senders,
-                       const std::vector<NMOSReceiverResource>& receivers);
+                       const std::vector<NMOSReceiverResource>& receivers,
+                       const std::string& controlHref = {});
 
     /// DELETEs the Node resource, and everything under it first: a
     /// registry that is told beats waiting for a timeout to expire.
@@ -162,11 +163,15 @@ public:
 
     /// The bodies, so they can be read without a registry. Each returns
     /// the full {"type": ..., "data": {...}} a registration POST takes.
+    /// `controlHref` is the IS-05 Connection API's root. Empty leaves the
+    /// controls list empty, which is what to say when there is no
+    /// connection control to point at.
     static std::string buildDeviceBody(const std::string& deviceId,
                                        const std::string& nodeId,
                                        const std::string& label,
                                        const std::vector<std::string>& senderIds,
                                        const std::vector<std::string>& receiverIds,
+                                       const std::string& controlHref,
                                        int64_t versionSeconds, int32_t versionNanos);
     static std::string buildSourceBody(const std::string& sourceId,
                                        const std::string& deviceId,

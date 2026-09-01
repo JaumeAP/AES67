@@ -12,6 +12,7 @@
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
+#include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
 #include "NetworkEngine/Discovery/RTSPServer.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
@@ -246,6 +247,11 @@ private:
     /// describing the streams means asking StreamManager for them, which
     /// would take that mutex again. The callbacks set a flag; this thread
     /// does the work once they have let go.
+    /// The IS-05 Connection API, which is what turns the registry entry
+    /// from something a controller can look at into something it can
+    /// patch. Bound to an ephemeral port and advertised in the device's
+    /// controls.
+    std::unique_ptr<ConnectionAPIServer> connectionServer_;
     std::thread nmosSyncThread_;
     std::mutex nmosSyncMutex_;
     std::condition_variable nmosSyncSignal_;
@@ -256,6 +262,22 @@ private:
     /// nmosSyncThread_ only.
     void syncNMOSResources();
     void requestNMOSSync();
+
+    /// Applies one IS-05 patch to a receive stream. Runs on the
+    /// Connection API's own thread, never on an audio one.
+    bool applyConnectionPatch(const std::string& receiverId, const ConnectionPatch& patch);
+
+    /// What the Connection API serves, built from the same streams and the
+    /// same derived ids the registry was given: a controller that reads
+    /// one and patches the other has to be talking about the same things.
+    std::vector<ConnectionSender> connectionSenders();
+    std::vector<ConnectionReceiver> connectionReceivers();
+
+    /// The NMOS id for a stream of this name, or empty when NMOS is off.
+    std::string nmosIdFor(const std::string& prefix, const std::string& name) const;
+
+    /// The node id in use, empty when NMOS is off.
+    std::string nmosNodeId_;
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
     std::unique_ptr<RTCPMonitor> rtcpMonitor_;
 
