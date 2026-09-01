@@ -371,6 +371,34 @@ void AES67Device::Initialize() {
                 nmosClient_->startHeartbeats();
                 AES67_LOGF("AES67Device: registered with the NMOS registry at %s:%u as %s",
                            registry->host.c_str(), registry->port, node.id.c_str());
+
+                // The streams are described from a thread of its own, and
+                // the callbacks below only ask for it: they run with
+                // StreamManager's mutex held and describing the streams
+                // needs that same mutex.
+                {
+                    std::lock_guard<std::mutex> lock(nmosSyncMutex_);
+                    nmosSyncRunning_ = true;
+                }
+                nmosSyncThread_ = std::thread([this] {
+                    for (;;) {
+                        {
+                            std::unique_lock<std::mutex> lock(nmosSyncMutex_);
+                            nmosSyncSignal_.wait(lock, [this] {
+                                return nmosSyncRequested_ || !nmosSyncRunning_;
+                            });
+                            if (!nmosSyncRunning_) return;
+                            nmosSyncRequested_ = false;
+                        }
+                        syncNMOSResources();
+                    }
+                });
+
+                streamManager_->setStreamAddedCallback(
+                    [this](const StreamInfo&) { requestNMOSSync(); });
+                streamManager_->setStreamRemovedCallback(
+                    [this](const StreamInfo&) { requestNMOSSync(); });
+                requestNMOSSync();
             } else {
                 AES67_LOG("AES67Device: no NMOS registry registered with - continuing without it");
                 nmosClient_.reset();
@@ -487,6 +515,49 @@ void AES67Device::Initialize() {
     AES67_LOG("AES67Device::Initialize() complete");
 }
 
+void AES67Device::requestNMOSSync() {
+    {
+        std::lock_guard<std::mutex> lock(nmosSyncMutex_);
+        if (!nmosSyncRunning_) return;
+        nmosSyncRequested_ = true;
+    }
+    nmosSyncSignal_.notify_one();
+}
+
+void AES67Device::syncNMOSResources() {
+    if (!nmosClient_ || !streamManager_) return;
+
+    std::vector<NMOSSenderResource> senders;
+    for (const SDPSession& sdp : streamManager_->getTransmitSessions()) {
+        NMOSSenderResource sender;
+        sender.name = sdp.sessionName;
+        sender.description = sdp.sessionInfo;
+        sender.multicastAddress = sdp.connectionAddress;
+        sender.port = sdp.port;
+        sender.sourceAddress = sdp.originAddress;
+        sender.sampleRate = static_cast<uint32_t>(sdp.sampleRate);
+        sender.channels = sdp.numChannels;
+        sender.encoding = sdp.encoding.empty() ? "L24" : sdp.encoding;
+        senders.push_back(std::move(sender));
+    }
+
+    std::vector<NMOSReceiverResource> receivers;
+    for (const SDPSession& sdp : streamManager_->getReceiveSessions()) {
+        NMOSReceiverResource receiver;
+        receiver.name = sdp.sessionName;
+        receiver.description = sdp.sessionInfo;
+        receiver.subscribedMulticastAddress = sdp.connectionAddress;
+        // A receive stream that exists is a receiver that is taking
+        // something: this driver does not keep idle receivers around.
+        receiver.active = true;
+        receivers.push_back(std::move(receiver));
+    }
+
+    if (!nmosClient_->syncResources(senders, receivers)) {
+        AES67_LOG("AES67Device: the NMOS registry did not take every resource");
+    }
+}
+
 AES67Device::~AES67Device() {
     // Stop announcing first: its sender thread calls back into streamManager_,
     // which must still be alive (it is - declared before the announcer, so
@@ -500,6 +571,12 @@ AES67Device::~AES67Device() {
     if (rtspServer_) rtspServer_->stop();
     // Telling the registry beats leaving it to time us out: a controller
     // showing a node that is gone is worse than one showing nothing.
+    {
+        std::lock_guard<std::mutex> lock(nmosSyncMutex_);
+        nmosSyncRunning_ = false;
+    }
+    nmosSyncSignal_.notify_all();
+    if (nmosSyncThread_.joinable()) nmosSyncThread_.join();
     if (nmosClient_) {
         nmosClient_->stop();
         nmosClient_->unregister();

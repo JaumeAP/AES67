@@ -268,6 +268,12 @@ public:
     // announcement so other AES67/Dante gear can discover and subscribe.
     std::vector<SDPSession> getTransmitSessions() const;
 
+    /// The receive streams, the counterpart of the above: what this driver
+    /// takes off the network rather than what it offers. Both are needed
+    /// to describe this device to a registry, and the two collections have
+    /// always been one map with a flag.
+    std::vector<SDPSession> getReceiveSessions() const;
+
     // Auto sink-follow (RAVENNA auto_sinks_update): given a freshly parsed SAP
     // announcement, re-point any RECEIVE stream bound to that source onto the
     // source's new transport (multicast address, port, sample rate, encoding,
