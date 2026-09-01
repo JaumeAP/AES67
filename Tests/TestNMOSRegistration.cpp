@@ -251,3 +251,167 @@ TEST_CASE("Stopping Without Starting Is Safe, And So Is Stopping Twice") {
     client.stop();
     client.stop();
 }
+
+TEST_CASE("Derived ids are stable, distinct, and version 5") {
+    const std::string node = "8c4a5f2e-0000-4000-8000-000000000001";
+
+    const std::string device = NMOSRegistrationClient::deriveId(node, "device");
+    CHECK(device.size() == 36);
+    CHECK(device[14] == '5');
+    CHECK(std::string("89ab").find(device[19]) != std::string::npos);
+
+    // The same input gives the same id, which is the whole point: a
+    // registry keyed by fresh ids each launch accumulates copies of the
+    // same stream.
+    CHECK(NMOSRegistrationClient::deriveId(node, "device") == device);
+
+    // Different names, different ids; and the same name under another
+    // node is another id.
+    CHECK(NMOSRegistrationClient::deriveId(node, "sender:Studio Mic 1") != device);
+    CHECK(NMOSRegistrationClient::deriveId(node, "sender:Studio Mic 1") !=
+          NMOSRegistrationClient::deriveId(node, "sender:Studio Mic 2"));
+    CHECK(NMOSRegistrationClient::deriveId("8c4a5f2e-0000-4000-8000-000000000002", "device") !=
+          device);
+}
+
+TEST_CASE("The resource bodies say what IS-04 expects") {
+    NMOSSenderResource sender;
+    sender.name = "Studio Mic 1";
+    sender.multicastAddress = "239.69.0.1";
+    sender.port = 5004;
+    sender.sampleRate = 48000;
+    sender.channels = 4;
+    sender.encoding = "L24";
+
+    SUBCASE("device") {
+        const std::string body = NMOSRegistrationClient::buildDeviceBody(
+            "dev-id", "node-id", "Studio Mac", {"snd-1"}, {"rcv-1"}, 1756000000, 0);
+        CHECK(body.find("\"type\": \"device\"") != std::string::npos);
+        CHECK(body.find("\"type\": \"urn:x-nmos:device:audio\"") != std::string::npos);
+        CHECK(body.find("\"node_id\": \"node-id\"") != std::string::npos);
+        CHECK(body.find("\"senders\": [\"snd-1\"]") != std::string::npos);
+        CHECK(body.find("\"receivers\": [\"rcv-1\"]") != std::string::npos);
+        // No IS-05 here yet, and an empty list is how that is said.
+        CHECK(body.find("\"controls\": []") != std::string::npos);
+    }
+
+    SUBCASE("source names its channels") {
+        const std::string body = NMOSRegistrationClient::buildSourceBody(
+            "src-id", "dev-id", sender, 1756000000, 0);
+        CHECK(body.find("\"format\": \"urn:x-nmos:format:audio\"") != std::string::npos);
+        CHECK(body.find("\"device_id\": \"dev-id\"") != std::string::npos);
+        CHECK(body.find("\"clock_name\": \"clk0\"") != std::string::npos);
+        CHECK(body.find("Channel 1") != std::string::npos);
+        CHECK(body.find("Channel 4") != std::string::npos);
+        CHECK(body.find("Channel 5") == std::string::npos);
+    }
+
+    SUBCASE("flow carries the media type and the depth that goes with it") {
+        const std::string l24 = NMOSRegistrationClient::buildFlowBody(
+            "flow-id", "src-id", "dev-id", sender, 1756000000, 0);
+        CHECK(l24.find("\"media_type\": \"audio/L24\"") != std::string::npos);
+        CHECK(l24.find("\"bit_depth\": 24") != std::string::npos);
+        CHECK(l24.find("\"numerator\": 48000") != std::string::npos);
+
+        sender.encoding = "L16";
+        const std::string l16 = NMOSRegistrationClient::buildFlowBody(
+            "flow-id", "src-id", "dev-id", sender, 1756000000, 0);
+        CHECK(l16.find("\"media_type\": \"audio/L16\"") != std::string::npos);
+        CHECK(l16.find("\"bit_depth\": 16") != std::string::npos);
+    }
+
+    SUBCASE("sender names its flow and admits it has no HTTP manifest") {
+        const std::string body = NMOSRegistrationClient::buildSenderBody(
+            "snd-id", "flow-id", "dev-id", sender, 1756000000, 0);
+        CHECK(body.find("\"flow_id\": \"flow-id\"") != std::string::npos);
+        CHECK(body.find("\"transport\": \"urn:x-nmos:transport:rtp.mcast\"") !=
+              std::string::npos);
+        // The SDP is served over RTSP DESCRIBE, and manifest_href names an
+        // HTTP URL: null beats pointing at something that will 404.
+        CHECK(body.find("\"manifest_href\": null") != std::string::npos);
+    }
+
+    SUBCASE("receiver advertises what the RTP path can decode") {
+        NMOSReceiverResource receiver;
+        receiver.name = "Desk Return";
+        receiver.active = true;
+        const std::string body = NMOSRegistrationClient::buildReceiverBody(
+            "rcv-id", "dev-id", receiver, 1756000000, 0);
+        CHECK(body.find("\"media_types\": [\"audio/L16\", \"audio/L24\"]") !=
+              std::string::npos);
+        CHECK(body.find("\"active\": true") != std::string::npos);
+    }
+}
+
+TEST_CASE("A sync posts the whole tree, and the next one takes away what went") {
+    FakeRegistry registry(answer("201 Created"));
+    REQUIRE(registry.start());
+
+    NMOSRegistrationClient client(testNode());
+    REQUIRE(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+
+    NMOSSenderResource first;
+    first.name = "Studio Mic 1";
+    first.channels = 2;
+    NMOSSenderResource second;
+    second.name = "Studio Mic 2";
+    second.channels = 2;
+    NMOSReceiverResource receiver;
+    receiver.name = "Desk Return";
+
+    CHECK(client.syncResources({first, second}, {receiver}));
+
+    auto requests = registry.requests();
+    // The node, the device, source/flow/sender twice, and the receiver:
+    // nine in all, with the device before anything it names.
+    REQUIRE(requests.size() == 9);
+    CHECK(requests[1].find("\"type\": \"device\"") != std::string::npos);
+    CHECK(requests[2].find("\"type\": \"source\"") != std::string::npos);
+    CHECK(requests[3].find("\"type\": \"flow\"") != std::string::npos);
+    CHECK(requests[4].find("\"type\": \"sender\"") != std::string::npos);
+    CHECK(requests[5].find("\"type\": \"source\"") != std::string::npos);
+    CHECK(requests[8].find("\"type\": \"receiver\"") != std::string::npos);
+
+    // One stream goes away: what the registry still holds for it has to
+    // go with it, or a controller is sent after a stream nobody sends.
+    CHECK(client.syncResources({first}, {receiver}));
+
+    requests = registry.requests();
+    std::string deletes;
+    for (const std::string& request : requests) {
+        if (request.rfind("DELETE ", 0) == 0) deletes += request.substr(0, request.find(' ', 7));
+    }
+    CHECK(deletes.find("/sources/") != std::string::npos);
+    CHECK(deletes.find("/flows/") != std::string::npos);
+    CHECK(deletes.find("/senders/") != std::string::npos);
+    // The receiver stayed, so nothing of it was removed.
+    CHECK(deletes.find("/receivers/") == std::string::npos);
+}
+
+TEST_CASE("Unregistering takes the tree down before the node") {
+    FakeRegistry registry(answer("204 No Content"));
+    REQUIRE(registry.start());
+
+    NMOSRegistrationClient client(testNode());
+    client.registerWith({"127.0.0.1", registry.port(), "v1.3"});
+
+    NMOSSenderResource sender;
+    sender.name = "Studio Mic 1";
+    client.syncResources({sender}, {});
+
+    CHECK(client.unregister());
+
+    const auto requests = registry.requests();
+    size_t nodeDelete = 0;
+    size_t senderDelete = 0;
+    for (size_t i = 0; i < requests.size(); i++) {
+        if (requests[i].find("DELETE") == 0 && requests[i].find("/nodes/") != std::string::npos) {
+            nodeDelete = i;
+        }
+        if (requests[i].find("DELETE") == 0 && requests[i].find("/senders/") != std::string::npos) {
+            senderDelete = i;
+        }
+    }
+    CHECK(senderDelete > 0);
+    CHECK(senderDelete < nodeDelete);
+}
