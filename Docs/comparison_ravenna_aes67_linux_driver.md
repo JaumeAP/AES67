@@ -267,10 +267,20 @@ sorts by DSCP, PTP left unmarked queues behind the audio it is timing.
 Which value belongs there is the network's business — EF is 46, Dante
 marks PTP CS7 — so neither of us chooses one.
 
-Still ours to do from the same comparison: the PTP dataset is not exposed
-the way they expose theirs (priority1/2, clock class and accuracy, the
-intervals, the delay mechanism, slave-only), and there is no NMOS IS-04
-registration.
+From the same comparison, the PTP dataset is exposed now
+(`PTPMasterSettings` carries priority1/2, the clock class and accuracy,
+the intervals, the delay mechanism and the DSCP; `applyPTPSettings` puts
+them into the engines). Clock class and accuracy are stored but not
+carried into the Announce on purpose: the master announces what its clock
+source really is, and letting a settings file claim better is a lie BMCA
+acts on.
+
+NMOS IS-04 has its first half: `NMOSRegistrationClient` finds a registry
+over `_nmos-register._tcp`, registers this driver as a Node and keeps the
+registration alive, re-registering when the registry answers 404. Devices,
+sources, flows, senders and receivers — where the streams themselves would
+go — are not written yet, and nothing in the driver starts the client:
+that wiring is the next step.
 
 ### ST-2022-7 redundancy and NMOS
 
