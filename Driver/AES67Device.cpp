@@ -349,6 +349,7 @@ void AES67Device::Initialize() {
 
             NMOSNodeInfo node;
             node.id = nmosSettings.nodeId;
+            nmosNodeId_ = nmosSettings.nodeId;
             node.hostname = localHostname();
             node.label = nmosSettings.label.empty()
                              ? ("AES67 macOS Driver on " + node.hostname)
@@ -393,6 +394,24 @@ void AES67Device::Initialize() {
                         syncNMOSResources();
                     }
                 });
+
+                // IS-05. Bound to an ephemeral port: this is a user-space
+                // driver and the port it gets is what it advertises.
+                connectionServer_ = std::make_unique<ConnectionAPIServer>(0);
+                const bool connectionStarted = connectionServer_->start(
+                    [this] { return connectionSenders(); },
+                    [this] { return connectionReceivers(); },
+                    [this](const std::string& id, const ConnectionPatch& patch) {
+                        return applyConnectionPatch(id, patch);
+                    });
+                if (connectionStarted) {
+                    AES67_LOGF("AES67Device: IS-05 connection API on :%u",
+                               connectionServer_->boundPort());
+                } else {
+                    AES67_LOG("AES67Device: IS-05 connection API unavailable - "
+                              "registering without a control");
+                    connectionServer_.reset();
+                }
 
                 streamManager_->setStreamAddedCallback(
                     [this](const StreamInfo&) { requestNMOSSync(); });
@@ -515,6 +534,104 @@ void AES67Device::Initialize() {
     AES67_LOG("AES67Device::Initialize() complete");
 }
 
+std::string AES67Device::nmosIdFor(const std::string& prefix, const std::string& name) const {
+    if (nmosNodeId_.empty()) return {};
+    return NMOSRegistrationClient::deriveId(nmosNodeId_, prefix + ":" + name);
+}
+
+std::vector<ConnectionSender> AES67Device::connectionSenders() {
+    std::vector<ConnectionSender> senders;
+    if (!streamManager_) return senders;
+
+    for (const SDPSession& sdp : streamManager_->getTransmitSessions()) {
+        ConnectionSender sender;
+        sender.id = nmosIdFor("sender", sdp.sessionName);
+        sender.label = sdp.sessionName;
+        sender.multicastAddress = sdp.connectionAddress;
+        sender.port = sdp.port;
+        sender.sourceAddress = sdp.originAddress;
+        // The same description the RTSP server hands out, so a controller
+        // that fetches it here and a receiver that asks for it there get
+        // the same stream.
+        sender.sdp = SDPParser::generate(sdp);
+        senders.push_back(std::move(sender));
+    }
+    return senders;
+}
+
+std::vector<ConnectionReceiver> AES67Device::connectionReceivers() {
+    std::vector<ConnectionReceiver> receivers;
+    if (!streamManager_) return receivers;
+
+    for (const SDPSession& sdp : streamManager_->getReceiveSessions()) {
+        ConnectionReceiver receiver;
+        receiver.id = nmosIdFor("receiver", sdp.sessionName);
+        receiver.label = sdp.sessionName;
+        receiver.multicastAddress = sdp.connectionAddress;
+        receiver.port = sdp.port;
+        receivers.push_back(std::move(receiver));
+    }
+    return receivers;
+}
+
+bool AES67Device::applyConnectionPatch(const std::string& receiverId,
+                                       const ConnectionPatch& patch) {
+    if (!streamManager_) return false;
+
+    // Which of our receive streams this id names. The ids are derived from
+    // the session name, so this is the same walk the listing does.
+    SDPSession target;
+    bool found = false;
+    for (const SDPSession& sdp : streamManager_->getReceiveSessions()) {
+        if (nmosIdFor("receiver", sdp.sessionName) == receiverId) {
+            target = sdp;
+            found = true;
+            break;
+        }
+    }
+    if (!found) return false;
+
+    // A patch with no activation is staged and not applied. This driver
+    // keeps no staged state, so saying yes to it would be a promise it
+    // cannot keep on the next GET.
+    if (!patch.activateImmediate) return false;
+
+    // master_enable false is a controller disconnecting the receiver.
+    if (patch.masterEnable.has_value() && !*patch.masterEnable) {
+        for (const StreamInfo& info : streamManager_->getActiveStreams()) {
+            if (info.name == target.sessionName) {
+                return streamManager_->removeStream(info.id);
+            }
+        }
+        return true;   // already not running: the controller got what it asked for
+    }
+
+    // What the receiver should be taking now. A transport file carries the
+    // whole description, which is the only way to be patched onto a stream
+    // this driver has never heard announced; without one, the transport
+    // params move the address and the format stays as it was.
+    SDPSession wanted = target;
+    if (patch.transportFile.has_value()) {
+        const auto parsed = SDPParser::parseString(*patch.transportFile);
+        if (!parsed) return false;
+        wanted = *parsed;
+        // The sink keeps its own identity: what changed is where it
+        // listens, not which receiver it is.
+        wanted.sessionName = target.sessionName;
+    }
+    if (patch.multicastAddress.has_value() && !patch.multicastAddress->empty()) {
+        wanted.connectionAddress = *patch.multicastAddress;
+    }
+    if (patch.port.has_value()) {
+        wanted.port = *patch.port;
+    }
+
+    // Re-pointing goes through the same path SAP's sink-follow uses, which
+    // preserves the device-channel mapping and refuses a channel-count
+    // change for the reason recorded there.
+    return streamManager_->updateReceiveStreamsFromAnnouncement(wanted) > 0;
+}
+
 void AES67Device::requestNMOSSync() {
     {
         std::lock_guard<std::mutex> lock(nmosSyncMutex_);
@@ -553,7 +670,13 @@ void AES67Device::syncNMOSResources() {
         receivers.push_back(std::move(receiver));
     }
 
-    if (!nmosClient_->syncResources(senders, receivers)) {
+    // The control href names the port the connection server actually got.
+    // Empty when it could not start, which leaves the device advertising
+    // no control rather than one nobody can reach.
+    std::string controlHref;
+    if (connectionServer_) controlHref = connectionServer_->controlHref(localHostname());
+
+    if (!nmosClient_->syncResources(senders, receivers, controlHref)) {
         AES67_LOG("AES67Device: the NMOS registry did not take every resource");
     }
 }
@@ -577,6 +700,7 @@ AES67Device::~AES67Device() {
     }
     nmosSyncSignal_.notify_all();
     if (nmosSyncThread_.joinable()) nmosSyncThread_.join();
+    if (connectionServer_) connectionServer_->stop();
     if (nmosClient_) {
         nmosClient_->stop();
         nmosClient_->unregister();
