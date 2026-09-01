@@ -202,6 +202,38 @@ sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
 system_profiler SPAudioDataType | grep -A 5 "AES67"
 ```
 
+### Validate the installed driver
+
+`scripts/validate-hal.sh` checks the plugin the way Core Audio itself sees it,
+never through this source tree: the installed bundle in
+`/Library/Audio/Plug-Ins/HAL` and its signature, whether `coreaudiod` is
+running, what `system_profiler` reports, the last ten minutes of `coreaudiod`
+log lines mentioning the plugin, and then `Tools/HALValidate`, which drives
+the device through Apple's HAL client API -- the same
+`AudioObjectGetPropertyData` / `AudioDeviceStart` path HALLab uses.
+
+```bash
+cmake -S . -B build -DBUILD_TOOLS=ON
+cmake --build build --target HALValidate
+scripts/validate-hal.sh
+```
+
+`HALValidate` checks the property contract (name, manufacturer, UID, model
+UID, transport type, alive, clock domain), the timing properties (latency and
+safety offset per scope, buffer frame size inside its advertised range), the
+streams (count, channel configuration, virtual and physical formats,
+available formats), sample-rate negotiation (every advertised rate is set and
+read back, then the original restored), and a live IOProc run (callback rate
+against the buffer size, monotonic sample time, device clock against the wall
+clock). Exit status is non-zero if any check failed. It takes `--list`,
+`--uid`, `--name`, `--id`, `--seconds`, `--skip-io`, `--skip-rates` and
+`--force-io`.
+
+Opening a device that has input streams goes through TCC, and from a terminal
+without microphone access the open blocks instead of prompting -- so the IO
+section is skipped with an explanation unless that access is granted in
+System Settings > Privacy & Security > Microphone.
+
 ### Build Manager App
 
 ```bash
