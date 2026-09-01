@@ -85,6 +85,21 @@ if [ "$REMOVE_CONFIG" = true ]; then
     fi
 fi
 
+# Privileged PTP daemon, if it was installed. PTP needs UDP 319/320, which
+# only root can bind; the daemon is what held them.
+PTPD_PLIST="/Library/LaunchDaemons/com.aes67driver.ptpd.plist"
+PTPD_BINARY="/usr/local/libexec/aes67ptpd"
+if [ -f "$PTPD_PLIST" ]; then
+    echo "Unloading PTP daemon..."
+    launchctl bootout system "$PTPD_PLIST" 2>/dev/null || true
+    rm -f "$PTPD_PLIST"
+fi
+if [ -f "$PTPD_BINARY" ]; then
+    rm -f "$PTPD_BINARY"
+    rm -f /var/run/aes67ptpd.sock
+    echo "✓ PTP daemon removed"
+fi
+
 # Remove Manager app (ask first)
 if [ "$REMOVE_MANAGER" = true ]; then
     echo ""

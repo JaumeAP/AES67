@@ -57,6 +57,30 @@ chmod -R 755 "$DRIVER_PATH" || {
 
 echo "✓ Driver configured successfully" | tee -a "$LOG_FILE"
 
+# Load the PTP daemon, if this package carried one. It keeps a single PTP
+# engine for the host and publishes what it measures on a socket the driver
+# reads. Without it the driver still runs: it starts PTP in-process, or falls
+# back to the local clock.
+PTPD_PLIST="/Library/LaunchDaemons/com.aes67driver.ptpd.plist"
+PTPD_BINARY="/usr/local/libexec/aes67ptpd"
+if [ -f "$PTPD_PLIST" ] && [ -x "$PTPD_BINARY" ]; then
+    echo "Loading PTP daemon..." | tee -a "$LOG_FILE"
+    chown root:wheel "$PTPD_PLIST" 2>/dev/null || true
+    chmod 644 "$PTPD_PLIST" 2>/dev/null || true
+    chown root:wheel "$PTPD_BINARY" 2>/dev/null || true
+    chmod 755 "$PTPD_BINARY" 2>/dev/null || true
+
+    # bootout first so a reinstall replaces a running instance rather than
+    # failing on "service already loaded".
+    launchctl bootout system "$PTPD_PLIST" 2>/dev/null || true
+    if launchctl bootstrap system "$PTPD_PLIST" 2>>"$LOG_FILE"; then
+        echo "✓ PTP daemon loaded" | tee -a "$LOG_FILE"
+    else
+        echo "WARNING: could not load the PTP daemon; the driver will use the local clock" | tee -a "$LOG_FILE"
+    fi
+    echo "  Interface is set in $PTPD_PLIST (--interface, default en0)" | tee -a "$LOG_FILE"
+fi
+
 # Restart Core Audio to load the new driver
 echo "Restarting Core Audio service..." | tee -a "$LOG_FILE"
 killall coreaudiod 2>/dev/null || true

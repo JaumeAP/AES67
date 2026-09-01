@@ -169,6 +169,29 @@ target_link_libraries(TestPTPLoopback PRIVATE aes67_core aes67_net)
 target_link_libraries(TestPTPLoopback PRIVATE doctest_headers)
 target_compile_features(TestPTPLoopback PRIVATE cxx_std_17)
 
+add_executable(TestPTPService
+    TestPTPService.cpp
+    ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+
+target_include_directories(TestPTPService PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPService PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPService PRIVATE
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+    "-framework AudioToolbox"
+)
+
+target_link_libraries(TestPTPService PRIVATE doctest_headers)
+target_compile_features(TestPTPService PRIVATE cxx_std_17)
+
 add_executable(TestStreamManager
     TestStreamManager.cpp
 )
@@ -316,6 +339,7 @@ add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME PTPMaster COMMAND TestPTPMaster)
 add_test(NAME PTPLoopback COMMAND TestPTPLoopback)
+add_test(NAME PTPService COMMAND TestPTPService)
 add_test(NAME MDNSBrowser COMMAND TestMDNSBrowser)
 add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME StreamManager COMMAND TestStreamManager)
@@ -354,6 +378,8 @@ set_tests_properties(RTCPReceiverTable PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)
+# Wall-clock waits (staleness has to actually elapse), no network.
+set_tests_properties(PTPService PROPERTIES LABELS "integration;timing" TIMEOUT 60)
 set_tests_properties(MDNSBrowser PROPERTIES LABELS "integration;network" TIMEOUT 60)
 set_tests_properties(RTSPServer PROPERTIES LABELS "integration;network" TIMEOUT 60)
 

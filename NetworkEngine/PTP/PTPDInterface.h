@@ -4,8 +4,11 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
+
 #include "PTPArbitrator.h"
 #include "PTPDiagnostics.h"
+#include "PTPService.h"
 
 namespace AES67 {
 
@@ -44,6 +47,22 @@ public:
     // When true, isLocked/clockClass values are simulated and audio will
     // NOT be synchronized to network PTP time.
     bool isStubMode() const { return stubMode_; }
+
+    // --- Shared PTP daemon -------------------------------------------------
+    //
+    // When aes67ptpd is running, its status socket is read instead of
+    // starting a second PTP engine in this process: one engine per host,
+    // surviving plugin reloads, shared with anything else that wants the
+    // measurement. Absent socket, absent daemon: the in-process PTPSlave path
+    // runs exactly as it did before.
+    void setServiceSocketPath(const std::string& path) { servicePath_ = path; }
+    const std::string& getServiceSocketPath() const { return servicePath_; }
+
+    // Call before init() to refuse the daemon and keep the in-process path.
+    void setPreferPrivilegedDaemon(bool prefer) { preferDaemon_ = prefer; }
+
+    // True once init() has decided to read from the daemon.
+    bool isUsingPrivilegedDaemon() const { return serviceClient_ != nullptr; }
 
     // Set PTP domain (default 0, per AES67)
     void setDomain(int domain) { domain_ = domain; }
@@ -91,6 +110,16 @@ private:
     PTPClockSourceKind masterClockSourceKind_{PTPClockSourceKind::Internal};
     AudioDeviceID masterLockToDeviceID_{kAudioObjectUnknown};
     std::unique_ptr<PTPArbitrator> ptpArbitrator_;
+
+    // Reader for the privileged daemon's status socket, and the thread that
+    // turns its statuses into measurements for the rest of the driver.
+    void serviceLoop();
+    std::unique_ptr<PTPServiceClient> serviceClient_;
+    std::thread serviceThread_;
+    std::atomic<bool> serviceRunning_{false};
+    std::string servicePath_{kPTPServiceSocketPath};
+    bool preferDaemon_{true};
+    uint32_t lastServiceSequence_{0};
 };
 
 } // namespace AES67

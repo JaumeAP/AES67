@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon for aes67ptpd.
+
+  One PTP engine for the host: it owns the PTP sockets, survives coreaudiod
+  restarts and plugin reloads, and publishes offset and path delay on
+  /var/run/aes67ptpd.sock for the driver (and anything else) to read.
+
+  It is a LaunchDaemon for lifecycle, not for privilege: on current macOS an
+  unprivileged process binds UDP 319/320 without trouble. Change --interface
+  to the port carrying the AES67 traffic.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.aes67driver.ptpd</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/libexec/aes67ptpd</string>
+        <string>--interface</string>
+        <string>en0</string>
+        <string>--domain</string>
+        <string>0</string>
+        <string>--socket</string>
+        <string>/var/run/aes67ptpd.sock</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Media timing, not a batch job: ask not to be throttled. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/aes67ptpd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/aes67ptpd.log</string>
+</dict>
+</plist>
