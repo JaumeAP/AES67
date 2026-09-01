@@ -239,9 +239,22 @@ RAVENNA/AES67 territory.
 
 They fetch a sink's SDP from an **HTTP or RTSP URL** (`use_sdp`,
 `source`), and run an RTSP server exposing their own sources via
-DESCRIBE/ANNOUNCE. We read SDP from local files only. For a cinema
-install where the processor publishes its own SDP, fetching by URL is the
-difference between "type this in" and "point at it".
+DESCRIBE/ANNOUNCE. **Now done on the reading side.** `SDPFetcher::fetch`
+takes a local path, `file://`, `http://` or `rtsp://` (DESCRIBE, through
+the RTSPClient that was already here and that nothing called), and
+`StreamManager::importSDPURL` builds a receive stream from whatever comes
+back. For a cinema install where the processor publishes its own SDP, that
+is the difference between "type this in" and "point at it".
+
+`https://` is refused with a message that says why: this layer speaks BSD
+sockets and has no TLS, and a scheme that fails late is worse than one
+that fails at the point of typing. Everything it reads comes from an
+unauthenticated server into coreaudiod, so the body is bounded at 1 MiB,
+every socket carries a timeout, and no parse throws — the cases are pinned
+in TestSDPFetcher.
+
+Announcing our own sources by URL is the half still missing: the RTSP
+server here serves DESCRIBE (`AES67Device`), but there is no ANNOUNCE.
 
 ### ST-2022-7 redundancy and NMOS
 
