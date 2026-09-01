@@ -130,6 +130,15 @@ struct PTPHeader {
     PTPMessageType getMessageType() const {
         return static_cast<PTPMessageType>(transportAndType & 0x0F);
     }
+
+    // The top nibble of octet 0: majorSdoId in IEEE 1588-2019, and
+    // transportSpecific in 1588-2008. 0 is the default profile, 1 is what
+    // 802.1AS/gPTP puts there. It was parsed but never looked at, so a gPTP
+    // master on the same segment and domain was followed as if it belonged
+    // to this profile.
+    uint8_t getMajorSdoId() const {
+        return static_cast<uint8_t>((transportAndType >> 4) & 0x0F);
+    }
 };
 
 // ============================================================================
@@ -161,6 +170,27 @@ struct PTPSlaveConfig {
     int announceTimeoutMultiplier = 3;           // Announce receipt timeout multiplier
     int announceIntervalMs = 1000;               // Expected announce interval
     bool twoStepOnly = true;                     // Only accept two-step clocks (AES67)
+
+    // IEEE 1588-2008 sec 7.7.2.4 and 9.5.11.2: the rates above are the
+    // master's to announce, not the slave's to assume. With this on, the
+    // intervals actually advertised -- logMinDelayReqInterval in Delay_Resp,
+    // logAnnounceInterval in Announce -- take over once heard, and the
+    // configured values stay as the starting point and as the fallback for a
+    // master that advertises nothing usable (0x7F, "stopped", or a value
+    // outside the range below). Off restores the fixed behaviour.
+    bool followAdvertisedIntervals = true;
+
+    // Bounds on an advertised interval, in log2 seconds: 1/32 s to 32 s.
+    // Anything outside is treated as unusable rather than obeyed, so a
+    // misconfigured master cannot make this slave send 128 Delay_Req a
+    // second or go quiet for an hour.
+    int8_t minLogInterval = -5;
+    int8_t maxLogInterval = 5;
+
+    // Which profile's traffic to accept, by majorSdoId (the top nibble of
+    // octet 0): 0 is the default profile AES67 uses, 1 is 802.1AS.
+    uint8_t majorSdoId = 0;
+    bool enforceMajorSdoId = true;
 
     // IEEE 1588-2008 §13.1 ports; overridable for the unprivileged
     // loopback test (2026-08-31), same knob as PTPMasterConfig's.
@@ -219,6 +249,26 @@ public:
     std::string getGrandmasterID() const;
     uint8_t getClockClass() const { return clockClass_.load(std::memory_order_acquire); }
     uint8_t getClockAccuracy() const { return clockAccuracy_.load(std::memory_order_acquire); }
+
+    // What the master says it is doing, in milliseconds, or 0 when it has
+    // not said anything usable yet. The sync interval is reporting only --
+    // it is what the grandmaster claims to send at, not a timeout here.
+    int getAdvertisedSyncIntervalMs() const {
+        return advertisedSyncIntervalMs_.load(std::memory_order_relaxed);
+    }
+    int getAdvertisedAnnounceIntervalMs() const {
+        return advertisedAnnounceIntervalMs_.load(std::memory_order_relaxed);
+    }
+    int getAdvertisedDelayReqIntervalMs() const {
+        return advertisedDelayReqIntervalMs_.load(std::memory_order_relaxed);
+    }
+    int getSdoIdMismatchCount() const {
+        return sdoIdMismatchCount_.load(std::memory_order_relaxed);
+    }
+
+    // Milliseconds for a logMessageInterval, or 0 when it is unusable
+    // (0x7F, "sending stopped", or outside the configured bounds).
+    int logIntervalToMs(int8_t logInterval) const;
 
     // Set callback for measurement updates
     void setMeasurementCallback(PTPMeasurementCallback cb);
@@ -347,6 +397,13 @@ private:
     std::atomic<int> delayRespCount_{0};
     std::atomic<int> announceCount_{0};
     std::atomic<int> domainMismatchCount_{0};
+    std::atomic<int> sdoIdMismatchCount_{0};
+
+    // Intervals as advertised by the master, in milliseconds; 0 until one
+    // has been heard, in which case the configured value stands.
+    std::atomic<int> advertisedDelayReqIntervalMs_{0};
+    std::atomic<int> advertisedAnnounceIntervalMs_{0};
+    std::atomic<int> advertisedSyncIntervalMs_{0};
 };
 
 } // namespace AES67

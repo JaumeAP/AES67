@@ -472,8 +472,12 @@ void PTPSlave::receiveThread() {
 
                 PTPHeader header;
                 if (parseHeader(buf, static_cast<size_t>(n), header)) {
-                    // Domain check
-                    if (header.domainNumber != config_.domain) {
+                    // Profile check: a gPTP master (majorSdoId 1) on this
+                    // domain used to be followed as if it were ours.
+                    if (config_.enforceMajorSdoId
+                        && header.getMajorSdoId() != config_.majorSdoId) {
+                        sdoIdMismatchCount_.fetch_add(1, std::memory_order_relaxed);
+                    } else if (header.domainNumber != config_.domain) {
                         domainMismatchCount_.fetch_add(1, std::memory_order_relaxed);
                     } else {
                         switch (header.getMessageType()) {
@@ -497,8 +501,12 @@ void PTPSlave::receiveThread() {
             if (n >= static_cast<ssize_t>(kPTPHeaderSize)) {
                 PTPHeader header;
                 if (parseHeader(buf, static_cast<size_t>(n), header)) {
-                    // Domain check
-                    if (header.domainNumber != config_.domain) {
+                    // Profile check: a gPTP master (majorSdoId 1) on this
+                    // domain used to be followed as if it were ours.
+                    if (config_.enforceMajorSdoId
+                        && header.getMajorSdoId() != config_.majorSdoId) {
+                        sdoIdMismatchCount_.fetch_add(1, std::memory_order_relaxed);
+                    } else if (header.domainNumber != config_.domain) {
                         domainMismatchCount_.fetch_add(1, std::memory_order_relaxed);
                     } else {
                         switch (header.getMessageType()) {
@@ -535,7 +543,16 @@ void PTPSlave::receiveThread() {
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     now - currentMaster_.lastReceived).count();
-                int timeoutMs = config_.announceIntervalMs * config_.announceTimeoutMultiplier;
+                // Timed against the interval the master announces, not the
+                // one configured here: a grandmaster sending Announce every
+                // 2 s was declared lost after 3 s.
+                int announceIntervalMs = config_.announceIntervalMs;
+                if (config_.followAdvertisedIntervals) {
+                    const int advertised = advertisedAnnounceIntervalMs_.load(
+                        std::memory_order_relaxed);
+                    if (advertised > 0) announceIntervalMs = advertised;
+                }
+                int timeoutMs = announceIntervalMs * config_.announceTimeoutMultiplier;
                 if (elapsed > timeoutMs) {
                     std::cerr << "[PTPSlave] Announce timeout — master lost after "
                               << elapsed << "ms" << std::endl;
@@ -569,8 +586,16 @@ void PTPSlave::delayReqThread() {
             sendDelayReq();
         }
 
-        // Sleep for the configured delay request interval
-        auto sleepTime = std::chrono::milliseconds(config_.delayReqIntervalMs);
+        // The advertised rate wins over the configured one once a
+        // Delay_Resp has carried it; the configured value is what this slave
+        // uses until then, and if the master advertises nothing usable.
+        int intervalMs = config_.delayReqIntervalMs;
+        if (config_.followAdvertisedIntervals) {
+            const int advertised =
+                advertisedDelayReqIntervalMs_.load(std::memory_order_relaxed);
+            if (advertised > 0) intervalMs = advertised;
+        }
+        auto sleepTime = std::chrono::milliseconds(intervalMs);
         auto deadline = std::chrono::steady_clock::now() + sleepTime;
 
         while (running_.load(std::memory_order_acquire) &&
@@ -583,6 +608,21 @@ void PTPSlave::delayReqThread() {
 // ============================================================================
 // Message Parsing
 // ============================================================================
+
+// IEEE 1588-2008 sec 7.7.2.1: logMessageInterval is log2 seconds, and 0x7F
+// means the message is not being sent. Anything outside the configured bounds
+// is refused rather than obeyed -- an advertised -12 would be 4096 Delay_Req a
+// second at a master that probably meant something else.
+int PTPSlave::logIntervalToMs(int8_t logInterval) const {
+    if (logInterval == 0x7F) return 0;
+    if (logInterval < config_.minLogInterval
+        || logInterval > config_.maxLogInterval) {
+        return 0;
+    }
+    const double seconds = std::pow(2.0, static_cast<double>(logInterval));
+    const int milliseconds = static_cast<int>(std::lround(seconds * 1000.0));
+    return milliseconds > 0 ? milliseconds : 0;
+}
 
 bool PTPSlave::parseHeader(const uint8_t* data, size_t len, PTPHeader& header) {
     if (len < kPTPHeaderSize) return false;
@@ -667,6 +707,8 @@ void PTPSlave::handleSync(const PTPHeader& header, const uint8_t* data, size_t l
         // Store t2 (our receive timestamp)
         t2_receiveTimeNs_ = receiveTimeNs;
         lastSyncSequenceId_ = header.sequenceId;
+        advertisedSyncIntervalMs_.store(logIntervalToMs(header.logMessageInterval),
+                                        std::memory_order_relaxed);
         syncCorrectionField_ = header.correctionField;
 
         if (isTwoStep) {
@@ -729,6 +771,18 @@ void PTPSlave::handleDelayResp(const PTPHeader& header, const uint8_t* data, siz
 
     delayRespCount_.fetch_add(1, std::memory_order_relaxed);
 
+    // logMinDelayReqInterval: the rate this master wants Delay_Req at
+    // (IEEE 1588-2008 sec 9.5.11.2). Recorded whatever the message turns out
+    // to be for, so a Delay_Resp meant for another port still tells us the
+    // rate the master is asking of everyone.
+    if (config_.followAdvertisedIntervals) {
+        const int advertised = logIntervalToMs(header.logMessageInterval);
+        if (advertised > 0) {
+            advertisedDelayReqIntervalMs_.store(advertised,
+                                                std::memory_order_relaxed);
+        }
+    }
+
     // delayMutex_ is scoped to the parse-and-record block and MUST be
     // released before calculateOffsetAndDelay(), which re-acquires it
     // itself (line ~913). The old code declared the guard at function
@@ -785,6 +839,13 @@ void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size
         data[kAnnounceStepsRemovedOffset + 1];
     announce.timeSource = data[kAnnounceTimeSourceOffset];
     announce.logAnnounceInterval = header.logMessageInterval;
+    if (config_.followAdvertisedIntervals) {
+        const int advertised = logIntervalToMs(header.logMessageInterval);
+        if (advertised > 0) {
+            advertisedAnnounceIntervalMs_.store(advertised,
+                                                std::memory_order_relaxed);
+        }
+    }
     announce.lastReceived = std::chrono::steady_clock::now();
 
     std::lock_guard<std::mutex> lock(masterMutex_);
