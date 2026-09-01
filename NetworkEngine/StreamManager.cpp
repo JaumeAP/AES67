@@ -6,6 +6,7 @@
 
 #include "StreamManager.h"
 #include "NetworkEngine/NetworkUtils.h"
+#include "NetworkEngine/Discovery/SDPFetcher.h"
 #include "Driver/DebugLog.h"
 #include <algorithm>
 #include <fstream>
@@ -226,6 +227,22 @@ StreamID StreamManager::importSDPFile(const std::string& filepath) {
     }
 
     // Add stream with auto-mapping
+    return addStream(*sdpSession);
+}
+
+StreamID StreamManager::importSDPURL(const std::string& url, std::string* errorOut) {
+    const SDPFetchResult fetched = SDPFetcher::fetch(url);
+    if (!fetched.ok()) {
+        if (errorOut) *errorOut = fetched.error;
+        return StreamID::null();
+    }
+
+    auto sdpSession = SDPParser::parseString(fetched.text);
+    if (!sdpSession) {
+        if (errorOut) *errorOut = "what " + url + " returned is not a session description";
+        return StreamID::null();
+    }
+
     return addStream(*sdpSession);
 }
 
