@@ -285,14 +285,23 @@ TEST_CASE("The resource bodies say what IS-04 expects") {
 
     SUBCASE("device") {
         const std::string body = NMOSRegistrationClient::buildDeviceBody(
-            "dev-id", "node-id", "Studio Mac", {"snd-1"}, {"rcv-1"}, 1756000000, 0);
+            "dev-id", "node-id", "Studio Mac", {"snd-1"}, {"rcv-1"}, "", 1756000000, 0);
         CHECK(body.find("\"type\": \"device\"") != std::string::npos);
         CHECK(body.find("\"type\": \"urn:x-nmos:device:audio\"") != std::string::npos);
         CHECK(body.find("\"node_id\": \"node-id\"") != std::string::npos);
         CHECK(body.find("\"senders\": [\"snd-1\"]") != std::string::npos);
         CHECK(body.find("\"receivers\": [\"rcv-1\"]") != std::string::npos);
-        // No IS-05 here yet, and an empty list is how that is said.
+        // Nothing to point at, so nothing is advertised.
         CHECK(body.find("\"controls\": []") != std::string::npos);
+
+        // And with a Connection API to point at, the control says which
+        // one it is: a controller reads the type to know what it can do.
+        const std::string withControl = NMOSRegistrationClient::buildDeviceBody(
+            "dev-id", "node-id", "Studio Mac", {"snd-1"}, {"rcv-1"},
+            "http://studio.local:8080/x-nmos/connection/v1.1/", 1756000000, 0);
+        CHECK(withControl.find("urn:x-nmos:control:sr-ctrl/v1.1") != std::string::npos);
+        CHECK(withControl.find("http://studio.local:8080/x-nmos/connection/v1.1/") !=
+              std::string::npos);
     }
 
     SUBCASE("source names its channels") {

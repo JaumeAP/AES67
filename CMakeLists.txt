@@ -185,6 +185,7 @@ set(NETWORK_SOURCES
     NetworkEngine/Discovery/SAPAnnouncer.cpp
     NetworkEngine/Discovery/RTCPMonitor.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
+    NetworkEngine/Discovery/ConnectionAPIServer.cpp
     NetworkEngine/Discovery/HTTPClient.cpp
     NetworkEngine/Discovery/NMOSRegistrationClient.cpp
     NetworkEngine/Discovery/SDPFetcher.cpp
@@ -236,6 +237,7 @@ set(AES67_NET_SOURCES
     NetworkEngine/Discovery/SAPAnnouncer.cpp
     NetworkEngine/Discovery/RTCPMonitor.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
+    NetworkEngine/Discovery/ConnectionAPIServer.cpp
     NetworkEngine/Discovery/HTTPClient.cpp
     NetworkEngine/Discovery/NMOSRegistrationClient.cpp
     NetworkEngine/Discovery/SDPFetcher.cpp

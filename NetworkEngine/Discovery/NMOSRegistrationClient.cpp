@@ -161,6 +161,7 @@ std::string NMOSRegistrationClient::buildDeviceBody(const std::string& deviceId,
                                                     const std::string& label,
                                                     const std::vector<std::string>& senderIds,
                                                     const std::vector<std::string>& receiverIds,
+                                                    const std::string& controlHref,
                                                     int64_t versionSeconds, int32_t versionNanos) {
     std::ostringstream json;
     json << "{\n  \"type\": \"device\",\n  \"data\": {\n"
@@ -173,11 +174,16 @@ std::string NMOSRegistrationClient::buildDeviceBody(const std::string& deviceId,
          << "    \"node_id\": \"" << nodeId << "\",\n"
          << "    \"senders\": " << jsonStringArray(senderIds) << ",\n"
          << "    \"receivers\": " << jsonStringArray(receiverIds) << ",\n"
-         // No IS-05 connection API here yet, and an empty list is the
-         // honest way to say so: a controller reads this to find out
-         // whether it can make connections, and a control that answers
-         // nothing is worse than one that was never advertised.
-         << "    \"controls\": []\n"
+         // What a controller reads to find out whether it can make
+         // connections here. An empty list when there is no Connection
+         // API to point at: a control that answers nothing is worse than
+         // one that was never advertised.
+         << "    \"controls\": "
+         << (controlHref.empty()
+                 ? std::string("[]")
+                 : "[{ \"href\": \"" + jsonEscape(controlHref) +
+                       "\", \"type\": \"urn:x-nmos:control:sr-ctrl/v1.1\" }]")
+         << "\n"
          << "  }\n}\n";
     return json.str();
 }
@@ -430,7 +436,8 @@ bool NMOSRegistrationClient::deleteResource(const std::string& type, const std::
 }
 
 bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>& senders,
-                                           const std::vector<NMOSReceiverResource>& receivers) {
+                                           const std::vector<NMOSReceiverResource>& receivers,
+                                           const std::string& controlHref) {
     std::string nodeId;
     std::string nodeLabel;
     {
@@ -464,7 +471,8 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
     // The device names what is under it, so it goes first and the
     // registry never holds a device pointing at things it has not seen.
     bool allAccepted = postResource(buildDeviceBody(deviceId, nodeId, nodeLabel, senderIds,
-                                                    receiverIds, versionSeconds, versionNanos));
+                                                    receiverIds, controlHref, versionSeconds,
+                                                    versionNanos));
 
     std::vector<std::pair<std::string, std::string>> published;
     published.emplace_back("devices", deviceId);
