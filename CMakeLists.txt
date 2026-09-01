@@ -170,6 +170,7 @@ set(NETWORK_SOURCES
     NetworkEngine/PTP/PTPClock.cpp
     NetworkEngine/PTP/PTPDInterface.cpp
     NetworkEngine/PTP/PTPSlave.cpp
+    NetworkEngine/PTP/PTPSettingsMapping.cpp
     NetworkEngine/PTP/PTPService.cpp
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPArbitrator.cpp
@@ -223,6 +224,7 @@ set(AES67_NET_SOURCES
     NetworkEngine/RTP/RTPReceiver.cpp
     NetworkEngine/RTP/RTPTransmitter.cpp
     NetworkEngine/PTP/PTPSlave.cpp
+    NetworkEngine/PTP/PTPSettingsMapping.cpp
     NetworkEngine/PTP/PTPService.cpp
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPPeerObserver.cpp

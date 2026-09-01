@@ -90,6 +90,9 @@ PTPClock::PTPClock(int domain)
     // before this feature existed.
     PTPMasterSettingsManager settingsManager;
     PTPMasterSettings masterSettings = settingsManager.load();
+    // What the installation set: priorities, rates, delay mechanism and
+    // the DSCP. Read when the engines are built, just below.
+    ptpdInterface_->setSettings(masterSettings);
     if (masterSettings.masterCapable) {
         PTPClockSourceKind kind = PTPClockSourceKind::Internal;
         AudioDeviceID lockToDevice = kAudioObjectUnknown;

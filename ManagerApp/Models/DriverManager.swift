@@ -321,6 +321,18 @@ class DriverManager: ObservableObject {
     /// ptpEnabled; off by default because on a system carrying audio
     /// today it can only take audio away.
     @Published var ptpRequireLock: Bool = false
+
+    // The announced dataset, read and written so an installation's values
+    // survive a save from this app. No controls for them yet.
+    @Published var ptpPriority1: Int = 128
+    @Published var ptpPriority2: Int = 128
+    @Published var ptpClockClass: Int = 248
+    @Published var ptpClockAccuracy: Int = 0xFE
+    @Published var ptpSyncIntervalMs: Int = 125
+    @Published var ptpAnnounceIntervalMs: Int = 1000
+    @Published var ptpDelayReqIntervalMs: Int = 1000
+    @Published var ptpDelayMechanism: String = "e2e"
+    @Published var ptpDscp: Int = -1
     @Published var ptpClockSourceKind: String = "internal" // "internal" | "localAudioDevice"
     @Published var ptpLockToDeviceUID: String = ""
 
@@ -450,6 +462,22 @@ class DriverManager: ObservableObject {
         ptpEnabled = obj["ptpEnabled"] as? Bool ?? false
         ptpRequireLock = obj["requireLock"] as? Bool ?? false
         ptpLockToDeviceUID = obj["lockToDeviceUID"] as? String ?? ""
+
+        // The announced dataset. The app does not offer controls for these
+        // yet, but it MUST read them and write them back: this file is
+        // rewritten whole on every save, and a field this side does not
+        // know about is a field an installation loses the moment somebody
+        // touches the clock source picker. Defaults mirror
+        // PTPMasterSettings.
+        ptpPriority1 = obj["priority1"] as? Int ?? 128
+        ptpPriority2 = obj["priority2"] as? Int ?? 128
+        ptpClockClass = obj["clockClass"] as? Int ?? 248
+        ptpClockAccuracy = obj["clockAccuracy"] as? Int ?? 0xFE
+        ptpSyncIntervalMs = obj["syncIntervalMs"] as? Int ?? 125
+        ptpAnnounceIntervalMs = obj["announceIntervalMs"] as? Int ?? 1000
+        ptpDelayReqIntervalMs = obj["delayReqIntervalMs"] as? Int ?? 1000
+        ptpDelayMechanism = obj["delayMechanism"] as? String ?? "e2e"
+        ptpDscp = obj["dscp"] as? Int ?? -1
     }
 
     /// Persists the current selection. The driver only reads this at
@@ -467,6 +495,15 @@ class DriverManager: ObservableObject {
                 "ptpEnabled": ptpEnabled,
                 "requireLock": ptpRequireLock,
                 "lockToDeviceUID": ptpLockToDeviceUID,
+                "priority1": ptpPriority1,
+                "priority2": ptpPriority2,
+                "clockClass": ptpClockClass,
+                "clockAccuracy": ptpClockAccuracy,
+                "syncIntervalMs": ptpSyncIntervalMs,
+                "announceIntervalMs": ptpAnnounceIntervalMs,
+                "delayReqIntervalMs": ptpDelayReqIntervalMs,
+                "delayMechanism": ptpDelayMechanism,
+                "dscp": ptpDscp,
             ]
             let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
             try data.write(to: ptpMasterConfigURL, options: .atomic)
