@@ -5,13 +5,9 @@
 
 #include "NetworkEngine/Discovery/SDPFetcher.h"
 
+#include "NetworkEngine/Discovery/HTTPClient.h"
 #include "NetworkEngine/Discovery/RTSPClient.h"
 
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
@@ -31,10 +27,9 @@ std::string toLower(std::string s) {
     return s;
 }
 
-/// A small unsigned number out of text, without exceptions: std::stoi
-/// throws on garbage and this runs inside coreaudiod. Used for the port in
-/// a URL and for the status code in an answer, both of which are bounded.
-bool parseSmallNumber(const std::string& text, uint16_t& out) {
+/// A port out of a URL, without exceptions: std::stoi throws on garbage
+/// and this runs inside coreaudiod.
+bool parsePort(const std::string& text, uint16_t& out) {
     if (text.empty()) return false;
     errno = 0;
     char* end = nullptr;
@@ -43,57 +38,6 @@ bool parseSmallNumber(const std::string& text, uint16_t& out) {
     if (value == 0 || value > 65535) return false;
     out = static_cast<uint16_t>(value);
     return true;
-}
-
-/// A header value, case-insensitively, out of an HTTP response head.
-std::string headerValue(const std::string& head, const std::string& name) {
-    const std::string lowerHead = toLower(head);
-    const std::string lowerName = toLower(name) + ":";
-    size_t pos = lowerHead.find("\r\n" + lowerName);
-    if (pos == std::string::npos) return {};
-    pos += 2 + lowerName.size();
-    const size_t end = head.find("\r\n", pos);
-    std::string value = head.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
-    const size_t first = value.find_first_not_of(" \t");
-    if (first == std::string::npos) return {};
-    const size_t last = value.find_last_not_of(" \t");
-    return value.substr(first, last - first + 1);
-}
-
-/// Connects with a timeout on both directions, or returns -1.
-int connectTo(const std::string& host, uint16_t port, int timeoutMs, std::string& error) {
-    struct addrinfo hints {};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo* result = nullptr;
-    const std::string portText = std::to_string(port);
-    const int rc = ::getaddrinfo(host.c_str(), portText.c_str(), &hints, &result);
-    if (rc != 0 || result == nullptr) {
-        error = "cannot resolve " + host;
-        return -1;
-    }
-
-    int fd = ::socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    if (fd < 0) {
-        ::freeaddrinfo(result);
-        error = "cannot create a socket";
-        return -1;
-    }
-
-    struct timeval timeout {};
-    timeout.tv_sec = timeoutMs / 1000;
-    timeout.tv_usec = (timeoutMs % 1000) * 1000;
-    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-
-    if (::connect(fd, result->ai_addr, result->ai_addrlen) != 0) {
-        ::close(fd);
-        ::freeaddrinfo(result);
-        error = "cannot connect to " + host + ":" + portText;
-        return -1;
-    }
-    ::freeaddrinfo(result);
-    return fd;
 }
 
 } // namespace
@@ -145,7 +89,7 @@ bool SDPFetcher::parseURL(const std::string& url, URLParts& out) {
     } else {
         out.host = hostPort.substr(0, colon);
         if (out.host.empty()) return false;
-        if (!parseSmallNumber(hostPort.substr(colon + 1), out.port)) return false;
+        if (!parsePort(hostPort.substr(colon + 1), out.port)) return false;
     }
     return true;
 }
@@ -189,81 +133,27 @@ SDPFetchResult SDPFetcher::fetchFile(const std::string& path) {
 }
 
 SDPFetchResult SDPFetcher::fetchHTTP(const URLParts& parts, int timeoutMs) {
-    std::string error;
-    const int fd = connectTo(parts.host, parts.port, timeoutMs, error);
-    if (fd < 0) return {{}, error};
+    // The GET, the bounded read and the defensive parsing all live in
+    // HTTPClient now: the NMOS registration client needs the same thing
+    // with a different verb, and two copies of a hand-rolled HTTP client
+    // in one driver is one too many.
+    HTTPClient client(parts.host, parts.port, timeoutMs);
+    const HTTPResponse response = client.get(parts.path, "application/sdp");
 
-    std::ostringstream request;
-    request << "GET " << parts.path << " HTTP/1.1\r\n"
-            << "Host: " << parts.host << ":" << parts.port << "\r\n"
-            << "Accept: application/sdp\r\n"
-            << "User-Agent: AES67macOSDriver\r\n"
-            << "Connection: close\r\n\r\n";
-    const std::string requestText = request.str();
-    if (::send(fd, requestText.data(), requestText.size(), 0) < 0) {
-        ::close(fd);
-        return {{}, "cannot send the request to " + parts.host};
+    if (!response.error.empty()) {
+        return {{}, response.error};
     }
-
-    // Read until the server closes, bounded: the head plus at most one
-    // description. A server that keeps talking is cut off, not followed.
-    std::string response;
-    char chunk[4096];
-    while (response.size() <= kMaxSDPBytes + 8192) {
-        const ssize_t n = ::recv(fd, chunk, sizeof(chunk), 0);
-        if (n <= 0) break;
-        response.append(chunk, static_cast<size_t>(n));
+    if (!response.ok()) {
+        return {{}, "HTTP " + std::to_string(response.status) + " from " +
+                        parts.host + parts.path};
     }
-    ::close(fd);
-
-    if (response.empty()) {
-        return {{}, "no answer from " + parts.host};
-    }
-
-    const size_t headEnd = response.find("\r\n\r\n");
-    if (headEnd == std::string::npos) {
-        return {{}, "malformed HTTP answer from " + parts.host};
-    }
-    const std::string head = response.substr(0, headEnd);
-    std::string body = response.substr(headEnd + 4);
-
-    // Status line: HTTP/1.1 200 OK
-    const size_t firstSpace = head.find(' ');
-    if (firstSpace == std::string::npos) {
-        return {{}, "malformed status line from " + parts.host};
-    }
-    uint16_t status = 0;
-    const size_t secondSpace = head.find(' ', firstSpace + 1);
-    const std::string statusText = head.substr(
-        firstSpace + 1,
-        secondSpace == std::string::npos ? std::string::npos : secondSpace - firstSpace - 1);
-    if (!parseSmallNumber(statusText, status)) {
-        return {{}, "malformed status line from " + parts.host};
-    }
-    if (status < 200 || status > 299) {
-        return {{}, "HTTP " + std::to_string(status) + " from " + parts.host + parts.path};
-    }
-
-    const std::string lengthText = headerValue("\r\n" + head, "Content-Length");
-    if (!lengthText.empty()) {
-        errno = 0;
-        char* end = nullptr;
-        const unsigned long declared = std::strtoul(lengthText.c_str(), &end, 10);
-        if (end == lengthText.c_str() || errno == ERANGE || declared > kMaxSDPBytes) {
-            return {{}, "the answer declares a body this will not read: " + lengthText};
-        }
-        if (body.size() > declared) {
-            body.resize(static_cast<size_t>(declared));
-        }
-    }
-
-    if (body.empty()) {
+    if (response.body.empty()) {
         return {{}, "empty body from " + parts.host + parts.path};
     }
-    if (body.size() > kMaxSDPBytes) {
+    if (response.body.size() > kMaxSDPBytes) {
         return {{}, "description larger than " + std::to_string(kMaxSDPBytes) + " bytes"};
     }
-    return {std::move(body), {}};
+    return {response.body, {}};
 }
 
 SDPFetchResult SDPFetcher::fetchRTSP(const std::string& url, const URLParts& parts,

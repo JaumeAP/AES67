@@ -137,6 +137,20 @@ target_link_libraries(TestRTSPServer PRIVATE aes67_core aes67_net)
 target_link_libraries(TestRTSPServer PRIVATE doctest_headers)
 target_compile_features(TestRTSPServer PRIVATE cxx_std_17)
 
+# Test: registering as an IS-04 node, against a registry made of a socket.
+add_executable(TestNMOSRegistration
+    TestNMOSRegistration.cpp
+)
+
+target_include_directories(TestNMOSRegistration PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestNMOSRegistration PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestNMOSRegistration PRIVATE doctest_headers)
+target_compile_features(TestNMOSRegistration PRIVATE cxx_std_17)
+
 # Test: the configured PTP dataset reaching the engines that send it.
 add_executable(TestPTPSettingsMapping
     TestPTPSettingsMapping.cpp
@@ -388,6 +402,7 @@ add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME PTPSettingsMapping COMMAND TestPTPSettingsMapping)
+add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
@@ -424,6 +439,7 @@ set_tests_properties(RTCPReceiverTable PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPSettingsMapping PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)
