@@ -75,6 +75,11 @@ bool PTPDInterface::init(const std::string& interfaceName) {
         config.interfaceName = interfaceName;
         config.clockSourceKind = masterClockSourceKind_;
         config.lockToDeviceID = masterLockToDeviceID_;
+        // The arbitrator builds its own slave; what the installation set
+        // reaches the master half here and the slave half inside it.
+        PTPSlaveConfig arbitratorSlaveConfig;
+        applyPTPSettings(settings_, arbitratorSlaveConfig, config.masterConfig);
+        config.slaveConfig = arbitratorSlaveConfig;
 
         ptpArbitrator_ = std::make_unique<PTPArbitrator>(config);
         ptpArbitrator_->setMeasurementCallback(onMeasurement);
@@ -100,12 +105,13 @@ bool PTPDInterface::init(const std::string& interfaceName) {
         }
     }
 
-    // Slave-only mode — original behavior, unchanged.
+    // Slave-only mode.
     PTPSlaveConfig config;
     config.domain = domain_;
     config.interfaceName = interfaceName;
-    config.delayReqIntervalMs = 1000;  // 1 second between Delay_Req messages
     config.twoStepOnly = true;          // AES67 uses two-step clocks
+    PTPMasterConfig unusedMasterConfig;
+    applyPTPSettings(settings_, config, unusedMasterConfig);
 
     ptpSlave_ = std::make_unique<PTPSlave>(config);
     ptpSlave_->setMeasurementCallback(onMeasurement);

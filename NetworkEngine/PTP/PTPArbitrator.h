@@ -44,6 +44,7 @@ struct PTPArbitratorConfig {
     AudioDeviceID lockToDeviceID = kAudioObjectUnknown;
 
     PTPMasterConfig masterConfig; // domain/interfaceName here are overridden from the two fields above
+    PTPSlaveConfig slaveConfig;   // same: domain/interfaceName come from above
 };
 
 enum class PTPRole {
