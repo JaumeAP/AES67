@@ -34,6 +34,16 @@ struct PTPDiagnostics;
 // IEEE 1588 PTP Message Types
 // ============================================================================
 
+// IEEE 1588-2008 sec 8.2.5.4.4: how this port measures the path.
+// End to end is Delay_Req/Delay_Resp with the master and is what AES67
+// deployments use; peer to peer measures the link to the immediate
+// neighbour with Pdelay, which is what 802.1AS and transparent-clock
+// topologies use.
+enum class DelayMechanism : uint8_t {
+    EndToEnd,
+    PeerToPeer,
+};
+
 enum class PTPMessageType : uint8_t {
     Sync           = 0x00,
     Delay_Req      = 0x01,
@@ -192,6 +202,26 @@ struct PTPSlaveConfig {
     uint8_t majorSdoId = 0;
     bool enforceMajorSdoId = true;
 
+    // Peer delay. End to end stays the default: it is what this driver has
+    // always done and what an AES67 grandmaster expects. In peer-to-peer
+    // mode the slave joins 224.0.0.107, measures the link delay with
+    // Pdelay_Req/Pdelay_Resp(/_Follow_Up) instead of Delay_Req, and feeds
+    // that link delay into the same offset arithmetic.
+    DelayMechanism delayMechanism = DelayMechanism::EndToEnd;
+
+    // logMinPdelayReqInterval advertised in our Pdelay_Req, log2 seconds.
+    int8_t logMinPdelayReqInterval = 0;
+
+    // Answer a neighbour's Pdelay_Req. A peer-to-peer port that stays silent
+    // leaves its neighbour unable to measure the link, so this is on; it only
+    // has an effect in peer-to-peer mode.
+    bool respondToPdelayReq = true;
+
+    // portNumber of this PTP port (IEEE 1588-2008 sec 7.5.2.3). One per
+    // physical port; it only needs setting when two ports share a clock
+    // identity, which is what happens with two instances on one host.
+    uint16_t portNumber = 1;
+
     // IEEE 1588-2008 §13.1 ports; overridable for the unprivileged
     // loopback test (2026-08-31), same knob as PTPMasterConfig's.
     uint16_t eventPort = 319;
@@ -266,6 +296,21 @@ public:
         return sdoIdMismatchCount_.load(std::memory_order_relaxed);
     }
 
+    // Peer-delay counters. The link delay itself is getMeanPathDelayNs():
+    // in peer-to-peer mode that is what the Pdelay exchange measured.
+    int getPdelayReqSentCount() const {
+        return pdelayReqSentCount_.load(std::memory_order_relaxed);
+    }
+    int getPdelayRespCount() const {
+        return pdelayRespCount_.load(std::memory_order_relaxed);
+    }
+    int getPdelayRespFollowUpCount() const {
+        return pdelayRespFollowUpCount_.load(std::memory_order_relaxed);
+    }
+    int getPdelayReqAnsweredCount() const {
+        return pdelayReqAnsweredCount_.load(std::memory_order_relaxed);
+    }
+
     // Milliseconds for a logMessageInterval, or 0 when it is unusable
     // (0x7F, "sending stopped", or outside the configured bounds).
     int logIntervalToMs(int8_t logInterval) const;
@@ -302,6 +347,20 @@ private:
 
     // Delay_Req transmission
     bool sendDelayReq();
+
+    // Peer delay (IEEE 1588-2008 sec 11.4).
+    bool sendPdelayReq();
+    bool sendPdelayResp(const PTPHeader& request, uint64_t receiptTimeNs);
+    void handlePdelayReq(const PTPHeader& header, const uint8_t* data, size_t len,
+                         uint64_t receiveTimeNs);
+    void handlePdelayResp(const PTPHeader& header, const uint8_t* data, size_t len,
+                          uint64_t receiveTimeNs);
+    void handlePdelayRespFollowUp(const PTPHeader& header, const uint8_t* data,
+                                  size_t len);
+    // linkDelay = ((t4 - t1) - (t3 - t2)) / 2, filtered and published as the
+    // path delay the offset arithmetic uses.
+    void completePdelay(int64_t t3MinusT2Ns);
+    void storeFilteredPathDelay(int64_t delayNs);
 
     // Offset/delay calculation
     void calculateOffsetAndDelay();
@@ -398,6 +457,21 @@ private:
     std::atomic<int> announceCount_{0};
     std::atomic<int> domainMismatchCount_{0};
     std::atomic<int> sdoIdMismatchCount_{0};
+    std::atomic<int> pdelayReqSentCount_{0};
+    std::atomic<int> pdelayRespCount_{0};
+    std::atomic<int> pdelayRespFollowUpCount_{0};
+    std::atomic<int> pdelayReqAnsweredCount_{0};
+
+    // Peer-delay exchange in flight, all touched only by the receive and
+    // request threads under pdelayMutex_.
+    std::mutex pdelayMutex_;
+    uint16_t pdelayReqSequenceId_{0};
+    uint64_t t1_pdelayReqSendTimeNs_{0};
+    uint64_t t4_pdelayRespReceiveTimeNs_{0};
+    PTPTimestamp t2_pdelayRequestReceipt_;
+    int64_t pdelayCorrectionNs_{0};
+    bool waitingForPdelayResp_{false};
+    bool waitingForPdelayFollowUp_{false};
 
     // Intervals as advertised by the master, in milliseconds; 0 until one
     // has been heard, in which case the configured value stands.
