@@ -24,6 +24,9 @@
 #include <memory>
 #include <array>
 #include <atomic>
+#include <condition_variable>
+#include <thread>
+#include <mutex>
 
 namespace AES67 {
 
@@ -238,6 +241,21 @@ private:
     /// about the audio path depends on it: a plant with a registry gets
     /// this driver in its inventory, a plant without one is unaffected.
     std::unique_ptr<NMOSRegistrationClient> nmosClient_;
+    /// The registry is told about the streams from here, and never from a
+    /// stream callback: those run with StreamManager's own mutex held, and
+    /// describing the streams means asking StreamManager for them, which
+    /// would take that mutex again. The callbacks set a flag; this thread
+    /// does the work once they have let go.
+    std::thread nmosSyncThread_;
+    std::mutex nmosSyncMutex_;
+    std::condition_variable nmosSyncSignal_;
+    bool nmosSyncRequested_{false};
+    bool nmosSyncRunning_{false};
+
+    /// Describes the current streams to the registry. Runs on
+    /// nmosSyncThread_ only.
+    void syncNMOSResources();
+    void requestNMOSSync();
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
     std::unique_ptr<RTCPMonitor> rtcpMonitor_;
 

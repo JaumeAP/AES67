@@ -11,11 +11,11 @@
 // (`_nmos-register._tcp` in its bundle, `$.NMOS.configuration`); this one
 // browsed for registries and never told one it was here.
 //
-// THIS IS THE NODE AND ITS HEARTBEAT, AND NOTHING ELSE YET. IS-04 also
-// carries devices, sources, flows, senders and receivers, which is where
-// the streams this driver actually serves would go. A node on its own is
-// what a controller needs to see the driver at all, and it is the half
-// that can be written without touching stream lifecycle.
+// The node and its heartbeat came first, because a node on its own is what
+// a controller needs to see the driver at all. The rest of the tree —
+// device, source, flow, sender, receiver — is what makes the streams
+// visible, and it is here too: a registry that knows the driver exists but
+// not what it sends is an inventory with a hole in it.
 //
 // What the registry answers is parsed defensively: it is another machine
 // on the network, this runs inside coreaudiod, and a registry that has
@@ -31,6 +31,8 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace AES67 {
 
@@ -58,6 +60,35 @@ struct NMOSNodeInfo {
     /// driver serves no IS-04 Node API yet, and a registry that cannot
     /// reach one simply does not.
     std::string href;
+};
+
+/// One transmit stream, as IS-04 sees it: a source (what the audio IS), a
+/// flow (how it is encoded) and a sender (where it goes). The three ids
+/// are derived, not stored, so they are the same after a restart.
+struct NMOSSenderResource {
+    std::string name;          ///< The session name, which is what a controller shows.
+    std::string description;
+    std::string multicastAddress;
+    uint16_t port{0};
+    std::string sourceAddress; ///< The interface this leaves by, when known.
+    uint32_t sampleRate{48000};
+    uint16_t channels{2};
+    /// "L16" or "L24" — what goes in the flow's media_type as audio/L16
+    /// or audio/L24.
+    std::string encoding{"L24"};
+};
+
+/// One receive stream. IS-04 receivers advertise what they CAN take, not
+/// what they are taking, so this carries the capability and the state of
+/// the subscription separately.
+struct NMOSReceiverResource {
+    std::string name;
+    std::string description;
+    /// The sender this receiver is currently pulling, when it is pulling
+    /// one. Empty is a receiver that is configured and idle, which is a
+    /// state a controller needs to see.
+    std::string subscribedMulticastAddress;
+    bool active{false};
 };
 
 class NMOSRegistrationClient {
@@ -93,8 +124,19 @@ public:
     void startHeartbeats();
     void stop();
 
-    /// DELETEs the Node resource. A registry that is told beats waiting
-    /// for a timeout to expire.
+    /// Registers the device and everything under it, and removes whatever
+    /// the registry still holds from a previous call and this one does not
+    /// mention. Call it after the streams are known and again whenever
+    /// they change: a registry showing a stream that is gone sends
+    /// controllers after nothing.
+    ///
+    /// The node has to be registered first — IS-04 refuses a device whose
+    /// node it does not know.
+    bool syncResources(const std::vector<NMOSSenderResource>& senders,
+                       const std::vector<NMOSReceiverResource>& receivers);
+
+    /// DELETEs the Node resource, and everything under it first: a
+    /// registry that is told beats waiting for a timeout to expire.
     bool unregister();
 
     bool isRegistered() const { return registered_.load(std::memory_order_relaxed); }
@@ -110,11 +152,54 @@ public:
                                              int64_t versionSeconds,
                                              int32_t versionNanos);
 
+    /// A UUID derived from a name inside a namespace, RFC 4122 version 5.
+    ///
+    /// Every resource under a node needs an id that survives a restart:
+    /// a registry keyed by fresh ids each launch accumulates copies of the
+    /// same stream. Deriving them from the node id and the stream's own
+    /// name gives the same answer on every run without storing anything.
+    static std::string deriveId(const std::string& namespaceUuid, const std::string& name);
+
+    /// The bodies, so they can be read without a registry. Each returns
+    /// the full {"type": ..., "data": {...}} a registration POST takes.
+    static std::string buildDeviceBody(const std::string& deviceId,
+                                       const std::string& nodeId,
+                                       const std::string& label,
+                                       const std::vector<std::string>& senderIds,
+                                       const std::vector<std::string>& receiverIds,
+                                       int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildSourceBody(const std::string& sourceId,
+                                       const std::string& deviceId,
+                                       const NMOSSenderResource& sender,
+                                       int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildFlowBody(const std::string& flowId,
+                                     const std::string& sourceId,
+                                     const std::string& deviceId,
+                                     const NMOSSenderResource& sender,
+                                     int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildSenderBody(const std::string& senderId,
+                                       const std::string& flowId,
+                                       const std::string& deviceId,
+                                       const NMOSSenderResource& sender,
+                                       int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildReceiverBody(const std::string& receiverId,
+                                         const std::string& deviceId,
+                                         const NMOSReceiverResource& receiver,
+                                         int64_t versionSeconds, int32_t versionNanos);
+
 private:
     bool postNode();
 
+    /// POSTs one already-built body. Shared by everything above.
+    bool postResource(const std::string& body);
+    /// DELETEs one resource by type and id, e.g. ("senders", id).
+    bool deleteResource(const std::string& type, const std::string& id);
+
     NMOSNodeInfo node_;
     NMOSRegistry registry_;
+    /// What the registry currently holds because of us, so the next sync
+    /// knows what to take away. Type to ids.
+    std::vector<std::pair<std::string, std::string>> published_;
     mutable std::mutex mutex_;
     std::atomic<bool> registered_{false};
     std::atomic<bool> running_{false};

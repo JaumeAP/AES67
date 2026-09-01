@@ -668,6 +668,18 @@ std::vector<SDPSession> StreamManager::getTransmitSessions() const {
     return sessions;
 }
 
+std::vector<SDPSession> StreamManager::getReceiveSessions() const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    std::vector<SDPSession> sessions;
+    for (const auto& pair : streams_) {
+        if (!pair.second.isTransmit) {
+            sessions.push_back(pair.second.sdp);
+        }
+    }
+    return sessions;
+}
+
 void StreamManager::setAutoSinkFollow(bool enabled) {
     autoSinkFollowEnabled_.store(enabled, std::memory_order_relaxed);
 }
