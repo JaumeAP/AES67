@@ -170,6 +170,7 @@ set(NETWORK_SOURCES
     NetworkEngine/PTP/PTPClock.cpp
     NetworkEngine/PTP/PTPDInterface.cpp
     NetworkEngine/PTP/PTPSlave.cpp
+    NetworkEngine/PTP/PTPService.cpp
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPArbitrator.cpp
     NetworkEngine/PTP/CoreAudioClockSource.cpp
@@ -221,6 +222,7 @@ set(AES67_NET_SOURCES
     NetworkEngine/RTP/RTPReceiver.cpp
     NetworkEngine/RTP/RTPTransmitter.cpp
     NetworkEngine/PTP/PTPSlave.cpp
+    NetworkEngine/PTP/PTPService.cpp
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPPeerObserver.cpp
     NetworkEngine/Discovery/SAPListener.cpp
@@ -344,6 +346,23 @@ option(BUILD_EXAMPLES "Build example programs" ON)
 
 if(BUILD_EXAMPLES)
     add_subdirectory(Examples)
+endif()
+
+# ============================================================================
+# Privileged PTP daemon
+# ============================================================================
+
+# PTP lives on UDP 319/320, which only root can bind, and coreaudiod is not
+# root -- so the socket work runs here and the plugin reads the result over a
+# Unix-domain socket. Built by default; the installer places it and its
+# LaunchDaemon plist (Installer/com.aes67driver.ptpd.plist).
+option(BUILD_PTP_DAEMON "Build the privileged PTP daemon (aes67ptpd)" ON)
+
+if(BUILD_PTP_DAEMON)
+    add_executable(aes67ptpd Daemon/aes67ptpd.cpp)
+    target_include_directories(aes67ptpd PRIVATE ${CMAKE_SOURCE_DIR})
+    target_link_libraries(aes67ptpd PRIVATE aes67_core aes67_net)
+    target_compile_features(aes67ptpd PRIVATE cxx_std_17)
 endif()
 
 # ============================================================================

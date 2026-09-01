@@ -100,8 +100,14 @@ mkdir -p "$PAYLOAD_DIR"
 # The payload should mirror the final installation location
 PAYLOAD_INSTALL_DIR="$PAYLOAD_DIR/Library/Audio/Plug-Ins/HAL"
 PAYLOAD_APPS_DIR="$PAYLOAD_DIR/Applications"
+# The privileged PTP daemon and its LaunchDaemon plist: coreaudiod cannot bind
+# UDP 319/320, so that work lives in a root process (see Daemon/aes67ptpd.cpp).
+PAYLOAD_LIBEXEC_DIR="$PAYLOAD_DIR/usr/local/libexec"
+PAYLOAD_DAEMONS_DIR="$PAYLOAD_DIR/Library/LaunchDaemons"
 mkdir -p "$PAYLOAD_INSTALL_DIR"
 mkdir -p "$PAYLOAD_APPS_DIR"
+mkdir -p "$PAYLOAD_LIBEXEC_DIR"
+mkdir -p "$PAYLOAD_DAEMONS_DIR"
 
 # Copy driver to payload
 echo "Copying driver to payload..."
@@ -126,6 +132,21 @@ if [ ! -d "$PAYLOAD_APPS_DIR/$MANAGER_APP_NAME" ]; then
 fi
 
 echo "✓ Manager app copied to payload"
+
+# Copy the PTP daemon and its plist to payload. Absent binary is not fatal:
+# the driver runs without it, on the local clock, exactly as it did before.
+PTPD_BUILD_PATH="$BUILD_DIR/aes67ptpd"
+if [ -f "$PTPD_BUILD_PATH" ]; then
+    echo "Copying PTP daemon to payload..."
+    cp "$PTPD_BUILD_PATH" "$PAYLOAD_LIBEXEC_DIR/"
+    chmod 755 "$PAYLOAD_LIBEXEC_DIR/aes67ptpd"
+    cp "$SCRIPT_DIR/com.aes67driver.ptpd.plist" "$PAYLOAD_DAEMONS_DIR/"
+    chmod 644 "$PAYLOAD_DAEMONS_DIR/com.aes67driver.ptpd.plist"
+    echo "✓ PTP daemon copied to payload"
+else
+    echo "NOTE: $PTPD_BUILD_PATH not found — packaging without the PTP daemon."
+    echo "      Build it with -DBUILD_PTP_DAEMON=ON to include it."
+fi
 
 # Check scripts exist and are executable
 echo "Checking installer scripts..."
