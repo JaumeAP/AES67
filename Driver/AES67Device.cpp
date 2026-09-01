@@ -11,12 +11,46 @@
 #include "Shared/CustomProperties.h"
 #include "NetworkEngine/DeviceChannelSettings.h"
 #include "NetworkEngine/AmplifierUnitSettings.h"
+#include "NetworkEngine/NMOSSettings.h"
 #include "NetworkEngine/PTP/PTPMasterSettings.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <algorithm>
 #include <utility>
 
 namespace AES67 {
+
+namespace {
+
+/// This machine's name, for the registry to show. An empty answer is fine:
+/// the label carries the useful half and IS-04 allows it.
+std::string localHostname() {
+    char name[256] = {0};
+    if (::gethostname(name, sizeof(name) - 1) != 0) return {};
+    return std::string(name);
+}
+
+/// "host:port", the form the settings file takes for a registry that mDNS
+/// cannot reach. Anything else is refused rather than half-parsed.
+std::optional<NMOSRegistry> parseRegistryOverride(const std::string& text) {
+    const size_t colon = text.rfind(':');
+    if (colon == std::string::npos || colon == 0 || colon + 1 >= text.size()) {
+        return std::nullopt;
+    }
+    const std::string portText = text.substr(colon + 1);
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long port = std::strtoul(portText.c_str(), &end, 10);
+    if (end == portText.c_str() || *end != '\0' || errno == ERANGE) return std::nullopt;
+    if (port == 0 || port > 65535) return std::nullopt;
+
+    NMOSRegistry registry;
+    registry.host = text.substr(0, colon);
+    registry.port = static_cast<uint16_t>(port);
+    return registry;
+}
+
+} // namespace
+
 
 // Helper to create initialized ring buffer array
 namespace {
@@ -297,6 +331,53 @@ void AES67Device::Initialize() {
         rtspServer_.reset();
     }
 
+    // NMOS. Off unless the installation asked for it: registering puts
+    // this machine in whatever reads the plant's registry, which is a
+    // decision somebody makes rather than something a driver starts doing
+    // on its own. A registry that cannot be found, or that refuses, costs
+    // the audio path nothing.
+    {
+        NMOSSettingsManager nmosSettingsManager;
+        NMOSSettings nmosSettings = nmosSettingsManager.load();
+        if (nmosSettings.enabled) {
+            // First run under `enabled` has no id yet: generate and persist
+            // one before announcing, so the registry sees the same node
+            // after a restart.
+            if (nmosSettings.nodeId.empty()) {
+                nmosSettingsManager.save(nmosSettings);
+            }
+
+            NMOSNodeInfo node;
+            node.id = nmosSettings.nodeId;
+            node.hostname = localHostname();
+            node.label = nmosSettings.label.empty()
+                             ? ("AES67 macOS Driver on " + node.hostname)
+                             : nmosSettings.label;
+
+            nmosClient_ = std::make_unique<NMOSRegistrationClient>(node);
+
+            std::optional<NMOSRegistry> registry;
+            if (!nmosSettings.registryOverride.empty()) {
+                registry = parseRegistryOverride(nmosSettings.registryOverride);
+                if (!registry.has_value()) {
+                    AES67_LOGF("AES67Device: NMOS registry override '%s' is not host:port",
+                               nmosSettings.registryOverride.c_str());
+                }
+            } else {
+                registry = NMOSRegistrationClient::discoverRegistry();
+            }
+
+            if (registry.has_value() && nmosClient_->registerWith(*registry)) {
+                nmosClient_->startHeartbeats();
+                AES67_LOGF("AES67Device: registered with the NMOS registry at %s:%u as %s",
+                           registry->host.c_str(), registry->port, node.id.c_str());
+            } else {
+                AES67_LOG("AES67Device: no NMOS registry registered with - continuing without it");
+                nmosClient_.reset();
+            }
+        }
+    }
+
     // Passive PTP peer observer: watches PTP traffic to list which Dolby
     // elements are on the network (see PTPPeerObserver / GetPtpPeersProperty).
     // Independent of our own PTP role and, like SAP discovery, non-fatal if it
@@ -417,6 +498,12 @@ AES67Device::~AES67Device() {
     // back, so it stops before anything it might reach is torn down.
     if (mdnsBrowser_) mdnsBrowser_->stop();
     if (rtspServer_) rtspServer_->stop();
+    // Telling the registry beats leaving it to time us out: a controller
+    // showing a node that is gone is worse than one showing nothing.
+    if (nmosClient_) {
+        nmosClient_->stop();
+        nmosClient_->unregister();
+    }
     // Deactivate streams directly rather than calling StopIO() (which requires
     // framework context). This is safe in the destructor.
     if (inputStream_) {
