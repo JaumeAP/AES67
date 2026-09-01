@@ -21,7 +21,7 @@ PTPArbitrator::PTPArbitrator(const PTPArbitratorConfig& config) : config_(config
     masterConfig.interfaceName = config_.interfaceName;
     master_ = std::make_unique<PTPMaster>(masterConfig, *clockSource_);
 
-    PTPSlaveConfig slaveConfig;
+    PTPSlaveConfig slaveConfig = config_.slaveConfig;
     slaveConfig.domain = config_.domain;
     slaveConfig.interfaceName = config_.interfaceName;
     slave_ = std::make_unique<PTPSlave>(slaveConfig);

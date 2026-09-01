@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "PTPArbitrator.h"
+#include "NetworkEngine/PTP/PTPSettingsMapping.h"
 #include "PTPDiagnostics.h"
 #include "PTPService.h"
 
@@ -33,6 +34,11 @@ public:
      */
     explicit PTPDInterface(bool useStub = false);
     ~PTPDInterface();
+
+    /// The dataset the installation configured. Call before init(): it is
+    /// read when the engines are built. Absent a call, every value stays
+    /// where the code had it.
+    void setSettings(const PTPMasterSettings& settings) { settings_ = settings; }
 
     bool init(const std::string& interfaceName);
     void start();
@@ -107,6 +113,7 @@ private:
 
     // Master-capable path (null unless enableMasterCapability() was called)
     bool masterCapable_{false};
+    PTPMasterSettings settings_{};
     PTPClockSourceKind masterClockSourceKind_{PTPClockSourceKind::Internal};
     AudioDeviceID masterLockToDeviceID_{kAudioObjectUnknown};
     std::unique_ptr<PTPArbitrator> ptpArbitrator_;
