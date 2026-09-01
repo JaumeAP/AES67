@@ -4,9 +4,13 @@
 //
 // The first end-to-end exercise of the full PTP exchange this repo has
 // ever run: a real PTPMaster and a real PTPSlave on the same host, over
-// loopback multicast, on unprivileged high ports (the §13.1 ports 319/320
-// need root, which is why this path had gone unexercised — and why the
-// handleDelayResp self-deadlock fixed on 2026-08-31 sat latent).
+// loopback multicast, on high ports so two instances can coexist with
+// whatever else holds 319/320. (This comment used to say those ports need
+// root and that this is why the path had gone unexercised. They do not: on
+// macOS 26.6.2 an unprivileged process binds them fine — measured
+// 2026-09-01. The handleDelayResp self-deadlock fixed on 2026-08-31 sat
+// latent because nothing exercised the exchange, not because it could not
+// be exercised.)
 //
 // What this proves, concretely:
 //   - the master's Announce/Sync/Follow_Up are accepted by our own slave

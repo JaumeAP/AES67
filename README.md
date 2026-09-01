@@ -102,7 +102,7 @@ The PTP subsystem has two layers:
 
 - **Media clock recovery (implemented):** `PTPClock` correlates RTP timestamps with local time per AES67-2018 Section 8.2. A Phase-Locked Loop tracks clock drift between the remote source and local audio hardware. Reference point history enables drift ratio calculation for adaptive resampling. In local-clock fallback mode, this is sufficient for single-device operation — audio can flow through the driver using local timing.
 
-- **Network PTP synchronisation (code written, untested):** `PTPSlave` implements IEEE 1588 slave-only mode — Sync/Follow_Up/Delay_Req/Delay_Resp message exchange, offset and path delay calculation, 8-sample moving average filtering, lock detection with hysteresis, and frequency drift estimation. It joins the 224.0.1.129 multicast group on ports 319/320 and feeds measurements into the existing PLL via `PTPDInterface`. However, this code has **never been tested against a real PTP grandmaster**. It auto-falls back to stub mode if PTP ports are unavailable (e.g., without root privileges). Until verified with real hardware, multi-device synchronisation should not be relied upon.
+- **Network PTP synchronisation (code written, untested):** `PTPSlave` implements IEEE 1588 slave-only mode — Sync/Follow_Up/Delay_Req/Delay_Resp message exchange, offset and path delay calculation, 8-sample moving average filtering, lock detection with hysteresis, and frequency drift estimation. It joins the 224.0.1.129 multicast group on ports 319/320 and feeds measurements into the existing PLL via `PTPDInterface`. However, this code has **never been tested against a real PTP grandmaster**. It auto-falls back to stub mode if the PTP ports cannot be opened. (An earlier note here said that needed root: it does not. On macOS 26.6.2 an unprivileged process binds UDP 319 and 320 without trouble — measured, along with 80 and 443.) Until verified with real hardware, multi-device synchronisation should not be relied upon.
 
   Interoperability with a foreign grandmaster rests on the intervals being the master's to announce (IEEE 1588-2008 §7.7.2.4, §9.5.11.2): `PTPSlave` follows the `logMinDelayReqInterval` carried in Delay_Resp and the `logAnnounceInterval` carried in Announce, falling back to its configured values until a master advertises something usable and refusing anything outside 1/32 s to 32 s (`followAdvertisedIntervals`, `minLogInterval`/`maxLogInterval`). It also checks `majorSdoId`, the top nibble of octet 0, so a gPTP master on the same domain is no longer followed as if it belonged to this profile (`enforceMajorSdoId`, default on). `PTPMaster` in turn advertises the intervals it actually sends, instead of the hard-coded 2^0 = 1 s it wrote into every message while sending Sync eight times a second.
 
@@ -205,6 +205,31 @@ sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
 # Verify it appears
 system_profiler SPAudioDataType | grep -A 5 "AES67"
 ```
+
+### The PTP daemon (`aes67ptpd`)
+
+`Daemon/aes67ptpd.cpp` builds a small daemon that runs one PTP engine for the
+host and publishes offset, path delay and lock state on a Unix-domain socket
+(`/var/run/aes67ptpd.sock`, wire format in `Shared/PTPServiceProtocol.h`).
+When that socket exists, `PTPDInterface` reads it instead of starting a second
+PTP engine inside coreaudiod; when it does not, the in-process path runs
+exactly as before, and `setPreferPrivilegedDaemon(false)` refuses the daemon
+outright.
+
+It is a LaunchDaemon for lifecycle, not for privilege: one engine per host
+rather than one per process, alive across coreaudiod restarts and plugin
+reloads, and readable by the Manager app at the same time. A reader stops
+believing a status older than two seconds, so a daemon that dies cannot leave
+a stale offset looking like a lock.
+
+```bash
+cmake --build build --target aes67ptpd
+sudo ./build/aes67ptpd --interface en0 --domain 0 --verbose
+```
+
+The installer places it at `/usr/local/libexec/aes67ptpd` with
+`Installer/com.aes67driver.ptpd.plist`, and `Installer/uninstall.sh` removes
+both.
 
 ### Validate the installed driver
 

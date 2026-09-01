@@ -6,6 +6,9 @@
 //
 
 #include "PTPDInterface.h"
+
+#include <sys/stat.h>
+#include <thread>
 #include "PTPSlave.h"
 #include <iostream>
 
@@ -82,6 +85,21 @@ bool PTPDInterface::init(const std::string& interfaceName) {
         return true;
     }
 
+    // The daemon owns the host's PTP sockets; prefer it when its socket is
+    // there rather than starting a second engine here. Nothing else about
+    // this class changes: measurements arrive through the same
+    // onPTPMeasurement() path.
+    if (preferDaemon_) {
+        struct stat info;
+        if (::stat(servicePath_.c_str(), &info) == 0 && S_ISSOCK(info.st_mode)) {
+            serviceClient_ = std::make_unique<PTPServiceClient>(servicePath_);
+            std::cout << "[PTPDInterface] Using the privileged PTP daemon at "
+                      << servicePath_ << " for interface " << interfaceName
+                      << " domain=" << domain_ << std::endl;
+            return true;
+        }
+    }
+
     // Slave-only mode — original behavior, unchanged.
     PTPSlaveConfig config;
     config.domain = domain_;
@@ -121,6 +139,15 @@ void PTPDInterface::start() {
     }
 
     // Start whichever real path we were init()'d with
+    if (serviceClient_) {
+        serviceClient_->start();
+        serviceRunning_.store(true);
+        serviceThread_ = std::thread(&PTPDInterface::serviceLoop, this);
+        std::cout << "[PTPDInterface] Reading PTP status from "
+                  << servicePath_ << std::endl;
+        return;
+    }
+
     if (ptpArbitrator_) {
         if (!ptpArbitrator_->start()) {
             std::cerr << "[PTPDInterface] Failed to start PTPArbitrator on "
@@ -152,6 +179,31 @@ void PTPDInterface::start() {
     }
 }
 
+
+// The daemon publishes on its own cadence; this turns each new status into
+// the measurement the rest of the driver already knows how to consume, and
+// drops the lock the moment the daemon goes quiet -- a stale offset must
+// never read as synchronised.
+void PTPDInterface::serviceLoop() {
+    while (serviceRunning_.load()) {
+        PTPServiceStatus status;
+        if (serviceClient_->lastStatus(&status)
+            && serviceClient_->hasFreshStatus()
+            && status.sequence != lastServiceSequence_) {
+            lastServiceSequence_ = status.sequence;
+            onPTPMeasurement(status.offsetNs, status.pathDelayNs,
+                             status.frequencyDriftPpb, status.clockClass,
+                             status.clockAccuracy, status.locked != 0,
+                             serviceClient_->getGrandmasterID());
+        } else if (!serviceClient_->hasFreshStatus()) {
+            state_.isLocked.store(false);
+            diagnostics_.isLocked = false;
+        }
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(kPTPServiceHeartbeatMs / 2));
+    }
+}
+
 void PTPDInterface::stop() {
     if (!running_) {
         return;
@@ -159,7 +211,11 @@ void PTPDInterface::stop() {
 
     running_ = false;
 
-    if (ptpArbitrator_) {
+    if (serviceClient_) {
+        serviceRunning_.store(false);
+        if (serviceThread_.joinable()) serviceThread_.join();
+        serviceClient_->stop();
+    } else if (ptpArbitrator_) {
         ptpArbitrator_->stop();
     } else if (ptpSlave_) {
         ptpSlave_->stop();
@@ -210,6 +266,12 @@ void PTPDInterface::onPTPMeasurement(int64_t offsetNs, int64_t pathDelayNs,
         bool slaveLocked = ptpSlave_->isLocked();
         state_.isLocked.store(slaveLocked);
         diagnostics_.isLocked = slaveLocked;
+    } else {
+        // Daemon path: there is no local slave to ask, and the `locked`
+        // argument is the daemon's own answer. Ignoring it here is what made
+        // a measurement from the daemon arrive without ever setting the lock.
+        state_.isLocked.store(locked);
+        diagnostics_.isLocked = locked;
     }
 
     // Update diagnostics (non-atomic, for UI/monitoring)
