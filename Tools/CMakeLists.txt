@@ -48,9 +48,23 @@ target_link_libraries(AES67InteropSim PRIVATE aes67_core aes67_net)
 target_compile_features(AES67InteropSim PRIVATE cxx_std_17)
 target_link_libraries(AES67InteropSim PRIVATE "-framework Accelerate")
 
+# HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
+# Talks to coreaudiod through Apple's HAL client API only -- it links against
+# no driver code, so it validates what is installed, not this build tree.
+if(APPLE)
+    add_executable(HALValidate HALValidate.cpp HALValidateAudioAccess.mm)
+    target_compile_features(HALValidate PRIVATE cxx_std_17)
+    target_link_libraries(HALValidate PRIVATE
+        "-framework CoreAudio"
+        "-framework CoreFoundation"
+        "-framework AVFoundation"
+    )
+endif()
+
 message(STATUS "Tools configured:")
 message(STATUS "  - AES67TestSender")
 message(STATUS "  - AES67TestReceiver")
+message(STATUS "  - HALValidate")
 message(STATUS "")
 message(STATUS "Run test sender:")
 message(STATUS "  ./Tools/AES67TestSender --ip 239.1.1.1 --port 5004 --channels 8 --freq 1000")
