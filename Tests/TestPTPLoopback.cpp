@@ -207,3 +207,84 @@ TEST_CASE("Unusable And Foreign-Profile Values Are Refused") {
     CHECK(header.getMajorSdoId() == 1);
     CHECK(header.getMessageType() == PTPMessageType::Sync);
 }
+
+TEST_CASE("Peer Delay Measures The Link Between Two Ports") {
+    // Peer delay (IEEE 1588-2008 sec 11.4) was declared "reserved for future
+    // support": the group 224.0.0.107 was never joined and Pdelay_Req,
+    // Pdelay_Resp and Pdelay_Resp_Follow_Up were never sent or handled, so a
+    // neighbour configured for it measured nothing and this end answered
+    // nothing.
+    //
+    // Two slave ports on this host, both peer-to-peer, are each other's
+    // neighbour: each asks, each answers, each ends with a link delay. They
+    // differ only by portNumber -- one host, one clock identity, two ports.
+    std::cout << "Test: peer delay exchange between two ports... ";
+
+    PTPSlaveConfig a;
+    a.interfaceName = kInterface;
+    a.eventPort = kTestEventPort + 4;
+    a.generalPort = kTestGeneralPort + 4;
+    a.delayMechanism = DelayMechanism::PeerToPeer;
+    a.delayReqIntervalMs = 250;
+    a.multicastLoopback = true;
+    a.portNumber = 1;
+
+    PTPSlaveConfig b = a;
+    b.portNumber = 2;
+
+    PTPSlave portA(a);
+    PTPSlave portB(b);
+
+    REQUIRE(portA.start());
+    REQUIRE(portB.start());
+
+    // Each end has to have asked, answered, and completed the two-step
+    // exchange with the Follow_Up that carries t3.
+    CHECK(waitFor([&] { return portA.getPdelayReqSentCount() > 0; },
+                  std::chrono::milliseconds(5000)));
+    CHECK(waitFor([&] { return portA.getPdelayReqAnsweredCount() > 0; },
+                  std::chrono::milliseconds(5000)));
+    CHECK(waitFor([&] { return portA.getPdelayRespCount() > 0; },
+                  std::chrono::milliseconds(5000)));
+    CHECK(waitFor([&] { return portA.getPdelayRespFollowUpCount() > 0; },
+                  std::chrono::milliseconds(5000)));
+    CHECK(waitFor([&] { return portB.getPdelayRespCount() > 0; },
+                  std::chrono::milliseconds(5000)));
+
+    // Loopback: the link delay is noise-sized, but it must have been
+    // computed and published, and it can never be negative.
+    const int64_t linkDelayNs = portA.getMeanPathDelayNs();
+    CHECK(linkDelayNs >= 0);
+    CHECK(linkDelayNs < 50'000'000);
+
+    std::cout << "reqSent=" << portA.getPdelayReqSentCount()
+              << " answered=" << portA.getPdelayReqAnsweredCount()
+              << " resp=" << portA.getPdelayRespCount()
+              << " followUp=" << portA.getPdelayRespFollowUpCount()
+              << " linkDelay=" << linkDelayNs << "ns ";
+
+    portA.stop();
+    portB.stop();
+    CHECK(!portA.isRunning());
+    CHECK(!portB.isRunning());
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("End To End Stays The Default And Ignores The Peer Group") {
+    // The mechanism is opt-in: a default-configured slave must not join
+    // 224.0.0.107 nor send a single Pdelay_Req.
+    PTPSlaveConfig config;
+    CHECK(config.delayMechanism == DelayMechanism::EndToEnd);
+
+    config.interfaceName = kInterface;
+    config.eventPort = kTestEventPort + 6;
+    config.generalPort = kTestGeneralPort + 6;
+    config.delayReqIntervalMs = 100;
+    config.multicastLoopback = true;
+
+    PTPSlave slave(config);
+    REQUIRE(slave.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    CHECK(slave.getPdelayReqSentCount() == 0);
+    slave.stop();
+}
