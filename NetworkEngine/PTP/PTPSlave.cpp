@@ -41,7 +41,12 @@ namespace AES67 {
 namespace {
     // PTP multicast addresses (IEEE 1588-2008 Section 13.1)
     constexpr const char* kPTPPrimaryMulticast = "224.0.1.129";   // Default domain
-    // Peer delay multicast: "224.0.0.107" (reserved for future peer-delay support)
+    // Peer delay uses its own group: 224.0.0.107, link-local by design so a
+    // Pdelay exchange never crosses a bridge (IEEE 1588-2008 Annex D.3).
+    constexpr const char* kPTPPeerDelayMulticast = "224.0.0.107";
+    constexpr size_t kMinPdelayReqSize = 54;
+    constexpr size_t kMinPdelayRespSize = 54;
+    constexpr size_t kRequestingPortOffset = 44;
 
     // PTP UDP ports (IEEE 1588-2008 Section 13.1)
     // Ports come from PTPSlaveConfig since 2026-08-31 (loopback-test knob).
@@ -150,7 +155,7 @@ bool PTPSlave::start() {
             selfPortId_.clockIdentity.id[i] = static_cast<uint8_t>((now >> (i * 8)) & 0xFF);
         }
     }
-    selfPortId_.portNumber = 1;
+    selfPortId_.portNumber = config_.portNumber;
 
     // Create multicast sockets
     if (!createSockets()) {
@@ -332,6 +337,21 @@ bool PTPSlave::createSockets() {
         return false;
     }
 
+    // Peer delay lives on its own group; joined only when it is the
+    // configured mechanism, so an end-to-end setup sees no change.
+    if (config_.delayMechanism == DelayMechanism::PeerToPeer) {
+        struct ip_mreq peerMreq = mreq;
+        peerMreq.imr_multiaddr.s_addr = inet_addr(kPTPPeerDelayMulticast);
+        if (setsockopt(eventSocket_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &peerMreq,
+                       sizeof(peerMreq)) < 0) {
+            std::cerr << "[PTPSlave] Failed to join multicast "
+                      << kPTPPeerDelayMulticast << " on event socket: "
+                      << strerror(errno) << std::endl;
+            closeSockets();
+            return false;
+        }
+    }
+
     // Set outgoing multicast interface
     setsockopt(eventSocket_, IPPROTO_IP, IP_MULTICAST_IF,
                &mreq.imr_interface, sizeof(mreq.imr_interface));
@@ -381,6 +401,29 @@ bool PTPSlave::createSockets() {
         closeSockets();
         return false;
     }
+
+    // Pdelay_Resp_Follow_Up is a general message, so the peer group has to be
+    // joined on this socket as well.
+    if (config_.delayMechanism == DelayMechanism::PeerToPeer) {
+        struct ip_mreq peerMreq = mreq;
+        peerMreq.imr_multiaddr.s_addr = inet_addr(kPTPPeerDelayMulticast);
+        if (setsockopt(generalSocket_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &peerMreq,
+                       sizeof(peerMreq)) < 0) {
+            std::cerr << "[PTPSlave] Failed to join multicast "
+                      << kPTPPeerDelayMulticast << " on general socket: "
+                      << strerror(errno) << std::endl;
+            closeSockets();
+            return false;
+        }
+    }
+
+    // The general socket was receive-only until peer delay gave it something
+    // to send (Pdelay_Resp_Follow_Up), and a socket with no outgoing
+    // multicast interface answers "No route to host".
+    setsockopt(generalSocket_, IPPROTO_IP, IP_MULTICAST_IF,
+               &mreq.imr_interface, sizeof(mreq.imr_interface));
+    setsockopt(generalSocket_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
+    setsockopt(generalSocket_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 
     std::cout << "[PTPSlave] Sockets created: event=" << config_.eventPort
               << " general=" << config_.generalPort
@@ -487,6 +530,14 @@ void PTPSlave::receiveThread() {
                             case PTPMessageType::Delay_Resp:
                                 handleDelayResp(header, buf, static_cast<size_t>(n));
                                 break;
+                            case PTPMessageType::Pdelay_Req:
+                                handlePdelayReq(header, buf, static_cast<size_t>(n),
+                                                receiveTimeNs);
+                                break;
+                            case PTPMessageType::Pdelay_Resp:
+                                handlePdelayResp(header, buf, static_cast<size_t>(n),
+                                                 receiveTimeNs);
+                                break;
                             default:
                                 break;
                         }
@@ -515,6 +566,10 @@ void PTPSlave::receiveThread() {
                                 break;
                             case PTPMessageType::Announce:
                                 handleAnnounce(header, buf, static_cast<size_t>(n));
+                                break;
+                            case PTPMessageType::Pdelay_Resp_FU:
+                                handlePdelayRespFollowUp(header, buf,
+                                                         static_cast<size_t>(n));
                                 break;
                             case PTPMessageType::Delay_Resp:
                                 // Delay_Resp is a GENERAL message (IEEE
@@ -571,19 +626,30 @@ void PTPSlave::receiveThread() {
 
 void PTPSlave::delayReqThread() {
     while (running_.load(std::memory_order_acquire)) {
-        // Only send Delay_Req if we have a master and have received at least one Sync
-        bool shouldSend = false;
-        {
-            std::lock_guard<std::mutex> lock(masterMutex_);
-            shouldSend = hasMaster_;
-        }
-        {
-            std::lock_guard<std::mutex> lock(syncMutex_);
-            shouldSend = shouldSend && (syncCount_.load(std::memory_order_relaxed) > 0);
+        // End to end needs a master to ask: the exchange is with it, and its
+        // answer is meaningless before the first Sync. Peer delay does not --
+        // it measures the link to the neighbour, which is a property of the
+        // cable and is measured whether or not a grandmaster has been chosen
+        // (IEEE 1588-2008 sec 11.4.1).
+        bool shouldSend = config_.delayMechanism == DelayMechanism::PeerToPeer;
+        if (!shouldSend) {
+            {
+                std::lock_guard<std::mutex> lock(masterMutex_);
+                shouldSend = hasMaster_;
+            }
+            {
+                std::lock_guard<std::mutex> lock(syncMutex_);
+                shouldSend = shouldSend
+                             && (syncCount_.load(std::memory_order_relaxed) > 0);
+            }
         }
 
         if (shouldSend) {
-            sendDelayReq();
+            if (config_.delayMechanism == DelayMechanism::PeerToPeer) {
+                sendPdelayReq();
+            } else {
+                sendDelayReq();
+            }
         }
 
         // The advertised rate wins over the configured one once a
@@ -603,6 +669,255 @@ void PTPSlave::delayReqThread() {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
+}
+
+
+// Path delay, filtered the same way whichever mechanism measured it: keep the
+// minimum of the recent history, since queueing only ever adds to a
+// measurement and the smallest sample is the one least contaminated by it.
+void PTPSlave::storeFilteredPathDelay(int64_t delayNs) {
+    if (delayNs < 0) return;
+    delayHistory_[delayHistoryIndex_] = delayNs;
+    delayHistoryIndex_ = (delayHistoryIndex_ + 1) % kDelayFilterSize;
+    if (delayHistoryCount_ < kDelayFilterSize) delayHistoryCount_++;
+
+    int64_t minDelay = delayNs;
+    for (size_t i = 0; i < delayHistoryCount_; ++i) {
+        minDelay = std::min(minDelay, delayHistory_[i]);
+    }
+    pathDelayNs_.store(minDelay, std::memory_order_release);
+}
+
+// ============================================================================
+// Peer delay (IEEE 1588-2008 sec 11.4)
+// ============================================================================
+
+namespace {
+
+// The header every peer-delay message shares. `length` is the message length
+// the type carries; `logInterval` is 0x7F for the ones the standard says
+// carry no rate.
+void BuildPeerHeader(uint8_t* msg, PTPMessageType type, size_t length,
+                     uint8_t domain, const PTPPortIdentity& source,
+                     uint16_t sequenceId, int8_t logInterval, bool twoStep) {
+    std::memset(msg, 0, length);
+    msg[0] = static_cast<uint8_t>(type);
+    msg[1] = kPTPVersion;
+    msg[2] = static_cast<uint8_t>((length >> 8) & 0xFF);
+    msg[3] = static_cast<uint8_t>(length & 0xFF);
+    msg[4] = domain;
+    if (twoStep) msg[6] = 0x02;      // flagField octet 0, twoStepFlag
+    for (int i = 0; i < 8; ++i) msg[20 + i] = source.clockIdentity.id[i];
+    msg[28] = static_cast<uint8_t>((source.portNumber >> 8) & 0xFF);
+    msg[29] = static_cast<uint8_t>(source.portNumber & 0xFF);
+    msg[30] = static_cast<uint8_t>((sequenceId >> 8) & 0xFF);
+    msg[31] = static_cast<uint8_t>(sequenceId & 0xFF);
+    msg[32] = 5;                     // controlField: "all others", Table 23
+    msg[33] = static_cast<uint8_t>(logInterval);
+}
+
+void WriteTimestamp(uint8_t* msg, size_t offset, uint64_t nanoseconds) {
+    const PTPTimestamp ts(nanoseconds);
+    msg[offset]     = static_cast<uint8_t>((ts.secondsHi >> 8) & 0xFF);
+    msg[offset + 1] = static_cast<uint8_t>(ts.secondsHi & 0xFF);
+    msg[offset + 2] = static_cast<uint8_t>((ts.secondsLo >> 24) & 0xFF);
+    msg[offset + 3] = static_cast<uint8_t>((ts.secondsLo >> 16) & 0xFF);
+    msg[offset + 4] = static_cast<uint8_t>((ts.secondsLo >> 8) & 0xFF);
+    msg[offset + 5] = static_cast<uint8_t>(ts.secondsLo & 0xFF);
+    msg[offset + 6] = static_cast<uint8_t>((ts.nanoseconds >> 24) & 0xFF);
+    msg[offset + 7] = static_cast<uint8_t>((ts.nanoseconds >> 16) & 0xFF);
+    msg[offset + 8] = static_cast<uint8_t>((ts.nanoseconds >> 8) & 0xFF);
+    msg[offset + 9] = static_cast<uint8_t>(ts.nanoseconds & 0xFF);
+}
+
+void WritePortIdentity(uint8_t* msg, size_t offset, const PTPPortIdentity& id) {
+    for (int i = 0; i < 8; ++i) msg[offset + i] = id.clockIdentity.id[i];
+    msg[offset + 8] = static_cast<uint8_t>((id.portNumber >> 8) & 0xFF);
+    msg[offset + 9] = static_cast<uint8_t>(id.portNumber & 0xFF);
+}
+
+}  // namespace
+
+bool PTPSlave::sendPdelayReq() {
+    if (eventSocket_ < 0) return false;
+
+    uint16_t seqId;
+    {
+        std::lock_guard<std::mutex> lock(pdelayMutex_);
+        seqId = ++pdelayReqSequenceId_;
+    }
+
+    uint8_t msg[kMinPdelayReqSize];
+    BuildPeerHeader(msg, PTPMessageType::Pdelay_Req, sizeof(msg),
+                    static_cast<uint8_t>(config_.domain), selfPortId_, seqId,
+                    config_.logMinPdelayReqInterval, false);
+    // originTimestamp is left zero: t1 is our own send time, taken below, and
+    // the responder never reads the field (sec 11.4.2).
+
+    struct sockaddr_in dest;
+    std::memset(&dest, 0, sizeof(dest));
+    dest.sin_family = AF_INET;
+    dest.sin_addr.s_addr = inet_addr(kPTPPeerDelayMulticast);
+    dest.sin_port = htons(config_.eventPort);
+
+    const uint64_t t1 = getSystemTimeNs();
+    const ssize_t sent = sendto(eventSocket_, msg, sizeof(msg), 0,
+                                reinterpret_cast<struct sockaddr*>(&dest),
+                                sizeof(dest));
+    if (sent < 0) {
+        std::cerr << "[PTPSlave] Failed to send Pdelay_Req: " << strerror(errno)
+                  << std::endl;
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(pdelayMutex_);
+        t1_pdelayReqSendTimeNs_ = t1;
+        t4_pdelayRespReceiveTimeNs_ = 0;
+        t2_pdelayRequestReceipt_ = PTPTimestamp();
+        pdelayCorrectionNs_ = 0;
+        waitingForPdelayResp_ = true;
+        waitingForPdelayFollowUp_ = false;
+    }
+    pdelayReqSentCount_.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+// A peer-to-peer port that never answers leaves its neighbour unable to
+// measure the link, so this end responds even though it is slave-only.
+bool PTPSlave::sendPdelayResp(const PTPHeader& request, uint64_t receiptTimeNs) {
+    if (eventSocket_ < 0 || generalSocket_ < 0) return false;
+
+    uint8_t resp[kMinPdelayRespSize];
+    BuildPeerHeader(resp, PTPMessageType::Pdelay_Resp, sizeof(resp),
+                    static_cast<uint8_t>(config_.domain), selfPortId_,
+                    request.sequenceId, 0x7F, true);
+    WriteTimestamp(resp, kTimestampOffset, receiptTimeNs);   // t2
+    WritePortIdentity(resp, kRequestingPortOffset, request.sourcePortIdentity);
+
+    struct sockaddr_in dest;
+    std::memset(&dest, 0, sizeof(dest));
+    dest.sin_family = AF_INET;
+    dest.sin_addr.s_addr = inet_addr(kPTPPeerDelayMulticast);
+    dest.sin_port = htons(config_.eventPort);
+    if (sendto(eventSocket_, resp, sizeof(resp), 0,
+               reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
+        std::cerr << "[PTPSlave] Failed to send Pdelay_Resp: " << strerror(errno)
+                  << std::endl;
+        return false;
+    }
+
+    // Two-step: the turnaround this end took is carried in the Follow_Up as
+    // t3, so the requester can subtract it.
+    const uint64_t t3 = getSystemTimeNs();
+    uint8_t followUp[kMinPdelayRespSize];
+    BuildPeerHeader(followUp, PTPMessageType::Pdelay_Resp_FU, sizeof(followUp),
+                    static_cast<uint8_t>(config_.domain), selfPortId_,
+                    request.sequenceId, 0x7F, false);
+    WriteTimestamp(followUp, kTimestampOffset, t3);
+    WritePortIdentity(followUp, kRequestingPortOffset,
+                      request.sourcePortIdentity);
+
+    dest.sin_port = htons(config_.generalPort);
+    if (sendto(generalSocket_, followUp, sizeof(followUp), 0,
+               reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
+        std::cerr << "[PTPSlave] Failed to send Pdelay_Resp_Follow_Up: "
+                  << strerror(errno) << std::endl;
+        return false;
+    }
+
+    pdelayReqAnsweredCount_.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+void PTPSlave::handlePdelayReq(const PTPHeader& header, const uint8_t* data,
+                               size_t len, uint64_t receiveTimeNs) {
+    (void)data;
+    if (config_.delayMechanism != DelayMechanism::PeerToPeer) return;
+    if (!config_.respondToPdelayReq) return;
+    if (len < kMinPdelayReqSize) return;
+    // Our own request coming back through multicast loopback is not a peer.
+    if (header.sourcePortIdentity == selfPortId_) return;
+    sendPdelayResp(header, receiveTimeNs);
+}
+
+void PTPSlave::handlePdelayResp(const PTPHeader& header, const uint8_t* data,
+                                size_t len, uint64_t receiveTimeNs) {
+    if (config_.delayMechanism != DelayMechanism::PeerToPeer) return;
+    if (len < kMinPdelayRespSize) return;
+
+    PTPPortIdentity requestingPort;
+    parsePortIdentity(data, kRequestingPortOffset, requestingPort);
+    if (!(requestingPort == selfPortId_)) return;      // answering someone else
+
+    const bool isTwoStep = (header.flagField & kFlagTwoStep) != 0;
+    bool complete = false;
+    {
+        std::lock_guard<std::mutex> lock(pdelayMutex_);
+        if (!waitingForPdelayResp_) return;
+        if (header.sequenceId != pdelayReqSequenceId_) return;
+
+        parseTimestamp(data, kTimestampOffset, t2_pdelayRequestReceipt_);
+        t4_pdelayRespReceiveTimeNs_ = receiveTimeNs;
+        pdelayCorrectionNs_ += header.correctionField >> 16;
+        waitingForPdelayResp_ = false;
+        waitingForPdelayFollowUp_ = isTwoStep;
+        complete = !isTwoStep;
+    }
+    pdelayRespCount_.fetch_add(1, std::memory_order_relaxed);
+
+    // One-step responder: it folded its turnaround into the correction field,
+    // so there is nothing left to wait for and t3 - t2 is zero.
+    if (complete) completePdelay(0);
+}
+
+void PTPSlave::handlePdelayRespFollowUp(const PTPHeader& header,
+                                        const uint8_t* data, size_t len) {
+    if (config_.delayMechanism != DelayMechanism::PeerToPeer) return;
+    if (len < kMinPdelayRespSize) return;
+
+    PTPPortIdentity requestingPort;
+    parsePortIdentity(data, kRequestingPortOffset, requestingPort);
+    if (!(requestingPort == selfPortId_)) return;
+
+    int64_t t3MinusT2 = 0;
+    {
+        std::lock_guard<std::mutex> lock(pdelayMutex_);
+        if (!waitingForPdelayFollowUp_) return;
+        if (header.sequenceId != pdelayReqSequenceId_) return;
+
+        PTPTimestamp t3;
+        parseTimestamp(data, kTimestampOffset, t3);
+        t3MinusT2 = static_cast<int64_t>(t3.toNanoseconds())
+                    - static_cast<int64_t>(t2_pdelayRequestReceipt_.toNanoseconds());
+        pdelayCorrectionNs_ += header.correctionField >> 16;
+        waitingForPdelayFollowUp_ = false;
+    }
+    pdelayRespFollowUpCount_.fetch_add(1, std::memory_order_relaxed);
+    completePdelay(t3MinusT2);
+}
+
+// meanLinkDelay = ((t4 - t1) - (t3 - t2) - corrections) / 2, IEEE 1588-2008
+// sec 11.4.2. It goes through the same filter and the same published path
+// delay as the end-to-end measurement, so the offset arithmetic downstream
+// does not care which mechanism produced it.
+void PTPSlave::completePdelay(int64_t t3MinusT2Ns) {
+    int64_t t1Ns = 0;
+    int64_t t4Ns = 0;
+    int64_t correctionNs = 0;
+    {
+        std::lock_guard<std::mutex> lock(pdelayMutex_);
+        if (t1_pdelayReqSendTimeNs_ == 0 || t4_pdelayRespReceiveTimeNs_ == 0) {
+            return;
+        }
+        t1Ns = static_cast<int64_t>(t1_pdelayReqSendTimeNs_);
+        t4Ns = static_cast<int64_t>(t4_pdelayRespReceiveTimeNs_);
+        correctionNs = pdelayCorrectionNs_;
+    }
+
+    const int64_t linkDelay =
+        ((t4Ns - t1Ns) - t3MinusT2Ns - correctionNs) / 2;
+    storeFilteredPathDelay(linkDelay);
 }
 
 // ============================================================================
@@ -1033,19 +1348,7 @@ void PTPSlave::calculateOffsetAndDelay() {
         offset = (ms2slave - slave2m) / 2;
         delay  = (ms2slave + slave2m) / 2;
 
-        // Filter path delay (use minimum of recent values — path delay shouldn't go negative)
-        if (delay >= 0) {
-            delayHistory_[delayHistoryIndex_] = delay;
-            delayHistoryIndex_ = (delayHistoryIndex_ + 1) % kDelayFilterSize;
-            if (delayHistoryCount_ < kDelayFilterSize) delayHistoryCount_++;
-
-            // Use filtered delay (median-like: use minimum of recent values to reject outliers)
-            int64_t minDelay = delay;
-            for (size_t i = 0; i < delayHistoryCount_; ++i) {
-                minDelay = std::min(minDelay, delayHistory_[i]);
-            }
-            pathDelayNs_.store(minDelay, std::memory_order_release);
-        }
+        storeFilteredPathDelay(delay);
     } else {
         // Approximate offset using stored path delay
         int64_t storedDelay = pathDelayNs_.load(std::memory_order_acquire);
