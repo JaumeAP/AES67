@@ -277,10 +277,11 @@ acts on.
 
 NMOS IS-04 has its first half: `NMOSRegistrationClient` finds a registry
 over `_nmos-register._tcp`, registers this driver as a Node and keeps the
-registration alive, re-registering when the registry answers 404. Devices,
-sources, flows, senders and receivers — where the streams themselves would
-go — are not written yet, and nothing in the driver starts the client:
-that wiring is the next step.
+registration alive, re-registering when the registry answers 404. `AES67Device` starts it when `NMOSSettings::enabled` says so (off by
+default), registering with a discovered registry or with the one the
+settings name, and unregistering on the way out. Devices, sources, flows,
+senders and receivers — where the streams themselves would go — are still
+not written.
 
 ### ST-2022-7 redundancy and NMOS
 

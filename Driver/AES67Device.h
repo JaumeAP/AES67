@@ -12,6 +12,7 @@
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
+#include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
 #include "NetworkEngine/Discovery/RTSPServer.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/PTP/PTPPeerObserver.h"
@@ -232,6 +233,11 @@ private:
     /// if nobody can ask US for a description (2026-08-31).
     std::unique_ptr<RTSPServer> rtspServer_;
     std::unique_ptr<SAPAnnouncer> sapAnnouncer_;
+    /// Registers this driver with an NMOS registry, when the installation
+    /// has asked for it (NMOSSettings::enabled, off by default). Nothing
+    /// about the audio path depends on it: a plant with a registry gets
+    /// this driver in its inventory, a plant without one is unaffected.
+    std::unique_ptr<NMOSRegistrationClient> nmosClient_;
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
     std::unique_ptr<RTCPMonitor> rtcpMonitor_;
 
