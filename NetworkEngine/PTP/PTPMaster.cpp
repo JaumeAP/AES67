@@ -8,6 +8,8 @@
 //
 
 #include "PTPMaster.h"
+
+#include <cmath>
 #include "Driver/AudioThreadPriority.h"
 
 #include <sys/socket.h>
@@ -94,6 +96,24 @@ bool PTPMaster::start() {
 
     return true;
 }
+
+namespace {
+
+// logMessageInterval is log2 seconds (IEEE 1588-2008 sec 7.7.2.1). Announcing
+// a rate other than the one actually sent is a lie a conforming slave acts
+// on: it times its master-lost window and its Delay_Req rate off these
+// fields, so they are derived from the configured intervals rather than
+// hard-coded.
+int8_t MsToLogInterval(int milliseconds) {
+    if (milliseconds <= 0) return 0;
+    const double seconds = static_cast<double>(milliseconds) / 1000.0;
+    const long rounded = std::lround(std::log2(seconds));
+    if (rounded < -128) return -128;
+    if (rounded > 127) return 127;
+    return static_cast<int8_t>(rounded);
+}
+
+}  // namespace
 
 void PTPMaster::stop() {
     if (!running_.load(std::memory_order_acquire)) return;
@@ -217,7 +237,7 @@ PTPAnnounceData PTPMaster::ourAnnounceData() const {
     data.grandmasterPriority2 = config_.priority2;
     data.stepsRemoved = 0; // we are the grandmaster, not relaying
     data.timeSource = 0xA0; // INTERNAL_OSCILLATOR, §7.6.2.6 Table 7 — true for both clock sources today
-    data.logAnnounceInterval = 0; // 2^0 = 1s
+    data.logAnnounceInterval = MsToLogInterval(config_.announceIntervalMs);
     return data;
 }
 
@@ -399,7 +419,7 @@ bool PTPMaster::sendAnnounce() {
     msg[30] = static_cast<uint8_t>((seqId >> 8) & 0xFF);
     msg[31] = static_cast<uint8_t>(seqId & 0xFF);
     msg[32] = 5; // controlField: Announce, IEEE 1588-2008 Table 23
-    msg[33] = 0; // logMessageInterval: 2^0 = 1s
+    msg[33] = static_cast<uint8_t>(MsToLogInterval(config_.announceIntervalMs));
 
     // originTimestamp (34-43) and currentUtcOffset (44-45) left zero —
     // AES67 doesn't use them; every AES67 clock already treats PTP time as
@@ -457,7 +477,8 @@ bool PTPMaster::sendSyncAndFollowUp() {
     sync[30] = static_cast<uint8_t>((seqId >> 8) & 0xFF);
     sync[31] = static_cast<uint8_t>(seqId & 0xFF);
     sync[32] = 0; // controlField: Sync
-    sync[33] = 0; // logMessageInterval: 2^0 = 1s (Sync's own interval, not Announce's)
+    // Sync's own interval, not Announce's.
+    sync[33] = static_cast<uint8_t>(MsToLogInterval(config_.syncIntervalMs));
 
     // t1: our clock, sampled as close to the send() call as practical.
     const uint64_t t1 = clockSource_.currentTimeNs();
@@ -525,7 +546,8 @@ void PTPMaster::handleDelayReq(const PTPHeader& header, uint16_t sequenceId, uin
     msg[30] = static_cast<uint8_t>((sequenceId >> 8) & 0xFF);
     msg[31] = static_cast<uint8_t>(sequenceId & 0xFF);
     msg[32] = 3; // controlField: Delay_Resp, IEEE 1588-2008 Table 23
-    msg[33] = 0;
+    // logMinDelayReqInterval: the rate this master asks Delay_Req at.
+    msg[33] = static_cast<uint8_t>(config_.logMinDelayReqInterval);
 
     // receiveTimestamp: t4, when the Delay_Req reached us.
     const PTPTimestamp t4ts(t4Ns);

@@ -50,6 +50,11 @@ struct PTPMasterConfig {
 
     int syncIntervalMs = 125;       // 8/s — matches what PTPSlave expects
     int announceIntervalMs = 1000;  // 1/s, AES67 Media Profile default
+
+    // logMinDelayReqInterval advertised in Delay_Resp: the rate this master
+    // asks its slaves to send Delay_Req at, in log2 seconds. 0 is one per
+    // second, which is what was hard-coded before and what AES67 uses.
+    int8_t logMinDelayReqInterval = 0;
     int announceReceiptTimeoutMultiplier = 3; // silence this many announce
                                                // intervals before assuming
                                                // we're alone on the segment

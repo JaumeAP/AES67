@@ -128,3 +128,82 @@ TEST_CASE("Master And Slave Complete The Full Exchange Over Loopback") {
 
     std::cout << "PASS" << std::endl;
 }
+
+TEST_CASE("Slave Follows The Intervals The Master Advertises") {
+    // IEEE 1588-2008 sec 7.7.2.4 and 9.5.11.2: the rates are the master's to
+    // announce. Before this, the master hard-coded 2^0 = 1 s into every
+    // logMessageInterval while sending Sync eight times a second, and the
+    // slave ignored the field and used its own configuration -- so two
+    // implementations that both "worked" only agreed by luck.
+    std::cout << "Test: advertised intervals are followed... ";
+
+    InternalClockSource clock;
+
+    PTPMasterConfig masterConfig;
+    masterConfig.interfaceName = kInterface;
+    masterConfig.eventPort = kTestEventPort + 2;
+    masterConfig.generalPort = kTestGeneralPort + 2;
+    masterConfig.announceIntervalMs = 250;      // 2^-2 s
+    masterConfig.syncIntervalMs = 125;          // 2^-3 s
+    masterConfig.logMinDelayReqInterval = -2;   // ask for one every 250 ms
+    masterConfig.priority1 = 1;
+
+    PTPSlaveConfig slaveConfig;
+    slaveConfig.interfaceName = kInterface;
+    slaveConfig.eventPort = kTestEventPort + 2;
+    slaveConfig.generalPort = kTestGeneralPort + 2;
+    slaveConfig.announceIntervalMs = 1000;      // deliberately wrong
+    slaveConfig.delayReqIntervalMs = 4000;      // deliberately wrong
+    slaveConfig.multicastLoopback = true;
+
+    PTPMaster master(masterConfig, clock);
+    PTPSlave slave(slaveConfig);
+
+    REQUIRE(master.start());
+    REQUIRE(slave.start());
+
+    CHECK(waitFor([&] { return master.isActive(); },
+                  std::chrono::milliseconds(5000)));
+
+    CHECK(waitFor([&] { return slave.getAdvertisedSyncIntervalMs() == 125; },
+                  std::chrono::milliseconds(5000)));
+    CHECK(waitFor([&] { return slave.getAdvertisedAnnounceIntervalMs() == 250; },
+                  std::chrono::milliseconds(5000)));
+    // The Delay_Req rate only arrives with the first Delay_Resp, which the
+    // slave has to have asked for first -- at its own (wrong) 4 s to begin
+    // with, so this is the slowest of the three to settle.
+    CHECK(waitFor([&] { return slave.getAdvertisedDelayReqIntervalMs() == 250; },
+                  std::chrono::milliseconds(15000)));
+
+    std::cout << "sync=" << slave.getAdvertisedSyncIntervalMs()
+              << "ms announce=" << slave.getAdvertisedAnnounceIntervalMs()
+              << "ms delayReq=" << slave.getAdvertisedDelayReqIntervalMs()
+              << "ms ";
+
+    slave.stop();
+    master.stop();
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Unusable And Foreign-Profile Values Are Refused") {
+    PTPSlaveConfig config;
+    PTPSlave slave(config);
+
+    // 0x7F means "not being sent" (sec 7.7.2.1), and anything outside the
+    // configured bounds is refused rather than obeyed.
+    CHECK(slave.logIntervalToMs(0x7F) == 0);
+    CHECK(slave.logIntervalToMs(-12) == 0);
+    CHECK(slave.logIntervalToMs(12) == 0);
+    CHECK(slave.logIntervalToMs(0) == 1000);
+    CHECK(slave.logIntervalToMs(-3) == 125);
+    CHECK(slave.logIntervalToMs(1) == 2000);
+    CHECK(slave.logIntervalToMs(-5) == 31);     // the configured floor
+
+    // majorSdoId is the top nibble of octet 0: 0 here, 1 for 802.1AS.
+    PTPHeader header{};
+    header.transportAndType = 0x00;             // default profile, Sync
+    CHECK(header.getMajorSdoId() == 0);
+    header.transportAndType = 0x10;             // gPTP, Sync
+    CHECK(header.getMajorSdoId() == 1);
+    CHECK(header.getMessageType() == PTPMessageType::Sync);
+}
