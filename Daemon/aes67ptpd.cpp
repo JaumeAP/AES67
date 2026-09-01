@@ -44,6 +44,7 @@ void Usage() {
         "  --socket <path>      status socket (default %s)\n"
         "  --mechanism e2e|p2p  delay mechanism (default e2e)\n"
         "  --delay-req-ms <n>   initial Delay_Req interval (default 1000)\n"
+        "  --multicast-loopback receive our own multicast (same-host testing)\n"
         "  --verbose            log every published status\n",
         AES67::kPTPServiceSocketPath);
 }
@@ -80,6 +81,11 @@ int main(int argc, char** argv) {
             }
         } else if (flag == "--delay-req-ms") {
             config.delayReqIntervalMs = std::stoi(next());
+        } else if (flag == "--multicast-loopback") {
+            // Same-host testing: without it the kernel never delivers this
+            // slave's Delay_Req to a master in another process on this
+            // machine. Off in production, where it is pure noise.
+            config.multicastLoopback = true;
         } else if (flag == "--verbose") {
             verbose = true;
         } else if (flag == "--help" || flag == "-h") {
