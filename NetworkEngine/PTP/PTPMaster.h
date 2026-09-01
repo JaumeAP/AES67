@@ -48,6 +48,10 @@ struct PTPMasterConfig {
     uint8_t priority1 = 128;
     uint8_t priority2 = 128;
 
+    // DSCP to mark this port's outgoing PTP with, or -1 to leave it
+    // unmarked. Same reasoning as PTPSlaveConfig::dscp.
+    int dscp = -1;
+
     int syncIntervalMs = 125;       // 8/s — matches what PTPSlave expects
     int announceIntervalMs = 1000;  // 1/s, AES67 Media Profile default
 

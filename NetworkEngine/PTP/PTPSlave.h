@@ -181,6 +181,18 @@ struct PTPSlaveConfig {
     int announceIntervalMs = 1000;               // Expected announce interval
     bool twoStepOnly = true;                     // Only accept two-step clocks (AES67)
 
+    // DSCP to mark this port's outgoing PTP with, or -1 to leave it
+    // unmarked, which is what the stack sends and what this driver has
+    // always sent.
+    //
+    // A switch that treats DSCP puts unmarked traffic in the same queue as
+    // everything else, so on a loaded segment the PTP queues behind the
+    // audio it is meant to be timing. The RAVENNA driver exposes the same
+    // knob ($.network.PTP.DSCP). Which value is the network's business --
+    // EF is 46, and Dante marks PTP CS7 (56) -- so this takes it rather
+    // than choosing one.
+    int dscp = -1;
+
     // IEEE 1588-2008 sec 7.7.2.4 and 9.5.11.2: the rates above are the
     // master's to announce, not the slave's to assume. With this on, the
     // intervals actually advertised -- logMinDelayReqInterval in Delay_Resp,
