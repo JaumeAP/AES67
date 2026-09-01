@@ -8,6 +8,7 @@
 //
 
 #include "PTPMaster.h"
+#include "NetworkEngine/NetworkUtils.h"
 
 #include <cmath>
 #include "Driver/AudioThreadPriority.h"
@@ -146,6 +147,11 @@ bool PTPMaster::createSockets() {
         setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
         struct timeval tv{0, 250000}; // 250ms — periodic check of running_
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        // The queue this master's Sync and Announce travel in. Unmarked
+        // unless the configuration says otherwise.
+        if (config_.dscp >= 0) {
+            NetworkUtils::setQoSTrafficClass(sock, config_.dscp);
+        }
     }
 
     // Bind BOTH sockets: general for foreign Announce (BMCA input), event

@@ -45,6 +45,7 @@ void Usage() {
         "  --mechanism e2e|p2p  delay mechanism (default e2e)\n"
         "  --delay-req-ms <n>   initial Delay_Req interval (default 1000)\n"
         "  --multicast-loopback receive our own multicast (same-host testing)\n"
+        "  --dscp <n>           mark our PTP with this DSCP (default unmarked)\n"
         "  --verbose            log every published status\n",
         AES67::kPTPServiceSocketPath);
 }
@@ -81,6 +82,11 @@ int main(int argc, char** argv) {
             }
         } else if (flag == "--delay-req-ms") {
             config.delayReqIntervalMs = std::stoi(next());
+        } else if (flag == "--dscp") {
+            // The queue our PTP travels in. Unmarked by default: on a
+            // segment that treats DSCP, PTP left unmarked queues behind
+            // the audio it is timing. EF is 46; Dante marks PTP CS7 (56).
+            config.dscp = std::stoi(next());
         } else if (flag == "--multicast-loopback") {
             // Same-host testing: without it the kernel never delivers this
             // slave's Delay_Req to a master in another process on this

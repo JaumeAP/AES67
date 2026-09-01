@@ -15,6 +15,7 @@
 
 #include "PTPSlave.h"
 #include "PTPDiagnostics.h"
+#include "NetworkEngine/NetworkUtils.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -365,6 +366,12 @@ bool PTPSlave::createSockets() {
     uint8_t loop = config_.multicastLoopback ? 1 : 0;
     setsockopt(eventSocket_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 
+    // The queue this port's PTP travels in. Unmarked by default, which is
+    // what it has always sent; a marked segment needs to be told.
+    if (config_.dscp >= 0) {
+        NetworkUtils::setQoSTrafficClass(eventSocket_, config_.dscp);
+    }
+
     // --- General socket (port 320) ---
     generalSocket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (generalSocket_ < 0) {
@@ -379,6 +386,10 @@ bool PTPSlave::createSockets() {
 
     // Receive timeout for general socket
     setsockopt(generalSocket_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    if (config_.dscp >= 0) {
+        NetworkUtils::setQoSTrafficClass(generalSocket_, config_.dscp);
+    }
 
     // Bind to general port
     struct sockaddr_in gaddr;

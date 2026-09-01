@@ -256,6 +256,22 @@ in TestSDPFetcher.
 Announcing our own sources by URL is the half still missing: the RTSP
 server here serves DESCRIBE (`AES67Device`), but there is no ANNOUNCE.
 
+### Marking our own PTP
+
+**Now done.** `PTPSlaveConfig::dscp` and `PTPMasterConfig::dscp` mark this
+port's PTP, and `aes67ptpd --dscp <n>` exposes it. Unmarked stays the
+default, which is what this driver has always sent. The Merging RAVENNA
+driver installed on this machine carries the same knob
+(`$.network.PTP.DSCP`), and the reason is the same: on a segment that
+sorts by DSCP, PTP left unmarked queues behind the audio it is timing.
+Which value belongs there is the network's business — EF is 46, Dante
+marks PTP CS7 — so neither of us chooses one.
+
+Still ours to do from the same comparison: the PTP dataset is not exposed
+the way they expose theirs (priority1/2, clock class and accuracy, the
+intervals, the delay mechanism, slave-only), and there is no NMOS IS-04
+registration.
+
 ### ST-2022-7 redundancy and NMOS
 
 Dual-interface seamless protection switching (with automatic master clock
