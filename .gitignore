@@ -86,3 +86,6 @@ Tests/Test*
 !Tests/Test*.cpp
 Tests/Benchmark*
 !Tests/Benchmark*.cpp
+
+# clangd index and cache
+.cache/
