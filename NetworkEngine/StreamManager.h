@@ -174,6 +174,13 @@ public:
     /// Import an RX stream from an SDP file on disk.
     StreamID importSDPFile(const std::string& filepath);
 
+    /// Import an RX stream from wherever the description is published: a
+    /// local path, file://, http:// or rtsp:// (DESCRIBE). The reference
+    /// Linux daemon takes a URL here, and gear that publishes its own SDP
+    /// is the normal case in an installation. `errorOut`, when given, says
+    /// why nothing came back.
+    StreamID importSDPURL(const std::string& url, std::string* errorOut = nullptr);
+
     // Remove stream
     bool removeStream(const StreamID& id);
 
