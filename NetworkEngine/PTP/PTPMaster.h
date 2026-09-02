@@ -19,7 +19,7 @@
 #pragma once
 
 #include "PTPBMCA.h"
-#include "PTPClockSource.h"
+#include "NetworkEngine/PTP/PTPClockSource.h"
 #include "PTPSlave.h"   // PTPMessageType, PTPTimestamp, PTPClockIdentity,
                         // PTPPortIdentity, PTPHeader, PTPAnnounceData
 

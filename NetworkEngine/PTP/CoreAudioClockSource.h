@@ -31,7 +31,7 @@
 //
 #pragma once
 
-#include "PTPClockSource.h"
+#include "NetworkEngine/PTP/PTPClockSource.h"
 
 #include <CoreAudio/CoreAudio.h>
 

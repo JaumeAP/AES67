@@ -8,7 +8,7 @@
 
 #include "PTPArbitrator.h"
 #include "NetworkEngine/PTP/PTPSettingsMapping.h"
-#include "PTPDiagnostics.h"
+#include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "PTPService.h"
 
 namespace AES67 {

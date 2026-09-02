@@ -10,33 +10,6 @@ endif()
 
 
 
-# Test: Ring Buffer
-add_executable(TestRingBuffer
-    TestRingBuffer.cpp
-)
-
-target_include_directories(TestRingBuffer PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(TestRingBuffer PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestRingBuffer PRIVATE doctest_headers)
-target_compile_features(TestRingBuffer PRIVATE cxx_std_17)
-
-add_executable(TestRingBufferTiming
-    TestRingBufferTiming.cpp
-)
-
-target_include_directories(TestRingBufferTiming PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(TestRingBufferTiming PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestRingBufferTiming PRIVATE doctest_headers)
-target_compile_features(TestRingBufferTiming PRIVATE cxx_std_17)
-
 # Test: RTP Receiver
 add_executable(TestRTPReceiver
     TestRTPReceiver.cpp
@@ -371,40 +344,9 @@ target_link_libraries(TestPCMCodec PRIVATE doctest_headers)
 target_compile_features(TestPCMCodec PRIVATE cxx_std_17)
 target_link_libraries(TestPCMCodec PRIVATE "-framework Accelerate")
 
-# Test: PTP peer table (passive Dolby-via-PTP discovery core) — header-only,
-# socket-free, time-injected. See TestPTPPeerTable.cpp.
-add_executable(TestPTPPeerTable
-    TestPTPPeerTable.cpp
-)
-target_include_directories(TestPTPPeerTable PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(TestPTPPeerTable PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestPTPPeerTable PRIVATE doctest_headers)
-target_compile_features(TestPTPPeerTable PRIVATE cxx_std_17)
-
-# Test: Dolby model catalog (model -> channels/direction + channel resolver)
-add_executable(TestDolbyModelCatalog
-    TestDolbyModelCatalog.cpp
-)
-target_include_directories(TestDolbyModelCatalog PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(TestDolbyModelCatalog PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestDolbyModelCatalog PRIVATE doctest_headers)
-target_compile_features(TestDolbyModelCatalog PRIVATE cxx_std_17)
-
-add_executable(TestRTCPReceiverTable
-    TestRTCPReceiverTable.cpp
-)
-target_include_directories(TestRTCPReceiverTable PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(TestRTCPReceiverTable PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestRTCPReceiverTable PRIVATE doctest_headers)
-target_compile_features(TestRTCPReceiverTable PRIVATE cxx_std_17)
 
 # Add tests to CTest
 enable_testing()
-add_test(NAME RingBuffer COMMAND TestRingBuffer)
-add_test(NAME RingBufferTiming COMMAND TestRingBufferTiming)
 add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
@@ -420,9 +362,6 @@ add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
-add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
-add_test(NAME DolbyModelCatalog COMMAND TestDolbyModelCatalog)
-add_test(NAME RTCPReceiverTable COMMAND TestRTCPReceiverTable)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 
@@ -440,17 +379,12 @@ add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 # hung test blocks the push forever with no output; the slowest suite today
 # is IntegrationAudioPath at ~2.2s, so 60s is generous by more than an order
 # of magnitude and still bounded.
-set_tests_properties(RingBuffer PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(RingBufferTiming PROPERTIES LABELS "timing" TIMEOUT 60)
 set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTPTransmitter PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
 set_tests_properties(PTPMaster PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(PTPPeerTable PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(DolbyModelCatalog PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(RTCPReceiverTable PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPSettingsMapping PROPERTIES LABELS "unit" TIMEOUT 60)
@@ -467,7 +401,6 @@ set_tests_properties(RTSPServer PROPERTIES LABELS "integration;network" TIMEOUT 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")
 message(STATUS "  - TestChannelMapper")
-message(STATUS "  - TestRingBuffer")
 message(STATUS "  - TestRTPReceiver")
 message(STATUS "  - TestRTPTransmitter")
 message(STATUS "  - TestPTPClock")

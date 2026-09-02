@@ -205,7 +205,7 @@ New test suites use doctest (`external/doctest` submodule, link `doctest_headers
 
 Manager app can be built standalone: `cd ManagerApp && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
-CTest names map 1:1 to `Tests/*.cpp` (`SDPParser`, `ChannelMapper`, `RingBuffer`, `RTPReceiver`, `RTPTransmitter`, `PTPClock`, `StreamManager`, `MultiStream`, `IntegrationAudioPath`). `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
+CTest names map 1:1 to `Tests/*.cpp` (`RTPReceiver`, `RTPTransmitter`, `PTPClock`, `StreamManager`, `MultiStream`, `IntegrationAudioPath`); suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
 
 Ignore the root-level `Makefile`, `CTestTestfile.cmake`, `CPackConfig.cmake`/`CPackSourceConfig.cmake` — these are stale CMake-generated artifacts from a prior in-source build (see the absolute `/Users/maxbarlow/...` paths inside `Makefile`), accidentally committed. Always build out-of-source in a `build/` directory as shown above; don't edit or rely on those root files.
 
@@ -214,7 +214,7 @@ Ignore the root-level `Makefile`, `CTestTestfile.cmake`, `CPackConfig.cmake`/`CP
 ```
 Driver/          AudioServerPlugIn (libASPL): device declaration, IO callbacks, SDP parsing
 NetworkEngine/   RTP, PTP, stream lifecycle, resampling, SAP/RTSP discovery
-Shared/          Cross-cutting: lock-free ring buffer, types, config, logging, error recovery
+Shared/          Cross-cutting: what is left that is macOS-specific; the ring buffer, types, config, logging and error recovery are in the core
 Tools/           CLI sender/receiver for exercising the RTP path over loopback (no hardware needed)
 ManagerApp/      SwiftUI menu-bar app; talks to the driver via DriverManager.cpp (Core Audio APIs)
 Tests/           One CMake target + CTest entry per subsystem, plus multi-stream/full-path integration tests
@@ -228,7 +228,7 @@ This is the load-bearing concept in the codebase: **three thread domains connect
 2. **Network threads** (per-stream RTP receive/transmit loops, owned by `RTPReceiver`/`RTPTransmitter`) — socket recv/send, codec decode/encode, jitter buffer management.
 3. **Control thread(s)** (init, Manager app IPC, SAP/RTSP discovery) — owns `StreamManager`, may block, lock, allocate.
 
-The only thing the IO thread is allowed to touch is `NetworkEngine/RTSafeStreamInterface.h`: a non-owning view over per-channel `SPSCRingBuffer<float>` (one producer, one consumer, `Shared/RingBuffer.hpp`) plus atomic counters/flags. It is deliberately banned from holding a reference to `StreamManager` and every method is `noexcept`, lock-free, non-blocking — this is enforced by construction, not convention, so preserve that shape when touching IO-thread code: **never add a mutex, allocation, or `StreamManager` pointer reachable from `AES67IOHandler`.**
+The only thing the IO thread is allowed to touch is `NetworkEngine/RTSafeStreamInterface.h`, in the core: a non-owning view over per-channel `SPSCRingBuffer<float>` (one producer, one consumer, `Shared/RingBuffer.hpp`, also in the core) plus atomic counters/flags. It is deliberately banned from holding a reference to `StreamManager` and every method is `noexcept`, lock-free, non-blocking — this is enforced by construction, not convention, so preserve that shape when touching IO-thread code: **never add a mutex, allocation, or `StreamManager` pointer reachable from `AES67IOHandler`.**
 
 `StreamManager` (`NetworkEngine/StreamManager.h`) is the non-RT coordinator: owns all RX/TX stream lifecycles, channel mapping (`StreamChannelMapper`), config persistence (`StreamConfig`), and PTP clock manager. Every public method takes a mutex — it must never be called from the IO thread. `setIOActive(bool)` is the bridge between domains: Core Audio's `StartIO`/`StopIO` toggles it, and `StreamManager` starts/stops the dormant RTP receiver/transmitter threads accordingly (RTP threads have zero idle CPU when no client is running).
 
@@ -257,6 +257,6 @@ SwiftUI app in `ManagerApp/`; `Models/DriverManager.swift` wraps `DriverManager.
 
 - C++17 throughout the native code (`CMAKE_CXX_STANDARD 17`, enforced). Warnings are `-Wall -Wextra -Wpedantic` with unused-parameter and missing-field-initializer silenced; keep new code warning-clean under those flags.
 - Everything native lives in the `AES67` namespace.
-- Header/impl pairs use `.h`/`.cpp` except `Shared/RingBuffer.hpp` (header-only) and `Shared/Config.hpp`.
+- Header/impl pairs use `.h`/`.cpp` except the core's `Shared/RingBuffer.hpp` (header-only) and `Shared/Config.hpp`.
 - Preserve the RT-safety boundary described above in any change touching `Driver/AES67IOHandler.*` or `NetworkEngine/RTSafeStreamInterface.h` — this is the one architectural invariant the codebase is built around, and it's checked by convention/review, not by a static analyzer.
 - When adding new functionality to `NetworkEngine`/`Driver`, add a corresponding CTest target in `Tests/CMakeLists.txt` following the existing per-subsystem pattern (own `add_executable` compiling only the sources it needs, plus `add_test`).

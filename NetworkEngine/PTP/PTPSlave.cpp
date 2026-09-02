@@ -14,7 +14,7 @@
 //
 
 #include "PTPSlave.h"
-#include "PTPDiagnostics.h"
+#include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "NetworkEngine/NetworkUtils.h"
 
 #include <sys/socket.h>
