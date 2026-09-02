@@ -18,7 +18,7 @@
 // Docs/dac3202_autodetection_study.md.
 //
 
-#include "PTPPeerTable.h"
+#include "NetworkEngine/PTP/PTPPeerTable.h"
 
 #include <atomic>
 #include <memory>

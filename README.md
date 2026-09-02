@@ -138,7 +138,8 @@ AES67Driver/
 │   ├── Resampling/          # Sample rate conversion
 │   └── Discovery/           # SAP stream discovery (RFC 2974)
 ├── Shared/                  # Common components
-│   ├── RingBuffer.hpp       # Lock-free SPSC ring buffer
+│   │                        # (RingBuffer.hpp and the rest of the portable
+│   │                        #  pieces live in external/aes67-core)
 │   └── Types.h              # Common data structures
 ├── Tools/                   # Test utilities
 │   ├── AES67TestSender      # Sends RTP test packets over loopback
