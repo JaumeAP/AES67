@@ -138,6 +138,21 @@ target_link_libraries(TestNMOSRegistration PRIVATE aes67_core aes67_net)
 target_link_libraries(TestNMOSRegistration PRIVATE doctest_headers)
 target_compile_features(TestNMOSRegistration PRIVATE cxx_std_17)
 
+# Test: this slave against the bytes the AES67-MasterBox puts on the wire,
+# replayed through PTPSlave::deliverMessage. No sockets: see the file's head.
+add_executable(TestPTPMasterBoxInterop
+    TestPTPMasterBoxInterop.cpp
+)
+
+target_include_directories(TestPTPMasterBoxInterop PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
+target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
+
 # Test: the configured PTP dataset reaching the engines that send it.
 add_executable(TestPTPSettingsMapping
     TestPTPSettingsMapping.cpp
@@ -358,6 +373,7 @@ add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME PTPSettingsMapping COMMAND TestPTPSettingsMapping)
+add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME StreamManager COMMAND TestStreamManager)
@@ -388,6 +404,7 @@ set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPSettingsMapping PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPMasterBoxInterop PROPERTIES LABELS "unit;interop" TIMEOUT 60)
 set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(ConnectionAPI PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
