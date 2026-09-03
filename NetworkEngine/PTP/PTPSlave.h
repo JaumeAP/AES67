@@ -304,6 +304,12 @@ public:
     int getAdvertisedDelayReqIntervalMs() const {
         return advertisedDelayReqIntervalMs_.load(std::memory_order_relaxed);
     }
+    // Sync messages dropped for being one-step while `twoStepOnly` is on.
+    // Non-zero means a master is on this domain that this slave will not
+    // follow, which looks exactly like silence unless it is counted.
+    int getOneStepRejectedCount() const {
+        return oneStepRejectedCount_.load(std::memory_order_relaxed);
+    }
     int getSdoIdMismatchCount() const {
         return sdoIdMismatchCount_.load(std::memory_order_relaxed);
     }
@@ -330,6 +336,23 @@ public:
     // Set callback for measurement updates
     void setMeasurementCallback(PTPMeasurementCallback cb);
 
+    /// This port's identity: the clock identity built from the interface MAC
+    /// by start(), and the configured port number, which is set from
+    /// construction. Zero clock identity means start() has not run.
+    PTPPortIdentity getPortIdentity() const { return selfPortId_; }
+
+    /// Feeds one PTP message in as if it had arrived on the event socket
+    /// (319) or the general one (320) at `receiveTimeNs`. Everything a real
+    /// datagram goes through it goes through: the profile and domain checks,
+    /// then the same handler.
+    ///
+    /// This exists so a grandmaster's traffic can be replayed against this
+    /// slave without a network — see Tests/TestPTPMasterBoxInterop.cpp, which
+    /// drives it with the bytes the AES67-MasterBox emits. Nothing inside the
+    /// driver calls it.
+    void deliverMessage(const uint8_t* data, size_t len, uint64_t receiveTimeNs,
+                        bool onEventSocket);
+
     // Update diagnostics structure (thread-safe)
     void updateDiagnostics(PTPDiagnostics& diag) const;
 
@@ -346,6 +369,11 @@ private:
 
     // Message parsing
     bool parseHeader(const uint8_t* data, size_t len, PTPHeader& header);
+    /// One received message, checked and routed. Both sockets and
+    /// deliverMessage() come through here, so a check added for one is a
+    /// check added for all of them.
+    void dispatchMessage(const uint8_t* data, size_t len, uint64_t receiveTimeNs,
+                         bool onEventSocket);
     bool parseTimestamp(const uint8_t* data, size_t offset, PTPTimestamp& ts);
     void parseClockIdentity(const uint8_t* data, size_t offset, PTPClockIdentity& id);
     void parsePortIdentity(const uint8_t* data, size_t offset, PTPPortIdentity& pid);
@@ -468,6 +496,7 @@ private:
     std::atomic<int> delayRespCount_{0};
     std::atomic<int> announceCount_{0};
     std::atomic<int> domainMismatchCount_{0};
+    std::atomic<int> oneStepRejectedCount_{0};
     std::atomic<int> sdoIdMismatchCount_{0};
     std::atomic<int> pdelayReqSentCount_{0};
     std::atomic<int> pdelayRespCount_{0};
