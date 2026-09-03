@@ -53,12 +53,68 @@ namespace {
     constexpr size_t kDelayRespMessageSize = 54;
 }
 
+namespace {
+
+// logMessageInterval is log2 seconds (IEEE 1588-2008 sec 7.7.2.1). Announcing
+// a rate other than the one actually sent is a lie a conforming slave acts
+// on: it times its master-lost window and its Delay_Req rate off these
+// fields, so they are derived from the configured intervals rather than
+// hard-coded.
+int8_t MsToLogInterval(int milliseconds) {
+    if (milliseconds <= 0) return 0;
+    const double seconds = static_cast<double>(milliseconds) / 1000.0;
+    const long rounded = std::lround(std::log2(seconds));
+    if (rounded < -128) return -128;
+    if (rounded > 127) return 127;
+    return static_cast<int8_t>(rounded);
+}
+
+// And back: the period the port actually waits, for the interval it
+// announces. Nanoseconds because milliseconds cannot hold the fast rates --
+// 16 Sync per second is 62.5 ms -- and because 2^n seconds is a whole number
+// of nanoseconds for every n down to -9, which is 512 per second and well
+// past anything a PTP port sends at. Below that it truncates, by under a
+// nanosecond.
+// AudioThreadPriority asks for a period in milliseconds as a double, which
+// is a hint rather than a rate, so a fractional one is fine there.
+double PeriodMs(std::chrono::nanoseconds period) {
+    return std::chrono::duration<double, std::milli>(period).count();
+}
+
+std::chrono::nanoseconds LogIntervalToNs(int8_t logInterval) {
+    constexpr int64_t kNsPerSecond = 1000000000;
+    if (logInterval >= 0) {
+        // MsToLogInterval's input is a positive int of milliseconds, so what
+        // comes back is at most 21 (about 24 days) and the shift stays inside
+        // an int64 with room to spare.
+        return std::chrono::nanoseconds(kNsPerSecond << logInterval);
+    }
+    return std::chrono::nanoseconds(kNsPerSecond >> (-logInterval));
+}
+
+}  // namespace
+
 // ============================================================================
 // Construction / destruction
 // ============================================================================
 
+// The two intervals are settled here, once. The wire byte and the period the
+// transmit loop waits are derived from the same exponent rather than each
+// from config_ separately: while they were two numbers, a configured interval
+// that is not a power of two seconds made this port announce one rate and
+// send another -- 100 ms announced as 125 -- which is exactly what
+// MsToLogInterval's comment above says the derivation exists to prevent.
+//
+// The price, and it is the honest one: a configured interval that is not a
+// power of two seconds is now rounded to one and sent at that rate, instead
+// of being sent at the configured rate and misdeclared.
 PTPMaster::PTPMaster(const PTPMasterConfig& config, PTPClockSource& clockSource)
-    : config_(config), clockSource_(clockSource) {}
+    : config_(config),
+      clockSource_(clockSource),
+      logSyncInterval_(MsToLogInterval(config.syncIntervalMs)),
+      logAnnounceInterval_(MsToLogInterval(config.announceIntervalMs)),
+      syncPeriod_(LogIntervalToNs(logSyncInterval_)),
+      announcePeriod_(LogIntervalToNs(logAnnounceInterval_)) {}
 
 PTPMaster::~PTPMaster() { stop(); }
 
@@ -97,24 +153,6 @@ bool PTPMaster::start() {
 
     return true;
 }
-
-namespace {
-
-// logMessageInterval is log2 seconds (IEEE 1588-2008 sec 7.7.2.1). Announcing
-// a rate other than the one actually sent is a lie a conforming slave acts
-// on: it times its master-lost window and its Delay_Req rate off these
-// fields, so they are derived from the configured intervals rather than
-// hard-coded.
-int8_t MsToLogInterval(int milliseconds) {
-    if (milliseconds <= 0) return 0;
-    const double seconds = static_cast<double>(milliseconds) / 1000.0;
-    const long rounded = std::lround(std::log2(seconds));
-    if (rounded < -128) return -128;
-    if (rounded > 127) return 127;
-    return static_cast<int8_t>(rounded);
-}
-
-}  // namespace
 
 void PTPMaster::stop() {
     if (!running_.load(std::memory_order_acquire)) return;
@@ -243,7 +281,7 @@ PTPAnnounceData PTPMaster::ourAnnounceData() const {
     data.grandmasterPriority2 = config_.priority2;
     data.stepsRemoved = 0; // we are the grandmaster, not relaying
     data.timeSource = 0xA0; // INTERNAL_OSCILLATOR, §7.6.2.6 Table 7 — true for both clock sources today
-    data.logAnnounceInterval = MsToLogInterval(config_.announceIntervalMs);
+    data.logAnnounceInterval = logAnnounceInterval_;
     return data;
 }
 
@@ -263,8 +301,8 @@ void PTPMaster::evaluateBMCA() {
     std::optional<PTPAnnounceData> competitor;
     {
         std::lock_guard<std::mutex> lock(competitorMutex_);
-        const auto timeout = std::chrono::milliseconds(
-            config_.announceIntervalMs * config_.announceReceiptTimeoutMultiplier);
+        const auto timeout =
+            announcePeriod_ * config_.announceReceiptTimeoutMultiplier;
         if (competitor_.has_value() &&
             std::chrono::steady_clock::now() - competitorLastSeen_ > timeout) {
             competitor_.reset(); // they went quiet — no longer a competitor
@@ -275,8 +313,8 @@ void PTPMaster::evaluateBMCA() {
     if (!competitor.has_value()) {
         // Nobody else heard, or they timed out — including during the
         // initial listen window, once it's elapsed.
-        const auto listenWindow = std::chrono::milliseconds(
-            config_.announceIntervalMs * config_.announceReceiptTimeoutMultiplier);
+        const auto listenWindow =
+            announcePeriod_ * config_.announceReceiptTimeoutMultiplier;
         if (role_.load(std::memory_order_acquire) == PTPMasterRole::Listening &&
             std::chrono::steady_clock::now() - startTime_ < listenWindow) {
             return; // still in the initial listen window — wait it out
@@ -332,7 +370,7 @@ void PTPMaster::handleForeignAnnounce(const PTPHeader& header, const uint8_t* da
 // ============================================================================
 
 void PTPMaster::receiveThread() {
-    AudioThreadPriority::configureForRealTime(static_cast<double>(config_.announceIntervalMs));
+    AudioThreadPriority::configureForRealTime(PeriodMs(announcePeriod_));
 
     uint8_t buf[kMaxPTPMessageSize];
     while (running_.load(std::memory_order_acquire)) {
@@ -371,9 +409,9 @@ void PTPMaster::receiveThread() {
 }
 
 void PTPMaster::transmitThread() {
-    AudioThreadPriority::configureForRealTime(static_cast<double>(config_.syncIntervalMs));
+    AudioThreadPriority::configureForRealTime(PeriodMs(syncPeriod_));
 
-    auto lastAnnounce = std::chrono::steady_clock::now() - std::chrono::milliseconds(config_.announceIntervalMs);
+    auto lastAnnounce = std::chrono::steady_clock::now() - announcePeriod_;
     auto lastSync = std::chrono::steady_clock::now();
     auto lastBMCATick = std::chrono::steady_clock::now() - std::chrono::seconds(1);
 
@@ -386,11 +424,11 @@ void PTPMaster::transmitThread() {
         }
 
         if (role_.load(std::memory_order_acquire) == PTPMasterRole::Master) {
-            if (now - lastAnnounce >= std::chrono::milliseconds(config_.announceIntervalMs)) {
+            if (now - lastAnnounce >= announcePeriod_) {
                 sendAnnounce();
                 lastAnnounce = now;
             }
-            if (now - lastSync >= std::chrono::milliseconds(config_.syncIntervalMs)) {
+            if (now - lastSync >= syncPeriod_) {
                 sendSyncAndFollowUp();
                 lastSync = now;
             }
@@ -425,7 +463,7 @@ bool PTPMaster::sendAnnounce() {
     msg[30] = static_cast<uint8_t>((seqId >> 8) & 0xFF);
     msg[31] = static_cast<uint8_t>(seqId & 0xFF);
     msg[32] = 5; // controlField: Announce, IEEE 1588-2008 Table 23
-    msg[33] = static_cast<uint8_t>(MsToLogInterval(config_.announceIntervalMs));
+    msg[33] = static_cast<uint8_t>(logAnnounceInterval_);
 
     // originTimestamp (34-43) and currentUtcOffset (44-45) left zero —
     // AES67 doesn't use them; every AES67 clock already treats PTP time as
@@ -484,7 +522,7 @@ bool PTPMaster::sendSyncAndFollowUp() {
     sync[31] = static_cast<uint8_t>(seqId & 0xFF);
     sync[32] = 0; // controlField: Sync
     // Sync's own interval, not Announce's.
-    sync[33] = static_cast<uint8_t>(MsToLogInterval(config_.syncIntervalMs));
+    sync[33] = static_cast<uint8_t>(logSyncInterval_);
 
     // t1: our clock, sampled as close to the send() call as practical.
     const uint64_t t1 = clockSource_.currentTimeNs();
