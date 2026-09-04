@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <cctype>
+
 namespace AES67 {
 
 std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
@@ -218,7 +220,7 @@ std::string NetworkInterfaceDetection::detectPTPInterface() {
         std::string lowerName = iface;
         // Convert to lowercase for case-insensitive comparison
         for (auto& c : lowerName) {
-            c = ::tolower(c);
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
 
         if (lowerName.find("aes67") != std::string::npos ||

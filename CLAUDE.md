@@ -193,21 +193,21 @@ system_profiler SPAudioDataType | grep -A 5 "AES67"   # verify it loaded
 
 Build options (pass as `-DOPTION=OFF` to skip): `BUILD_TESTS`, `BUILD_EXAMPLES`, `BUILD_TOOLS` — all `ON` by default.
 
-**CI runs on this machine, not on GitHub (2026-08-25).** The Actions workflow was disabled and deleted; `scripts/ci-local.sh` replaces it, running the same configure/build/test steps plus the old lint job's two greps. `.githooks/pre-push` runs it before every push, so a red build blocks the push — skip one with `git push --no-verify` or `SKIP_LOCAL_CI=1`. A fresh clone must opt in once with `git config core.hooksPath .githooks`; the setting is local, not carried by the repo. The gate builds everything including `ManagerApp`. That app compiles with the Command Line Tools because its `#Preview` blocks live in `ManagerApp/Views/Previews/`, which `build.sh` deliberately leaves out of its source list — the `#Preview` macro needs the `PreviewsMacros` plugin that ships with full Xcode. Keep new previews in that directory, and add them to the Xcode target rather than to `build.sh`. `-DBUILD_MANAGER_APP=OFF` skips the app on a machine without a Swift toolchain.
+**CI runs on this machine, not on GitHub (2026-08-25).** The Actions workflow was disabled and deleted; `scripts/ci-local.sh` replaces it, running the same configure/build/test steps plus the old lint job's two greps. `.githooks/pre-push` runs it before every push, so a red build blocks the push — skip one with `git push --no-verify` or `SKIP_LOCAL_CI=1`. A fresh clone must opt in once with `git config core.hooksPath .githooks`; the setting is local, not carried by the repo. The gate builds everything: driver, tests, tools, examples and `ManagerApp` (tools and examples were excluded until 2026-09-04, which let them rot unnoticed). That app compiles with the Command Line Tools because its `#Preview` blocks live in `ManagerApp/Views/Previews/`, which `build.sh` deliberately leaves out of its source list — the `#Preview` macro needs the `PreviewsMacros` plugin that ships with full Xcode. Keep new previews in that directory, and add them to the Xcode target rather than to `build.sh`. `-DBUILD_MANAGER_APP=OFF` skips the app on a machine without a Swift toolchain.
 
 **The platform-free core lives in `JaumeAP/aes67-core`, as the `external/aes67-core` submodule.** Editing it means editing that repository; a change there needs its own commit and a submodule bump here. What belongs here is macOS-specific code plus `aes67_net`. The old wording, that this repository was the base others consume, is what the split undid.
 
 **Superseded:** `aes67_core` (platform-free) and `aes67_net` (adds BSD sockets) in `CMakeLists.txt` are the contract; see the README. Nothing reachable from `AES67_CORE_SOURCES` may include an Apple framework or a socket header, transitively — the gate fails on it. When adding a file to the core list, check what its headers pull in, not just the `.cpp`.
 
-Tests carry CTest labels: `unit`, `timing` (wall-clock or multi-threaded), `network` (needs real multicast), `integration`. The gate runs `ctest -LE timing`, so labelling a new test is what excludes it — never add a name to a regex. Every test has `TIMEOUT 60`. Extra modes: `scripts/ci-local.sh --sanitize` (ASan+UBSan) and `--tsan` (ThreadSanitizer) build in their own tree and run everything except `network`; `scripts/coverage.sh` produces an llvm-cov report from a `-DAES67_COVERAGE=ON` build.
+Tests carry CTest labels: `unit`, `timing` (wall-clock or multi-threaded), `network` (needs real multicast), `integration`, `interop` (replayed traffic from real gear). The gate runs `ctest -LE timing`, so labelling a new test is what excludes it — never add a name to a regex. Every test has `TIMEOUT 60`, except `PTPLoopback` at 90. Extra modes: `scripts/ci-local.sh --sanitize` (ASan+UBSan) and `--tsan` (ThreadSanitizer) build in their own tree and run everything except `network`; `scripts/coverage.sh` produces an llvm-cov report from a `-DAES67_COVERAGE=ON` build.
 
-New test suites use doctest (`external/doctest` submodule, link `doctest_headers`, define `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`). `Tests/TestSDPParser.cpp` is the migrated reference; the rest still carry a hand-written `main` and get converted one at a time. Never use bare `assert()` in a test: the gate builds Release with `-DNDEBUG` and it compiles away silently.
+Test suites use doctest (`external/doctest` submodule, link `doctest_headers`, define `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); the migration off hand-written `main`s finished, so a new suite has no other shape to copy. Never use bare `assert()` in a test: the gate builds Release with `-DNDEBUG` and it compiles away silently.
 
 Manager app can be built standalone: `cd ManagerApp && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
-CTest names map 1:1 to `Tests/*.cpp` (`RTPReceiver`, `RTPTransmitter`, `PTPClock`, `StreamManager`, `MultiStream`, `IntegrationAudioPath`); suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
+CTest names map 1:1 to `Tests/*.cpp` — `Tests/CMakeLists.txt` is the list, not this file; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
 
-Ignore the root-level `Makefile`, `CTestTestfile.cmake`, `CPackConfig.cmake`/`CPackSourceConfig.cmake` — these are stale CMake-generated artifacts from a prior in-source build (see the absolute `/Users/maxbarlow/...` paths inside `Makefile`), accidentally committed. Always build out-of-source in a `build/` directory as shown above; don't edit or rely on those root files.
+Always build out-of-source in a `build/` directory as shown above. The root-level `Makefile`, `CTestTestfile.cmake` and `CPackConfig.cmake`/`CPackSourceConfig.cmake` — stale artifacts of a prior in-source build, carrying another machine's absolute paths — were deleted on 2026-09-04, along with two arm64 binaries committed under `Examples/`; `.gitignore` now names all of them so an in-source run cannot put them back.
 
 ### Architecture
 
@@ -239,9 +239,15 @@ Audio channel buffers (`DeviceChannelBuffers = std::array<SPSCRingBuffer<float>,
 - **`PTPClock`** (media clock recovery, AES67-2018 §8.2): correlates RTP timestamps against local time via a PLL (`PhaseLockedLoop`) to track drift between a remote source and local hardware clock. This is implemented and usable today via local-clock fallback — sufficient for single-device operation.
 - **`PTPSlave`** (network IEEE 1588 slave-only sync): full Sync/Follow_Up/Delay_Req/Delay_Resp exchange on 224.0.1.129:319/320, feeding measurements into the same PLL via `PTPDInterface`. Code is complete but **has never been run against a real grandmaster**; it auto-falls back to stub mode without root (can't bind privileged multicast ports).
 
-#### Dead code to be aware of (not in the CMake build)
+#### One implementation per job
 
-`NetworkEngine/RTP/` contains several jitter-buffer/pool implementations not referenced by any `CMakeLists.txt` target: `CircularJitterBuffer`, `JitterBuffer`, `TemporalJitterBuffer`, `LockFreePriorityQueue`, `LockFreeRingBuffer`, `RTPPacketPool`, `SimplifiedLockFreePacketPool`. The active implementations are `LockFreeCircularJitterBuffer` and `LockFreePacketPool` (both are in `SHARED_SOURCES`/test sources). If you touch jitter-buffer or packet-pool logic, confirm which file the target you're building actually compiles before assuming a change takes effect — check `CMakeLists.txt` / `Tests/CMakeLists.txt` source lists, not just file presence.
+The jitter-buffer and packet-pool alternatives that used to sit unbuilt in
+`NetworkEngine/RTP/` went to `aes67-core` with the rest of the platform-free
+code; what is left here is what the build compiles. The active implementations
+are `LockFreeCircularJitterBuffer` and `LockFreePacketPool`, both in the core.
+Before assuming a change takes effect, check which file the target you are
+building actually compiles — `CMakeLists.txt` / `Tests/CMakeLists.txt` source
+lists, not file presence.
 
 #### Configuration & persistence
 

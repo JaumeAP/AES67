@@ -21,6 +21,7 @@
 #include "NetworkEngine/PTP/PTPPeerTable.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,6 +43,15 @@ public:
     // Snapshot of the peers seen within PTPPeerTable::kPeerTimeout, swept as
     // of now. Safe to call from any thread.
     std::vector<PTPPeerObservation> peers() const;
+
+    // Record one PTP message as if it had arrived from `sourceIp`.
+    //
+    // The receive loop calls this with what it read off a socket; a test
+    // calls it with bytes it built. Without the seam nothing here could be
+    // exercised without root, a grandmaster and a segment to watch, which is
+    // why this class was at zero coverage until 2026-09-04. Same shape as
+    // PTPSlave::deliverMessage: bytes in, state out.
+    void deliverMessage(const uint8_t* data, size_t length, const std::string& sourceIp);
 
 private:
     class Impl;

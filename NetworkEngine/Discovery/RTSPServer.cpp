@@ -18,12 +18,15 @@
 //
 
 #include "NetworkEngine/Discovery/RTSPServer.h"
+#include "NetworkEngine/SelectWait.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <unistd.h>
+
+#include <cctype>
 
 #include <atomic>
 #include <cstring>
@@ -56,7 +59,9 @@ int parseCSeq(const std::string& request) {
     const std::string key = "cseq:";
     std::string lowered;
     lowered.reserve(request.size());
-    for (char c : request) lowered.push_back(static_cast<char>(::tolower(c)));
+    for (char c : request) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
     const size_t at = lowered.find(key);
     if (at == std::string::npos) return 0;
     size_t cursor = at + key.size();
@@ -192,10 +197,16 @@ private:
             fd_set readfds;
             FD_ZERO(&readfds);
             FD_SET(listenFd_, &readfds);
-            struct timeval tv{0, kSelectTimeoutMs * 1000};
-            const int ready = select(listenFd_ + 1, &readfds, nullptr, nullptr, &tv);
-            if (ready < 0) break;
-            if (ready == 0) continue; // timeout — re-check running_
+            const SelectOutcome outcome = waitReadable(listenFd_, &readfds, kSelectTimeoutMs);
+            if (outcome == SelectOutcome::Interrupted) continue; // a signal
+            if (outcome == SelectOutcome::Timeout) continue;     // re-check running_
+            if (outcome == SelectOutcome::Failed) {
+                // The listening socket is gone. Leaving running_ true here
+                // meant isRunning() kept saying yes to a thread that had
+                // already returned (2026-09-04 audit).
+                running_.store(false, std::memory_order_release);
+                return;
+            }
 
             const int clientFd = accept(listenFd_, nullptr, nullptr);
             if (clientFd < 0) continue;

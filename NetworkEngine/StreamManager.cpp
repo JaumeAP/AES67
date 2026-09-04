@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <cctype>
+#include <cstdlib>
 #include <ctime>
 
 namespace AES67 {
@@ -97,7 +98,7 @@ StreamID StreamManager::addStream(const SDPSession& sdp) {
 }
 
 StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& mapping) {
-    std::lock_guard<std::mutex> lock(streamsMutex_);
+    std::unique_lock<std::mutex> lock(streamsMutex_);
 
     // Validate stream can be added
     std::string error;
@@ -200,10 +201,16 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     adoptGrandmaster(sdp.ptpMasterMAC);
     ensurePTPClockForDomain(sdp.ptpDomain);
 
-    // Notify callback
-    notifyStreamAdded(streams_[id].info);
+    // Copy what the notification needs, then let the lock go BEFORE calling
+    // out or touching the disk. A callback runs somebody else's code — the
+    // Manager app's, the IS-05 patcher's — and any of it that asks this
+    // object a question deadlocks on a mutex that is not recursive
+    // (2026-09-04 audit). Writing the config file under the lock only added
+    // disk latency to every caller.
+    const StreamInfo added = streams_[id].info;
+    lock.unlock();
 
-    // Auto-save configuration
+    notifyStreamAdded(added);
     autoSaveIfEnabled();
 
     return id;
@@ -247,7 +254,7 @@ StreamID StreamManager::importSDPURL(const std::string& url, std::string* errorO
 }
 
 bool StreamManager::removeStream(const StreamID& id) {
-    std::lock_guard<std::mutex> lock(streamsMutex_);
+    std::unique_lock<std::mutex> lock(streamsMutex_);
 
     auto it = streams_.find(id);
     if (it == streams_.end()) {
@@ -279,35 +286,42 @@ bool StreamManager::removeStream(const StreamID& id) {
     // next stream — whatever grandmaster it names — sets the new one.
     recomputeActiveGrandmaster();
 
-    // Notify callback
-    notifyStreamRemoved(info);
+    lock.unlock();   // see addStream: callbacks and disk go outside the lock
 
-    // Auto-save configuration
+    notifyStreamRemoved(info);
     autoSaveIfEnabled();
 
     return true;
 }
 
 void StreamManager::removeAllStreams() {
-    std::lock_guard<std::mutex> lock(streamsMutex_);
+    std::vector<StreamInfo> removed;
+    {
+        std::lock_guard<std::mutex> lock(streamsMutex_);
 
-    // Stop all streams
-    for (auto& pair : streams_) {
-        if (pair.second.receiver) {
-            pair.second.receiver->stop();
-        }
-        if (pair.second.transmitter) {
-            pair.second.transmitter->stop();
+        // Stop all streams
+        removed.reserve(streams_.size());
+        for (auto& pair : streams_) {
+            if (pair.second.receiver) {
+                pair.second.receiver->stop();
+            }
+            if (pair.second.transmitter) {
+                pair.second.transmitter->stop();
+            }
+            removed.push_back(pair.second.info);
         }
 
-        notifyStreamRemoved(pair.second.info);
+        streams_.clear();
+        mapper_.clearAll();
+        rxChannelsInUse_.store(0, std::memory_order_relaxed);
+        txChannelsInUse_.store(0, std::memory_order_relaxed);
+        recomputeActiveGrandmaster();
     }
 
-    streams_.clear();
-    mapper_.clearAll();
-    rxChannelsInUse_.store(0, std::memory_order_relaxed);
-    txChannelsInUse_.store(0, std::memory_order_relaxed);
-    recomputeActiveGrandmaster();
+    // Outside the lock, as everywhere else a callback is raised.
+    for (const StreamInfo& info : removed) {
+        notifyStreamRemoved(info);
+    }
 }
 
 //
@@ -323,7 +337,7 @@ StreamID StreamManager::createTxStream(
     uint16_t sourcePort,
     int dscp
 ) {
-    std::lock_guard<std::mutex> lock(streamsMutex_);
+    std::unique_lock<std::mutex> lock(streamsMutex_);
 
     // Build SDP session for transmit stream
     SDPSession sdp;
@@ -407,10 +421,10 @@ StreamID StreamManager::createTxStream(
     adoptGrandmaster(sdp.ptpMasterMAC);
     ensurePTPClockForDomain(sdp.ptpDomain);
 
-    // Notify callback
-    notifyStreamAdded(streams_[id].info);
+    const StreamInfo added = streams_[id].info;
+    lock.unlock();   // see addStream
 
-    // Auto-save configuration
+    notifyStreamAdded(added);
     autoSaveIfEnabled();
 
     return id;
@@ -451,7 +465,13 @@ bool advanceLastOctet(const std::string& ip, unsigned offset, std::string& out) 
         return false;
     }
 
-    const unsigned long base = std::stoul(lastPart);
+    // strtoul rather than std::stoul: the digits are validated above but not
+    // their number, and a long-enough run of them made std::stoul throw
+    // out_of_range — inside coreaudiod, where an escaped exception takes the
+    // audio daemon with it (2026-09-04 audit).
+    if (lastPart.size() > 3) return false;
+    const unsigned long base = std::strtoul(lastPart.c_str(), nullptr, 10);
+    if (base > 255) return false;
     const unsigned long advanced = base + offset;
     if (advanced > 255) return false;
 
@@ -587,7 +607,7 @@ bool StreamManager::exportSDPFile(const StreamID& id, const std::string& filepat
 //
 
 bool StreamManager::updateMapping(const StreamID& id, const ChannelMapping& newMapping) {
-    std::lock_guard<std::mutex> lock(streamsMutex_);
+    std::unique_lock<std::mutex> lock(streamsMutex_);
 
     auto it = streams_.find(id);
     if (it == streams_.end()) {
@@ -615,14 +635,15 @@ bool StreamManager::updateMapping(const StreamID& id, const ChannelMapping& newM
         updated = it->second.transmitter->updateMapping(completeMapping);
     }
 
-    if (updated) {
-        notifyStreamStatusChanged(it->second.info);
+    if (!updated) return false;
 
-        // Auto-save configuration
-        autoSaveIfEnabled();
-    }
+    const StreamInfo changed = it->second.info;
+    lock.unlock();   // see addStream
 
-    return updated;
+    notifyStreamStatusChanged(changed);
+    autoSaveIfEnabled();
+
+    return true;
 }
 
 std::optional<ChannelMapping> StreamManager::getMapping(const StreamID& id) const {
@@ -1143,7 +1164,10 @@ void StreamManager::notifyStreamStatusChanged(const StreamInfo& info) {
 //
 
 bool StreamManager::loadSavedStreams() {
-    std::lock_guard<std::mutex> lock(streamsMutex_);
+    // Every stream restored here is announced after the lock goes, for the
+    // reason addStream records: a callback is somebody else's code.
+    std::vector<StreamInfo> restored;
+    std::unique_lock<std::mutex> lock(streamsMutex_);
 
     // Load configurations from disk
     auto configs = configManager_->loadConfig();
@@ -1276,8 +1300,7 @@ bool StreamManager::loadSavedStreams() {
         adoptGrandmaster(config.sdp.ptpMasterMAC);
         ensurePTPClockForDomain(config.sdp.ptpDomain);
 
-        // Notify callback
-        notifyStreamAdded(streams_[id].info);
+        restored.push_back(streams_[id].info);
 
         loadedCount++;
         AES67_LOGF("StreamManager: Loaded stream: %s (%s)",
@@ -1287,6 +1310,11 @@ bool StreamManager::loadSavedStreams() {
 
     AES67_LOGF("StreamManager: Loaded %d streams successfully, %d failed",
               loadedCount, failedCount);
+
+    lock.unlock();
+    for (const StreamInfo& info : restored) {
+        notifyStreamAdded(info);
+    }
 
     return loadedCount > 0;
 }

@@ -7,6 +7,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -26,6 +27,36 @@ namespace {
 
 constexpr size_t kMaxRequestBytes = 64 * 1024;   // an SDP in a patch, and no more
 constexpr int kListenBacklog = 8;
+constexpr int kSelectTimeoutMs = 250;   ///< how fast the accept loop notices stop()
+/// A client that connects and then says nothing is dropped. One thread
+/// serves every connection in turn, so without this a single open socket
+/// holds the whole API shut for as long as the peer cares to keep it
+/// (2026-09-04 audit); RTSPServer has had the same bound since it was written.
+constexpr int kClientTimeoutMs = 2000;
+
+/// Offset of the value that follows a header name, matched without regard to
+/// case, or npos. `name` is lowercase; the head is searched line by line so a
+/// name appearing inside another header's value cannot be mistaken for one.
+size_t findHeader(const std::string& head, const std::string& name) {
+    size_t lineStart = 0;
+    while (lineStart < head.size()) {
+        size_t lineEnd = head.find("\r\n", lineStart);
+        if (lineEnd == std::string::npos) lineEnd = head.size();
+        const size_t colon = head.find(':', lineStart);
+        if (colon != std::string::npos && colon < lineEnd &&
+            colon - lineStart == name.size()) {
+            bool same = true;
+            for (size_t i = 0; i < name.size() && same; ++i) {
+                same = std::tolower(static_cast<unsigned char>(head[lineStart + i])) ==
+                       static_cast<unsigned char>(name[i]);
+            }
+            if (same) return colon + 1;
+        }
+        if (lineEnd == head.size()) break;
+        lineStart = lineEnd + 2;
+    }
+    return std::string::npos;
+}
 
 std::string jsonEscape(const std::string& s) {
     std::string out;
@@ -65,17 +96,85 @@ std::string jsonList(const std::vector<std::string>& entries) {
     return out.str();
 }
 
-/// A string field out of a flat JSON object, or nothing. Written by hand
-/// for the same reason the rest of this driver's JSON is: a parser
-/// dependency inside coreaudiod is a liability, and what a controller
-/// sends is small and known.
+/// The offset just past the colon of a "key": at this object's own level, or
+/// npos. Scanning rather than searching for the quoted name: a plain find()
+/// matches the same text inside a nested object or, worse, inside a string
+/// value — and one of the values this server accepts is `data`, an entire SDP
+/// supplied by the caller, which could carry `"master_enable": true` in its
+/// own text and have it read as the request's (2026-09-04 audit). Nesting is
+/// handled by slicing (below) and looking again, not by matching at depth.
+size_t fieldAt(const std::string& json, const std::string& key) {
+    int depth = 0;
+    bool inString = false;
+    size_t stringStart = 0;
+    for (size_t i = 0; i < json.size(); ++i) {
+        const char c = json[i];
+        if (inString) {
+            if (c == '\\') { ++i; continue; }
+            if (c != '"') continue;
+            inString = false;
+            if (depth != 1) continue;   // a name of some nested object
+            size_t after = i + 1;
+            while (after < json.size() &&
+                   std::isspace(static_cast<unsigned char>(json[after]))) ++after;
+            if (after >= json.size() || json[after] != ':') continue;
+            if (i - stringStart != key.size()) continue;
+            if (json.compare(stringStart, key.size(), key) != 0) continue;
+            return after + 1;
+        }
+        if (c == '"') { inString = true; stringStart = i + 1; continue; }
+        if (c == '{' || c == '[') { ++depth; continue; }
+        if (c == '}' || c == ']') { --depth; continue; }
+    }
+    return std::string::npos;
+}
+
+/// The first `{...}` object inside `text`, braces included, or an empty
+/// string. What IS-05 nests one level down — the transport parameters live in
+/// an array of objects, transport_file and activation are objects — is read by
+/// slicing it out and searching that, so a name is only ever matched in the
+/// object it belongs to.
+std::string firstObject(const std::string& text) {
+    int depth = 0;
+    bool inString = false;
+    size_t start = std::string::npos;
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (inString) {
+            if (c == '\\') { ++i; continue; }
+            if (c == '"') inString = false;
+            continue;
+        }
+        if (c == '"') { inString = true; continue; }
+        if (c == '{') {
+            if (depth == 0) start = i;
+            ++depth;
+            continue;
+        }
+        if (c == '}') {
+            --depth;
+            if (depth == 0 && start != std::string::npos) return text.substr(start, i - start + 1);
+        }
+    }
+    return {};
+}
+
+/// The value of a key of this object, as raw text, or an empty string. Used to
+/// descend one level: `member(body, "activation")` then `stringField(that,
+/// "mode")`.
+std::string member(const std::string& json, const std::string& key) {
+    const size_t pos = fieldAt(json, key);
+    if (pos == std::string::npos) return {};
+    return json.substr(pos);
+}
+
+/// A string field out of the top level of a JSON object, or nothing. Written
+/// by hand for the same reason the rest of this driver's JSON is: a parser
+/// dependency inside coreaudiod is a liability, and what a controller sends
+/// is small and known.
 std::optional<std::string> stringField(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = json.find(needle);
+    size_t pos = fieldAt(json, key);
     if (pos == std::string::npos) return std::nullopt;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return std::nullopt;
-    ++pos;
     while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
     if (pos >= json.size()) return std::nullopt;
     if (json.compare(pos, 4, "null") == 0) return std::nullopt;
@@ -95,12 +194,8 @@ std::optional<std::string> stringField(const std::string& json, const std::strin
 }
 
 std::optional<bool> boolField(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = json.find(needle);
+    size_t pos = fieldAt(json, key);
     if (pos == std::string::npos) return std::nullopt;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return std::nullopt;
-    ++pos;
     while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
     if (json.compare(pos, 4, "true") == 0) return true;
     if (json.compare(pos, 5, "false") == 0) return false;
@@ -108,12 +203,8 @@ std::optional<bool> boolField(const std::string& json, const std::string& key) {
 }
 
 std::optional<long> numberField(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = json.find(needle);
+    size_t pos = fieldAt(json, key);
     if (pos == std::string::npos) return std::nullopt;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return std::nullopt;
-    ++pos;
     while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
     const size_t start = pos;
     if (pos < json.size() && (json[pos] == '-' || json[pos] == '+')) ++pos;
@@ -134,16 +225,25 @@ ConnectionPatch ConnectionAPIServer::parsePatch(const std::string& json) {
 
     patch.masterEnable = boolField(json, "master_enable");
     patch.senderId = stringField(json, "sender_id");
-    patch.multicastAddress = stringField(json, "multicast_ip");
-    patch.interfaceAddress = stringField(json, "interface_ip");
-    if (auto port = numberField(json, "destination_port")) {
+
+    // transport_params is an array of objects, one per leg; this driver has
+    // one, and IS-05 says a controller may send fewer than the receiver
+    // declares, never more, so the first is the one that applies.
+    const std::string params = firstObject(member(json, "transport_params"));
+    patch.multicastAddress = stringField(params, "multicast_ip");
+    patch.interfaceAddress = stringField(params, "interface_ip");
+    if (auto port = numberField(params, "destination_port")) {
         if (*port > 0 && *port <= 65535) patch.port = static_cast<uint16_t>(*port);
     }
+
     // transport_file carries {"data": "<the SDP>", "type": "application/sdp"}.
-    if (auto data = stringField(json, "data")) {
+    const std::string transportFile = firstObject(member(json, "transport_file"));
+    if (auto data = stringField(transportFile, "data")) {
         if (!data->empty()) patch.transportFile = *data;
     }
-    if (auto mode = stringField(json, "mode")) {
+
+    const std::string activation = firstObject(member(json, "activation"));
+    if (auto mode = stringField(activation, "mode")) {
         patch.activateImmediate = (*mode == "activate_immediate");
     }
     return patch;
@@ -199,12 +299,18 @@ public:
             }
             return;
         }
+        // Join FIRST, then close. Closing the listening socket while the
+        // accept loop is blocked on it is a race the descriptor loses: the
+        // number is free the moment close() returns and any thread that
+        // opens a file next inherits it, so the loop can end up accepting on
+        // an unrelated descriptor. The loop polls running_ every
+        // kSelectTimeoutMs, so this waits a quarter of a second at worst
+        // (2026-09-04 audit).
+        if (thread_.joinable()) thread_.join();
         if (listen_ >= 0) {
-            ::shutdown(listen_, SHUT_RDWR);
             ::close(listen_);
             listen_ = -1;
         }
-        if (thread_.joinable()) thread_.join();
     }
 
     bool isRunning() const { return running_.load(); }
@@ -221,11 +327,24 @@ public:
 private:
     void run() {
         while (running_.load()) {
-            const int client = ::accept(listen_, nullptr, nullptr);
-            if (client < 0) {
-                if (!running_.load()) return;
-                continue;
+            // select() with a timeout rather than a blocking accept(): it is
+            // what lets stop() join this thread before closing the listening
+            // socket, and it keeps a broken descriptor from spinning the
+            // loop at full speed.
+            fd_set readfds;
+            FD_ZERO(&readfds);
+            FD_SET(listen_, &readfds);
+            struct timeval tv{0, kSelectTimeoutMs * 1000};
+            const int ready = ::select(listen_ + 1, &readfds, nullptr, nullptr, &tv);
+            if (ready < 0) {
+                if (errno == EINTR) continue; // a signal, not a failure
+                running_.store(false);
+                return;
             }
+            if (ready == 0) continue; // timeout — re-check running_
+
+            const int client = ::accept(listen_, nullptr, nullptr);
+            if (client < 0) continue;
             serve(client);
             ::close(client);
         }
@@ -423,6 +542,9 @@ ConnectionAPIServer::Reply ConnectionAPIServer::Impl::route(const std::string& m
 }
 
 void ConnectionAPIServer::Impl::serve(int client) {
+    struct timeval tv{kClientTimeoutMs / 1000, (kClientTimeoutMs % 1000) * 1000};
+    ::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     std::string request;
     char chunk[4096];
     size_t headEnd = std::string::npos;
@@ -437,9 +559,12 @@ void ConnectionAPIServer::Impl::serve(int client) {
 
         const std::string head = request.substr(0, headEnd);
         long declared = 0;
-        const size_t lengthAt = head.find("Content-Length:");
+        // Header names are case-insensitive (RFC 9110 §5.1) and curl sends
+        // "Content-Length" while plenty of controllers send "content-length";
+        // matching one spelling meant the body was never waited for.
+        const size_t lengthAt = findHeader(head, "content-length");
         if (lengthAt != std::string::npos) {
-            declared = std::strtol(head.c_str() + lengthAt + 15, nullptr, 10);
+            declared = std::strtol(head.c_str() + lengthAt, nullptr, 10);
             if (declared < 0 || static_cast<size_t>(declared) > kMaxRequestBytes) declared = 0;
         }
         if (request.size() >= headEnd + 4 + static_cast<size_t>(declared)) break;
@@ -455,8 +580,9 @@ void ConnectionAPIServer::Impl::serve(int client) {
                                    ? std::string::npos
                                    : head.find(' ', firstSpace + 1);
     ConnectionAPIServer::Reply reply{400, "application/json", "[]"};
+    std::string method;
     if (firstSpace != std::string::npos && secondSpace != std::string::npos) {
-        const std::string method = head.substr(0, firstSpace);
+        method = head.substr(0, firstSpace);
         std::string path = head.substr(firstSpace + 1, secondSpace - firstSpace - 1);
         const size_t query = path.find('?');
         if (query != std::string::npos) path = path.substr(0, query);
@@ -467,13 +593,25 @@ void ConnectionAPIServer::Impl::serve(int client) {
     out << "HTTP/1.1 " << reply.status << " "
         << (reply.status == 200 ? "OK" : (reply.status == 404 ? "Not Found" : "Error")) << "\r\n"
         << "Content-Type: " << reply.contentType << "\r\n"
-        << "Content-Length: " << reply.body.size() << "\r\n"
-        // A controller reads this from a browser as often as from code.
-        << "Access-Control-Allow-Origin: *\r\n"
-        << "Connection: close\r\n\r\n"
-        << reply.body;
+        << "Content-Length: " << reply.body.size() << "\r\n";
+    // A controller reads this from a browser as often as from code, so GET
+    // stays readable cross-origin. Activations do not: this endpoint has no
+    // authentication, and letting an arbitrary page's script read or drive
+    // one would hand every website the user visits a way to re-point the
+    // device's audio (2026-09-04 audit).
+    if (method == "GET") {
+        out << "Access-Control-Allow-Origin: *\r\n";
+    }
+    out << "Connection: close\r\n\r\n" << reply.body;
     const std::string answer = out.str();
-    ::send(client, answer.data(), answer.size(), 0);
+    // Loop: a transport file is comfortably larger than a socket buffer, and
+    // a short write truncated the response rather than failing it.
+    size_t sent = 0;
+    while (sent < answer.size()) {
+        const ssize_t wrote = ::send(client, answer.data() + sent, answer.size() - sent, 0);
+        if (wrote <= 0) return; // peer went away mid-response
+        sent += static_cast<size_t>(wrote);
+    }
 }
 
 ConnectionAPIServer::ConnectionAPIServer(uint16_t port) : impl_(std::make_unique<Impl>(port)) {}

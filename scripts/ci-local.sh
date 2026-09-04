@@ -66,7 +66,7 @@ fi
 
 jobs="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
 
-echo "==> Configure (Release, tests only)"
+echo "==> Configure (Release, everything)"
 mkdir -p "$build_dir"
 # ManagerApp is back in the gate: it built with the Command Line Tools once
 # the #Preview blocks moved to Views/Previews/ (the macro plugin they need
@@ -78,8 +78,8 @@ cmake -S . -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DAES67_SANITIZE="$sanitize" \
   -DBUILD_TESTS=ON \
-  -DBUILD_EXAMPLES=OFF \
-  -DBUILD_TOOLS=OFF \
+  -DBUILD_EXAMPLES=ON \
+  -DBUILD_TOOLS=ON \
   -DBUILD_MANAGER_APP=ON \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON || { echo "FAIL: cmake configure" >&2; exit 1; }
 
@@ -144,8 +144,20 @@ echo "==> Active TODOs"
 grep -rn "TODO" --include="*.cpp" --include="*.h" --include="*.hpp" --include="*.swift" . \
   | grep -v vendor | grep -v "\.git" | grep -v "^\./external/" || echo "No TODOs found"
 
-echo "==> Dead-code references in build files"
-grep -rn "CircularJitterBuffer\|JitterBuffer\|TemporalJitterBuffer\|SimplifiedLockFreePacketPool" \
-  CMakeLists.txt Tests/CMakeLists.txt || echo "No dead code references found"
+# The jitter-buffer and packet-pool implementations this used to look for
+# moved to aes67-core with everything else platform-free, so the grep could no
+# longer match anything here and reported "none found" whatever the state of
+# the build files (2026-09-04 audit). What can still rot on this side is a
+# source listed in CMake that no longer exists.
+# A subdirectory's CMakeLists names its extra sources relative to itself, so a
+# leading ../ is stripped and every path is read from the repository root.
+echo "==> Sources listed in CMake that are not on disk"
+missing=0
+while read -r candidate; do
+  [ -f "$candidate" ] || { echo "MISSING: $candidate"; missing=1; }
+done < <(grep -ohE '^[[:space:]]+(\.\./)?(Driver|NetworkEngine|Shared|Tools|Daemon)/[A-Za-z0-9_/]+\.(cpp|mm)' \
+           CMakeLists.txt Tests/CMakeLists.txt Tools/CMakeLists.txt \
+         | tr -d ' ' | sed 's|^\.\./||' | sort -u)
+[ "$missing" = "0" ] && echo "Every listed source exists"
 
 echo "==> PASS"

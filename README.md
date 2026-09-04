@@ -76,8 +76,10 @@ look for it.
 - Multicast receiver can bind to a specific network interface (prevents duplicate packets on multi-NIC machines)
 - RTP threads are deferred to Core Audio IO lifecycle (zero idle CPU when no client is running)
 - PTP slave-only implementation written (IEEE 1588 message exchange, offset/delay calculation, lock detection)
+- Discovery both ways: SAP in and out, RTSP DESCRIBE as client and server, DNS-SD browsing
+- NMOS IS-04 registration and IS-05 connection management, against loopback registries and controllers
 - Test sender/receiver tools exercise the network path over loopback
-- 9 test suites pass (SDP parser, channel mapper, ring buffer, RTP receiver, RTP transmitter, PTP clock, stream manager, multi-stream, integration audio path)
+- 28 test suites pass here, plus the platform-free core's own (see `Tests/CMakeLists.txt` for the current list)
 - IO handler benchmark exists for real-time performance characterisation
 - Doxygen API documentation can be generated via `make docs`
 - Flexible configuration: supports interface name ("en0") or IP address, auto-detects if not specified
@@ -92,6 +94,7 @@ look for it.
 - Multi-device synchronisation
 - Sample rates beyond 48kHz in practice
 - The Manager app controlling live streams
+- NMOS against a commercial registry or controller — only against our own loopback fixtures
 
 There is a meaningful gap between "paths exercised with test tools" and "works with real audio." This project has not yet crossed the second threshold.
 
@@ -136,7 +139,16 @@ AES67Driver/
 │   │   ├── PTPDInterface    # PTP interface (stub fallback available)
 │   ├── StreamManager        # RX/TX stream lifecycle, IO-gated start/stop
 │   ├── Resampling/          # Sample rate conversion
-│   └── Discovery/           # SAP stream discovery (RFC 2974)
+│   └── Discovery/           # Finding streams, and being found
+│       ├── SAPListener      # SAP announcements in (RFC 2974)
+│       ├── SAPAnnouncer     # our own transmit streams announced
+│       ├── RTSPClient       # DESCRIBE against a device that publishes one
+│       ├── RTSPServer       # DESCRIBE for our own streams
+│       ├── SDPFetcher       # an SDP from a file, http:// or rtsp:// URL
+│       ├── MDNSBrowser      # DNS-SD browsing over the system responder
+│       ├── NMOSRegistrationClient  # IS-04 node/device/sender/receiver
+│       ├── ConnectionAPIServer     # IS-05 connection management
+│       └── RTCPMonitor      # sender reports from the streams we receive
 ├── Shared/                  # Common components
 │   │                        # (RingBuffer.hpp and the rest of the portable
 │   │                        #  pieces live in external/aes67-core)
@@ -207,6 +219,35 @@ sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
 system_profiler SPAudioDataType | grep -A 5 "AES67"
 ```
 
+### NMOS (IS-04 / IS-05)
+
+The driver registers itself with an NMOS registry when it finds one, and
+accepts connection management over IS-05.
+
+- **IS-04 registration** (`NMOSRegistrationClient`): the registry is found by
+  DNS-SD (`_nmos-register._tcp`) or configured by hand; the driver then
+  registers a node, a device, one sender per transmit stream and one receiver
+  per receive stream, and keeps the registration alive with the heartbeat the
+  specification asks for. Resource ids are derived, not random, so a restart
+  re-registers the same node rather than a second one.
+- **IS-05 connection management** (`ConnectionAPIServer`): a small HTTP
+  endpoint serving `/x-nmos/connection/v1.1/`. Controllers read
+  `constraints`, `staged` and `active` for each sender and receiver, read a
+  sender's `transportfile` (the SDP), and PATCH a receiver's `staged` to
+  re-point it — by transport parameters, or by handing over an SDP. An
+  activation is applied immediately; nothing is staged for later, and `active`
+  is read-only.
+
+Both are exercised by `TestNMOSRegistration` and `TestConnectionAPI` against a
+registry and a controller made of loopback sockets. Neither has been tested
+against a commercial NMOS registry or controller.
+
+The endpoint has no authentication — IS-05 does not define one at this level —
+so it is only as safe as the network it is on. It answers cross-origin reads
+but not cross-origin activations, and a receiver only follows an unsolicited
+SAP announcement when the announcement comes from the host the stream is
+already bound to.
+
 ### The PTP daemon (`aes67ptpd`)
 
 `Daemon/aes67ptpd.cpp` builds a small daemon that runs one PTP engine for the
@@ -222,6 +263,12 @@ rather than one per process, alive across coreaudiod restarts and plugin
 reloads, and readable by the Manager app at the same time. A reader stops
 believing a status older than two seconds, so a daemon that dies cannot leave
 a stale offset looking like a lock.
+
+Started as root it drops to `nobody` as soon as the status socket and the PTP
+sockets exist, so the part that runs for the life of the machine — parsing
+packets off an unauthenticated multicast group — never runs privileged.
+Started unprivileged it stays that way, and needs a `--socket` path it can
+write.
 
 ```bash
 cmake --build build --target aes67ptpd
@@ -334,4 +381,4 @@ MIT License - See LICENSE file.
 
 ---
 
-*This is experimental software. The driver compiles, loads, and passes synthetic tests, but no real-world audio functionality has been verified.*
+*This is experimental software. The RX path has been verified with real AES67 hardware (see Current Status); everything else — TX, network PTP, the Manager app — compiles, loads and passes synthetic tests only.*

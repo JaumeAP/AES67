@@ -16,6 +16,7 @@
 //
 
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
+#include "NetworkEngine/SelectWait.h"
 
 #include <dns_sd.h>
 #include <arpa/inet.h>
@@ -198,10 +199,10 @@ private:
             fd_set readfds;
             FD_ZERO(&readfds);
             FD_SET(fd, &readfds);
-            struct timeval tv{0, kSelectTimeoutMs * 1000};
-            const int ready = select(fd + 1, &readfds, nullptr, nullptr, &tv);
-            if (ready < 0) return;
-            if (ready == 0) continue;
+            const SelectOutcome outcome = waitReadable(fd, &readfds, kSelectTimeoutMs);
+            if (outcome == SelectOutcome::Failed) return;
+            if (outcome == SelectOutcome::Timeout ||
+                outcome == SelectOutcome::Interrupted) continue; // a signal is not an answer
             if (DNSServiceProcessResult(ref) != kDNSServiceErr_NoError) return;
             return; // one reply is all any of these operations owes us
         }
@@ -239,10 +240,10 @@ private:
             fd_set readfds;
             FD_ZERO(&readfds);
             FD_SET(fd, &readfds);
-            struct timeval tv{0, kSelectTimeoutMs * 1000};
-            const int ready = select(fd + 1, &readfds, nullptr, nullptr, &tv);
-            if (ready < 0) break;
-            if (ready == 0) continue; // timeout — re-check running_
+            const SelectOutcome outcome = waitReadable(fd, &readfds, kSelectTimeoutMs);
+            if (outcome == SelectOutcome::Failed) break;
+            if (outcome == SelectOutcome::Timeout ||
+                outcome == SelectOutcome::Interrupted) continue; // re-check running_
             if (DNSServiceProcessResult(browseRef_) != kDNSServiceErr_NoError) break;
         }
     }

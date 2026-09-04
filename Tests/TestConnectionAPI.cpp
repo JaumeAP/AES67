@@ -20,6 +20,12 @@
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/HTTPClient.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -216,6 +222,76 @@ TEST_CASE("A partial patch stays partial") {
     const ConnectionPatch garbage =
         ConnectionAPIServer::parsePatch("{ \"destination_port\": \"soon\" }");
     CHECK_FALSE(garbage.port.has_value());
+}
+
+TEST_CASE("A transport file cannot forge the fields around it") {
+    // `data` is an entire SDP chosen by the caller. While the fields were
+    // located with a plain find() over the whole body, an SDP carrying the
+    // text of another field had it read as the request's — so a controller
+    // staging a transport file could flip master_enable, or a session name
+    // could decide the activation mode (2026-09-04 audit).
+    const std::string forged =
+        "{\n"
+        "  \"transport_file\": { \"data\": \"v=0\\r\\ns=\\\"master_enable\\\": true, "
+        "\\\"mode\\\": \\\"activate_immediate\\\", \\\"destination_port\\\": 9999\\r\\n\", "
+        "\"type\": \"application/sdp\" }\n"
+        "}\n";
+    const ConnectionPatch patch = ConnectionAPIServer::parsePatch(forged);
+    CHECK(patch.transportFile.has_value());
+    CHECK_FALSE(patch.masterEnable.has_value());
+    CHECK_FALSE(patch.port.has_value());
+    CHECK_FALSE(patch.activateImmediate);
+}
+
+TEST_CASE("Transport parameters are read from their own object") {
+    // multicast_ip and friends belong to transport_params, not to the body:
+    // a same-named field elsewhere is not the one that addresses the stream.
+    const std::string body =
+        "{\n"
+        "  \"transport_file\": { \"data\": \"v=0\\r\\n\", \"type\": \"application/sdp\" },\n"
+        "  \"transport_params\": [{ \"multicast_ip\": \"239.69.0.7\", "
+        "\"destination_port\": 5004 }]\n"
+        "}\n";
+    const ConnectionPatch patch = ConnectionAPIServer::parsePatch(body);
+    CHECK(patch.multicastAddress.value_or("") == "239.69.0.7");
+    CHECK(patch.port.value_or(0) == 5004);
+}
+
+TEST_CASE("A header name is matched whatever its case") {
+    // HTTP header names are case-insensitive (RFC 9110 5.1). Matching only
+    // "Content-Length:" meant a body from a client that lowercases its
+    // headers was never waited for, so a PATCH could be served with a
+    // truncated body.
+    Fixture fixture;
+    REQUIRE(fixture.start());
+
+    const std::string body = "{ \"master_enable\": true }";
+    std::ostringstream request;
+    request << "PATCH " << base() << "/single/receivers/" << kReceiverId << "/staged HTTP/1.1\r\n"
+            << "host: 127.0.0.1\r\n"
+            << "content-type: application/json\r\n"
+            << "content-length: " << body.size() << "\r\n\r\n"
+            << body;
+
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(fixture.server.boundPort());
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    REQUIRE(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+    const std::string text = request.str();
+    REQUIRE(::send(fd, text.data(), text.size(), 0) == static_cast<ssize_t>(text.size()));
+
+    char answer[1024];
+    const ssize_t got = ::recv(fd, answer, sizeof(answer) - 1, 0);
+    ::close(fd);
+    REQUIRE(got > 0);
+    answer[got] = '\0';
+    CHECK(std::string(answer).find("200 OK") != std::string::npos);
+
+    REQUIRE(fixture.patches.size() == 1);
+    CHECK(fixture.patches[0].second.masterEnable.value_or(false) == true);
 }
 
 TEST_CASE("The same answers come back over a real socket") {

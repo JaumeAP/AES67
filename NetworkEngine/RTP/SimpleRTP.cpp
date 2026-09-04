@@ -249,6 +249,44 @@ ssize_t RTPSocket::send(const RTPPacket& packet) {
     return sendmsg(sockfd_, &msg, 0);
 }
 
+bool RTPSocket::parseFrame(const uint8_t* buffer, size_t length, RTPPacket& packet) {
+    // Too small to contain an RTP header at all.
+    if (length < sizeof(RTPHeader)) return false;
+
+    memcpy(&packet.header, buffer, sizeof(RTPHeader));
+    packet.header.toHostOrder();
+
+    // The fixed part is 12 bytes, but RFC 3550 §5.1 puts a CSRC list and an
+    // extension header between it and the payload, and allows trailing
+    // padding. Treating the fixed part as the whole header fed those bytes to
+    // the decoder as audio — AES67 senders do not normally use either, but
+    // nothing on the wire guarantees that, and a sender that does was being
+    // decoded as noise.
+    size_t headerBytes = sizeof(RTPHeader) + static_cast<size_t>(packet.header.cc) * 4;
+    if (packet.header.extension) {
+        // The extension header itself is four bytes: a 16-bit profile
+        // identifier and a 16-bit length counted in 32-bit words after it.
+        if (length < headerBytes + 4) return false;
+        const size_t words = (static_cast<size_t>(buffer[headerBytes + 2]) << 8) |
+                             buffer[headerBytes + 3];
+        headerBytes += 4 + words * 4;
+    }
+    if (length <= headerBytes) return false;
+
+    size_t payloadBytes = length - headerBytes;
+    if (packet.header.padding) {
+        // The last byte counts the padding, itself included.
+        const size_t pad = buffer[length - 1];
+        if (pad == 0 || pad > payloadBytes) return false;
+        payloadBytes -= pad;
+        if (payloadBytes == 0) return false;
+    }
+
+    packet.payload = const_cast<uint8_t*>(buffer) + headerBytes;
+    packet.payloadSize = payloadBytes;
+    return true;
+}
+
 ssize_t RTPSocket::receive(RTPPacket& packet, uint8_t* buffer, size_t bufferSize) {
     if (sockfd_ < 0 || !isReceiver_) {
         return -1;
@@ -269,19 +307,9 @@ ssize_t RTPSocket::receive(RTPPacket& packet, uint8_t* buffer, size_t bufferSize
         return -1;
     }
 
-    // Check for valid RTP packet size
-    if (bytesReceived < (ssize_t)sizeof(RTPHeader)) {
-        // Packet too small to contain RTP header
+    if (!parseFrame(buffer, static_cast<size_t>(bytesReceived), packet)) {
         return -1;
     }
-
-    // Parse header
-    memcpy(&packet.header, buffer, sizeof(RTPHeader));
-    packet.header.toHostOrder();
-
-    // Set payload pointer and size
-    packet.payload = buffer + sizeof(RTPHeader);
-    packet.payloadSize = bytesReceived - sizeof(RTPHeader);
 
     return bytesReceived;
 }

@@ -51,6 +51,22 @@ public:
     // Sends a deletion for everything still announced, then stops.
     void stop();
 
+    // The Message ID Hash this announces an SDP body with (RFC 2974 §6): a
+    // content hash, so an edited body announces as a changed session and the
+    // deletion that withdraws a body carries the value it went out with.
+    static uint16_t messageIdHash(const std::string& sdp);
+
+    // The datagram this puts on the wire for one session, header and body.
+    // `originatingSource` is an IPv4 address in network byte order.
+    //
+    // Static and public so the packets can be checked against the parser
+    // that has to read them — SAPListener::parseAnnouncement — without a
+    // socket or a 30-second wait. Announcing was at zero coverage until
+    // 2026-09-04, and a header this driver alone agrees with would be
+    // invisible to every receiver on the network.
+    static std::vector<uint8_t> buildPacket(const std::string& sdp, uint16_t msgIdHash,
+                                            uint32_t originatingSource, bool deletion);
+
 private:
     class Impl;
     std::unique_ptr<Impl> pimpl_;

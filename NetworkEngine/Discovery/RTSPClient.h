@@ -83,6 +83,23 @@ public:
     // Check if connected
     bool isConnected() const { return socket_ >= 0; }
 
+    //
+    // Parsing, exposed for test
+    //
+    // Both take text and give back a result, touch no member and open no
+    // socket. They are the halves of this client most worth pinning — every
+    // byte they read comes from a server this driver did not write — and
+    // they had no test of their own until 2026-09-04.
+
+    // Parse an RTSP response: status line, headers, and a body bounded by
+    // Content-Length. Nothing for a response without a status line.
+    static std::optional<RTSPResponse> parseResponse(const std::string& response);
+
+    // Split an rtsp:// URL into host, port and path. False for a URL this
+    // cannot use, including one whose port is not a number in range.
+    static bool parseURL(const std::string& url, std::string& host, uint16_t& port,
+                         std::string& path);
+
 private:
     // Send RTSP request
     std::optional<RTSPResponse> sendRequest(
@@ -91,12 +108,6 @@ private:
         const std::map<std::string, std::string>& headers = {},
         const std::string& body = ""
     );
-
-    // Parse RTSP response
-    std::optional<RTSPResponse> parseResponse(const std::string& response);
-
-    // Parse URL
-    bool parseURL(const std::string& url, std::string& host, uint16_t& port, std::string& path);
 
     // Connect to server
     bool connect();

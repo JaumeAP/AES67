@@ -239,6 +239,20 @@ void AES67Device::Initialize() {
                 if (!streamManager_) return;
                 auto parsed = SDPParser::parseString(a.sessionDescription);
                 if (!parsed) return;
+                // The announcement has to come from the host it claims to
+                // describe. Without this, any machine on the network can
+                // re-point a live receiver at its own multicast group by
+                // announcing a session that borrows the name and origin of a
+                // real one (2026-09-04 audit). It does not survive a spoofed
+                // source IP, but it removes the case that needs nothing but a
+                // socket.
+                if (parsed->originAddress.empty() ||
+                    parsed->originAddress != a.sourceAddress) {
+                    AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
+                               "— ignored for sink-follow",
+                               a.sourceAddress.c_str(), parsed->originAddress.c_str());
+                    return;
+                }
                 streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
             });
     }
@@ -616,8 +630,11 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
         if (!parsed) return false;
         wanted = *parsed;
         // The sink keeps its own identity: what changed is where it
-        // listens, not which receiver it is.
+        // listens, not which receiver it is. The origin address is part of
+        // that identity — sink-follow matches on it, and a controller's
+        // transport file legitimately carries the sender's own "o=".
         wanted.sessionName = target.sessionName;
+        wanted.originAddress = target.originAddress;
     }
     if (patch.multicastAddress.has_value() && !patch.multicastAddress->empty()) {
         wanted.connectionAddress = *patch.multicastAddress;
