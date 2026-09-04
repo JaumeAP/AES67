@@ -1,4 +1,5 @@
 #include "RTCPMonitor.h"
+#include "NetworkEngine/SelectWait.h"
 
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -142,13 +143,14 @@ private:
                 FD_SET(kv.second, &rd);
                 if (kv.second > maxFd) maxFd = kv.second;
             }
-            timeval tv{0, 250000};
             if (maxFd < 0) { // nothing to listen on yet
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
                 continue;
             }
-            int n = ::select(maxFd + 1, &rd, nullptr, nullptr, &tv);
-            if (n <= 0) continue;
+            const SelectOutcome outcome = waitReadable(maxFd, &rd, 250);
+            if (outcome == SelectOutcome::Timeout ||
+                outcome == SelectOutcome::Interrupted) continue;
+            if (outcome == SelectOutcome::Failed) break; // sockets gone; do not spin
             for (auto& kv : sockets_) {
                 if (FD_ISSET(kv.second, &rd)) handleReadable(kv.second, buf, sizeof(buf));
             }

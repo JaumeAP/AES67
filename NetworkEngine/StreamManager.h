@@ -278,8 +278,9 @@ public:
     // announcement, re-point any RECEIVE stream bound to that source onto the
     // source's new transport (multicast address, port, sample rate, encoding,
     // ptime, payload type) when it has changed, preserving the sink's device-
-    // channel mapping. Streams are matched by session name plus, when both
-    // sides know it, the unicast source address. A change in channel count is
+    // channel mapping. Streams are matched by session name AND SDP origin
+    // address, both of which have to be known, plus the unicast source
+    // address when both sides carry one. A change in channel count is
     // deliberately NOT followed (it would force a device-channel re-map that
     // could collide with neighbouring streams) — skipped and logged instead.
     // Returns how many receive streams were re-subscribed. No-op unless
@@ -301,6 +302,20 @@ public:
         // StreamManager (receivers, sockets, PTP).
         if (announced.sessionName.empty() ||
             stored.sessionName != announced.sessionName) {
+            return SinkFollowDecision::NotBound;
+        }
+        // The origin address (SDP "o=") has to be known on BOTH sides and
+        // match. SAP announcements are unauthenticated multicast: matching on
+        // the session name alone lets any host on the network re-point a live
+        // receiver at its own multicast group simply by announcing a session
+        // with the same name, and the sourceAddress check below never fired
+        // because no SDP parse populates that field — only a config reload
+        // does (2026-09-04 audit). "o=" is mandatory in a well-formed SDP, so
+        // requiring it costs nothing against a real source; SAPListener
+        // separately refuses an announcement whose origin disagrees with the
+        // host that sent it.
+        if (stored.originAddress.empty() || announced.originAddress.empty() ||
+            stored.originAddress != announced.originAddress) {
             return SinkFollowDecision::NotBound;
         }
         if (!stored.sourceAddress.empty() && !announced.sourceAddress.empty() &&

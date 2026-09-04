@@ -1,5 +1,6 @@
 #include "PTPPeerObserver.h"
 #include "NetworkEngine/MulticastRejoiner.h"
+#include "NetworkEngine/SelectWait.h"
 
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -137,9 +138,10 @@ private:
             }
             if (maxFd < 0) break;
 
-            timeval tv{0, 250000};
-            int n = ::select(maxFd + 1, &rd, nullptr, nullptr, &tv);
-            if (n <= 0) continue; // timeout or error — loop re-checks running_
+            const SelectOutcome outcome = waitReadable(maxFd, &rd, 250);
+            if (outcome == SelectOutcome::Timeout ||
+                outcome == SelectOutcome::Interrupted) continue;
+            if (outcome == SelectOutcome::Failed) break; // sockets gone; do not spin
 
             for (int fd : {eventFd_, generalFd_}) {
                 if (fd >= 0 && FD_ISSET(fd, &rd)) handleReadable(fd, buf, sizeof(buf));

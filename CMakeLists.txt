@@ -148,47 +148,22 @@ endif()
 # Shared Library
 # ============================================================================
 
-# Common source files for both driver and tests
-set(SHARED_SOURCES
-    Shared/ResourceCleanupManager.cpp
-)
-
-# Driver source files
+# The driver's own translation units: the AudioServerPlugIn itself, plus the
+# parts of the network engine that are genuinely macOS — CoreAudio clock
+# sources, the Accelerate codec, the PTP clock built on them. Everything
+# portable it needs comes from the aes67_net library below, which it links
+# rather than recompiles: the two lists used to name the same twenty files and
+# drifted independently (2026-09-04 audit).
 set(DRIVER_SOURCES
     Driver/AES67Device.cpp
     Driver/AES67IOHandler.cpp
     Driver/AudioThreadPriority.cpp
-)
-
-# Network Engine source files
-set(NETWORK_SOURCES
-    NetworkEngine/StreamManager.cpp
-    NetworkEngine/RTP/SimpleRTP.cpp
-    NetworkEngine/RTP/RTPReceiver.cpp
-    NetworkEngine/RTP/RTPTransmitter.cpp
     NetworkEngine/RTP/PCMCodec.cpp
     NetworkEngine/PTP/PTPClock.cpp
     NetworkEngine/PTP/PTPDInterface.cpp
-    NetworkEngine/PTP/PTPSlave.cpp
-    NetworkEngine/PTP/PTPSettingsMapping.cpp
-    NetworkEngine/PTP/PTPService.cpp
-    NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPArbitrator.cpp
     NetworkEngine/PTP/CoreAudioClockSource.cpp
-    NetworkEngine/PTP/PTPPeerObserver.cpp
     NetworkEngine/PTP/AudioClockDeviceList.cpp
-    NetworkEngine/NetworkUtils.cpp
-    NetworkEngine/NetworkInterfaceDetection.cpp
-    NetworkEngine/Discovery/SAPListener.cpp
-    NetworkEngine/Discovery/MDNSBrowser.cpp
-    NetworkEngine/Discovery/RTSPServer.cpp
-    NetworkEngine/Discovery/SAPAnnouncer.cpp
-    NetworkEngine/Discovery/RTCPMonitor.cpp
-    NetworkEngine/Discovery/RTSPClient.cpp
-    NetworkEngine/Discovery/ConnectionAPIServer.cpp
-    NetworkEngine/Discovery/HTTPClient.cpp
-    NetworkEngine/Discovery/NMOSRegistrationClient.cpp
-    NetworkEngine/Discovery/SDPFetcher.cpp
 )
 
 # ============================================================================
@@ -245,15 +220,9 @@ set(AES67_NET_SOURCES
 
 add_library(aes67_net STATIC ${AES67_NET_SOURCES})
 target_link_libraries(aes67_net PUBLIC aes67_core)
+# The driver is a bundle, so everything linked into it has to be relocatable.
+set_target_properties(aes67_net PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# Combine all C++ sources
-set(ALL_CPP_SOURCES
-    ${SHARED_SOURCES}
-    ${DRIVER_SOURCES}
-    ${NETWORK_SOURCES}
-)
-# The core's translation units are no longer in these lists; targets link the
-# aes67_core library from the submodule instead.
 
 # ============================================================================
 # AudioServerPlugIn Bundle (macOS only)
@@ -262,7 +231,7 @@ set(ALL_CPP_SOURCES
 if(APPLE AND ASPL_FOUND)
     # Create driver bundle
     add_library(AES67Driver MODULE
-        ${ALL_CPP_SOURCES}
+        ${DRIVER_SOURCES}
         ${ASPL_SOURCES}
         Driver/PlugInMain.cpp  # AudioServerPlugIn entry point
     )
@@ -273,7 +242,7 @@ if(APPLE AND ASPL_FOUND)
     )
 
     target_link_libraries(AES67Driver PRIVATE
-        aes67_core
+        aes67_net    # brings aes67_core with it (PUBLIC link above)
         ${ASPL_LIBRARY}
         # ptpd_obj disabled - using stub PTP implementation
         "-framework CoreAudio"

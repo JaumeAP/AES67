@@ -11,6 +11,11 @@ import ServiceManagement
 
 class MenuBarManager: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
+    // Held so it can be stopped. A scheduled Timer is retained by the run
+    // loop, not by us, so one created and forgotten keeps firing for the life
+    // of the process even after this object is finished with (2026-09-04
+    // audit).
+    private var refreshTimer: Timer?
     private weak var driverManager: DriverManager?
     @Published var showMainWindow = false
 
@@ -35,9 +40,14 @@ class MenuBarManager: NSObject, ObservableObject {
         updateMenu()
 
         // Update menu periodically
-        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.updateMenu()
         }
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 
     func updateMenu() {

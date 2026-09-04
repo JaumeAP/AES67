@@ -8,6 +8,7 @@
 #include "SimpleRTP.h"
 #include "PCMCodec.h"
 #include "Driver/DebugLog.h"
+#include "NetworkEngine/SelectWait.h"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -59,8 +60,8 @@ RTPReceiver::RTPReceiver(
     stats_.reset();
 
     // Pre-allocate audio buffer to avoid allocations in receiveLoop()
-    // Max 512 frames × stream channels (e.g., 512 × 8 = 4096 floats)
-    const size_t maxFrames = 512;
+    // Max kMaxFramesPerPacket frames × stream channels (512 × 8 = 4096 floats)
+    const size_t maxFrames = kMaxFramesPerPacket;
     const size_t maxSamples = maxFrames * sdp_.numChannels;
     audioBuffer_.resize(maxSamples);
 
@@ -264,8 +265,6 @@ bool RTPReceiver::updateMapping(const ChannelMapping& newMapping) {
 
 void RTPReceiver::receiveLoop() {
     fd_set readfds;
-    struct timeval tv;
-
     RTP::RTPPacket packet;
 
     // Re-join the multicast group every few seconds so reception recovers on
@@ -291,12 +290,19 @@ void RTPReceiver::receiveLoop() {
         }
         FD_SET(sockfd, &readfds);
 
-        tv.tv_sec = 0;
-        tv.tv_usec = 1000;  // 1ms timeout
-
-        int ret = select(sockfd + 1, &readfds, nullptr, nullptr, &tv);
-
-        if (ret > 0 && FD_ISSET(sockfd, &readfds)) {
+        // 1 ms: responsive without spinning.
+        const SelectOutcome outcome = waitReadable(sockfd, &readfds, 1);
+        if (outcome == SelectOutcome::Failed) {
+            // A descriptor that select() rejects will reject every following
+            // call too, and continuing on it burned a core doing nothing
+            // (2026-09-04 audit). Stop the loop; the socket comes back with a
+            // restart, not by asking again.
+            AES67_LOGF("RTPReceiver: select() failed on the RTP socket (errno=%d) — "
+                       "receive loop stopping (stream=%s)",
+                       errno, sdp_.sessionName.c_str());
+            break;
+        }
+        if (outcome == SelectOutcome::Ready && FD_ISSET(sockfd, &readfds)) {
             ssize_t bytesReceived = rtpSocket_.receive(packet, receiveBuffer_, sizeof(receiveBuffer_));
             if (bytesReceived > 0) {
                 processPacket(packet);
@@ -516,7 +522,7 @@ void RTPReceiver::decodeL16(const uint8_t* payload, size_t payloadSize) {
     const size_t bytesPerFrame = bytesPerSample * sdp_.numChannels;
     const size_t frameCount = payloadSize / bytesPerFrame;
 
-    if (frameCount == 0 || frameCount > 512) {
+    if (frameCount == 0 || frameCount > kMaxFramesPerPacket) {
         return; // Invalid or excessive frame count
     }
 
@@ -543,7 +549,7 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
     const size_t bytesPerFrame = bytesPerSample * sdp_.numChannels;
     const size_t frameCount = payloadSize / bytesPerFrame;
 
-    if (frameCount == 0 || frameCount > 512) {
+    if (frameCount == 0 || frameCount > kMaxFramesPerPacket) {
         return; // Invalid or excessive frame count
     }
 
@@ -570,13 +576,13 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
         return; // Mapping out of range
     }
 
-    // Stack-allocated temporary buffer for de-interleaving
-    constexpr size_t kMaxFrames = 4096;
-    if (frameCount > kMaxFrames) {
+    // Stack-allocated temporary buffer for de-interleaving, sized by the same
+    // bound the decoders enforce.
+    if (frameCount > kMaxFramesPerPacket) {
         return;
     }
 
-    float channelBuffer[kMaxFrames];
+    float channelBuffer[kMaxFramesPerPacket];
 
     // Write each stream channel to its mapped device channel
     // This de-interleaves: [ch0_f0, ch1_f0, ch0_f1, ch1_f1, ...]

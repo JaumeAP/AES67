@@ -19,9 +19,13 @@
 //             [--mechanism e2e|p2p] [--delay-req-ms 1000] [--verbose]
 //
 
+#include <pwd.h>
+#include <unistd.h>
+
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cerrno>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -35,6 +39,42 @@ namespace {
 std::atomic<bool> g_running{true};
 
 void HandleSignal(int) { g_running.store(false); }
+
+/// Give up root once the socket exists and the PTP ports are bound.
+///
+/// The daemon needs privilege for exactly two things, both of them done by
+/// the time this runs: creating the status socket in /var/run, and opening
+/// UDP 319/320 (which on current macOS needs nothing at all). What it does
+/// afterwards is parse packets from an unauthenticated multicast group for as
+/// long as the machine is up, and that is not work to leave running as root
+/// (2026-09-04 audit). The stale-socket unlink at exit stops working after
+/// this, which costs nothing: start() unlinks the node it finds, and start()
+/// still runs as root.
+///
+/// Returns false only when the drop was attempted and failed, which is a
+/// reason to stop rather than to carry on with more privilege than intended.
+bool DropPrivileges(const char* user) {
+    if (::geteuid() != 0) return true;  // launched unprivileged; nothing to drop
+
+    const struct passwd* account = ::getpwnam(user);
+    if (account == nullptr) {
+        std::cerr << "[aes67ptpd] no account '" << user
+                  << "' to drop to; refusing to run as root" << std::endl;
+        return false;
+    }
+    if (::setgid(account->pw_gid) != 0 || ::setuid(account->pw_uid) != 0) {
+        std::cerr << "[aes67ptpd] could not drop to '" << user
+                  << "': " << std::strerror(errno) << std::endl;
+        return false;
+    }
+    // setuid() is silently a no-op in some failure modes; check rather than
+    // assume, since the whole point is not being root any more.
+    if (::geteuid() == 0 || ::getuid() == 0) {
+        std::cerr << "[aes67ptpd] still root after dropping privileges" << std::endl;
+        return false;
+    }
+    return true;
+}
 
 void Usage() {
     std::printf(
@@ -125,6 +165,14 @@ int main(int argc, char** argv) {
                   << config.interfaceName
                   << ". Check the interface name, and that nothing else already"
                      " holds UDP 319/320 on it." << std::endl;
+        server.stop();
+        return 1;
+    }
+
+    // Root, if we had it, has done its work: the socket exists and the PTP
+    // ports are open.
+    if (!DropPrivileges("nobody")) {
+        slave.stop();
         server.stop();
         return 1;
     }

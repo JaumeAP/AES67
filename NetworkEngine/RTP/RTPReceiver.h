@@ -135,6 +135,15 @@ private:
     // Adjusts consume interval based on ring buffer fill level.
     static constexpr size_t kRateCheckIntervalPackets = 48;   // check every ~48ms
     static constexpr double kMaxRateAdjustment = 0.005;       // +/- 0.5%
+
+    /// Frames one packet may carry, and the one bound every buffer here is
+    /// sized from. 512 frames is 10.6 ms at 48 kHz, an order of magnitude
+    /// above the 1 ms AES67 asks for, so a packet above it is malformed
+    /// rather than merely large. It used to be stated twice — 512 where a
+    /// packet was decoded, 4096 where the result was de-interleaved — which
+    /// left the de-interleave buffer eight times the size anything could
+    /// reach and the two free to drift apart (2026-09-04 audit).
+    static constexpr size_t kMaxFramesPerPacket = 512;
     static constexpr double kTargetFillRatio = 0.5;           // 50% ring buffer fill
     static constexpr double kRateAdjustmentGain = 0.0001;     // very gentle P-controller
 

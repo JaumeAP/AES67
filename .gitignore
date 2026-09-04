@@ -78,7 +78,16 @@ ManagerApp/.build/
 .agents/
 
 # In-source CMake runs must never recommit their artifacts (2026-08-31;
-# the root-level ones are documented stale, these rules stop new ones)
+# the root-level ones were removed on 2026-09-04 along with two committed
+# arm64 binaries, and these rules stop new ones)
+/Makefile
+/CTestTestfile.cmake
+/CPackConfig.cmake
+/CPackSourceConfig.cmake
+Examples/Makefile
+Examples/CTestTestfile.cmake
+Examples/ChannelMapperDemo
+Examples/SimpleSDPParse
 Tests/Makefile
 Tests/CTestTestfile.cmake
 Tests/Testing/
