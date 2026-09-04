@@ -110,6 +110,118 @@ target_link_libraries(TestRTSPServer PRIVATE aes67_core aes67_net)
 target_link_libraries(TestRTSPServer PRIVATE doctest_headers)
 target_compile_features(TestRTSPServer PRIVATE cxx_std_17)
 
+# Test: SAP announcement parsing, against datagrams built byte by byte.
+add_executable(TestSAPListener
+    TestSAPListener.cpp
+)
+
+target_include_directories(TestSAPListener PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestSAPListener PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestSAPListener PRIVATE doctest_headers)
+target_compile_features(TestSAPListener PRIVATE cxx_std_17)
+
+# Test: what the RTCP monitor records from a packet, without a socket.
+add_executable(TestRTCPMonitor
+    TestRTCPMonitor.cpp
+)
+
+target_include_directories(TestRTCPMonitor PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTCPMonitor PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTCPMonitor PRIVATE doctest_headers)
+target_compile_features(TestRTCPMonitor PRIVATE cxx_std_17)
+
+# Test: the HTTP client, against a server made of a loopback socket.
+add_executable(TestHTTPClient
+    TestHTTPClient.cpp
+)
+
+target_include_directories(TestHTTPClient PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestHTTPClient PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestHTTPClient PRIVATE doctest_headers)
+target_compile_features(TestHTTPClient PRIVATE cxx_std_17)
+
+# Test: RTSP URL and response parsing, without a server.
+add_executable(TestRTSPClient
+    TestRTSPClient.cpp
+)
+
+target_include_directories(TestRTSPClient PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTSPClient PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTSPClient PRIVATE doctest_headers)
+target_compile_features(TestRTSPClient PRIVATE cxx_std_17)
+
+# Test: SAP announcements built here, read back by the listener's parser.
+add_executable(TestSAPAnnouncer
+    TestSAPAnnouncer.cpp
+)
+
+target_include_directories(TestSAPAnnouncer PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestSAPAnnouncer PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestSAPAnnouncer PRIVATE doctest_headers)
+target_compile_features(TestSAPAnnouncer PRIVATE cxx_std_17)
+
+# Test: the socket-layer helpers this repository supplies to the core.
+add_executable(TestNetworkUtils
+    TestNetworkUtils.cpp
+)
+
+target_include_directories(TestNetworkUtils PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestNetworkUtils PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestNetworkUtils PRIVATE doctest_headers)
+target_compile_features(TestNetworkUtils PRIVATE cxx_std_17)
+
+# Test: passive PTP peer discovery, from messages handed in directly.
+add_executable(TestPTPPeerObserver
+    TestPTPPeerObserver.cpp
+)
+
+target_include_directories(TestPTPPeerObserver PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPPeerObserver PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPPeerObserver PRIVATE doctest_headers)
+target_compile_features(TestPTPPeerObserver PRIVATE cxx_std_17)
+
+# Test: interface selection, against whatever interfaces this machine has.
+add_executable(TestNetworkInterfaceDetection
+    TestNetworkInterfaceDetection.cpp
+)
+
+target_include_directories(TestNetworkInterfaceDetection PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestNetworkInterfaceDetection PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestNetworkInterfaceDetection PRIVATE doctest_headers)
+target_compile_features(TestNetworkInterfaceDetection PRIVATE cxx_std_17)
+
 # Test: the IS-05 Connection API, routed directly and over a socket.
 add_executable(TestConnectionAPI
     TestConnectionAPI.cpp
@@ -376,6 +488,14 @@ add_test(NAME PTPSettingsMapping COMMAND TestPTPSettingsMapping)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
+add_test(NAME SAPListener COMMAND TestSAPListener)
+add_test(NAME RTCPMonitor COMMAND TestRTCPMonitor)
+add_test(NAME HTTPClient COMMAND TestHTTPClient)
+add_test(NAME RTSPClient COMMAND TestRTSPClient)
+add_test(NAME SAPAnnouncer COMMAND TestSAPAnnouncer)
+add_test(NAME NetworkUtils COMMAND TestNetworkUtils)
+add_test(NAME PTPPeerObserver COMMAND TestPTPPeerObserver)
+add_test(NAME NetworkInterfaceDetection COMMAND TestNetworkInterfaceDetection)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME MultiStream COMMAND TestMultiStream)
@@ -407,6 +527,14 @@ set_tests_properties(PTPSettingsMapping PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPMasterBoxInterop PROPERTIES LABELS "unit;interop" TIMEOUT 60)
 set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(ConnectionAPI PROPERTIES LABELS "unit;network" TIMEOUT 60)
+set_tests_properties(SAPListener PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RTCPMonitor PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(HTTPClient PROPERTIES LABELS "unit;network" TIMEOUT 60)
+set_tests_properties(RTSPClient PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(SAPAnnouncer PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(NetworkUtils PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPPeerObserver PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(NetworkInterfaceDetection PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)

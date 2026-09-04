@@ -288,7 +288,10 @@ std::optional<RTSPResponse> RTSPClient::parseResponse(const std::string& respons
         }
         if (contentLength > 0) {
             response.body.resize(contentLength);
-            stream.read(&response.body[0], contentLength);
+            stream.read(&response.body[0], static_cast<std::streamsize>(contentLength));
+            // A server may declare more than it sends. Keep what arrived
+            // rather than the zero bytes resize() left behind it.
+            response.body.resize(static_cast<size_t>(stream.gcount()));
         }
     } else {
         // Read remaining as body

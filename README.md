@@ -79,7 +79,7 @@ look for it.
 - Discovery both ways: SAP in and out, RTSP DESCRIBE as client and server, DNS-SD browsing
 - NMOS IS-04 registration and IS-05 connection management, against loopback registries and controllers
 - Test sender/receiver tools exercise the network path over loopback
-- 18 test suites pass here, plus the platform-free core's own (see `Tests/CMakeLists.txt` for the current list)
+- 26 test suites pass here, plus the platform-free core's own (see `Tests/CMakeLists.txt` for the current list)
 - IO handler benchmark exists for real-time performance characterisation
 - Doxygen API documentation can be generated via `make docs`
 - Flexible configuration: supports interface name ("en0") or IP address, auto-detects if not specified

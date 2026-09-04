@@ -79,6 +79,22 @@ public:
     
     // Get the list of recently discovered streams
     std::vector<SAPAnnouncement> getDiscoveredStreams() const;
+
+    /// Parse one SAP datagram (RFC 2974) into an announcement.
+    ///
+    /// Static and public so that the parsing can be exercised without a
+    /// socket: everything this reads arrives unauthenticated from a
+    /// multicast group anyone can send to, which makes it the part most
+    /// worth pinning, and it had no test of its own until 2026-09-04.
+    /// `sourceAddress` is the datagram's sender, which the parser only
+    /// records — it does not come out of the packet's own bytes.
+    ///
+    /// An announcement that could not be read comes back with an empty
+    /// sessionDescription, never as an exception: this runs inside
+    /// coreaudiod.
+    static SAPAnnouncement parseAnnouncement(const char* data, size_t length,
+                                             const std::string& sourceAddress);
+
     
 private:
     class Impl;

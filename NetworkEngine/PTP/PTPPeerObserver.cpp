@@ -154,20 +154,28 @@ private:
         socklen_t srcLen = sizeof(src);
         ssize_t got = ::recvfrom(fd, buf, bufLen, 0,
                                  reinterpret_cast<sockaddr*>(&src), &srcLen);
-        if (got < 34) return; // shorter than a PTP header — ignore
-
-        const uint8_t messageType = buf[0] & 0x0F;
-        const int domain = buf[4];
-        std::array<uint8_t, 8> clockId{};
-        for (size_t i = 0; i < 8; ++i) clockId[i] = buf[20 + i];
+        if (got < 0) return;
 
         char ipStr[INET_ADDRSTRLEN] = {0};
         ::inet_ntop(AF_INET, &src.sin_addr, ipStr, sizeof(ipStr));
+        deliverMessage(buf, static_cast<size_t>(got), ipStr);
+    }
+
+public:
+    void deliverMessage(const uint8_t* data, size_t length, const std::string& sourceIp) {
+        if (length < 34) return; // shorter than a PTP header — ignore
+
+        const uint8_t messageType = data[0] & 0x0F;
+        const int domain = data[4];
+        std::array<uint8_t, 8> clockId{};
+        for (size_t i = 0; i < 8; ++i) clockId[i] = data[20 + i];
 
         std::lock_guard<std::mutex> lock(mutex_);
-        table_.record(clockId, messageType, ipStr, domain,
+        table_.record(clockId, messageType, sourceIp, domain,
                       std::chrono::steady_clock::now());
     }
+
+private:
 
     std::atomic<bool> running_{false};
     int eventFd_{-1};
@@ -187,5 +195,9 @@ bool PTPPeerObserver::start(const std::string& interfaceName) {
 void PTPPeerObserver::stop() { pimpl_->stop(); }
 bool PTPPeerObserver::isRunning() const { return pimpl_->isRunning(); }
 std::vector<PTPPeerObservation> PTPPeerObserver::peers() const { return pimpl_->peers(); }
+void PTPPeerObserver::deliverMessage(const uint8_t* data, size_t length,
+                                     const std::string& sourceIp) {
+    pimpl_->deliverMessage(data, length, sourceIp);
+}
 
 } // namespace AES67

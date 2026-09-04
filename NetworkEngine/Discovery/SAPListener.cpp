@@ -254,179 +254,10 @@ private:
     }
     
     SAPAnnouncement parseSAPAnnouncement(const char* data, size_t length,
-                                       const std::string& sourceAddress) {
-        SAPAnnouncement announcement;
-        announcement.sourceAddress = sourceAddress;
-        announcement.lastSeen = std::chrono::steady_clock::now();
-
-        // SAP header (RFC 2974) minimum: 4 bytes + 4 bytes originating source
-        // Byte 0: V(3) | A(1) | R(1) | T(1) | E(1) | C(1)
-        // Byte 1: Auth length
-        // Bytes 2-3: Message ID Hash
-        // Bytes 4-7: Originating source (IPv4)
-        static constexpr size_t kMinSAPHeaderSize = 4;
-        static constexpr size_t kMaxSAPPacketSize = 4096; // Reasonable upper bound
-
-        if (length < kMinSAPHeaderSize || length > kMaxSAPPacketSize) {
-            return announcement; // Reject undersized or oversized packets
-        }
-
-        // Validate SAP version (must be 1, in bits 5-7 of byte 0)
-        uint8_t sapHeader = static_cast<uint8_t>(data[0]);
-        uint8_t version = (sapHeader >> 5) & 0x07;
-        if (version != 1) {
-            return announcement; // Unknown SAP version
-        }
-
-        // Type bit: 0 = announcement, 1 = deletion.
-        announcement.isDeletion = ((sapHeader >> 2) & 0x01) != 0;
-
-        // Stable identity, present in both announcements and deletions:
-        // Message ID Hash (bytes 2-3) and originating source (bytes 4-7).
-        // Needs the full 8-byte header; below the minimum we can't identify
-        // it, so leave the hash at 0 and let the name-based fallback apply.
-        if (length >= 8) {
-            const uint8_t* u = reinterpret_cast<const uint8_t*>(data);
-            announcement.msgIdHash = static_cast<uint16_t>((u[2] << 8) | u[3]);
-            announcement.originatingSource =
-                (static_cast<uint32_t>(u[4]) << 24) | (static_cast<uint32_t>(u[5]) << 16) |
-                (static_cast<uint32_t>(u[6]) << 8) | static_cast<uint32_t>(u[7]);
-        }
-
-        // Check encryption and compression bits — we don't support them
-        uint8_t encrypted = (sapHeader >> 1) & 0x01;
-        uint8_t compressed = sapHeader & 0x01;
-        if (encrypted || compressed) {
-            return announcement; // Encrypted/compressed SAP not supported
-        }
-
-        // A deletion carries only enough to identify the session (often a
-        // shortened body, sometimes none), not a full SDP. Its identity is
-        // already set above, so return now rather than fall through to the
-        // SDP checks below, which would reject it for lacking "v=0" — which
-        // is how this listener used to drop deletions entirely, leaving the
-        // session to time out instead of going when told.
-        if (announcement.isDeletion) {
-            return announcement;
-        }
-
-        // Auth length (number of 32-bit words of authentication data)
-        uint8_t authLen = static_cast<uint8_t>(data[1]);
-
-        // Calculate payload offset: 4 (base header) + 4 (originating source) + authLen*4
-        size_t payloadStart = 8 + (static_cast<size_t>(authLen) * 4);
-        if (payloadStart >= length) {
-            return announcement; // No room for payload
-        }
-
-        // Payload must contain printable text (SDP). Reject binary garbage.
-        size_t payloadLen = length - payloadStart;
-        if (payloadLen < 5) { // Minimum valid SDP: "v=0\r\n"
-            return announcement;
-        }
-
-        // The payload should be an SDP description
-        std::string sdpContent(data + payloadStart, payloadLen);
-
-        // Basic SDP sanity check: must start with "v=0" or contain "v=0"
-        if (sdpContent.find("v=0") == std::string::npos) {
-            return announcement; // Not valid SDP
-        }
-
-        announcement.sessionDescription = sdpContent;
-
-        // Parse basic SDP information
-        parseSDPInfo(sdpContent, announcement);
-
-        return announcement;
+                                         const std::string& sourceAddress) {
+        return SAPListener::parseAnnouncement(data, length, sourceAddress);
     }
-    
-    void parseSDPInfo(const std::string& sdp, SAPAnnouncement& announcement) {
-        // Parse the SDP content to extract stream information
-        size_t lastPos = 0;
-        size_t pos = 0;
 
-        while ((pos = sdp.find('\n', lastPos)) != std::string::npos) {
-            std::string line = sdp.substr(lastPos, pos - lastPos);
-            if (!line.empty() && line.back() == '\r') {
-                line.pop_back(); // Remove carriage return if present
-            }
-
-            // Parse session name
-            if (line.length() >= 2 && line.substr(0, 2) == "s=") {
-                announcement.sessionName = line.substr(2);
-            }
-            // Parse connection information
-            else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
-                // Format: c=IN IP4 <address>
-                size_t addrStart = line.rfind(' ');
-                if (addrStart != std::string::npos) {
-                    announcement.multicastAddress = line.substr(addrStart + 1);
-                }
-            }
-            // Parse media information
-            else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
-                // Format: m=audio <port> RTP/AVP <payload_type>
-                size_t portStart = line.find(' ', 2);
-                if (portStart != std::string::npos) {
-                    portStart++; // Skip the space
-                    size_t portEnd = line.find(' ', portStart);
-                    if (portEnd != std::string::npos) {
-                        std::string portStr = line.substr(portStart, portEnd - portStart);
-                        try {
-                            announcement.port = std::stoi(portStr);
-                        } catch (...) {
-                            announcement.port = 0;
-                        }
-                    }
-                }
-            }
-            // Parse RTP attribute (a=rtpmap)
-            else if (line.length() >= 9 && line.substr(0, 9) == "a=rtpmap:") {
-                // Format: a=rtpmap:<payload_type> <encoding_name>/<clock_rate>[/<channels>]
-                // This can be used for additional stream information if needed
-            }
-
-            lastPos = pos + 1;
-        }
-
-        // Handle the final line without newline
-        if (lastPos < sdp.length()) {
-            std::string line = sdp.substr(lastPos);
-            if (!line.empty() && line.back() == '\r') {
-                line.pop_back();
-            }
-
-            // Parse session name
-            if (line.length() >= 2 && line.substr(0, 2) == "s=") {
-                announcement.sessionName = line.substr(2);
-            }
-            // Parse connection information
-            else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
-                size_t addrStart = line.rfind(' ');
-                if (addrStart != std::string::npos) {
-                    announcement.multicastAddress = line.substr(addrStart + 1);
-                }
-            }
-            // Parse media information
-            else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
-                size_t portStart = line.find(' ', 2);
-                if (portStart != std::string::npos) {
-                    portStart++; // Skip the space
-                    size_t portEnd = line.find(' ', portStart);
-                    if (portEnd != std::string::npos) {
-                        std::string portStr = line.substr(portStart, portEnd - portStart);
-                        try {
-                            announcement.port = std::stoi(portStr);
-                        } catch (...) {
-                            announcement.port = 0;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
     std::atomic<bool> running_;
     int sockFd_;
     std::thread listenThread_;
@@ -440,6 +271,188 @@ private:
     // sessions as it reads, so the list never outlives what's on the wire.
     mutable std::vector<SAPAnnouncement> discoveredStreams_;
 };
+
+namespace {
+
+/// Pull the session name, connection address and media port out of an SDP
+/// body. Free function rather than a member: parseAnnouncement is static, and
+/// this is the only thing it needs.
+void parseSDPInfo(const std::string& sdp, SAPAnnouncement& announcement) {
+    // Parse the SDP content to extract stream information
+    size_t lastPos = 0;
+    size_t pos = 0;
+
+    while ((pos = sdp.find('\n', lastPos)) != std::string::npos) {
+        std::string line = sdp.substr(lastPos, pos - lastPos);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back(); // Remove carriage return if present
+        }
+
+        // Parse session name
+        if (line.length() >= 2 && line.substr(0, 2) == "s=") {
+            announcement.sessionName = line.substr(2);
+        }
+        // Parse connection information
+        else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
+            // Format: c=IN IP4 <address>
+            size_t addrStart = line.rfind(' ');
+            if (addrStart != std::string::npos) {
+                announcement.multicastAddress = line.substr(addrStart + 1);
+            }
+        }
+        // Parse media information
+        else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
+            // Format: m=audio <port> RTP/AVP <payload_type>
+            size_t portStart = line.find(' ', 2);
+            if (portStart != std::string::npos) {
+                portStart++; // Skip the space
+                size_t portEnd = line.find(' ', portStart);
+                if (portEnd != std::string::npos) {
+                    std::string portStr = line.substr(portStart, portEnd - portStart);
+                    try {
+                        announcement.port = std::stoi(portStr);
+                    } catch (...) {
+                        announcement.port = 0;
+                    }
+                }
+            }
+        }
+        // Parse RTP attribute (a=rtpmap)
+        else if (line.length() >= 9 && line.substr(0, 9) == "a=rtpmap:") {
+            // Format: a=rtpmap:<payload_type> <encoding_name>/<clock_rate>[/<channels>]
+            // This can be used for additional stream information if needed
+        }
+
+        lastPos = pos + 1;
+    }
+
+    // Handle the final line without newline
+    if (lastPos < sdp.length()) {
+        std::string line = sdp.substr(lastPos);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+
+        // Parse session name
+        if (line.length() >= 2 && line.substr(0, 2) == "s=") {
+            announcement.sessionName = line.substr(2);
+        }
+        // Parse connection information
+        else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
+            size_t addrStart = line.rfind(' ');
+            if (addrStart != std::string::npos) {
+                announcement.multicastAddress = line.substr(addrStart + 1);
+            }
+        }
+        // Parse media information
+        else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
+            size_t portStart = line.find(' ', 2);
+            if (portStart != std::string::npos) {
+                portStart++; // Skip the space
+                size_t portEnd = line.find(' ', portStart);
+                if (portEnd != std::string::npos) {
+                    std::string portStr = line.substr(portStart, portEnd - portStart);
+                    try {
+                        announcement.port = std::stoi(portStr);
+                    } catch (...) {
+                        announcement.port = 0;
+                    }
+                }
+            }
+        }
+    }
+}
+
+} // namespace
+
+SAPAnnouncement SAPListener::parseAnnouncement(const char* data, size_t length,
+                                          const std::string& sourceAddress) {
+    SAPAnnouncement announcement;
+    announcement.sourceAddress = sourceAddress;
+    announcement.lastSeen = std::chrono::steady_clock::now();
+
+    // SAP header (RFC 2974) minimum: 4 bytes + 4 bytes originating source
+    // Byte 0: V(3) | A(1) | R(1) | T(1) | E(1) | C(1)
+    // Byte 1: Auth length
+    // Bytes 2-3: Message ID Hash
+    // Bytes 4-7: Originating source (IPv4)
+    static constexpr size_t kMinSAPHeaderSize = 4;
+    static constexpr size_t kMaxSAPPacketSize = 4096; // Reasonable upper bound
+
+    if (length < kMinSAPHeaderSize || length > kMaxSAPPacketSize) {
+        return announcement; // Reject undersized or oversized packets
+    }
+
+    // Validate SAP version (must be 1, in bits 5-7 of byte 0)
+    uint8_t sapHeader = static_cast<uint8_t>(data[0]);
+    uint8_t version = (sapHeader >> 5) & 0x07;
+    if (version != 1) {
+        return announcement; // Unknown SAP version
+    }
+
+    // Type bit: 0 = announcement, 1 = deletion.
+    announcement.isDeletion = ((sapHeader >> 2) & 0x01) != 0;
+
+    // Stable identity, present in both announcements and deletions:
+    // Message ID Hash (bytes 2-3) and originating source (bytes 4-7).
+    // Needs the full 8-byte header; below the minimum we can't identify
+    // it, so leave the hash at 0 and let the name-based fallback apply.
+    if (length >= 8) {
+        const uint8_t* u = reinterpret_cast<const uint8_t*>(data);
+        announcement.msgIdHash = static_cast<uint16_t>((u[2] << 8) | u[3]);
+        announcement.originatingSource =
+            (static_cast<uint32_t>(u[4]) << 24) | (static_cast<uint32_t>(u[5]) << 16) |
+            (static_cast<uint32_t>(u[6]) << 8) | static_cast<uint32_t>(u[7]);
+    }
+
+    // Check encryption and compression bits — we don't support them
+    uint8_t encrypted = (sapHeader >> 1) & 0x01;
+    uint8_t compressed = sapHeader & 0x01;
+    if (encrypted || compressed) {
+        return announcement; // Encrypted/compressed SAP not supported
+    }
+
+    // A deletion carries only enough to identify the session (often a
+    // shortened body, sometimes none), not a full SDP. Its identity is
+    // already set above, so return now rather than fall through to the
+    // SDP checks below, which would reject it for lacking "v=0" — which
+    // is how this listener used to drop deletions entirely, leaving the
+    // session to time out instead of going when told.
+    if (announcement.isDeletion) {
+        return announcement;
+    }
+
+    // Auth length (number of 32-bit words of authentication data)
+    uint8_t authLen = static_cast<uint8_t>(data[1]);
+
+    // Calculate payload offset: 4 (base header) + 4 (originating source) + authLen*4
+    size_t payloadStart = 8 + (static_cast<size_t>(authLen) * 4);
+    if (payloadStart >= length) {
+        return announcement; // No room for payload
+    }
+
+    // Payload must contain printable text (SDP). Reject binary garbage.
+    size_t payloadLen = length - payloadStart;
+    if (payloadLen < 5) { // Minimum valid SDP: "v=0\r\n"
+        return announcement;
+    }
+
+    // The payload should be an SDP description
+    std::string sdpContent(data + payloadStart, payloadLen);
+
+    // Basic SDP sanity check: must start with "v=0" or contain "v=0"
+    if (sdpContent.find("v=0") == std::string::npos) {
+        return announcement; // Not valid SDP
+    }
+
+    announcement.sessionDescription = sdpContent;
+
+    // Parse basic SDP information
+    parseSDPInfo(sdpContent, announcement);
+
+    return announcement;
+}
+
 
 SAPListener::SAPListener() : pimpl_(std::make_unique<Impl>()) {
 }
