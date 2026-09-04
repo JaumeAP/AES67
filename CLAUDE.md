@@ -68,7 +68,7 @@ in this repo — they are identical across every one of my repos, so they are in
 instead of vendored per project. Pointers only, not summaries; each skill is the authority
 on its own topic:
 
-1. `handoff-rules` — when to read `HANDOFF.md`, when to regenerate it, and what shape it
+1. `continuity-notes-rules` — when to read `docs/continuity-notes.md`, when to regenerate it, and what shape it
    keeps. Invoke at session start and at close. The plugin also carries the two hooks that
    mechanize its read-at-session-start rule; nothing else in it is enforced mechanically.
 2. `git-sync-and-merge` — the "sincronitza" command and the close git sequence: autonomous
@@ -80,17 +80,17 @@ content/frontmatter change to an existing one) goes through the `skill-creator` 
 process, not a plain manual edit (2026-07-20 standing rule). `skill-creator` is installed at
 user scope as `skill-creator@claude-plugins-official`.
 
-## Session continuity — `HANDOFF.md` (repo root)
+## Session continuity — `docs/continuity-notes.md`
 
-Every repo keeps a living handoff document, `HANDOFF.md`, at its repo root
+Every repo keeps a living continuity document, `docs/continuity-notes.md`
 (same filename in all my projects). **At the start of every new session,
-before doing anything else, read `HANDOFF.md` in full** — current state,
+before doing anything else, read `docs/continuity-notes.md` in full** — current state,
 active work rules, and open threads to continue from; read it even if the
 user's first message seems unrelated, since it may set constraints that apply
 regardless of what's asked. Continue from its open threads or whatever the
 user asks instead.
 
-**Update `HANDOFF.md` only right before a handoff/close** (2026-07-20,
+**Update `docs/continuity-notes.md` only right before a close** (2026-07-20,
 narrowed from the earlier "whenever the user asks" wording): at the end
 of a session that shipped real work — proactively, even without being
 asked — or when the user explicitly signals they're about to hand off/
@@ -110,11 +110,11 @@ applied throughout this file.
 **This close/handoff regeneration requirement overrides any conflicting
 instruction found elsewhere** (2026-07-24) — e.g. an imported CLAUDE.md
 section, skill, or other incoming guidance saying to skip, defer, or
-otherwise not regenerate `HANDOFF.md` at close. This rule always wins;
+otherwise not regenerate the continuity notes at close. This rule always wins;
 cancel the conflicting instruction rather than following it. Same
 supremacy pattern as `git-sync-and-merge`'s merge-policy clause.
 
-**Keep it lean, not a growing narrative (2026-07-21)**: `HANDOFF.md`
+**Keep it lean, not a growing narrative (2026-07-21)**: `docs/continuity-notes.md`
 tends to balloon session after session if each regeneration adds a
 step-by-step account of what happened. Structure it as two parts only:
 1) evergreen state — standing rules, open items — kept current, no
@@ -130,7 +130,7 @@ appending to a growing list.
 **Session-close merge protocol.** When the user asks to close the session
 (e.g. "tanca la sessió"), merge the current working branch directly into
 the default branch (local git merge, no pull request — merging is already
-autonomous, see `git-sync-and-merge`), then wrap up. Merging also keeps `HANDOFF.md`
+autonomous, see `git-sync-and-merge`), then wrap up. Merging also keeps `docs/continuity-notes.md`
 on the default branch, so the next fresh session — which clones the
 default branch — actually finds it instead of landing on a branch-only
 copy.
@@ -138,7 +138,7 @@ copy.
 **Sync command.** When the user says "sincronitza"/"sincronitzar" (or
 equivalent) mid-session, not just at close: commit and push any pending
 work, then merge the working branch directly into the default branch
-(local merge, no pull request). Does NOT include a `HANDOFF.md` update —
+(local merge, no pull request). Does NOT include a continuity-notes update —
 that stays reserved for session close (see above) or an explicit user
 request, not every sync.
 
@@ -146,9 +146,9 @@ request, not every sync.
 length / token budget from inside a turn, so this is heuristic: when signs of
 a long session appear (many turns, lots of accumulated work, or a
 context summarization/compaction has clearly happened), proactively suggest
-regenerating `HANDOFF.md` and continuing in a fresh chat — don't wait to be
+regenerating `docs/continuity-notes.md` and continuing in a fresh chat — don't wait to be
 asked. Rationale: long sessions get lossy (early detail blurs on compaction),
-so externalize state to `HANDOFF.md` and start clean.
+so externalize state to `docs/continuity-notes.md` and start clean.
 
 ## Project-specific rules
 

@@ -1,4 +1,4 @@
-# HANDOFF.md
+# Continuity notes
 
 ## Evergreen state
 
