@@ -120,7 +120,11 @@ TEST_CASE("What a peer sends is what says which role it plays") {
 
     // A boundary clock does both, and is neither.
     deliver(observer, ptpMessage(kPdelayReq, 0, kGrandmaster), "192.168.1.10");
-    const PTPPeerObservation* mixed = find(observer.peers(), kGrandmaster);
+    // The snapshot is bound to a named vector, not passed straight into find():
+    // peers() returns by value, so a pointer into the temporary dangles the
+    // moment the full expression ends, and role() then reads freed memory.
+    const auto laterPeers = observer.peers();
+    const PTPPeerObservation* mixed = find(laterPeers, kGrandmaster);
     REQUIRE(mixed != nullptr);
     CHECK(mixed->role() == PTPPeerRole::Mixed);
 }

@@ -231,6 +231,18 @@ std::string NetworkUtils::getMulticastRouteCommand(const std::string& interfaceN
 bool NetworkUtils::isIPv4Address(const std::string& str) {
     if (str.empty()) return false;
 
+    // macOS accepts a leading zero in a component and reads the component as
+    // decimal anyway, so inet_pton alone maps "0177.0.0.1" to 177.0.0.1 rather
+    // than refusing it. An interface spec is either an address or a name, and a
+    // string that looks octal must not be taken for the first, so the octal
+    // form is rejected here rather than left to the platform.
+    for (size_t i = 0; i < str.size(); ++i) {
+        const bool startsComponent = (i == 0) || (str[i - 1] == '.');
+        if (!startsComponent || str[i] != '0') continue;
+        const bool componentContinues = (i + 1 < str.size()) && (str[i + 1] != '.');
+        if (componentContinues) return false;
+    }
+
     struct in_addr addr;
     return inet_pton(AF_INET, str.c_str(), &addr) == 1;
 }
