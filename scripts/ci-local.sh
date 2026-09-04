@@ -149,12 +149,15 @@ grep -rn "TODO" --include="*.cpp" --include="*.h" --include="*.hpp" --include="*
 # longer match anything here and reported "none found" whatever the state of
 # the build files (2026-09-04 audit). What can still rot on this side is a
 # source listed in CMake that no longer exists.
+# A subdirectory's CMakeLists names its extra sources relative to itself, so a
+# leading ../ is stripped and every path is read from the repository root.
 echo "==> Sources listed in CMake that are not on disk"
 missing=0
 while read -r candidate; do
   [ -f "$candidate" ] || { echo "MISSING: $candidate"; missing=1; }
-done < <(grep -ohE '^[[:space:]]+(Driver|NetworkEngine|Shared|Tools|Daemon)/[A-Za-z0-9_/]+\.(cpp|mm)' \
-           CMakeLists.txt Tests/CMakeLists.txt Tools/CMakeLists.txt | tr -d ' ')
+done < <(grep -ohE '^[[:space:]]+(\.\./)?(Driver|NetworkEngine|Shared|Tools|Daemon)/[A-Za-z0-9_/]+\.(cpp|mm)' \
+           CMakeLists.txt Tests/CMakeLists.txt Tools/CMakeLists.txt \
+         | tr -d ' ' | sed 's|^\.\./||' | sort -u)
 [ "$missing" = "0" ] && echo "Every listed source exists"
 
 echo "==> PASS"

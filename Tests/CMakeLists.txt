@@ -222,6 +222,34 @@ target_link_libraries(TestNetworkInterfaceDetection PRIVATE aes67_core aes67_net
 target_link_libraries(TestNetworkInterfaceDetection PRIVATE doctest_headers)
 target_compile_features(TestNetworkInterfaceDetection PRIVATE cxx_std_17)
 
+# Test: teardown plumbing — the cleanup manager and the RAII guards.
+add_executable(TestResourceCleanup
+    TestResourceCleanup.cpp
+)
+
+target_include_directories(TestResourceCleanup PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestResourceCleanup PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestResourceCleanup PRIVATE doctest_headers)
+target_compile_features(TestResourceCleanup PRIVATE cxx_std_17)
+
+# Test: multicast memberships kept alive, against loopback sockets.
+add_executable(TestMulticastRejoiner
+    TestMulticastRejoiner.cpp
+)
+
+target_include_directories(TestMulticastRejoiner PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestMulticastRejoiner PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestMulticastRejoiner PRIVATE doctest_headers)
+target_compile_features(TestMulticastRejoiner PRIVATE cxx_std_17)
+
 # Test: the IS-05 Connection API, routed directly and over a socket.
 add_executable(TestConnectionAPI
     TestConnectionAPI.cpp
@@ -496,6 +524,8 @@ add_test(NAME SAPAnnouncer COMMAND TestSAPAnnouncer)
 add_test(NAME NetworkUtils COMMAND TestNetworkUtils)
 add_test(NAME PTPPeerObserver COMMAND TestPTPPeerObserver)
 add_test(NAME NetworkInterfaceDetection COMMAND TestNetworkInterfaceDetection)
+add_test(NAME ResourceCleanup COMMAND TestResourceCleanup)
+add_test(NAME MulticastRejoiner COMMAND TestMulticastRejoiner)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME MultiStream COMMAND TestMultiStream)
@@ -535,6 +565,8 @@ set_tests_properties(SAPAnnouncer PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(NetworkUtils PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPPeerObserver PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(NetworkInterfaceDetection PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(ResourceCleanup PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(MulticastRejoiner PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)
