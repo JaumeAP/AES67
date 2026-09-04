@@ -8,7 +8,7 @@
 #pragma once
 
 #include "Shared/Types.h"
-#include "PTPDiagnostics.h"
+#include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include <thread>
 #include <atomic>
 #include <memory>

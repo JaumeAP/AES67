@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <iostream>
@@ -286,7 +288,10 @@ std::optional<RTSPResponse> RTSPClient::parseResponse(const std::string& respons
         }
         if (contentLength > 0) {
             response.body.resize(contentLength);
-            stream.read(&response.body[0], contentLength);
+            stream.read(&response.body[0], static_cast<std::streamsize>(contentLength));
+            // A server may declare more than it sends. Keep what arrived
+            // rather than the zero bytes resize() left behind it.
+            response.body.resize(static_cast<size_t>(stream.gcount()));
         }
     } else {
         // Read remaining as body
@@ -322,11 +327,22 @@ bool RTSPClient::parseURL(const std::string& url, std::string& host, uint16_t& p
         path = "/";
     }
 
-    // Parse host:port
+    // Parse host:port. std::stoi threw on anything that was not a number,
+    // and a URL reaches here from a settings file or a controller, so the
+    // throw was the same std::terminate-inside-coreaudiod trap the
+    // Content-Length parse above was written to avoid (2026-09-04 audit).
     size_t colon = hostPort.find(':');
     if (colon != std::string::npos) {
         host = hostPort.substr(0, colon);
-        port = static_cast<uint16_t>(std::stoi(hostPort.substr(colon + 1)));
+        const std::string portText = hostPort.substr(colon + 1);
+        errno = 0;
+        char* end = nullptr;
+        const unsigned long value = std::strtoul(portText.c_str(), &end, 10);
+        if (portText.empty() || end == portText.c_str() || *end != '\0' ||
+            errno == ERANGE || value == 0 || value > 65535) {
+            return false;
+        }
+        port = static_cast<uint16_t>(value);
     } else {
         host = hostPort;
         port = 554;  // Default RTSP port

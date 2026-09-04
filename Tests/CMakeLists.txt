@@ -10,33 +10,6 @@ endif()
 
 
 
-# Test: Ring Buffer
-add_executable(TestRingBuffer
-    TestRingBuffer.cpp
-)
-
-target_include_directories(TestRingBuffer PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(TestRingBuffer PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestRingBuffer PRIVATE doctest_headers)
-target_compile_features(TestRingBuffer PRIVATE cxx_std_17)
-
-add_executable(TestRingBufferTiming
-    TestRingBufferTiming.cpp
-)
-
-target_include_directories(TestRingBufferTiming PRIVATE
-    ${CMAKE_SOURCE_DIR}
-)
-
-target_link_libraries(TestRingBufferTiming PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestRingBufferTiming PRIVATE doctest_headers)
-target_compile_features(TestRingBufferTiming PRIVATE cxx_std_17)
-
 # Test: RTP Receiver
 add_executable(TestRTPReceiver
     TestRTPReceiver.cpp
@@ -137,6 +110,146 @@ target_link_libraries(TestRTSPServer PRIVATE aes67_core aes67_net)
 target_link_libraries(TestRTSPServer PRIVATE doctest_headers)
 target_compile_features(TestRTSPServer PRIVATE cxx_std_17)
 
+# Test: SAP announcement parsing, against datagrams built byte by byte.
+add_executable(TestSAPListener
+    TestSAPListener.cpp
+)
+
+target_include_directories(TestSAPListener PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestSAPListener PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestSAPListener PRIVATE doctest_headers)
+target_compile_features(TestSAPListener PRIVATE cxx_std_17)
+
+# Test: what the RTCP monitor records from a packet, without a socket.
+add_executable(TestRTCPMonitor
+    TestRTCPMonitor.cpp
+)
+
+target_include_directories(TestRTCPMonitor PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTCPMonitor PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTCPMonitor PRIVATE doctest_headers)
+target_compile_features(TestRTCPMonitor PRIVATE cxx_std_17)
+
+# Test: the HTTP client, against a server made of a loopback socket.
+add_executable(TestHTTPClient
+    TestHTTPClient.cpp
+)
+
+target_include_directories(TestHTTPClient PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestHTTPClient PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestHTTPClient PRIVATE doctest_headers)
+target_compile_features(TestHTTPClient PRIVATE cxx_std_17)
+
+# Test: RTSP URL and response parsing, without a server.
+add_executable(TestRTSPClient
+    TestRTSPClient.cpp
+)
+
+target_include_directories(TestRTSPClient PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTSPClient PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestRTSPClient PRIVATE doctest_headers)
+target_compile_features(TestRTSPClient PRIVATE cxx_std_17)
+
+# Test: SAP announcements built here, read back by the listener's parser.
+add_executable(TestSAPAnnouncer
+    TestSAPAnnouncer.cpp
+)
+
+target_include_directories(TestSAPAnnouncer PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestSAPAnnouncer PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestSAPAnnouncer PRIVATE doctest_headers)
+target_compile_features(TestSAPAnnouncer PRIVATE cxx_std_17)
+
+# Test: the socket-layer helpers this repository supplies to the core.
+add_executable(TestNetworkUtils
+    TestNetworkUtils.cpp
+)
+
+target_include_directories(TestNetworkUtils PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestNetworkUtils PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestNetworkUtils PRIVATE doctest_headers)
+target_compile_features(TestNetworkUtils PRIVATE cxx_std_17)
+
+# Test: passive PTP peer discovery, from messages handed in directly.
+add_executable(TestPTPPeerObserver
+    TestPTPPeerObserver.cpp
+)
+
+target_include_directories(TestPTPPeerObserver PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPPeerObserver PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPPeerObserver PRIVATE doctest_headers)
+target_compile_features(TestPTPPeerObserver PRIVATE cxx_std_17)
+
+# Test: interface selection, against whatever interfaces this machine has.
+add_executable(TestNetworkInterfaceDetection
+    TestNetworkInterfaceDetection.cpp
+)
+
+target_include_directories(TestNetworkInterfaceDetection PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestNetworkInterfaceDetection PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestNetworkInterfaceDetection PRIVATE doctest_headers)
+target_compile_features(TestNetworkInterfaceDetection PRIVATE cxx_std_17)
+
+# Test: teardown plumbing — the cleanup manager and the RAII guards.
+add_executable(TestResourceCleanup
+    TestResourceCleanup.cpp
+)
+
+target_include_directories(TestResourceCleanup PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestResourceCleanup PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestResourceCleanup PRIVATE doctest_headers)
+target_compile_features(TestResourceCleanup PRIVATE cxx_std_17)
+
+# Test: multicast memberships kept alive, against loopback sockets.
+add_executable(TestMulticastRejoiner
+    TestMulticastRejoiner.cpp
+)
+
+target_include_directories(TestMulticastRejoiner PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestMulticastRejoiner PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestMulticastRejoiner PRIVATE doctest_headers)
+target_compile_features(TestMulticastRejoiner PRIVATE cxx_std_17)
+
 # Test: the IS-05 Connection API, routed directly and over a socket.
 add_executable(TestConnectionAPI
     TestConnectionAPI.cpp
@@ -164,6 +277,21 @@ target_link_libraries(TestNMOSRegistration PRIVATE aes67_core aes67_net)
 
 target_link_libraries(TestNMOSRegistration PRIVATE doctest_headers)
 target_compile_features(TestNMOSRegistration PRIVATE cxx_std_17)
+
+# Test: this slave against the bytes the AES67-MasterBox puts on the wire,
+# replayed through PTPSlave::deliverMessage. No sockets: see the file's head.
+add_executable(TestPTPMasterBoxInterop
+    TestPTPMasterBoxInterop.cpp
+)
+
+target_include_directories(TestPTPMasterBoxInterop PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_core aes67_net)
+
+target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
+target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
 
 # Test: the configured PTP dataset reaching the engines that send it.
 add_executable(TestPTPSettingsMapping
@@ -371,40 +499,9 @@ target_link_libraries(TestPCMCodec PRIVATE doctest_headers)
 target_compile_features(TestPCMCodec PRIVATE cxx_std_17)
 target_link_libraries(TestPCMCodec PRIVATE "-framework Accelerate")
 
-# Test: PTP peer table (passive Dolby-via-PTP discovery core) — header-only,
-# socket-free, time-injected. See TestPTPPeerTable.cpp.
-add_executable(TestPTPPeerTable
-    TestPTPPeerTable.cpp
-)
-target_include_directories(TestPTPPeerTable PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(TestPTPPeerTable PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestPTPPeerTable PRIVATE doctest_headers)
-target_compile_features(TestPTPPeerTable PRIVATE cxx_std_17)
-
-# Test: Dolby model catalog (model -> channels/direction + channel resolver)
-add_executable(TestDolbyModelCatalog
-    TestDolbyModelCatalog.cpp
-)
-target_include_directories(TestDolbyModelCatalog PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(TestDolbyModelCatalog PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestDolbyModelCatalog PRIVATE doctest_headers)
-target_compile_features(TestDolbyModelCatalog PRIVATE cxx_std_17)
-
-add_executable(TestRTCPReceiverTable
-    TestRTCPReceiverTable.cpp
-)
-target_include_directories(TestRTCPReceiverTable PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(TestRTCPReceiverTable PRIVATE aes67_core aes67_net)
-
-target_link_libraries(TestRTCPReceiverTable PRIVATE doctest_headers)
-target_compile_features(TestRTCPReceiverTable PRIVATE cxx_std_17)
 
 # Add tests to CTest
 enable_testing()
-add_test(NAME RingBuffer COMMAND TestRingBuffer)
-add_test(NAME RingBufferTiming COMMAND TestRingBufferTiming)
 add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
@@ -416,13 +513,21 @@ add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME PTPSettingsMapping COMMAND TestPTPSettingsMapping)
+add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
+add_test(NAME SAPListener COMMAND TestSAPListener)
+add_test(NAME RTCPMonitor COMMAND TestRTCPMonitor)
+add_test(NAME HTTPClient COMMAND TestHTTPClient)
+add_test(NAME RTSPClient COMMAND TestRTSPClient)
+add_test(NAME SAPAnnouncer COMMAND TestSAPAnnouncer)
+add_test(NAME NetworkUtils COMMAND TestNetworkUtils)
+add_test(NAME PTPPeerObserver COMMAND TestPTPPeerObserver)
+add_test(NAME NetworkInterfaceDetection COMMAND TestNetworkInterfaceDetection)
+add_test(NAME ResourceCleanup COMMAND TestResourceCleanup)
+add_test(NAME MulticastRejoiner COMMAND TestMulticastRejoiner)
 add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
-add_test(NAME PTPPeerTable COMMAND TestPTPPeerTable)
-add_test(NAME DolbyModelCatalog COMMAND TestDolbyModelCatalog)
-add_test(NAME RTCPReceiverTable COMMAND TestRTCPReceiverTable)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 
@@ -440,22 +545,28 @@ add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
 # hung test blocks the push forever with no output; the slowest suite today
 # is IntegrationAudioPath at ~2.2s, so 60s is generous by more than an order
 # of magnitude and still bounded.
-set_tests_properties(RingBuffer PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(RingBufferTiming PROPERTIES LABELS "timing" TIMEOUT 60)
 set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTPTransmitter PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
 set_tests_properties(PTPMaster PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(PTPPeerTable PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(DolbyModelCatalog PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(RTCPReceiverTable PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPSettingsMapping PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPMasterBoxInterop PROPERTIES LABELS "unit;interop" TIMEOUT 60)
 set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(ConnectionAPI PROPERTIES LABELS "unit;network" TIMEOUT 60)
+set_tests_properties(SAPListener PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(RTCPMonitor PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(HTTPClient PROPERTIES LABELS "unit;network" TIMEOUT 60)
+set_tests_properties(RTSPClient PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(SAPAnnouncer PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(NetworkUtils PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPPeerObserver PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(NetworkInterfaceDetection PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(ResourceCleanup PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(MulticastRejoiner PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(MultiStream PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(IntegrationAudioPath PROPERTIES LABELS "integration;timing;network" TIMEOUT 60)
 set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" TIMEOUT 90)
@@ -467,7 +578,6 @@ set_tests_properties(RTSPServer PROPERTIES LABELS "integration;network" TIMEOUT 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")
 message(STATUS "  - TestChannelMapper")
-message(STATUS "  - TestRingBuffer")
 message(STATUS "  - TestRTPReceiver")
 message(STATUS "  - TestRTPTransmitter")
 message(STATUS "  - TestPTPClock")

@@ -16,8 +16,8 @@
 #pragma once
 
 #include "AudioClockDeviceList.h"
-#include "PTPClockSource.h"
-#include "PTPDiagnostics.h"
+#include "NetworkEngine/PTP/PTPClockSource.h"
+#include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "PTPMaster.h"
 #include "PTPSlave.h"
 

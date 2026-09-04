@@ -481,6 +481,23 @@ TEST_CASE("Sink Follow Not Bound") {
     SDPSession storedWithSrc = stored; storedWithSrc.sourceAddress = "10.0.0.1";
     CHECK(StreamManager::evaluateSinkFollow(storedWithSrc, otherSender) == SFD::NotBound);
 
+    // Same name, another host. SAP is unauthenticated multicast, so a name
+    // on its own is not identity: whoever answers to it could be anybody
+    // (2026-09-04 audit).
+    SDPSession impostor = stored;
+    impostor.port = 5010;
+    impostor.connectionAddress = "239.6.6.6";
+    impostor.originAddress = "192.168.1.66";
+    CHECK(StreamManager::evaluateSinkFollow(stored, impostor) == SFD::NotBound);
+
+    // An announcement that names no origin at all does not bind either, nor
+    // does a stored stream that has none to compare against.
+    SDPSession anonymous = impostor; anonymous.originAddress = "";
+    CHECK(StreamManager::evaluateSinkFollow(stored, anonymous) == SFD::NotBound);
+    SDPSession storedAnonymous = stored; storedAnonymous.originAddress = "";
+    SDPSession moved = stored; moved.port = 5010;
+    CHECK(StreamManager::evaluateSinkFollow(storedAnonymous, moved) == SFD::NotBound);
+
     std::cout << "PASS" << std::endl;
 }
 

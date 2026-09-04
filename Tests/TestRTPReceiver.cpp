@@ -10,8 +10,8 @@
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include "Driver/SDPParser.h"
 #include "NetworkEngine/StreamChannelMapper.h"
+#include <cstdint>
 #include <iostream>
-#include <cassert>
 #include <vector>
 
 using namespace AES67;
@@ -19,6 +19,109 @@ using namespace AES67::RTP;
 
 // Test result counter
 
+
+//
+// Framing: which bytes of a datagram are audio
+//
+
+namespace {
+
+/// A datagram with `csrcCount` CSRC entries, an optional extension of
+/// `extensionWords` 32-bit words, `payload` bytes of audio and `padding`
+/// bytes of trailing padding (0 = none).
+std::vector<uint8_t> buildDatagram(int csrcCount, int extensionWords,
+                                   size_t payloadBytes, size_t padding) {
+    std::vector<uint8_t> packet;
+    packet.push_back(static_cast<uint8_t>(0x80 | (extensionWords >= 0 ? 0x10 : 0) |
+                                          (padding > 0 ? 0x20 : 0) | csrcCount));
+    packet.push_back(97);                       // payload type, marker clear
+    packet.insert(packet.end(), {0x00, 0x01});  // sequence number
+    packet.insert(packet.end(), {0, 0, 0, 0});  // timestamp
+    packet.insert(packet.end(), {0, 0, 0, 1});  // SSRC
+    for (int i = 0; i < csrcCount; ++i) packet.insert(packet.end(), {0xC5, 0xC5, 0xC5, 0xC5});
+    if (extensionWords >= 0) {
+        packet.insert(packet.end(), {0xBE, 0xDE});  // profile
+        packet.push_back(static_cast<uint8_t>((extensionWords >> 8) & 0xFF));
+        packet.push_back(static_cast<uint8_t>(extensionWords & 0xFF));
+        for (int i = 0; i < extensionWords * 4; ++i) packet.push_back(0xEE);
+    }
+    for (size_t i = 0; i < payloadBytes; ++i) packet.push_back(0xA0);
+    for (size_t i = 0; i + 1 < padding; ++i) packet.push_back(0x00);
+    if (padding > 0) packet.push_back(static_cast<uint8_t>(padding));
+    return packet;
+}
+
+} // namespace
+
+TEST_CASE("Framing skips the CSRC list") {
+    std::cout << "Test: a contributing-source list is not audio... ";
+
+    const std::vector<uint8_t> datagram = buildDatagram(3, -1, 64, 0);
+    RTPPacket packet;
+    REQUIRE(RTPSocket::parseFrame(datagram.data(), datagram.size(), packet));
+    CHECK(packet.header.cc == 3);
+    CHECK(packet.payloadSize == 64);
+    CHECK(packet.payload[0] == 0xA0);   // audio, not a CSRC byte
+
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Framing skips the extension header") {
+    std::cout << "Test: an extension header is not audio... ";
+
+    const std::vector<uint8_t> datagram = buildDatagram(0, 2, 48, 0);
+    RTPPacket packet;
+    REQUIRE(RTPSocket::parseFrame(datagram.data(), datagram.size(), packet));
+    CHECK(packet.payloadSize == 48);
+    CHECK(packet.payload[0] == 0xA0);
+
+    // Both at once, which is what makes the offset arithmetic worth testing.
+    const std::vector<uint8_t> both = buildDatagram(2, 1, 32, 0);
+    RTPPacket second;
+    REQUIRE(RTPSocket::parseFrame(both.data(), both.size(), second));
+    CHECK(second.payloadSize == 32);
+    CHECK(second.payload[0] == 0xA0);
+
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Framing drops trailing padding") {
+    std::cout << "Test: padding is not audio... ";
+
+    const std::vector<uint8_t> datagram = buildDatagram(0, -1, 40, 8);
+    RTPPacket packet;
+    REQUIRE(RTPSocket::parseFrame(datagram.data(), datagram.size(), packet));
+    CHECK(packet.header.padding == 1);
+    CHECK(packet.payloadSize == 40);
+
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Framing refuses what does not add up") {
+    std::cout << "Test: a datagram smaller than what it declares is rejected... ";
+
+    RTPPacket packet;
+
+    // Shorter than the fixed header.
+    const std::vector<uint8_t> runt(8, 0x80);
+    CHECK_FALSE(RTPSocket::parseFrame(runt.data(), runt.size(), packet));
+
+    // A CSRC count that eats the whole datagram, leaving no payload.
+    const std::vector<uint8_t> allHeader = buildDatagram(4, -1, 0, 0);
+    CHECK_FALSE(RTPSocket::parseFrame(allHeader.data(), allHeader.size(), packet));
+
+    // An extension length longer than the datagram.
+    std::vector<uint8_t> lying = buildDatagram(0, 1, 16, 0);
+    lying[15] = 0xFF; // extension length, low byte: 255 words that are not there
+    CHECK_FALSE(RTPSocket::parseFrame(lying.data(), lying.size(), packet));
+
+    // Padding that claims more than the payload holds.
+    std::vector<uint8_t> overPadded = buildDatagram(0, -1, 16, 4);
+    overPadded.back() = 0xFF;
+    CHECK_FALSE(RTPSocket::parseFrame(overPadded.data(), overPadded.size(), packet));
+
+    std::cout << "PASS" << std::endl;
+}
 
 //
 // Basic RTP Packet Tests

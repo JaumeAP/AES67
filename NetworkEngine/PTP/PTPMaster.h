@@ -19,7 +19,7 @@
 #pragma once
 
 #include "PTPBMCA.h"
-#include "PTPClockSource.h"
+#include "NetworkEngine/PTP/PTPClockSource.h"
 #include "PTPSlave.h"   // PTPMessageType, PTPTimestamp, PTPClockIdentity,
                         // PTPPortIdentity, PTPHeader, PTPAnnounceData
 
@@ -124,6 +124,17 @@ private:
 
     PTPMasterConfig config_;
     PTPClockSource& clockSource_;
+
+    // The two message intervals, settled once in the constructor. The log
+    // values are what goes on the wire; the periods are what the transmit
+    // loop waits, derived from those same log values. Read these rather than
+    // config_.syncIntervalMs and config_.announceIntervalMs: two numbers for
+    // one rate is how a port ends up announcing 125 ms while sending every
+    // 100.
+    int8_t logSyncInterval_;
+    int8_t logAnnounceInterval_;
+    std::chrono::nanoseconds syncPeriod_;
+    std::chrono::nanoseconds announcePeriod_;
 
     int eventSocket_ = -1;
     int generalSocket_ = -1;

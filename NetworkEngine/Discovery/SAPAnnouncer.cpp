@@ -156,24 +156,8 @@ private:
     void sendPacket(const std::string& sdp, uint16_t msgIdHash, bool deletion) {
         if (sockFd_ < 0) return;
 
-        // RFC 2974 header: V=1 (bits 5-7), A=0 IPv4, T=deletion bit (bit 2),
-        // E=C=0. Auth length 0. Then Message ID Hash (2) + originating source
-        // (4). No "application/sdp" payload-type prefix: it is optional and
-        // defaults to SDP, and omitting it matches what this driver's own
-        // SAPListener parser expects. The full SDP body follows, in both
-        // announcement and deletion (RFC 2974 permits it in a deletion, and
-        // it lets stricter receivers identify the withdrawn session).
-        std::vector<uint8_t> pkt;
-        pkt.reserve(8 + sdp.size());
-        uint8_t b0 = (1u << 5); // version 1
-        if (deletion) b0 |= (1u << 2);
-        pkt.push_back(b0);
-        pkt.push_back(0); // auth length
-        pkt.push_back(static_cast<uint8_t>((msgIdHash >> 8) & 0xFF));
-        pkt.push_back(static_cast<uint8_t>(msgIdHash & 0xFF));
-        const uint8_t* src = reinterpret_cast<const uint8_t*>(&originatingSource_);
-        pkt.insert(pkt.end(), src, src + 4); // already network byte order
-        pkt.insert(pkt.end(), sdp.begin(), sdp.end());
+        const std::vector<uint8_t> pkt =
+            SAPAnnouncer::buildPacket(sdp, msgIdHash, originatingSource_, deletion);
 
         for (const char* group : kSapGroups) {
             sockaddr_in dst{};
@@ -195,6 +179,31 @@ private:
     // SDP body -> Message ID Hash we announced it with.
     std::unordered_map<std::string, uint16_t> announced_;
 };
+
+uint16_t SAPAnnouncer::messageIdHash(const std::string& sdp) { return hashSdp(sdp); }
+
+std::vector<uint8_t> SAPAnnouncer::buildPacket(const std::string& sdp, uint16_t msgIdHash,
+                                               uint32_t originatingSource, bool deletion) {
+    // RFC 2974 header: V=1 (bits 5-7), A=0 IPv4, T=deletion bit (bit 2),
+    // E=C=0. Auth length 0. Then Message ID Hash (2) + originating source
+    // (4). No "application/sdp" payload-type prefix: it is optional and
+    // defaults to SDP, and omitting it matches what this driver's own
+    // SAPListener parser expects. The full SDP body follows, in both
+    // announcement and deletion (RFC 2974 permits it in a deletion, and it
+    // lets stricter receivers identify the withdrawn session).
+    std::vector<uint8_t> pkt;
+    pkt.reserve(8 + sdp.size());
+    uint8_t b0 = (1u << 5); // version 1
+    if (deletion) b0 |= (1u << 2);
+    pkt.push_back(b0);
+    pkt.push_back(0); // auth length
+    pkt.push_back(static_cast<uint8_t>((msgIdHash >> 8) & 0xFF));
+    pkt.push_back(static_cast<uint8_t>(msgIdHash & 0xFF));
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(&originatingSource);
+    pkt.insert(pkt.end(), src, src + 4); // already network byte order
+    pkt.insert(pkt.end(), sdp.begin(), sdp.end());
+    return pkt;
+}
 
 SAPAnnouncer::SAPAnnouncer() : pimpl_(std::make_unique<Impl>()) {}
 SAPAnnouncer::~SAPAnnouncer() = default;

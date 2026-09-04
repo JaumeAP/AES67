@@ -171,9 +171,16 @@ std::string NetworkUtils::getPrimaryEthernetInterface() {
 }
 
 bool NetworkUtils::isValidMulticastAddress(const std::string& addr) {
+    // inet_pton, not inet_aton: the older call accepts the classful
+    // shorthands, so "239.69.0" came back true as 239.69.0.0 and "0351.69.0.1"
+    // as an octal address. Addresses reach this from SDP bodies and settings
+    // files, where a three-part group is a typo, not a form to complete for
+    // the sender — and isIPv4Address next door has always been strict, so the
+    // two disagreed about the same text (2026-09-04, found by this function's
+    // first test).
     struct in_addr in_addr_var;
-    if (inet_aton(addr.c_str(), &in_addr_var) == 0) {
-        return false; // Not a valid IP address
+    if (inet_pton(AF_INET, addr.c_str(), &in_addr_var) != 1) {
+        return false; // Not a valid IPv4 address
     }
 
     // Check if it's in the multicast range (224.0.0.0 to 239.255.255.255)

@@ -14,7 +14,7 @@
 //
 
 #include "PTPSlave.h"
-#include "PTPDiagnostics.h"
+#include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "NetworkEngine/NetworkUtils.h"
 
 #include <sys/socket.h>
@@ -126,6 +126,10 @@ PTPSlave::PTPSlave(const PTPSlaveConfig& config)
     , eventSocket_(-1)
     , generalSocket_(-1)
 {
+    // The port number is configuration, not something start() discovers, and
+    // a Delay_Resp is addressed to the whole port identity: setting it here
+    // means the identity is comparable before any socket exists.
+    selfPortId_.portNumber = config_.portNumber;
     offsetHistory_.fill(0);
     delayHistory_.fill(0);
 }
@@ -182,6 +186,7 @@ bool PTPSlave::start() {
     delayRespCount_.store(0, std::memory_order_relaxed);
     announceCount_.store(0, std::memory_order_relaxed);
     domainMismatchCount_.store(0, std::memory_order_relaxed);
+    oneStepRejectedCount_.store(0, std::memory_order_relaxed);
 
     running_.store(true, std::memory_order_release);
 
@@ -524,36 +529,7 @@ void PTPSlave::receiveThread() {
                     }
                 }
 
-                PTPHeader header;
-                if (parseHeader(buf, static_cast<size_t>(n), header)) {
-                    // Profile check: a gPTP master (majorSdoId 1) on this
-                    // domain used to be followed as if it were ours.
-                    if (config_.enforceMajorSdoId
-                        && header.getMajorSdoId() != config_.majorSdoId) {
-                        sdoIdMismatchCount_.fetch_add(1, std::memory_order_relaxed);
-                    } else if (header.domainNumber != config_.domain) {
-                        domainMismatchCount_.fetch_add(1, std::memory_order_relaxed);
-                    } else {
-                        switch (header.getMessageType()) {
-                            case PTPMessageType::Sync:
-                                handleSync(header, buf, static_cast<size_t>(n), receiveTimeNs);
-                                break;
-                            case PTPMessageType::Delay_Resp:
-                                handleDelayResp(header, buf, static_cast<size_t>(n));
-                                break;
-                            case PTPMessageType::Pdelay_Req:
-                                handlePdelayReq(header, buf, static_cast<size_t>(n),
-                                                receiveTimeNs);
-                                break;
-                            case PTPMessageType::Pdelay_Resp:
-                                handlePdelayResp(header, buf, static_cast<size_t>(n),
-                                                 receiveTimeNs);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                }
+                dispatchMessage(buf, static_cast<size_t>(n), receiveTimeNs, true);
             }
         }
 
@@ -561,44 +537,7 @@ void PTPSlave::receiveThread() {
         if (generalSocket_ >= 0 && FD_ISSET(generalSocket_, &readfds)) {
             ssize_t n = recv(generalSocket_, buf, sizeof(buf), 0);
             if (n >= static_cast<ssize_t>(kPTPHeaderSize)) {
-                PTPHeader header;
-                if (parseHeader(buf, static_cast<size_t>(n), header)) {
-                    // Profile check: a gPTP master (majorSdoId 1) on this
-                    // domain used to be followed as if it were ours.
-                    if (config_.enforceMajorSdoId
-                        && header.getMajorSdoId() != config_.majorSdoId) {
-                        sdoIdMismatchCount_.fetch_add(1, std::memory_order_relaxed);
-                    } else if (header.domainNumber != config_.domain) {
-                        domainMismatchCount_.fetch_add(1, std::memory_order_relaxed);
-                    } else {
-                        switch (header.getMessageType()) {
-                            case PTPMessageType::Follow_Up:
-                                handleFollowUp(header, buf, static_cast<size_t>(n));
-                                break;
-                            case PTPMessageType::Announce:
-                                handleAnnounce(header, buf, static_cast<size_t>(n));
-                                break;
-                            case PTPMessageType::Pdelay_Resp_FU:
-                                handlePdelayRespFollowUp(header, buf,
-                                                         static_cast<size_t>(n));
-                                break;
-                            case PTPMessageType::Delay_Resp:
-                                // Delay_Resp is a GENERAL message (IEEE
-                                // 1588-2008 Table 15, port 320) -- it was
-                                // only handled on the event socket until
-                                // 2026-08-31, so a standards-compliant
-                                // grandmaster's answer was silently
-                                // dropped and the slave could never
-                                // measure path delay. Found by the new
-                                // PTP loopback test: master sent 21
-                                // Delay_Resp, slave counted 0.
-                                handleDelayResp(header, buf, static_cast<size_t>(n));
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                }
+                dispatchMessage(buf, static_cast<size_t>(n), 0, false);
             }
         }
 
@@ -1013,13 +952,81 @@ void PTPSlave::parsePortIdentity(const uint8_t* data, size_t offset, PTPPortIden
 // Message Handlers
 // ============================================================================
 
+void PTPSlave::dispatchMessage(const uint8_t* data, size_t len, uint64_t receiveTimeNs,
+                               bool onEventSocket) {
+    if (len < kPTPHeaderSize) return;
+
+    PTPHeader header;
+    if (!parseHeader(data, len, header)) return;
+
+    // Profile check: a gPTP master (majorSdoId 1) on this domain used to be
+    // followed as if it were ours.
+    if (config_.enforceMajorSdoId && header.getMajorSdoId() != config_.majorSdoId) {
+        sdoIdMismatchCount_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    if (header.domainNumber != config_.domain) {
+        domainMismatchCount_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
+    // Which socket a message is allowed on is IEEE 1588-2008 Table 15: event
+    // messages carry a timestamp and belong on 319, general ones on 320.
+    switch (header.getMessageType()) {
+        case PTPMessageType::Sync:
+            if (onEventSocket) handleSync(header, data, len, receiveTimeNs);
+            break;
+        case PTPMessageType::Pdelay_Req:
+            if (onEventSocket) handlePdelayReq(header, data, len, receiveTimeNs);
+            break;
+        case PTPMessageType::Pdelay_Resp:
+            if (onEventSocket) handlePdelayResp(header, data, len, receiveTimeNs);
+            break;
+        case PTPMessageType::Follow_Up:
+            if (!onEventSocket) handleFollowUp(header, data, len);
+            break;
+        case PTPMessageType::Announce:
+            if (!onEventSocket) handleAnnounce(header, data, len);
+            break;
+        case PTPMessageType::Pdelay_Resp_FU:
+            if (!onEventSocket) handlePdelayRespFollowUp(header, data, len);
+            break;
+        case PTPMessageType::Delay_Resp:
+            // A general message (Table 15, port 320), taken on either: it was
+            // only handled on the event socket until 2026-08-31, so a
+            // standards-compliant grandmaster's answer was silently dropped
+            // and the slave could never measure path delay. Found by the PTP
+            // loopback test: master sent 21 Delay_Resp, slave counted 0.
+            handleDelayResp(header, data, len);
+            break;
+        default:
+            break;
+    }
+}
+
+void PTPSlave::deliverMessage(const uint8_t* data, size_t len, uint64_t receiveTimeNs,
+                              bool onEventSocket) {
+    dispatchMessage(data, len, receiveTimeNs, onEventSocket);
+}
+
 void PTPSlave::handleSync(const PTPHeader& header, const uint8_t* data, size_t len,
                            uint64_t receiveTimeNs) {
     if (len < kMinSyncSize) return;
 
-    syncCount_.fetch_add(1, std::memory_order_relaxed);
-
     bool isTwoStep = (header.flagField & kFlagTwoStep) != 0;
+
+    // AES67 grandmasters are two-step, and this slave is configured to
+    // follow only those. The setting was read by nobody until now: a
+    // one-step master was taken whatever `twoStepOnly` said, and the
+    // one-step branch below did the arithmetic on the Sync's own origin
+    // timestamp. Counted rather than dropped in silence, because a master
+    // this slave refuses looks exactly like no master at all.
+    if (config_.twoStepOnly && !isTwoStep) {
+        oneStepRejectedCount_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
+    syncCount_.fetch_add(1, std::memory_order_relaxed);
 
     // syncMutex_ is scoped to the record block: calculateOffsetAndDelay()
     // re-acquires it itself, and std::mutex is non-recursive (2026-08-31,
@@ -1144,6 +1151,44 @@ void PTPSlave::handleDelayResp(const PTPHeader& header, const uint8_t* data, siz
     calculateOffsetAndDelay();
 }
 
+// The dataset comparison of IEEE 1588-2008 section 9.3.2.3, in the order the
+// standard sets: priority1, then clockClass, then clockAccuracy, then
+// offsetScaledLogVariance, then priority2, and clockIdentity last as the
+// tie-break that always decides.
+//
+// Only the first, second and fifth of those were compared before, which left
+// two masters differing solely in accuracy or variance indistinguishable --
+// and, with everything equal, made the choice depend on which announce
+// happened to arrive first. Identity last is what makes it stable: every
+// slave on the segment reaches the same answer, whatever order they heard
+// them in.
+static bool isBetterGrandmaster(const PTPAnnounceData& candidate,
+                                const PTPAnnounceData& current) {
+    if (candidate.grandmasterPriority1 != current.grandmasterPriority1) {
+        return candidate.grandmasterPriority1 < current.grandmasterPriority1;
+    }
+    if (candidate.grandmasterClockClass != current.grandmasterClockClass) {
+        return candidate.grandmasterClockClass < current.grandmasterClockClass;
+    }
+    if (candidate.grandmasterClockAccuracy != current.grandmasterClockAccuracy) {
+        return candidate.grandmasterClockAccuracy < current.grandmasterClockAccuracy;
+    }
+    if (candidate.grandmasterOffsetScaledLogVariance
+        != current.grandmasterOffsetScaledLogVariance) {
+        return candidate.grandmasterOffsetScaledLogVariance
+               < current.grandmasterOffsetScaledLogVariance;
+    }
+    if (candidate.grandmasterPriority2 != current.grandmasterPriority2) {
+        return candidate.grandmasterPriority2 < current.grandmasterPriority2;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (candidate.grandmasterIdentity.id[i] != current.grandmasterIdentity.id[i]) {
+            return candidate.grandmasterIdentity.id[i] < current.grandmasterIdentity.id[i];
+        }
+    }
+    return false;   // the same clock, which is never better than itself
+}
+
 void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size_t len) {
     if (len < kMinAnnounceSize) return;
 
@@ -1191,19 +1236,7 @@ void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size
                   << " accuracy=0x" << std::hex << static_cast<int>(announce.grandmasterClockAccuracy)
                   << std::dec << std::endl;
     } else {
-        // Simple BMCA: prefer lower priority1, then lower class, then lower priority2
-        bool isBetter = false;
-        if (announce.grandmasterPriority1 < currentMaster_.grandmasterPriority1) {
-            isBetter = true;
-        } else if (announce.grandmasterPriority1 == currentMaster_.grandmasterPriority1) {
-            if (announce.grandmasterClockClass < currentMaster_.grandmasterClockClass) {
-                isBetter = true;
-            } else if (announce.grandmasterClockClass == currentMaster_.grandmasterClockClass) {
-                if (announce.grandmasterPriority2 < currentMaster_.grandmasterPriority2) {
-                    isBetter = true;
-                }
-            }
-        }
+        const bool isBetter = isBetterGrandmaster(announce, currentMaster_);
 
         if (isBetter) {
             std::cout << "[PTPSlave] Switching to better master: "

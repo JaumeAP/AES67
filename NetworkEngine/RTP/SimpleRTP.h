@@ -11,7 +11,7 @@
 // The wire format lives in its own header, free of sockets, so that consumers
 // that only need to build or read an RTP header do not have to take the
 // transport with it. See RTPHeader.h.
-#include "RTPHeader.h"
+#include "NetworkEngine/RTP/RTPHeader.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -73,6 +73,18 @@ public:
 
     // Receive RTP packet
     ssize_t receive(RTPPacket& packet, uint8_t* buffer, size_t bufferSize);
+
+    // Split a received datagram into header and payload, RFC 3550 §5.1:
+    // the fixed 12 bytes, then the CSRC list, then the extension header if
+    // the X bit is set, and trailing padding removed if the P bit is. Static
+    // and separate from receive() so it can be exercised without a socket —
+    // this is the part that decides which bytes reach the decoder, and it
+    // used to assume the fixed header was the whole of it (2026-09-04 audit).
+    //
+    // `packet.header` is filled in host byte order and `packet.payload`
+    // points into `buffer`. Returns false for anything malformed: too short
+    // for the header it declares, or padding that does not fit.
+    static bool parseFrame(const uint8_t* buffer, size_t length, RTPPacket& packet);
 
     // Close socket
     void close();

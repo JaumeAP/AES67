@@ -15,7 +15,7 @@
 // sockets without the caller managing them. Never sends; purely observational.
 //
 
-#include "RTCPReceiverTable.h"
+#include "NetworkEngine/Discovery/RTCPReceiverTable.h"
 
 #include <atomic>
 #include <cstdint>
@@ -50,6 +50,16 @@ public:
 
     // Snapshot of the receivers seen within RTCPReceiverTable::kReporterTimeout.
     std::vector<RTCPReporter> reporters() const;
+
+    // Record one RTCP packet as if it had arrived from `sourceIp`.
+    //
+    // The receive path calls this with what it read off a socket; a test
+    // calls it with bytes it built, which is the only way to exercise the
+    // recording without a multicast group (2026-09-04 audit — this class was
+    // at zero coverage). Parsing itself belongs to RTCPReceiverTable, which
+    // is tested in the core; what this covers is the wiring between a packet
+    // and the reporter table.
+    void deliverPacket(const uint8_t* data, size_t length, const std::string& sourceIp);
 
 private:
     class Impl;

@@ -1,4 +1,5 @@
 #include "RTCPMonitor.h"
+#include "NetworkEngine/SelectWait.h"
 
 #include <arpa/inet.h>
 #include <ifaddrs.h>
@@ -142,13 +143,14 @@ private:
                 FD_SET(kv.second, &rd);
                 if (kv.second > maxFd) maxFd = kv.second;
             }
-            timeval tv{0, 250000};
             if (maxFd < 0) { // nothing to listen on yet
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
                 continue;
             }
-            int n = ::select(maxFd + 1, &rd, nullptr, nullptr, &tv);
-            if (n <= 0) continue;
+            const SelectOutcome outcome = waitReadable(maxFd, &rd, 250);
+            if (outcome == SelectOutcome::Timeout ||
+                outcome == SelectOutcome::Interrupted) continue;
+            if (outcome == SelectOutcome::Failed) break; // sockets gone; do not spin
             for (auto& kv : sockets_) {
                 if (FD_ISSET(kv.second, &rd)) handleReadable(kv.second, buf, sizeof(buf));
             }
@@ -161,11 +163,18 @@ private:
         ssize_t got = ::recvfrom(fd, buf, bufLen, 0,
                                  reinterpret_cast<sockaddr*>(&src), &srcLen);
         if (got < 4) return;
-        RTCPParseResult parsed = RTCPReceiverTable::parse(buf, static_cast<size_t>(got));
-        if (parsed.reporterSSRCs.empty() && parsed.cnames.empty()) return;
 
         char ipStr[INET_ADDRSTRLEN] = {0};
         ::inet_ntop(AF_INET, &src.sin_addr, ipStr, sizeof(ipStr));
+        deliverPacket(buf, static_cast<size_t>(got), ipStr);
+    }
+
+public:
+    void deliverPacket(const uint8_t* data, size_t length, const std::string& sourceIp) {
+        if (length < 4) return;
+        RTCPParseResult parsed = RTCPReceiverTable::parse(data, length);
+        if (parsed.reporterSSRCs.empty() && parsed.cnames.empty()) return;
+
         const auto now = std::chrono::steady_clock::now();
 
         std::lock_guard<std::mutex> lock(mutex_);
@@ -174,10 +183,11 @@ private:
             for (const auto& c : parsed.cnames) {
                 if (c.first == ssrc) { cname = c.second; break; }
             }
-            table_.record(ssrc, ipStr, cname, now);
+            table_.record(ssrc, sourceIp, cname, now);
         }
     }
 
+private:
     std::atomic<bool> running_{false};
     std::thread thread_;
     EndpointProvider provider_;
@@ -195,5 +205,8 @@ bool RTCPMonitor::start(EndpointProvider provider, const std::string& interfaceN
 void RTCPMonitor::stop() { pimpl_->stop(); }
 bool RTCPMonitor::isRunning() const { return pimpl_->isRunning(); }
 std::vector<RTCPReporter> RTCPMonitor::reporters() const { return pimpl_->reporters(); }
+void RTCPMonitor::deliverPacket(const uint8_t* data, size_t length, const std::string& sourceIp) {
+    pimpl_->deliverPacket(data, length, sourceIp);
+}
 
 } // namespace AES67
