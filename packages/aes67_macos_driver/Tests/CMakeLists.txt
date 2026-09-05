@@ -1,11 +1,16 @@
-# doctest, from the submodule this repository already carries. The core defines
-# the same target name, but its tests are off here (see the root CMakeLists),
-# so nothing collides.
-add_library(doctest_headers INTERFACE)
-target_include_directories(doctest_headers INTERFACE
-    ${PROJECT_SOURCE_DIR}/external/doctest/doctest)
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/external/doctest/doctest/doctest.h")
-    message(WARNING "external/doctest is empty - run: git submodule update --init --recursive")
+# doctest lives once, at the root of the monorepo, and the root CMakeLists
+# defines the target -- the core needs the same one, and two packages
+# defining a target under the same name is an error. This branch is what
+# makes the package still configure on its own, outside the tree.
+if(NOT DEFINED AES67_DOCTEST_DIR)
+    set(AES67_DOCTEST_DIR "${PROJECT_SOURCE_DIR}/../../external/doctest/doctest")
+endif()
+if(NOT EXISTS "${AES67_DOCTEST_DIR}/doctest.h")
+    message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
+endif()
+if(NOT TARGET doctest_headers)
+    add_library(doctest_headers INTERFACE)
+    target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
 endif()
 
 
@@ -24,7 +29,7 @@ target_include_directories(TestRTPReceiver PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestRTPReceiver PRIVATE aes67_core aes67_net)
+target_link_libraries(TestRTPReceiver PRIVATE aes67_net)
 
 target_link_libraries(TestRTPReceiver PRIVATE doctest_headers)
 target_compile_features(TestRTPReceiver PRIVATE cxx_std_17)
@@ -44,7 +49,7 @@ target_include_directories(TestRTPTransmitter PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestRTPTransmitter PRIVATE aes67_core aes67_net)
+target_link_libraries(TestRTPTransmitter PRIVATE aes67_net)
 
 target_link_libraries(TestRTPTransmitter PRIVATE doctest_headers)
 target_compile_features(TestRTPTransmitter PRIVATE cxx_std_17)
@@ -75,7 +80,7 @@ target_link_libraries(TestPTPClock PRIVATE
     "-framework CoreFoundation"
 )
 
-target_link_libraries(TestPTPClock PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPClock PRIVATE aes67_net)
 
 target_link_libraries(TestPTPClock PRIVATE doctest_headers)
 target_compile_features(TestPTPClock PRIVATE cxx_std_17)
@@ -90,7 +95,7 @@ target_include_directories(TestPTPMaster PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestPTPMaster PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPMaster PRIVATE aes67_net)
 
 target_link_libraries(TestPTPMaster PRIVATE doctest_headers)
 target_compile_features(TestPTPMaster PRIVATE cxx_std_17)
@@ -105,7 +110,7 @@ target_include_directories(TestRTSPServer PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestRTSPServer PRIVATE aes67_core aes67_net)
+target_link_libraries(TestRTSPServer PRIVATE aes67_net)
 
 target_link_libraries(TestRTSPServer PRIVATE doctest_headers)
 target_compile_features(TestRTSPServer PRIVATE cxx_std_17)
@@ -119,7 +124,7 @@ target_include_directories(TestSAPListener PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestSAPListener PRIVATE aes67_core aes67_net)
+target_link_libraries(TestSAPListener PRIVATE aes67_net)
 
 target_link_libraries(TestSAPListener PRIVATE doctest_headers)
 target_compile_features(TestSAPListener PRIVATE cxx_std_17)
@@ -133,7 +138,7 @@ target_include_directories(TestRTCPMonitor PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestRTCPMonitor PRIVATE aes67_core aes67_net)
+target_link_libraries(TestRTCPMonitor PRIVATE aes67_net)
 
 target_link_libraries(TestRTCPMonitor PRIVATE doctest_headers)
 target_compile_features(TestRTCPMonitor PRIVATE cxx_std_17)
@@ -147,7 +152,7 @@ target_include_directories(TestHTTPClient PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestHTTPClient PRIVATE aes67_core aes67_net)
+target_link_libraries(TestHTTPClient PRIVATE aes67_net)
 
 target_link_libraries(TestHTTPClient PRIVATE doctest_headers)
 target_compile_features(TestHTTPClient PRIVATE cxx_std_17)
@@ -161,7 +166,7 @@ target_include_directories(TestRTSPClient PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestRTSPClient PRIVATE aes67_core aes67_net)
+target_link_libraries(TestRTSPClient PRIVATE aes67_net)
 
 target_link_libraries(TestRTSPClient PRIVATE doctest_headers)
 target_compile_features(TestRTSPClient PRIVATE cxx_std_17)
@@ -175,7 +180,7 @@ target_include_directories(TestSAPAnnouncer PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestSAPAnnouncer PRIVATE aes67_core aes67_net)
+target_link_libraries(TestSAPAnnouncer PRIVATE aes67_net)
 
 target_link_libraries(TestSAPAnnouncer PRIVATE doctest_headers)
 target_compile_features(TestSAPAnnouncer PRIVATE cxx_std_17)
@@ -189,7 +194,7 @@ target_include_directories(TestNetworkUtils PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestNetworkUtils PRIVATE aes67_core aes67_net)
+target_link_libraries(TestNetworkUtils PRIVATE aes67_net)
 
 target_link_libraries(TestNetworkUtils PRIVATE doctest_headers)
 target_compile_features(TestNetworkUtils PRIVATE cxx_std_17)
@@ -203,7 +208,7 @@ target_include_directories(TestPTPPeerObserver PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestPTPPeerObserver PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPPeerObserver PRIVATE aes67_net)
 
 target_link_libraries(TestPTPPeerObserver PRIVATE doctest_headers)
 target_compile_features(TestPTPPeerObserver PRIVATE cxx_std_17)
@@ -217,7 +222,7 @@ target_include_directories(TestNetworkInterfaceDetection PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestNetworkInterfaceDetection PRIVATE aes67_core aes67_net)
+target_link_libraries(TestNetworkInterfaceDetection PRIVATE aes67_net)
 
 target_link_libraries(TestNetworkInterfaceDetection PRIVATE doctest_headers)
 target_compile_features(TestNetworkInterfaceDetection PRIVATE cxx_std_17)
@@ -231,7 +236,7 @@ target_include_directories(TestResourceCleanup PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestResourceCleanup PRIVATE aes67_core aes67_net)
+target_link_libraries(TestResourceCleanup PRIVATE aes67_net)
 
 target_link_libraries(TestResourceCleanup PRIVATE doctest_headers)
 target_compile_features(TestResourceCleanup PRIVATE cxx_std_17)
@@ -245,7 +250,7 @@ target_include_directories(TestMulticastRejoiner PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestMulticastRejoiner PRIVATE aes67_core aes67_net)
+target_link_libraries(TestMulticastRejoiner PRIVATE aes67_net)
 
 target_link_libraries(TestMulticastRejoiner PRIVATE doctest_headers)
 target_compile_features(TestMulticastRejoiner PRIVATE cxx_std_17)
@@ -259,7 +264,7 @@ target_include_directories(TestConnectionAPI PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestConnectionAPI PRIVATE aes67_core aes67_net)
+target_link_libraries(TestConnectionAPI PRIVATE aes67_net)
 
 target_link_libraries(TestConnectionAPI PRIVATE doctest_headers)
 target_compile_features(TestConnectionAPI PRIVATE cxx_std_17)
@@ -273,7 +278,7 @@ target_include_directories(TestNMOSRegistration PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestNMOSRegistration PRIVATE aes67_core aes67_net)
+target_link_libraries(TestNMOSRegistration PRIVATE aes67_net)
 
 target_link_libraries(TestNMOSRegistration PRIVATE doctest_headers)
 target_compile_features(TestNMOSRegistration PRIVATE cxx_std_17)
@@ -288,7 +293,7 @@ target_include_directories(TestPTPMasterBoxInterop PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_net)
 
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
@@ -302,7 +307,7 @@ target_include_directories(TestPTPSettingsMapping PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestPTPSettingsMapping PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPSettingsMapping PRIVATE aes67_net)
 
 target_link_libraries(TestPTPSettingsMapping PRIVATE doctest_headers)
 target_compile_features(TestPTPSettingsMapping PRIVATE cxx_std_17)
@@ -316,7 +321,7 @@ target_include_directories(TestNetworkQoS PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestNetworkQoS PRIVATE aes67_core aes67_net)
+target_link_libraries(TestNetworkQoS PRIVATE aes67_net)
 
 target_link_libraries(TestNetworkQoS PRIVATE doctest_headers)
 target_compile_features(TestNetworkQoS PRIVATE cxx_std_17)
@@ -331,7 +336,7 @@ target_include_directories(TestSDPFetcher PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestSDPFetcher PRIVATE aes67_core aes67_net)
+target_link_libraries(TestSDPFetcher PRIVATE aes67_net)
 
 target_link_libraries(TestSDPFetcher PRIVATE doctest_headers)
 target_compile_features(TestSDPFetcher PRIVATE cxx_std_17)
@@ -346,7 +351,7 @@ target_include_directories(TestMDNSBrowser PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestMDNSBrowser PRIVATE aes67_core aes67_net)
+target_link_libraries(TestMDNSBrowser PRIVATE aes67_net)
 
 target_link_libraries(TestMDNSBrowser PRIVATE doctest_headers)
 target_compile_features(TestMDNSBrowser PRIVATE cxx_std_17)
@@ -363,7 +368,7 @@ target_include_directories(TestPTPLoopback PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestPTPLoopback PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPLoopback PRIVATE aes67_net)
 
 target_link_libraries(TestPTPLoopback PRIVATE doctest_headers)
 target_compile_features(TestPTPLoopback PRIVATE cxx_std_17)
@@ -381,7 +386,7 @@ target_include_directories(TestPTPService PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestPTPService PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPTPService PRIVATE aes67_net)
 target_link_libraries(TestPTPService PRIVATE
     "-framework CoreAudio"
     "-framework CoreFoundation"
@@ -399,7 +404,7 @@ target_include_directories(TestStreamManager PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestStreamManager PRIVATE aes67_core aes67_net)
+target_link_libraries(TestStreamManager PRIVATE aes67_net)
 
 target_link_libraries(TestStreamManager PRIVATE doctest_headers)
 target_compile_features(TestStreamManager PRIVATE cxx_std_17)
@@ -426,7 +431,7 @@ target_link_libraries(TestMultiStream PRIVATE
     "-framework CoreFoundation"
 )
 
-target_link_libraries(TestMultiStream PRIVATE aes67_core aes67_net)
+target_link_libraries(TestMultiStream PRIVATE aes67_net)
 
 target_link_libraries(TestMultiStream PRIVATE doctest_headers)
 target_compile_features(TestMultiStream PRIVATE cxx_std_17)
@@ -441,10 +446,13 @@ if(ASPL_FOUND)
 
     target_include_directories(BenchmarkIOHandler PRIVATE
         ${PROJECT_SOURCE_DIR}
-        ${ASPL_INCLUDE_DIR}
     )
+    # Same as the driver bundle: vendored headers as SYSTEM, vendored sources
+    # compiled with warnings off, so what is left is ours.
+    target_include_directories(BenchmarkIOHandler SYSTEM PRIVATE ${ASPL_INCLUDE_DIR})
+    set_source_files_properties(${ASPL_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
 
-    target_link_libraries(BenchmarkIOHandler PRIVATE aes67_core aes67_net)
+    target_link_libraries(BenchmarkIOHandler PRIVATE aes67_net)
 
     target_link_libraries(BenchmarkIOHandler PRIVATE doctest_headers)
 target_compile_features(BenchmarkIOHandler PRIVATE cxx_std_17)
@@ -480,7 +488,7 @@ target_include_directories(TestIntegrationAudioPath PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(TestIntegrationAudioPath PRIVATE aes67_core aes67_net)
+target_link_libraries(TestIntegrationAudioPath PRIVATE aes67_net)
 
 target_link_libraries(TestIntegrationAudioPath PRIVATE doctest_headers)
 target_compile_features(TestIntegrationAudioPath PRIVATE cxx_std_17)
@@ -493,7 +501,7 @@ add_executable(TestPCMCodec
     ../NetworkEngine/RTP/PCMCodec.cpp
 )
 target_include_directories(TestPCMCodec PRIVATE ${PROJECT_SOURCE_DIR})
-target_link_libraries(TestPCMCodec PRIVATE aes67_core aes67_net)
+target_link_libraries(TestPCMCodec PRIVATE aes67_net)
 
 target_link_libraries(TestPCMCodec PRIVATE doctest_headers)
 target_compile_features(TestPCMCodec PRIVATE cxx_std_17)

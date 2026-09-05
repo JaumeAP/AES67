@@ -44,11 +44,18 @@ option(AES67_CORE_TESTS "Build the test suites" ON)
 if(AES67_CORE_TESTS)
     enable_testing()
 
-    add_library(doctest_headers INTERFACE)
-    target_include_directories(doctest_headers INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/doctest/doctest)
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/doctest/doctest/doctest.h")
-        message(WARNING "external/doctest is empty - run: git submodule update --init --recursive")
+    # doctest lives once, at the root of the monorepo, and the root
+    # CMakeLists defines the target. This branch is what makes the package
+    # still configure on its own, outside the tree.
+    if(NOT DEFINED AES67_DOCTEST_DIR)
+        set(AES67_DOCTEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../external/doctest/doctest")
+    endif()
+    if(NOT EXISTS "${AES67_DOCTEST_DIR}/doctest.h")
+        message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
+    endif()
+    if(NOT TARGET doctest_headers)
+        add_library(doctest_headers INTERFACE)
+        target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
     endif()
 
     # doctest suites: written here, or migrated as their code moved.

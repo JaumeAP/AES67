@@ -845,7 +845,7 @@ TEST_CASE("Channel Mapping Through Receiver") {
     }
 
     // Verify per-channel data correctness
-    auto verifyChannel = [&](size_t devCh, float expectedVal, const char* desc) -> bool {
+    auto verifyChannel = [&](size_t devCh, float expectedVal, const char* desc) -> void {
         size_t avail = deviceBuffers[devCh].available();
         std::vector<float> data(avail);
         deviceBuffers[devCh].read(data.data(), avail);

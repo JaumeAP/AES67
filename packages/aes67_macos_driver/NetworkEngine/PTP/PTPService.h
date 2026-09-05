@@ -46,6 +46,16 @@ public:
     int clientCount() const;
     const std::string& socketPath() const { return socketPath_; }
 
+    // Hard ceiling on connected readers. The socket is chmod 0666 -- it has
+    // to be, the reader is coreaudiod and not root -- so anyone on the
+    // machine can connect, and nothing here ever drops a reader that simply
+    // stays quiet: a client is only removed when a write to it fails. An
+    // uncapped list is therefore a local descriptor exhaustion away from
+    // silencing the daemon. Oldest connection goes first, the same backstop
+    // RTCPReceiverTable and PTPPeerTable already apply to their own
+    // attacker-fed tables.
+    static constexpr size_t kMaxClients{32};
+
 private:
     void acceptLoop();
 

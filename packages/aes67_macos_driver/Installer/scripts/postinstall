@@ -9,7 +9,17 @@
 #
 
 # Don't exit on error initially - we want to log errors properly
-LOG_FILE="/tmp/aes67driver_install.log"
+# /var/log and not /tmp: everything below runs as root and appends through
+# tee, and /tmp is world-writable, so any local user could leave a symlink at
+# a predictable name there and have root append to a file of their choosing.
+# /var/log is root-owned, which is what makes the name safe to reuse across
+# installs. Same directory the PTP daemon already logs to.
+LOG_FILE="/var/log/aes67driver_install.log"
+# Append, not truncate: preinstall opened this file and its checks are half
+# the value of the log. touch rather than `: >` for the same reason.
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE="$(mktemp -t aes67driver_install)"
+chmod 644 "$LOG_FILE" 2>/dev/null || true
+
 echo "=== AES67 Driver Post-Installation Script ===" | tee -a "$LOG_FILE"
 echo "Date: $(date)" | tee -a "$LOG_FILE"
 

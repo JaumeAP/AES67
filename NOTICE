@@ -1,0 +1,48 @@
+# NOTICE
+
+This repository holds several packages that came from separate repositories,
+and they are not all under the same licence. The root `LICENSE` is the GNU
+General Public License version 3, and it covers the code written for this
+project. The third-party code vendored under `packages/` and `external/` stays
+under the licence it arrived with, and each such subtree keeps its own licence
+text next to it.
+
+This file is an inventory, not a licence: where the two disagree, the licence
+file inside the subtree is the one that governs it.
+
+## Under the root LICENSE (GPL-3.0-or-later)
+
+| Path | What it is |
+|------|------------|
+| `packages/aes67-core` | The platform-free AES67 core: SDP, RTP, jitter buffer, PLL, resampling, channel mapping |
+| `packages/aes67_macos_driver` | The macOS AudioServerPlugIn driver, its daemon, tools and manager app, **excluding** `external/` |
+| `packages/AES67-master-box-` | The Teensy 4.1 grandmaster application: `src/`, `test/`, `docs/`, `enclosure/`, **excluding** `lib/` |
+
+## Third-party, under their own licences
+
+| Path | Upstream | Licence | Licence file |
+|------|----------|---------|--------------|
+| `external/doctest` | [doctest/doctest](https://github.com/doctest/doctest), submodule at v2.5.3 | MIT | `LICENSE.txt` |
+| `packages/aes67_macos_driver/external/libASPL` | [gavv/libASPL](https://github.com/gavv/libASPL), vendored subset pinned at `633e0f70203edd87d320fc5a3cae901e1363aac5` (see `VENDORED.md`) | MIT, plus Apple sample-code licences for the derived parts | `LICENSE`, `LICENSE.apple2012`, `LICENSE.apple2020` |
+| `packages/QNEthernet` | [ssilverman/QNEthernet](https://github.com/ssilverman/QNEthernet), through the fork [JaumeAP/QNEthernet](https://github.com/JaumeAP/QNEthernet) branch `multicast-ttl` | MIT | `LICENSE` |
+| `packages/QNEthernet/src/lwip` (and the same directory in the copy below) | [lwIP](https://savannah.nongnu.org/projects/lwip/), bundled by QNEthernet | BSD 3-clause, in the header of every file | per-file headers |
+| `packages/t41-ptp` | [IMS-AS-LUH/t41-ptp](https://github.com/IMS-AS-LUH/t41-ptp), through the fork [JaumeAP/t41-ptp](https://github.com/JaumeAP/t41-ptp) | MIT | `LICENSE` |
+| `packages/t41-ptp/libraries/QNEthernet` | Same fork as `packages/QNEthernet`, and kept identical to it | MIT | `LICENSE` |
+| `packages/t41-ptp/libraries/Time` | [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), Michael Margolis | LGPL-2.1-or-later | `COPYING` |
+
+`packages/AES67-master-box-/lib/t41-ptp` is a symbolic link to
+`packages/t41-ptp` and carries no separate copy.
+
+## Notes
+
+- The two QNEthernet copies are the same fork and are meant to stay
+  byte-identical; both carry the multicast TTL and DSCP additions that the
+  AES67 sender and the PTP transport call. They report the same version
+  string, and that string is only honest while they match.
+- `packages/t41-ptp/libraries/Time` says in every source file that the reader
+  "should have received a copy of the GNU Lesser General Public License", and
+  upstream ships none. The `COPYING` in that directory is the licence text
+  from gnu.org, added here so the copy exists.
+- Combining GPL-3.0 code with the MIT and BSD components above is what those
+  licences allow; their notices are retained. The LGPL-2.1 component is used
+  as a library and is not modified here.

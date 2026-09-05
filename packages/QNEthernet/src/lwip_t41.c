@@ -11,11 +11,11 @@
 #include "lwip_t41.h"
 
 // C includes
-#include <math.h>
 #include <string.h>
 
 #include <core_pins.h>
 #include <pgmspace.h>
+#include <math.h>
 #include <util/atomic.h>
 
 #include "lwip/err.h"

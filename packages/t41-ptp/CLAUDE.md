@@ -40,10 +40,10 @@ adding or renaming an ISR in the example means editing `test/Makefile` and nothi
 `make -C test clean` removes `ci/src/main.cpp` and `ci/.pio` along with the host binary. Both jobs
 (`host-tests`, `board-build`) run on every push via `.github/workflows/tests.yml`.
 
-Submodules (`libraries/QNEthernet`, `libraries/Time`) are required for the board build, not for
-the host tests, which stub them out:
-
-    git submodule update --init --recursive
+`libraries/QNEthernet` and `libraries/Time` are required for the board build, not for the host
+tests, which stub them out. They were submodules of this repository; inside the monorepo they are
+plain directories and nothing has to be initialised. `libraries/QNEthernet` is the fork
+`JaumeAP/QNEthernet` branch `multicast-ttl`, and `packages/QNEthernet` is kept identical to it.
 
 ## Architecture
 

@@ -23,4 +23,20 @@ project(AES67Monorepo LANGUAGES NONE)
 
 enable_testing()
 
+# One doctest for the whole tree. It used to sit inside the driver package,
+# which left the core with an external/doctest of its own that the move never
+# populated: its nineteen suites could not be built by anybody, here or
+# standalone. A single copy at the root is what both packages now include, and
+# the target is defined once, here, because both used to define it under the
+# same name.
+set(AES67_DOCTEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/doctest/doctest"
+    CACHE PATH "Directory holding doctest.h")
+if(NOT EXISTS "${AES67_DOCTEST_DIR}/doctest.h")
+    message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
+endif()
+if(NOT TARGET doctest_headers)
+    add_library(doctest_headers INTERFACE)
+    target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
+endif()
+
 add_subdirectory(packages/aes67_macos_driver)

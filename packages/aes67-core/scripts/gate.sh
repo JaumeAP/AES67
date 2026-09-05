@@ -27,8 +27,13 @@ for arg in "$@"; do
   esac
 done
 
-if [ ! -f "external/doctest/doctest/doctest.h" ]; then
-  echo "FAIL: external/doctest is empty - run: git submodule update --init --recursive" >&2
+# doctest lives once, at the root of the monorepo, and is shared with the
+# driver package. This path is what the CMakeLists falls back to when the root
+# has not set AES67_DOCTEST_DIR, which is the case when this package is built
+# on its own -- as it is here.
+doctest_dir="../../external/doctest/doctest"
+if [ ! -f "$doctest_dir/doctest.h" ]; then
+  echo "FAIL: $doctest_dir is empty - run: git submodule update --init --recursive" >&2
   exit 1
 fi
 

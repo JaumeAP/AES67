@@ -30,7 +30,11 @@ class EthernetUDP : public UDP {
   // to a minimum of 1.
   explicit EthernetUDP(size_t queueSize);
 
-  ~EthernetUDP();
+  // Virtual, so that deleting a socket through this type is defined even
+  // where the compiler cannot see that the static and dynamic types are
+  // the same. Arduino's UDP has no virtual destructor, which is what
+  // -Wdelete-non-virtual-dtor was pointing at.
+  virtual ~EthernetUDP();
 
   // Returns the maximum number of UDP sockets.
   static constexpr int maxSockets() {
@@ -52,6 +56,35 @@ class EthernetUDP : public UDP {
 
   // Returns the port to which this socket is bound, or zero if it is not bound.
   uint16_t localPort();
+
+  // Sets the TTL of outgoing multicast datagrams. lwIP starts every socket
+  // at UDP_TTL, so multicast leaves the segment it was meant for unless
+  // this is called; protocols that define their own scope, PTP among
+  // them, need to say so.
+  //
+  // The value is remembered and applied to the underlying PCB whenever one
+  // exists, including a PCB created later by begin() or by a send.
+  void setMulticastTTL(uint8_t ttl);
+
+  // The TTL outgoing multicast datagrams are sent with.
+  uint8_t multicastTTL() const {
+    return mcastTTL_;
+  }
+
+  // Sets the DSCP of outgoing datagrams: the top six bits of the IPv4 TOS
+  // octet, given here as the DSCP value itself (0-63), not pre-shifted.
+  // lwIP starts every socket unmarked, so traffic a switch is meant to
+  // treat differently -- PTP among it, which the AES67 and RAVENNA guides
+  // ask to be marked -- leaves looking like everything else.
+  //
+  // The value is remembered and applied to the underlying PCB whenever one
+  // exists, including a PCB created later by begin() or by a send.
+  void setOutgoingDiffServ(uint8_t dscp);
+
+  // The DSCP outgoing datagrams are sent with.
+  uint8_t outgoingDiffServ() const {
+    return dscp_;
+  }
 
   void stop() final;
 
@@ -131,7 +164,15 @@ class EthernetUDP : public UDP {
   // Checks if there's data still available in the packet.
   bool isAvailable() const;
 
+  // Applies mcastTTL_ to pcb_, if there is one.
+  void applyMulticastTTL();
+
+  // Applies dscp_ to pcb_, if there is one.
+  void applyDiffServ();
+
   udp_pcb *pcb_;
+  uint8_t mcastTTL_ = UDP_TTL;
+  uint8_t dscp_ = 0;
 
   // Received packet; updated every time one is received
   std::vector<Packet> inBuf_;  // Holds received packets
