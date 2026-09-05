@@ -198,7 +198,8 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "  Duration:  %s\n", duration > 0 ? (std::to_string(duration) + "s").c_str() : "infinite");
     fprintf(stderr, "  SAP:       %s\n", enableSAP ? "enabled" : "disabled");
     fprintf(stderr, "  Packet:    %u samples/pkt, %zu bytes/pkt\n",
-            samplesPerPacket, samplesPerPacket * channels * bytesPerSample);
+            samplesPerPacket,
+            static_cast<size_t>(samplesPerPacket) * channels * bytesPerSample);
     fprintf(stderr, "\nPress Ctrl+C to stop.\n\n");
 
     // Install signal handler
@@ -223,7 +224,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Prepare audio and payload buffers
-    const size_t totalSamples = samplesPerPacket * channels;
+    const size_t totalSamples = static_cast<size_t>(samplesPerPacket) * channels;
     std::vector<float> audioBuffer(totalSamples);
     std::vector<uint8_t> payloadBuffer(totalSamples * bytesPerSample);
 

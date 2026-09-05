@@ -80,7 +80,12 @@ int main(int argc, char* argv[]) {
     printSDPSession(*session);
 
     // Calculate some useful information
-    size_t samplesPerSecond = session->sampleRate * session->numChannels;
+    // The multiplication is done in size_t, not in uint32_t and widened
+    // afterwards: at 192 kHz and 128 channels the product still fits in 32
+    // bits, but nothing here says it has to, and the widening happens after
+    // the overflow rather than before it.
+    size_t samplesPerSecond =
+        static_cast<size_t>(session->sampleRate) * session->numChannels;
     size_t bytesPerSecond;
 
     if (session->encoding == "L24") {

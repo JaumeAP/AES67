@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
 
     // Decode buffer for audio analysis
     // Max samples per packet: 128ch * 48 frames = 6144 samples
-    constexpr size_t kMaxSamplesPerPacket = 128 * 48;
+    constexpr size_t kMaxSamplesPerPacket = size_t{128} * 48;
     std::vector<float> decodeBuffer(kMaxSamplesPerPacket);
 
     // Statistics
