@@ -1,9 +1,21 @@
 # References
 
-Third-party manuals kept locally because they inform CompatibilityProfile
-constraints (NetworkEngine/CompatibilityProfile.h) and are the source for
-claims made in its caveats text. Not authored by this project — copyright
-belongs to the original publisher (Dolby Laboratories).
+What each `CompatibilityProfile` constraint
+(NetworkEngine/CompatibilityProfile.h) is based on, and where the claims in
+its caveats text come from. Not authored by this project — copyright belongs
+to the original publisher (Dolby Laboratories).
+
+**The PDFs are no longer here.** They were kept locally until this repository
+was made public, which they cannot be part of: they are Dolby's manuals and
+publishing them would be redistributing them. They were removed from the
+history, not just from the tip, and they live in the private
+`JaumeAP/IAB_Render-` under `docs/dolby/`, indexed in its
+`docs/REFERENCES.md`. Every entry below still names the file, because that is
+what it is called there, and links Dolby's own copy where there is a public
+one.
+
+Each entry keeps its section numbers, so a claim can be checked against the
+manual without this file having to hold it.
 
 - `dolby_multichannel_amplifier_manual.pdf` — Dolby Multichannel Amplifier
   (DMA) User Manual, Issue 7 (May 2025), part number 8800376. Covers the
