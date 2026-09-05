@@ -1,0 +1,12 @@
+# QNEthernet comes from a fork, and has to: upstream's master carries no
+# IEEE 1588 support at all, the 2022 branch this one is built on is no
+# longer served by upstream, and the servo calls two methods that exist
+# nowhere else. README.md, "Why QNEthernet comes from a fork", has the
+# detail. Time is upstream's own.
+[submodule "libraries/QNEthernet"]
+	path = libraries/QNEthernet
+	url = https://github.com/JaumeAP/QNEthernet.git
+	branch = multicast-ttl
+[submodule "libraries/Time"]
+	path = libraries/Time
+	url = https://github.com/PaulStoffregen/Time.git
