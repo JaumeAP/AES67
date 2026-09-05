@@ -4,10 +4,12 @@
 # The packages under packages/ came from separate repositories and each keeps
 # its own build files. This file only makes the macOS driver reachable from
 # the repository root, so `cmake -S . -B build` and `ctest --test-dir build`
-# still work the way they did before the move. The firmware and fork packages
-# (AES67-master-box-, t41-ptp, QNEthernet) build with their own toolchains and
-# are deliberately not wired in here; packages/aes67-core is pulled in by the
-# driver itself.
+# still work the way they did before the move. The fork packages (t41-ptp,
+# QNEthernet) build with their own toolchains and are deliberately not wired
+# in here; packages/aes67-core is pulled in by the driver itself.
+#
+# The grandmaster firmware was a package here too. It is standalone again, in
+# JaumeAP/AES67-master-box-, and consumes t41-ptp as a submodule of its own.
 
 cmake_minimum_required(VERSION 3.20)
 

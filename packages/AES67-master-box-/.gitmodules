@@ -1,4 +1,0 @@
-[submodule "lib/t41-ptp"]
-	path = lib/t41-ptp
-	url = https://github.com/JaumeAP/t41-ptp.git
-	branch = main

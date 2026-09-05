@@ -1,7 +1,0 @@
-# PlatformIO
-.pio/
-.vscode/
-
-# Host test binary, and the debug bundle the compiler leaves beside it
-test/aes67-master-box-test
-test/aes67-master-box-test.dSYM/

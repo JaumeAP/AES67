@@ -16,7 +16,6 @@ file inside the subtree is the one that governs it.
 |------|------------|
 | `packages/aes67-core` | The platform-free AES67 core: SDP, RTP, jitter buffer, PLL, resampling, channel mapping |
 | `packages/aes67_macos_driver` | The macOS AudioServerPlugIn driver, its daemon, tools and manager app, **excluding** `external/` |
-| `packages/AES67-master-box-` | The Teensy 4.1 grandmaster application: `src/`, `test/`, `docs/`, `enclosure/`, **excluding** `lib/` |
 
 ## Third-party, under their own licences
 
@@ -29,9 +28,6 @@ file inside the subtree is the one that governs it.
 | `packages/t41-ptp` | [IMS-AS-LUH/t41-ptp](https://github.com/IMS-AS-LUH/t41-ptp), through the fork [JaumeAP/t41-ptp](https://github.com/JaumeAP/t41-ptp) | MIT | `LICENSE` |
 | `packages/t41-ptp/libraries/QNEthernet` | Same fork as `packages/QNEthernet`, and kept identical to it | MIT | `LICENSE` |
 | `packages/t41-ptp/libraries/Time` | [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), Michael Margolis | LGPL-2.1-or-later | `COPYING` |
-
-`packages/AES67-master-box-/lib/t41-ptp` is a symbolic link to
-`packages/t41-ptp` and carries no separate copy.
 
 ## Notes
 

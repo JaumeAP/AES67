@@ -22,7 +22,7 @@ Static analysis: `.clang-tidy` runs the defect families and leaves style off; `W
 
 Manager app previews: `#Preview` blocks live in `ManagerApp/Views/Previews/`, kept out of `build.sh`'s source list because the macro needs full Xcode. New previews go there, and into the Xcode target, never into `build.sh`.
 
-Related repositories, and where they stand: `JaumeAP/aes67-core` `main` at 36c8b47; `JaumeAP/t41-ptp` (the Teensy PTP library) `integration/master-box` at b8b723f; `JaumeAP/AES67-master-box-` (the grandmaster firmware) `main` at c4b6593, carrying t41-ptp as `lib/t41-ptp`. The box does NOT consume `aes67-core`, and after weighing it on 2026-09-03 it stays that way.
+Related repositories, and where they stand: `aes67-core`, `t41-ptp` and `QNEthernet` are packages of this monorepo now, not separate repositories -- their GitHub originals are archived and read-only. `JaumeAP/AES67-master-box-` (the grandmaster firmware) is the exception: it was a package here and is standalone again, `main` at 2f66e20, carrying t41-ptp as the `lib/t41-ptp` submodule at `bc9cd69`. The box does NOT consume `aes67-core`, and after weighing it on 2026-09-03 it stays that way.
 
 ## Session summary — Full-repo audit, and closing it (2026-09-04)
 
