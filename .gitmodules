@@ -1,6 +1,6 @@
 [submodule "external/doctest"]
-	path = external/doctest
+	path = packages/aes67_macos_driver/external/doctest
 	url = https://github.com/doctest/doctest.git
 [submodule "external/aes67-core"]
-	path = external/aes67-core
+	path = packages/aes67_macos_driver/external/aes67-core
 	url = https://github.com/JaumeAP/aes67-core.git
