@@ -1,0 +1,27 @@
+{
+  "name": "t41-ptp",
+  "version": "1.1.0",
+  "description": "PTP for Teensy 4.1. High precision time synchronization for the Teensy 4.1 microcontroller platform.",
+  "keywords": "ptp, ieee1588, teensy, timing",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IMS-AS-LUH/t41-ptp.git"
+  },
+  "authors": [
+    {
+      "name": "Jens Schleusner",
+      "email": "jens.schleusner@ims.uni-hannover.de",
+      "maintainer": true
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "teensy",
+  "build": {
+    "flags": [
+      "-Wconversion",
+      "-Wsign-conversion",
+      "-Werror"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+# PlatformIO
+.pio/
+.vscode/
+
+# Host test binary
+test/aes67-master-box-test

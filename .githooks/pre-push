@@ -81,8 +81,8 @@ if [ -z "$analyse" ] && [ "$to_default_branch" = "1" ]; then
 fi
 analyse="${analyse:-0}"
 
-echo "pre-push: running scripts/ci-local.sh"
-if AES67_ANALYSE="$analyse" "$repo_root/scripts/ci-local.sh"; then
+echo "pre-push: running packages/aes67_macos_driver/scripts/ci-local.sh"
+if AES67_ANALYSE="$analyse" "$repo_root/packages/aes67_macos_driver/scripts/ci-local.sh"; then
   exit 0
 fi
 echo "pre-push: build or tests failed -- push aborted. Fix, or push with --no-verify." >&2

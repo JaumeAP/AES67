@@ -1,0 +1,576 @@
+#include "CompatibilityProfile.h"
+#include "../Driver/DebugLog.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <pwd.h>
+#include <regex>
+#include <sstream>
+#include <sys/stat.h>
+#include <unistd.h>
+
+namespace AES67 {
+
+// ============================================================================
+// Profile definitions
+// ============================================================================
+
+namespace {
+// Build a per-model Dolby profile from the shared "Dolby" base, narrowing the
+// three things a specific model pins: direction, PTP role and channel count.
+// Amplifiers (outputs) transmit from this driver and force it master, chaining
+// up to three; cinema processors (inputs) feed this driver and force it slave,
+// a single unit. Everything else is inherited from the Dolby family profile.
+CompatibilityProfile makeDolbyModelProfile(CompatibilityProfileKind kind,
+                                           const char* name, uint32_t channels,
+                                           bool isOutput, int dscp) {
+    CompatibilityProfile p = CompatibilityProfile::forKind(CompatibilityProfileKind::Dolby);
+    p.kind = kind;
+    p.displayName = name;
+    p.maxTotalChannels = channels;
+    p.usesLanAutoDetection = false;
+    p.recommendedDscp = dscp;
+    if (isOutput) {
+        p.direction = ProfileDirection::TransmitOnly;
+        p.ptpRole = PTPRoleConstraint::ForcedMaster;
+        p.maxUnits = 3; // amplifiers chain up to three (output-side)
+    } else {
+        p.direction = ProfileDirection::ReceiveOnly;
+        p.ptpRole = PTPRoleConstraint::ForcedSlave;
+        p.maxUnits = 1;
+    }
+    p.caveats =
+        std::string(name) + ": a specific Dolby model, chosen by hand. " +
+        (isOutput ? "This driver transmits to it and is forced PTP master"
+                  : "This driver receives from it and is forced PTP slave") +
+        ", up to " + std::to_string(channels) + " channels. Shared family "
+        "parameters as the Dolby profile (48/96 kHz, 1 ms, L16/L24, PTP domain "
+        "109, multicast 239.81.83.67, the Atmos Connect wire scheme). For "
+        "automatic discovery instead of picking a model, use Autodetect. Not a "
+        "conformance claim; PTP has never been verified against real hardware.";
+    return p;
+}
+} // namespace
+
+CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind) {
+    CompatibilityProfile p;
+    p.kind = kind;
+
+    switch (kind) {
+    case CompatibilityProfileKind::AES67:
+        p.displayName = "AES67";
+        // AES67's mandatory configuration: 1-8 channels, 16/24-bit,
+        // 44.1/48/96 kHz, 1 ms packets.
+        p.allowedSampleRates = {44100.0, 48000.0, 96000.0};
+        p.allowedPtimesUs = {1000}; // 1 ms
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false; // AES67 permits a random offset
+        // AES67's mandatory configuration is PTP domain 0 — not a default
+        // to override, part of what "AES67" means here. See
+        // PTPSlaveConfig's own "PTP domain 0 (default), per AES67" comment.
+        p.domainIsFixed = true;
+        p.fixedDomain = 0;
+        p.caveats =
+            "Baseline. Accepts the three sample rates AES67 names; the device "
+            "itself declares more (up to 384 kHz), which other AES67 gear may "
+            "refuse. PTP domain fixed at 0.";
+        break;
+
+    case CompatibilityProfileKind::RAVENNA:
+        p.displayName = "RAVENNA";
+        // RAVENNA is a SUPERSET of AES67, so this profile must accept, not
+        // narrow, what RAVENNA gear can send — otherwise a legitimate
+        // RAVENNA stream (a high sample rate, a sub-millisecond packet time)
+        // would be rejected on receive and the profile would be "compatible"
+        // in name only. So:
+        //  - the full RAVENNA sample-rate set, not AES67's three;
+        //  - NO packet-time restriction at all (empty = validate() accepts
+        //    any ptime), because RAVENNA frame sizes run 1-192 samples, a
+        //    continuum of durations no fixed list could enumerate. Our own
+        //    transmitter still emits 1 ms (a valid RAVENNA ptime); the empty
+        //    set only widens what we ACCEPT, it doesn't make us send anything
+        //    new.
+        // Encodings stay L16/L24: those are what PCMCodec can actually
+        // decode. RAVENNA also defines L32, but accepting an SDP we can't
+        // decode would be a false claim, so it is deliberately excluded.
+        p.allowedSampleRates = {44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0};
+        p.allowedPtimesUs = {}; // empty = accept any packet time (RAVENNA is unrestricted here)
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.caveats =
+            "A true AES67 superset on receive: accepts RAVENNA's full sample-"
+            "rate set (44.1-192 kHz) and any packet time, so a RAVENNA source "
+            "is not rejected for using a rate or ptime AES67 doesn't name. "
+            "Two honest edges remain, both receiver-architecture limits, not "
+            "RAVENNA ones: a single stream is still capped at 8 channels per "
+            "flow (wider RAVENNA streams must be split), and only L16/L24 are "
+            "decoded (RAVENNA's L32 is not). Transmit still emits 1 ms L24. "
+            "RAVENNA's Bonjour discovery and stream redundancy are not "
+            "implemented.";
+        break;
+
+    case CompatibilityProfileKind::ST2110_30:
+        p.displayName = "SMPTE ST 2110-30 (Level A)";
+        // Level A: 48 kHz only, 1 ms packets, 1-8 channels, 16/24-bit.
+        // See Docs/st2110_30_vs_aes67.md.
+        p.allowedSampleRates = {48000.0};
+        p.allowedPtimesUs = {1000}; // 1 ms
+        p.allowedEncodings = {"L16", "L24"}; // AM824 is ST 2110-31, not -30
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = true;
+        p.caveats =
+            "The mandatory level, and the safe common ground: gear claiming "
+            "any higher level must support this one too. 48 kHz, 1 ms "
+            "packets, up to 8 channels per stream. Pick Level B instead for "
+            "125 us packets. ST 2110-30 also requires stricter PTP than "
+            "AES67, and this driver's PTP has never been verified against a "
+            "real grandmaster. Selecting this profile enforces the "
+            "parameters it can check; it is not a conformance claim.";
+        break;
+
+    case CompatibilityProfileKind::ST2110_30_LevelB:
+        p.displayName = "SMPTE ST 2110-30 (Level B)";
+        // Level B is Level A at 125 us instead of 1 ms — same 48 kHz, same
+        // 16/24-bit, same 1-8 channels per stream. Emitting 125 us packets
+        // is possible as of the commit that moved packet time to
+        // microseconds; before that this profile could not have been
+        // honoured on transmit at all.
+        //
+        // Levels C, AX, BX and CX are deliberately absent:
+        //  - C is Level B with up to 64 channels in ONE stream, which this
+        //    driver can't do — StreamChannelMapper::kMaxChannelsPerFlow
+        //    caps a flow at 8 and the flow splitter divides anything wider.
+        //    Offering it would be a claim this driver can't honour.
+        //  - AX/BX/CX are the 96 kHz variants with the channel counts
+        //    halved (4, 4, 32). Supportable in principle; not added
+        //    speculatively, since nothing has asked for them.
+        p.allowedSampleRates = {48000.0};
+        p.allowedPtimesUs = {125};
+        p.allowedEncodings = {"L16", "L24"}; // AM824 is ST 2110-31, not -30
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = true;
+        p.caveats =
+            "Level A's constraints at a 125 us packet time: 48 kHz, up to 8 "
+            "channels per stream. Only choose this if the receiving gear "
+            "actually claims Level B — a Level A device must not be sent "
+            "125 us packets, and Level A is what everything supports. This "
+            "driver's transmitter emits whatever packet time the stream "
+            "asks for, so 125 us is reachable, but it has never been tested "
+            "against real Level B gear. Levels C (64 channels in one "
+            "stream) and AX/BX/CX (96 kHz) are not offered — see the code "
+            "comment for why. Same PTP caveat as Level A: ST 2110-30 "
+            "requires stricter PTP than AES67 and this driver's has never "
+            "been verified against a real grandmaster. Not a conformance "
+            "claim.";
+        break;
+
+    case CompatibilityProfileKind::Dante:
+        p.displayName = "Dante (AES67 mode)";
+        // Source: Audinate's own Dante Controller "AES67 Config"
+        // documentation. AES67 mode is NARROWER than AES67's own baseline
+        // in three ways this profile previously got wrong by assuming
+        // Dante simply inherited that baseline:
+        //  - 48 kHz only. Dante devices run 44.1/96/... natively, but an
+        //    AES67 flow out of one is 48 kHz, full stop.
+        //  - L24 only. "AES67 flows generated by Dante devices must use 24
+        //    bit linear encoding" — L16 is part of AES67's own baseline but
+        //    not something a Dante device will produce or accept here.
+        //  - PTPv2 domain fixed at 0. Dante's *native* PTPv1 clocking has
+        //    its own domain concept, which is what the old "domains 0-127"
+        //    comment here confused it with; AES67 mode itself is documented
+        //    as a fixed domain 0, and consequently can only be enabled for
+        //    one domain at a time.
+        p.allowedSampleRates = {48000.0};
+        p.allowedPtimesUs = {1000}; // 1 ms = 48 samples per channel per frame, per Audinate
+        p.allowedEncodings = {"L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.domainIsFixed = true;
+        p.fixedDomain = 0;
+        // Dante marks audio EF/46 (and PTP CS7/56 — a documented conflict
+        // with 'standard' AES67 implementations, which mark PTP 46
+        // instead). Informational only, like every recommendedDscp here.
+        p.recommendedDscp = 46;
+        // 239.69 is Dante's factory-default multicast prefix, and Dante
+        // Controller can change it (the documented range is 239.nnn/16).
+        // Kept as a hard requirement anyway, per explicit instruction: a
+        // profile is a filter, and this catches the common
+        // misconfiguration. A site that has deliberately moved its prefix
+        // should select the AES67 baseline profile instead of this one.
+        p.requiredMulticastPrefix = "239.69";
+        p.caveats =
+            "Requires the Dante device to have AES67 mode explicitly enabled "
+            "— this driver can't do that remotely, it's a setting on the "
+            "Dante hardware itself (Dante Controller). Dante natively "
+            "syncs with PTPv1; AES67 mode is what switches it to PTPv2, "
+            "which is what this driver speaks, on a fixed domain 0. "
+            "AES67 mode is narrower than AES67 itself: 48 kHz only "
+            "(whatever the device runs natively), L24 only, 1 ms packets, "
+            "port 5004. Enforces the 239.69.0.0/16 multicast range — that "
+            "prefix is Dante's factory default and is configurable in Dante "
+            "Controller, so a site that has moved it should use the AES67 "
+            "baseline profile instead. Dante marks audio DSCP EF/46 and PTP "
+            "CS7/56, where standard AES67 gear marks PTP 46 — a documented "
+            "QoS conflict to watch for on shared networks, though this "
+            "driver marks its own transmit traffic with Dante's audio "
+            "value, 46.";
+        break;
+
+    case CompatibilityProfileKind::Dolby: {
+        p.displayName = "Generic";
+        // The plain, minimal Dolby profile: the parameters common to the whole
+        // Dolby Atmos Connect family, a single generic unit, configured by
+        // hand. No automatic discovery (see DolbyLAN below). Shared family
+        // parameters (confirmed across the manuals): 48/96 kHz, 1 ms, L16/L24;
+        // PTP domain factory default 109 (not fixed); destination multicast
+        // default 239.81.83.67; the Atmos Connect wire scheme (one multicast
+        // address, fixed RTP destination port — pass 6517 — source port
+        // stepped per 8-channel flow); DSCP EF/46 (the DMA uses switch
+        // queue-based QoS instead). Direction and PTP role stay open because a
+        // Dolby box can be a source (processor) or a sink (amplifier).
+        p.allowedSampleRates = {48000.0, 96000.0};
+        p.allowedPtimesUs = {1000};
+        p.allowedEncodings = {"L16", "L24"};
+        p.maxChannelsPerFlow = 8;
+        p.requiresZeroRtpTimestampOffset = false;
+        p.domainIsFixed = false;
+        p.recommendedPtpDomain = 109;
+        p.recommendedMulticastAddress = "239.81.83.67";
+        p.recommendedDscp = 46;
+        p.direction = ProfileDirection::Any;
+        p.ptpRole = PTPRoleConstraint::Any;
+        p.maxTotalChannels = 0;
+        p.useFixedMulticastWithPerFlowSourcePort = true;
+        // Multicast is a factory DEFAULT (239.81.83.67), not a requirement:
+        // the CP950/CP950A manual (§3.8) documents installers overriding the
+        // destination multicast address per auditorium, with no fixed range —
+        // so recommendedMulticastAddress above is set, but no
+        // requiredMulticastPrefix is imposed. Matches the manuals.
+        p.maxUnits = 1;                 // a single generic unit — no chaining
+        p.usesLanAutoDetection = false; // minimal: configured by hand
+        p.caveats =
+            "The minimal Dolby profile — the parameters common to every Dolby "
+            "Atmos Connect device, for one unit you configure by hand: 48/96 "
+            "kHz, 1 ms, L16/L24; PTP domain factory-default 109; destination "
+            "multicast factory-default 239.81.83.67; the Atmos Connect wire "
+            "scheme (one multicast address, fixed RTP destination port — pass "
+            "6517 — source port stepped per 8-channel flow); DSCP EF/46. "
+            "Direction and PTP role are open — set them by how you configure "
+            "the streams. For automatic discovery of Dolby gear on the network "
+            "and multi-unit chaining, use Autodetect instead. Not a "
+            "conformance claim; PTP has never been verified against real Dolby "
+            "hardware.";
+        break;
+    }
+
+    case CompatibilityProfileKind::DolbyLAN: {
+        // Identical to the minimal Dolby profile plus the two things this
+        // variant is about: automatic discovery and multi-unit chaining.
+        p = forKind(CompatibilityProfileKind::Dolby);
+        p.kind = CompatibilityProfileKind::DolbyLAN;
+        p.displayName = "Autodetect";
+        p.maxUnits = 3;                // up to three chained OUTPUT amplifier units (DMA §2.3); inputs are not capped
+        p.usesLanAutoDetection = true; // the Inputs/Outputs tabs list found gear
+        p.caveats =
+            "Dolby with automatic discovery. The driver finds Dolby elements on "
+            "the network by passive PTP observation and lists them on the "
+            "Inputs and Outputs tabs; confirming each detected unit's model "
+            "there sets its channel count, and the resolved total becomes the "
+            "device's channel layout. A master peer is a processor feeding this "
+            "driver (an input, e.g. CP850/CP950); a slave peer is an amplifier "
+            "this driver feeds (an output, e.g. DAC3202/DMA). The up-to-three "
+            "limit is OUTPUT-side only — the amplifiers this driver feeds; each "
+            "chained amplifier unit appears as its own Outputs entry. Input "
+            "sources that feed this driver are not capped by it. Same family "
+            "parameters as the plain Dolby profile. Not a conformance claim; "
+            "PTP has never been verified against real Dolby hardware.";
+        break;
+    }
+
+    case CompatibilityProfileKind::DolbyDAC3202:
+        return makeDolbyModelProfile(kind, "Dolby DAC3202", 32, /*isOutput=*/true, 46);
+    case CompatibilityProfileKind::DolbyDMA16:
+        return makeDolbyModelProfile(kind, "Dolby DMA (16-channel)", 16, /*isOutput=*/true, -1);
+    case CompatibilityProfileKind::DolbyDMA24:
+        return makeDolbyModelProfile(kind, "Dolby DMA (24-channel)", 24, /*isOutput=*/true, -1);
+    case CompatibilityProfileKind::DolbyDMA32:
+        return makeDolbyModelProfile(kind, "Dolby DMA (32-channel)", 32, /*isOutput=*/true, -1);
+    case CompatibilityProfileKind::DolbyCP850:
+        return makeDolbyModelProfile(kind, "Dolby CP850", 64, /*isOutput=*/false, 46);
+    case CompatibilityProfileKind::DolbyCP950:
+        return makeDolbyModelProfile(kind, "Dolby CP950", 16, /*isOutput=*/false, 46);
+    case CompatibilityProfileKind::DolbyCP950A:
+        return makeDolbyModelProfile(kind, "Dolby CP950A", 64, /*isOutput=*/false, 46);
+    }
+
+    return p;
+}
+
+std::vector<CompatibilityProfile> CompatibilityProfile::all() {
+    return {
+        forKind(CompatibilityProfileKind::AES67),
+        forKind(CompatibilityProfileKind::RAVENNA),
+        forKind(CompatibilityProfileKind::ST2110_30),
+        forKind(CompatibilityProfileKind::ST2110_30_LevelB),
+        forKind(CompatibilityProfileKind::Dante),
+        forKind(CompatibilityProfileKind::Dolby),
+        forKind(CompatibilityProfileKind::DolbyDAC3202),
+        forKind(CompatibilityProfileKind::DolbyDMA16),
+        forKind(CompatibilityProfileKind::DolbyDMA24),
+        forKind(CompatibilityProfileKind::DolbyDMA32),
+        forKind(CompatibilityProfileKind::DolbyCP850),
+        forKind(CompatibilityProfileKind::DolbyCP950),
+        forKind(CompatibilityProfileKind::DolbyCP950A),
+        forKind(CompatibilityProfileKind::DolbyLAN),
+    };
+}
+
+std::string CompatibilityProfile::kindToString(CompatibilityProfileKind kind) {
+    switch (kind) {
+    case CompatibilityProfileKind::AES67:     return "aes67";
+    case CompatibilityProfileKind::RAVENNA:   return "ravenna";
+    case CompatibilityProfileKind::ST2110_30: return "st2110-30";
+    case CompatibilityProfileKind::ST2110_30_LevelB: return "st2110-30-b";
+    case CompatibilityProfileKind::Dante:     return "dante";
+    case CompatibilityProfileKind::Dolby:     return "dolby";
+    case CompatibilityProfileKind::DolbyLAN:  return "dolby-lan";
+    case CompatibilityProfileKind::DolbyDAC3202: return "dolby-dac3202";
+    case CompatibilityProfileKind::DolbyDMA16:   return "dolby-dma16";
+    case CompatibilityProfileKind::DolbyDMA24:   return "dolby-dma24";
+    case CompatibilityProfileKind::DolbyDMA32:   return "dolby-dma32";
+    case CompatibilityProfileKind::DolbyCP850:   return "dolby-cp850";
+    case CompatibilityProfileKind::DolbyCP950:   return "dolby-cp950";
+    case CompatibilityProfileKind::DolbyCP950A:  return "dolby-cp950a";
+    }
+    return "aes67";
+}
+
+CompatibilityProfileKind CompatibilityProfile::kindFromString(const std::string& s) {
+    if (s == "ravenna")   return CompatibilityProfileKind::RAVENNA;
+    if (s == "st2110-30") return CompatibilityProfileKind::ST2110_30;
+    if (s == "st2110-30-b") return CompatibilityProfileKind::ST2110_30_LevelB;
+    if (s == "dante")     return CompatibilityProfileKind::Dante;
+    if (s == "dolby-lan") return CompatibilityProfileKind::DolbyLAN;
+    if (s == "dolby-dac3202") return CompatibilityProfileKind::DolbyDAC3202;
+    if (s == "dolby-dma16")   return CompatibilityProfileKind::DolbyDMA16;
+    if (s == "dolby-dma24")   return CompatibilityProfileKind::DolbyDMA24;
+    if (s == "dolby-dma32")   return CompatibilityProfileKind::DolbyDMA32;
+    if (s == "dolby-cp850")   return CompatibilityProfileKind::DolbyCP850;
+    if (s == "dolby-cp950")   return CompatibilityProfileKind::DolbyCP950;
+    if (s == "dolby-cp950a")  return CompatibilityProfileKind::DolbyCP950A;
+    if (s == "dolby")     return CompatibilityProfileKind::Dolby;
+    // The former one-profile-per-model ids were the auto-discovering,
+    // multi-unit family behaviour — that is now "Dolby LAN".
+    if (s == "cp850" || s == "cp950" || s == "dac3202" || s == "dma")
+        return CompatibilityProfileKind::DolbyLAN;
+    return CompatibilityProfileKind::AES67;
+}
+
+// ============================================================================
+// Validation
+// ============================================================================
+
+namespace {
+
+std::string joinRates(const std::vector<double>& rates) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < rates.size(); ++i) {
+        if (i) oss << ", ";
+        oss << static_cast<long>(rates[i]);
+    }
+    return oss.str();
+}
+
+std::string joinStrings(const std::vector<std::string>& items) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i) oss << ", ";
+        oss << items[i];
+    }
+    return oss.str();
+}
+
+bool addressHasPrefix(const std::string& address, const std::string& prefix) {
+    // Prefix is a dotted fragment like "239.69"; require a following dot so
+    // "239.6" doesn't match "239.69.x.x".
+    if (address.size() <= prefix.size()) return false;
+    return address.compare(0, prefix.size(), prefix) == 0 &&
+           address[prefix.size()] == '.';
+}
+
+} // namespace
+
+bool CompatibilityProfile::validate(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const {
+    auto fail = [&](const std::string& reason) {
+        if (errorOut) *errorOut = displayName + ": " + reason;
+        return false;
+    };
+
+    if (direction == ProfileDirection::ReceiveOnly && isTransmit) {
+        return fail("this device has no network audio input — this driver may only receive from it, not send to it");
+    }
+    if (direction == ProfileDirection::TransmitOnly && !isTransmit) {
+        return fail("this device has no network audio output — this driver may only send to it, not receive from it");
+    }
+
+    if (!allowedSampleRates.empty()) {
+        const bool ok = std::any_of(allowedSampleRates.begin(), allowedSampleRates.end(),
+            [&](double rate) {
+                // SDP rates are integers in practice; compare with a
+                // tolerance rather than exact double equality.
+                return std::abs(rate - sdp.sampleRate) < 1.0;
+            });
+        if (!ok) {
+            return fail("sample rate " + std::to_string(static_cast<long>(sdp.sampleRate)) +
+                        " Hz not permitted (allowed: " + joinRates(allowedSampleRates) + ")");
+        }
+    }
+
+    if (!allowedPtimesUs.empty() && sdp.ptimeUs > 0) {
+        const bool ok = std::find(allowedPtimesUs.begin(), allowedPtimesUs.end(),
+                                   sdp.ptimeUs) != allowedPtimesUs.end();
+        if (!ok) {
+            return fail("packet time " + std::to_string(sdp.ptimeUs) +
+                        " us not permitted");
+        }
+    }
+
+    if (!allowedEncodings.empty() && !sdp.encoding.empty()) {
+        const bool ok = std::find(allowedEncodings.begin(), allowedEncodings.end(),
+                                   sdp.encoding) != allowedEncodings.end();
+        if (!ok) {
+            return fail("encoding " + sdp.encoding + " not permitted (allowed: " +
+                        joinStrings(allowedEncodings) + ")");
+        }
+    }
+
+    if (sdp.numChannels > maxChannelsPerFlow) {
+        return fail(std::to_string(sdp.numChannels) + " channels exceeds the " +
+                    std::to_string(maxChannelsPerFlow) +
+                    "-channel flow limit — split it across multiple flows");
+    }
+
+    if (!requiredMulticastPrefix.empty() && !sdp.connectionAddress.empty()) {
+        if (!addressHasPrefix(sdp.connectionAddress, requiredMulticastPrefix)) {
+            return fail("multicast address " + sdp.connectionAddress +
+                        " outside the required " + requiredMulticastPrefix + ".0.0/16 range");
+        }
+    }
+
+    // -1 means "no PTP for this stream" — not a domain choice at all, so it
+    // isn't subject to a fixed-domain requirement.
+    if (domainIsFixed && sdp.ptpDomain != -1 && sdp.ptpDomain != static_cast<int>(fixedDomain)) {
+        return fail("PTP domain " + std::to_string(sdp.ptpDomain) + " not permitted — "
+                    "fixed at " + std::to_string(fixedDomain));
+    }
+
+    return true;
+}
+
+// ============================================================================
+// Persistence
+// ============================================================================
+
+CompatibilityProfileManager::CompatibilityProfileManager() {
+    std::string existing = findExistingConfig();
+    configPath_ = existing.empty()
+        ? "/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile)
+        : existing;
+}
+
+CompatibilityProfileManager::~CompatibilityProfileManager() = default;
+
+std::string CompatibilityProfileManager::getConfigPath() const { return configPath_; }
+
+std::vector<std::string> CompatibilityProfileManager::getConfigSearchPaths() {
+    std::vector<std::string> paths;
+
+    const char* envPath = std::getenv("AES67_COMPAT_PROFILE_CONFIG_PATH");
+    if (envPath && envPath[0] != '\0') paths.push_back(envPath);
+
+    const char* home = std::getenv("HOME");
+    if (!home) {
+        struct passwd* pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+    }
+    if (home && home[0] != '\0') {
+        paths.push_back(std::string(home) + "/Library/Application Support/AES67Driver/" + kDefaultConfigFile);
+    }
+
+    paths.push_back("/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile));
+    return paths;
+}
+
+std::string CompatibilityProfileManager::findExistingConfig() {
+    for (const auto& path : getConfigSearchPaths()) {
+        struct stat st;
+        if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) return path;
+    }
+    return "";
+}
+
+bool CompatibilityProfileManager::ensureConfigDirectoryExists() {
+    size_t lastSlash = configPath_.find_last_of('/');
+    if (lastSlash == std::string::npos) return false;
+    std::string dir = configPath_.substr(0, lastSlash);
+
+    struct stat st;
+    if (stat(dir.c_str(), &st) == 0) return S_ISDIR(st.st_mode);
+
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        AES67_LOGF("CompatibilityProfileManager: Failed to create directory '%s': %s",
+                   dir.c_str(), ec.message().c_str());
+        return false;
+    }
+    chmod(dir.c_str(), 0755);
+    return true;
+}
+
+CompatibilityProfileKind CompatibilityProfileManager::load() {
+    std::ifstream file(configPath_);
+    if (!file.is_open()) return CompatibilityProfileKind::AES67;
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    const std::string json = buffer.str();
+
+    std::regex pattern("\"profile\"\\s*:\\s*\"([^\"]*)\"");
+    std::smatch match;
+    if (std::regex_search(json, match, pattern) && match.size() > 1) {
+        const auto kind = CompatibilityProfile::kindFromString(match[1].str());
+        AES67_LOGF("CompatibilityProfileManager: Loaded profile '%s' from %s",
+                   CompatibilityProfile::kindToString(kind).c_str(), configPath_.c_str());
+        return kind;
+    }
+
+    return CompatibilityProfileKind::AES67;
+}
+
+bool CompatibilityProfileManager::save(CompatibilityProfileKind kind) {
+    if (!ensureConfigDirectoryExists()) {
+        AES67_LOG("CompatibilityProfileManager: Failed to create config directory");
+        return false;
+    }
+
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"version\": \"1.0\",\n";
+    json << "  \"profile\": \"" << CompatibilityProfile::kindToString(kind) << "\"\n";
+    json << "}\n";
+
+    std::ofstream file(configPath_);
+    if (!file.is_open()) {
+        AES67_LOGF("CompatibilityProfileManager: Failed to open %s for writing", configPath_.c_str());
+        return false;
+    }
+    file << json.str();
+    return true;
+}
+
+} // namespace AES67

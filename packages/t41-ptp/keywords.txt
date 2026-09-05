@@ -1,0 +1,57 @@
+# Syntax colouring for the Arduino IDE.
+# https://arduino.github.io/arduino-cli/latest/library-specification/#keywords
+
+l2PTP	KEYWORD1
+l3PTP	KEYWORD1
+PTPBase	KEYWORD1
+PortState	KEYWORD1
+MasterDataset	KEYWORD1
+NanoTime	KEYWORD1
+
+begin	KEYWORD2
+end	KEYWORD2
+update	KEYWORD2
+reset	KEYWORD2
+syncMessage	KEYWORD2
+announceMessage	KEYWORD2
+ppsInterruptTriggered	KEYWORD2
+getOffset	KEYWORD2
+getDelay	KEYWORD2
+getLockCount	KEYWORD2
+getPortState	KEYWORD2
+isSyncReceiptValid	KEYWORD2
+hasSelectedMaster	KEYWORD2
+getSelectedMaster	KEYWORD2
+getTxFailureCount	KEYWORD2
+getBindFailureCount	KEYWORD2
+setKp	KEYWORD2
+setKi	KEYWORD2
+setKf	KEYWORD2
+setDelayFilterLength	KEYWORD2
+setTimestampOffset	KEYWORD2
+setPeerOffsetCorrection	KEYWORD2
+setPpsOffset	KEYWORD2
+setDomainNumber	KEYWORD2
+setMajorSdoId	KEYWORD2
+setMasterIdentity	KEYWORD2
+clearMasterIdentity	KEYWORD2
+setBmcaEnabled	KEYWORD2
+setClockClass	KEYWORD2
+setClockAccuracy	KEYWORD2
+setOffsetScaledLogVariance	KEYWORD2
+setPriority1	KEYWORD2
+setPriority2	KEYWORD2
+setTimeSource	KEYWORD2
+setCurrentUtcOffset	KEYWORD2
+setUtcOffsetValid	KEYWORD2
+setLeap59	KEYWORD2
+setLeap61	KEYWORD2
+setTimeTraceable	KEYWORD2
+setFrequencyTraceable	KEYWORD2
+setStepsRemoved	KEYWORD2
+setLogSyncInterval	KEYWORD2
+setLogAnnounceInterval	KEYWORD2
+setLogMinDelayReqInterval	KEYWORD2
+setMulticastTTL	KEYWORD2
+
+NS_PER_S	LITERAL1
