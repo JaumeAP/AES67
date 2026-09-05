@@ -116,10 +116,11 @@ fi
 # library, and a consumer that lets a platform header into it would find out at
 # somebody else's build.
 echo "==> Core stays platform-free"
-if [ -x external/aes67-core/scripts/check-platform-free.sh ]; then
-  external/aes67-core/scripts/check-platform-free.sh || { echo "FAIL: core contract" >&2; exit 1; }
+if [ -x ../aes67-core/scripts/check-platform-free.sh ]; then
+  ( cd ../aes67-core && scripts/check-platform-free.sh ) \
+    || { echo "FAIL: core contract" >&2; exit 1; }
 else
-  echo "FAIL: external/aes67-core missing - run: git submodule update --init --recursive" >&2
+  echo "FAIL: packages/aes67-core missing" >&2
   exit 1
 fi
 

@@ -3,8 +3,8 @@
 # so nothing collides.
 add_library(doctest_headers INTERFACE)
 target_include_directories(doctest_headers INTERFACE
-    ${CMAKE_SOURCE_DIR}/external/doctest/doctest)
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/doctest/doctest/doctest.h")
+    ${PROJECT_SOURCE_DIR}/external/doctest/doctest)
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/external/doctest/doctest/doctest.h")
     message(WARNING "external/doctest is empty - run: git submodule update --init --recursive")
 endif()
 
@@ -21,7 +21,7 @@ add_executable(TestRTPReceiver
 )
 
 target_include_directories(TestRTPReceiver PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestRTPReceiver PRIVATE aes67_core aes67_net)
@@ -41,7 +41,7 @@ add_executable(TestRTPTransmitter
 )
 
 target_include_directories(TestRTPTransmitter PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestRTPTransmitter PRIVATE aes67_core aes67_net)
@@ -66,7 +66,7 @@ add_executable(TestPTPClock
 )
 
 target_include_directories(TestPTPClock PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 # AudioClockDeviceList/CoreAudioClockSource (pulled in via PTPArbitrator)
 # call CoreAudio/CoreFoundation directly.
@@ -87,7 +87,7 @@ add_executable(TestPTPMaster
 )
 
 target_include_directories(TestPTPMaster PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestPTPMaster PRIVATE aes67_core aes67_net)
@@ -102,7 +102,7 @@ add_executable(TestRTSPServer
 )
 
 target_include_directories(TestRTSPServer PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestRTSPServer PRIVATE aes67_core aes67_net)
@@ -116,7 +116,7 @@ add_executable(TestSAPListener
 )
 
 target_include_directories(TestSAPListener PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestSAPListener PRIVATE aes67_core aes67_net)
@@ -130,7 +130,7 @@ add_executable(TestRTCPMonitor
 )
 
 target_include_directories(TestRTCPMonitor PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestRTCPMonitor PRIVATE aes67_core aes67_net)
@@ -144,7 +144,7 @@ add_executable(TestHTTPClient
 )
 
 target_include_directories(TestHTTPClient PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestHTTPClient PRIVATE aes67_core aes67_net)
@@ -158,7 +158,7 @@ add_executable(TestRTSPClient
 )
 
 target_include_directories(TestRTSPClient PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestRTSPClient PRIVATE aes67_core aes67_net)
@@ -172,7 +172,7 @@ add_executable(TestSAPAnnouncer
 )
 
 target_include_directories(TestSAPAnnouncer PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestSAPAnnouncer PRIVATE aes67_core aes67_net)
@@ -186,7 +186,7 @@ add_executable(TestNetworkUtils
 )
 
 target_include_directories(TestNetworkUtils PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestNetworkUtils PRIVATE aes67_core aes67_net)
@@ -200,7 +200,7 @@ add_executable(TestPTPPeerObserver
 )
 
 target_include_directories(TestPTPPeerObserver PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestPTPPeerObserver PRIVATE aes67_core aes67_net)
@@ -214,7 +214,7 @@ add_executable(TestNetworkInterfaceDetection
 )
 
 target_include_directories(TestNetworkInterfaceDetection PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestNetworkInterfaceDetection PRIVATE aes67_core aes67_net)
@@ -228,7 +228,7 @@ add_executable(TestResourceCleanup
 )
 
 target_include_directories(TestResourceCleanup PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestResourceCleanup PRIVATE aes67_core aes67_net)
@@ -242,7 +242,7 @@ add_executable(TestMulticastRejoiner
 )
 
 target_include_directories(TestMulticastRejoiner PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestMulticastRejoiner PRIVATE aes67_core aes67_net)
@@ -256,7 +256,7 @@ add_executable(TestConnectionAPI
 )
 
 target_include_directories(TestConnectionAPI PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestConnectionAPI PRIVATE aes67_core aes67_net)
@@ -270,7 +270,7 @@ add_executable(TestNMOSRegistration
 )
 
 target_include_directories(TestNMOSRegistration PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestNMOSRegistration PRIVATE aes67_core aes67_net)
@@ -285,7 +285,7 @@ add_executable(TestPTPMasterBoxInterop
 )
 
 target_include_directories(TestPTPMasterBoxInterop PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_core aes67_net)
@@ -299,7 +299,7 @@ add_executable(TestPTPSettingsMapping
 )
 
 target_include_directories(TestPTPSettingsMapping PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestPTPSettingsMapping PRIVATE aes67_core aes67_net)
@@ -313,7 +313,7 @@ add_executable(TestNetworkQoS
 )
 
 target_include_directories(TestNetworkQoS PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestNetworkQoS PRIVATE aes67_core aes67_net)
@@ -328,7 +328,7 @@ add_executable(TestSDPFetcher
 )
 
 target_include_directories(TestSDPFetcher PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestSDPFetcher PRIVATE aes67_core aes67_net)
@@ -343,7 +343,7 @@ add_executable(TestMDNSBrowser
 )
 
 target_include_directories(TestMDNSBrowser PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestMDNSBrowser PRIVATE aes67_core aes67_net)
@@ -360,7 +360,7 @@ add_executable(TestPTPLoopback
 )
 
 target_include_directories(TestPTPLoopback PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestPTPLoopback PRIVATE aes67_core aes67_net)
@@ -378,7 +378,7 @@ add_executable(TestPTPService
 )
 
 target_include_directories(TestPTPService PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestPTPService PRIVATE aes67_core aes67_net)
@@ -396,7 +396,7 @@ add_executable(TestStreamManager
 )
 
 target_include_directories(TestStreamManager PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestStreamManager PRIVATE aes67_core aes67_net)
@@ -418,7 +418,7 @@ add_executable(TestMultiStream
 )
 
 target_include_directories(TestMultiStream PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestMultiStream PRIVATE
@@ -440,7 +440,7 @@ if(ASPL_FOUND)
     )
 
     target_include_directories(BenchmarkIOHandler PRIVATE
-        ${CMAKE_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}
         ${ASPL_INCLUDE_DIR}
     )
 
@@ -477,7 +477,7 @@ add_executable(TestIntegrationAudioPath
 )
 
 target_include_directories(TestIntegrationAudioPath PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(TestIntegrationAudioPath PRIVATE aes67_core aes67_net)
@@ -492,7 +492,7 @@ add_executable(TestPCMCodec
     TestPCMCodec.cpp
     ../NetworkEngine/RTP/PCMCodec.cpp
 )
-target_include_directories(TestPCMCodec PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(TestPCMCodec PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(TestPCMCodec PRIVATE aes67_core aes67_net)
 
 target_link_libraries(TestPCMCodec PRIVATE doctest_headers)

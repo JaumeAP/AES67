@@ -15,7 +15,7 @@ add_executable(SimpleSDPParse
 )
 
 target_include_directories(SimpleSDPParse PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(SimpleSDPParse PRIVATE aes67_core)
@@ -28,7 +28,7 @@ add_executable(ChannelMapperDemo
 )
 
 target_include_directories(ChannelMapperDemo PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(ChannelMapperDemo PRIVATE aes67_core)

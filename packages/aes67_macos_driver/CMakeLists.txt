@@ -184,7 +184,10 @@ set(DRIVER_SOURCES
 # repository's gate. Building them from this side would duplicate the targets
 # and, worse, suggest this project is where they are maintained.
 set(AES67_CORE_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(external/aes67-core EXCLUDE_FROM_ALL)
+# The core is a sibling package in this monorepo now, not a submodule, so the
+# subdirectory sits outside this directory and needs its own binary dir.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../aes67-core
+                 ${CMAKE_CURRENT_BINARY_DIR}/aes67-core EXCLUDE_FROM_ALL)
 
 # Includes are written relative to the repository root now, not to the file
 # doing the including. That became necessary when the core moved out: a header
@@ -339,7 +342,7 @@ option(BUILD_PTP_DAEMON "Build the privileged PTP daemon (aes67ptpd)" ON)
 
 if(BUILD_PTP_DAEMON)
     add_executable(aes67ptpd Daemon/aes67ptpd.cpp)
-    target_include_directories(aes67ptpd PRIVATE ${CMAKE_SOURCE_DIR})
+    target_include_directories(aes67ptpd PRIVATE ${PROJECT_SOURCE_DIR})
     target_link_libraries(aes67ptpd PRIVATE aes67_core aes67_net)
     target_compile_features(aes67ptpd PRIVATE cxx_std_17)
 endif()
