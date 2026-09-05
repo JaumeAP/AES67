@@ -10,11 +10,13 @@ A work-in-progress open-source virtual audio driver for macOS that aims to provi
 
 ## Where the portable code went
 
-The platform-free core is no longer here. It lives in
-[`JaumeAP/aes67-core`](https://github.com/JaumeAP/aes67-core) and arrives as the
-`external/aes67-core` submodule: SDP parsing, the RTP wire header, the jitter
-buffer and packet pool, the media-clock PLL, the resampling chain, channel
-mapping, compatibility profiles and stream configuration.
+The platform-free core is no longer here. It is the sibling package
+`packages/aes67-core`, which this one pulls in with `add_subdirectory`: SDP
+parsing, the RTP wire header, the jitter buffer and packet pool, the
+media-clock PLL, the resampling chain, channel mapping, compatibility profiles
+and stream configuration. It used to live in
+[`JaumeAP/aes67-core`](https://github.com/JaumeAP/aes67-core) and arrive as the
+`external/aes67-core` submodule; the monorepo made it a package instead.
 
 It moved out because while it lived here, every other implementation that
 wanted a jitter buffer had to consume a macOS driver. The ESP32-P4 firmware, a
@@ -27,8 +29,10 @@ supplies the three `NetworkUtils` symbols the core declares without
 implementing.
 
 Clone with `--recurse-submodules`, or run `git submodule update --init
---recursive` afterwards. `scripts/ci-local.sh` runs the core's own contract
-check, so a platform header finding its way in fails here too.
+--recursive` afterwards: doctest is the one submodule left, and it now hangs
+off the root of the monorepo at `external/doctest`, shared with the core.
+`scripts/ci-local.sh` runs the core's own contract check, so a platform header
+finding its way in fails here too.
 
 ### What consuming it costs
 
@@ -151,7 +155,7 @@ AES67Driver/
 │       └── RTCPMonitor      # sender reports from the streams we receive
 ├── Shared/                  # Common components
 │   │                        # (RingBuffer.hpp and the rest of the portable
-│   │                        #  pieces live in external/aes67-core)
+│   │                        #  pieces live in packages/aes67-core)
 │   └── Types.h              # Common data structures
 ├── Tools/                   # Test utilities
 │   ├── AES67TestSender      # Sends RTP test packets over loopback

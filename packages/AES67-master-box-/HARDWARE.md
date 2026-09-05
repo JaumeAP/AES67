@@ -187,8 +187,8 @@ output" below.
   https://github.com/IMS-AS-LUH/t41-ptp
 - **QNEthernet**: lwIP-based Ethernet library for the Teensy 4/4.1. It is the
   TCP/IP stack giving real network access. We use OUR fork,
-  `JaumeAP/QNEthernet` branch `ieee1588-2-fix` (see below):
-  https://github.com/JaumeAP/QNEthernet/tree/ieee1588-2-fix
+  `JaumeAP/QNEthernet` branch `multicast-ttl` (see below):
+  https://github.com/JaumeAP/QNEthernet/tree/multicast-ttl
 
   The chain of forks, because it matters: t41-ptp does NOT work with
   ssilverman's official QNEthernet, it needs the IEEE 1588 patches HedgeHawk
@@ -205,33 +205,43 @@ NXP's SDK also includes the `enet_txrx_ptp1588_transfer` example.
 ## Libraries inside the repository
 
 Under `lib/`, which is the library directory PlatformIO looks in by default,
-there hangs only **one git submodule**, and it points at a fork of ours:
+there hangs one entry, and it is not a submodule any more:
 
-- `lib/t41-ptp` → `JaumeAP/t41-ptp`, branch `integration/master-box`.
+- `lib/t41-ptp` → a symbolic link to `packages/t41-ptp`, the sibling package in
+  this monorepo.
 
-QNEthernet no longer hangs off this repository. Since t41-ptp is what includes
-it, it is now a submodule of that and arrives by recursion:
+It used to be a submodule pointing at `JaumeAP/t41-ptp`. The monorepo move left
+a stale copy of the pre-fork library in its place instead — no `ptp-servo.*`,
+no `test/`, no `libraries/` — which is to say neither the firmware nor the host
+tests could build. The link is what makes `lib/t41-ptp` mean the package that
+is actually maintained here.
 
-- `lib/t41-ptp/lib/QNEthernet` → `JaumeAP/QNEthernet`, branch
-  `ieee1588-2-fix`.
+QNEthernet does not hang off this repository. t41-ptp is what includes it, so
+it arrives with the link:
+
+- `lib/t41-ptp/libraries/QNEthernet`, which is `packages/t41-ptp/libraries/QNEthernet`
+  → the fork `JaumeAP/QNEthernet`, branch `multicast-ttl`.
 
 Two practical consequences:
 
-- It has to be cloned with `--recursive` (or
-  `git submodule update --init --recursive`); with an `--init` without
-  recursion QNEthernet is not there.
+- Nothing has to be initialised: the link resolves inside the monorepo. There
+  is one submodule left in the whole tree and it is doctest, at the root.
 - PlatformIO's `lib_dir` does not descend into the libraries it finds, which is
-  why `platformio.ini` carries `lib_extra_dirs = lib/t41-ptp/lib`. Without that
-  line QNEthernet is not seen and it does not compile.
+  why `platformio.ini` carries `lib_extra_dirs = lib/t41-ptp/libraries`.
+  Without that line QNEthernet is not seen and it does not compile. The
+  QNEthernet it must find is that one and not `packages/QNEthernet`: the fork's
+  additions, `setMulticastTTL()` and `setOutgoingDiffServ()`, are what
+  `src/audio/tone-sender.cpp` calls, and the two copies are kept identical for
+  that reason.
 
-### Why t41-ptp sits on a branch and not on `main`
+### Why t41-ptp is a fork and not upstream
 
 It was code vendored into the repository until that stopped being necessary.
 The reason for vendoring it was that we had changes of our own with nowhere to
 put them; the fork now exists and carries them, and there are more of them than
 there used to be.
 
-The `integration/master-box` branch is the sum of two things:
+What the fork carries over upstream is the sum of two things:
 
 1. **Nine fixes** out of two audit passes over the original code. The most
    important, for us, is that two loops on the send path waited for the
@@ -249,22 +259,14 @@ The `integration/master-box` branch is the sum of two things:
    device's BMCA.
 
 **All eleven have been offered upstream**, one pull request each, to
-`IMS-AS-LUH/t41-ptp`. As they land, the fork's `main` converges and this branch
-stops being needed: at that point the submodule should be repointed at `main`.
+`IMS-AS-LUH/t41-ptp`. As they land, the fork converges with upstream and stops
+being needed.
 
 t41-ptp's licence is MIT and the authors ask to be cited in scientific work;
-see `lib/t41-ptp/LICENSE` and `CITATION.cff`, which arrive with the submodule.
+see `lib/t41-ptp/LICENSE` and `CITATION.cff`. The root `NOTICE` sets out which
+licence covers which subtree of the monorepo.
 
-In a fresh clone both have to be initialised:
-
-    git clone --recursive <url>
-
-Or, if the repository is already cloned:
-
-    git submodule update --init --recursive
-
-t41-ptp ships two examples in `lib/t41-ptp/examples/`: `PTPMaster` (the one we
-care about, disciplined by an external PPS) and `PTPSlave`.
+t41-ptp ships its example in `lib/t41-ptp/examples/PTPNode`.
 
 ## Alternatives ruled out
 

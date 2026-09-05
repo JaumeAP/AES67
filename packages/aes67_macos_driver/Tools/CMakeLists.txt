@@ -15,7 +15,7 @@ target_include_directories(AES67TestSender PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(AES67TestSender PRIVATE aes67_core aes67_net)
+target_link_libraries(AES67TestSender PRIVATE aes67_net)
 
 target_compile_features(AES67TestSender PRIVATE cxx_std_17)
 target_link_libraries(AES67TestSender PRIVATE "-framework Accelerate")
@@ -32,7 +32,7 @@ target_include_directories(AES67TestReceiver PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(AES67TestReceiver PRIVATE aes67_core aes67_net)
+target_link_libraries(AES67TestReceiver PRIVATE aes67_net)
 
 target_compile_features(AES67TestReceiver PRIVATE cxx_std_17)
 target_link_libraries(AES67TestReceiver PRIVATE "-framework Accelerate")
@@ -43,7 +43,7 @@ add_executable(AES67InteropSim
     ../NetworkEngine/RTP/PCMCodec.cpp
 )
 target_include_directories(AES67InteropSim PRIVATE ${PROJECT_SOURCE_DIR})
-target_link_libraries(AES67InteropSim PRIVATE aes67_core aes67_net)
+target_link_libraries(AES67InteropSim PRIVATE aes67_net)
 
 target_compile_features(AES67InteropSim PRIVATE cxx_std_17)
 target_link_libraries(AES67InteropSim PRIVATE "-framework Accelerate")

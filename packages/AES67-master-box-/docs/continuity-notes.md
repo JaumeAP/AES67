@@ -170,27 +170,28 @@ OUT, pin 13 lock LED.
     src/webconfig.{h,cpp}
                         HTTP server on port 80 for picking the profile
     src/net_config.h    network configuration (DHCP, static fallback, hostname)
-    lib/t41-ptp         submodule: JaumeAP/t41-ptp, branch integration/master-box
-    lib/t41-ptp/lib/QNEthernet
-                        t41-ptp's submodule -> JaumeAP/QNEthernet, branch
-                        ieee1588-2-fix
+    lib/t41-ptp         symbolic link to packages/t41-ptp, the sibling package
+    lib/t41-ptp/libraries/QNEthernet
+                        the fork JaumeAP/QNEthernet, branch multicast-ttl,
+                        which the package carries
     HARDWARE.md         hardware, libraries and the PTP profile announced
 
 `lib/` is PlatformIO's default library directory. QNEthernet, on the other
 hand, hangs off t41-ptp, which is what includes it, and `lib_dir` does not
 descend into the libraries it finds there: that is why `platformio.ini` adds
-`lib_extra_dirs = lib/t41-ptp/lib`. And that is why it has to be cloned with
-`--recursive`.
+`lib_extra_dirs = lib/t41-ptp/libraries`. Nothing has to be initialised any
+more: both used to be submodules, and inside the monorepo the link resolves on
+its own.
 
-## The split between the submodule and this repository
+## The split between the library package and this one
 
 The rule is who owns each thing, not where it first ended up:
 
-**In the submodule, library code and nothing else.** `JaumeAP/t41-ptp`, branch
-`integration/master-box`: the two changes offered upstream (configurable
-ANNOUNCE dataset and the `currentUtcOffsetValid` bit), the nine fixes from the
-library audit, the servo split and its host tests, and QNEthernet as a
-submodule of its own. `examples/` is upstream's, untouched.
+**In the library package, library code and nothing else.** `packages/t41-ptp`,
+the fork of `IMS-AS-LUH/t41-ptp`: the two changes offered upstream
+(configurable ANNOUNCE dataset and the `currentUtcOffsetValid` bit), the nine
+fixes from the library audit, the servo split and its host tests, and
+QNEthernet under `libraries/`. `examples/` is upstream's, untouched.
 
 **Here, everything that is application**, that is whatever the person writing
 the sketch decides and not the library:
@@ -376,8 +377,8 @@ submodule initialising correctly. It took 123 KB of flash and 47 KB of RAM1.
 Verified again with QNEthernet now hanging off t41-ptp: `pio run` again, exit
 code 0 and the same figures (123664 B of code in FLASH, 48960 B of variables in
 RAM1). The `lib_extra_dirs` does its job; the dependency graph finds QNEthernet
-there and builds with `-Ilib/t41-ptp/lib/QNEthernet/src`, that is, it is the
-nested one and not any downloaded copy.
+there and builds with `-Ilib/t41-ptp/libraries/QNEthernet/src`, that is, it is
+the nested one and not any downloaded copy.
 
 And once more after the split, with the submodule's example returned to
 upstream: `pio run` exit code 0, the same figures again, and the only project

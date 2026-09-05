@@ -25,6 +25,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -108,7 +109,20 @@ std::string httpAnswer(const std::string& body, const char* status = "200 OK",
 }
 
 std::string writeTempSDP(const std::string& contents) {
-    std::string path = std::string(std::tmpnam(nullptr)) + ".sdp";
+    // mkstemp() rather than tmpnam(): tmpnam() returns a name and leaves the
+    // creation to the caller, so anything else on the machine can win the
+    // race and have this write follow a symlink of its choosing. mkstemp()
+    // creates the file itself, exclusively, and hands back the descriptor.
+    char tmpl[] = "/tmp/aes67-sdp-XXXXXX";
+    const int fd = ::mkstemp(tmpl);
+    REQUIRE(fd >= 0);
+    const std::string path(tmpl);
+
+    // SDPFetcher is given a path, not a descriptor, so the file is written
+    // through a stream and the descriptor is closed once it exists: the name
+    // is now ours, which is what the race was about.
+    ::close(fd);
+
     std::ofstream out(path);
     out << contents;
     out.close();

@@ -180,14 +180,16 @@ set(DRIVER_SOURCES
 # the CoreAudio clock sources, the Accelerate codec -- plus the socket layer in
 # AES67_NET_SOURCES, which is portable in practice but is not the core's
 # business.
-# Its tests stay off here: they run in that repository, against that
-# repository's gate. Building them from this side would duplicate the targets
-# and, worse, suggest this project is where they are maintained.
-set(AES67_CORE_TESTS OFF CACHE BOOL "" FORCE)
+# Its tests used to be forced off here, on the grounds that they ran in the
+# core's own repository against its own gate. There is no other repository
+# now: the core is a package in this tree, and off meant nobody built its
+# nineteen suites at all. They are on, and EXCLUDE_FROM_ALL is gone with them
+# -- a registered test whose binary the default build skips is a ctest
+# failure waiting to happen.
 # The core is a sibling package in this monorepo now, not a submodule, so the
 # subdirectory sits outside this directory and needs its own binary dir.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../aes67-core
-                 ${CMAKE_CURRENT_BINARY_DIR}/aes67-core EXCLUDE_FROM_ALL)
+                 ${CMAKE_CURRENT_BINARY_DIR}/aes67-core)
 
 # Includes are written relative to the repository root now, not to the file
 # doing the including. That became necessary when the core moved out: a header
@@ -241,8 +243,18 @@ if(APPLE AND ASPL_FOUND)
 
     target_include_directories(AES67Driver PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ASPL_INCLUDE_DIR}
     )
+    # SYSTEM: libASPL's headers are not ours to fix, and their warnings drown
+    # out the ones that are. Same reason the firmware passes -isystem for the
+    # Teensy core headers.
+    target_include_directories(AES67Driver SYSTEM PRIVATE ${ASPL_INCLUDE_DIR})
+
+    # The 23 .cpp files under external/libASPL/src are compiled into this
+    # target directly (see the ASPL_SOURCES comment above), and -isystem does
+    # nothing for a file being compiled rather than included: on its own it
+    # left 214 of the build's 286 warnings coming out of vendored code. They
+    # are silenced at the source, not project-wide.
+    set_source_files_properties(${ASPL_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
 
     target_link_libraries(AES67Driver PRIVATE
         aes67_net    # brings aes67_core with it (PUBLIC link above)
@@ -343,7 +355,7 @@ option(BUILD_PTP_DAEMON "Build the privileged PTP daemon (aes67ptpd)" ON)
 if(BUILD_PTP_DAEMON)
     add_executable(aes67ptpd Daemon/aes67ptpd.cpp)
     target_include_directories(aes67ptpd PRIVATE ${PROJECT_SOURCE_DIR})
-    target_link_libraries(aes67ptpd PRIVATE aes67_core aes67_net)
+    target_link_libraries(aes67ptpd PRIVATE aes67_net)
     target_compile_features(aes67ptpd PRIVATE cxx_std_17)
 endif()
 

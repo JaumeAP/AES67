@@ -116,6 +116,13 @@ void PTPServiceServer::acceptLoop() {
             // publish(): its writes fail instead and it gets dropped.
             ::fcntl(fd, F_SETFL, O_NONBLOCK);
             std::lock_guard<std::mutex> lock(clientsMutex_);
+            if (clients_.size() >= PTPServiceServer::kMaxClients) {
+                // The list is in accept order, so the front is the oldest
+                // connection: the one that has had the longest run of the
+                // status it came for.
+                ::close(clients_.front());
+                clients_.erase(clients_.begin());
+            }
             clients_.push_back(fd);
             continue;
         }

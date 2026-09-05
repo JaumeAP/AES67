@@ -84,6 +84,37 @@ EthernetUDP::~EthernetUDP() {
   stop();
 }
 
+void EthernetUDP::setMulticastTTL(uint8_t ttl) {
+  mcastTTL_ = ttl;
+  applyMulticastTTL();
+  applyDiffServ();
+}
+
+void EthernetUDP::setOutgoingDiffServ(uint8_t dscp) {
+  dscp_ = dscp & 0x3f;
+  applyDiffServ();
+}
+
+void EthernetUDP::applyDiffServ() {
+  if (pcb_ == nullptr) {
+    return;
+  }
+  // The TOS octet carries the DSCP in its top six bits; the low two are
+  // ECN and belong to the stack, so they are left alone.
+  pcb_->tos = static_cast<uint8_t>((dscp_ << 2) | (pcb_->tos & 0x03));
+}
+
+void EthernetUDP::applyMulticastTTL() {
+  if (pcb_ == nullptr) {
+    return;
+  }
+#if LWIP_MULTICAST_TX_OPTIONS
+  udp_set_multicast_ttl(pcb_, mcastTTL_);
+#else
+  pcb_->ttl = mcastTTL_;
+#endif  // LWIP_MULTICAST_TX_OPTIONS
+}
+
 uint8_t EthernetUDP::begin(uint16_t localPort) {
   return begin(localPort, false);
 }
@@ -91,6 +122,8 @@ uint8_t EthernetUDP::begin(uint16_t localPort) {
 uint8_t EthernetUDP::begin(uint16_t localPort, bool reuse) {
   if (pcb_ == nullptr) {
     pcb_ = udp_new();
+    applyMulticastTTL();
+    applyDiffServ();
   }
   if (pcb_ == nullptr) {
     return false;
@@ -280,6 +313,8 @@ int EthernetUDP::beginPacket(const char *host, uint16_t port) {
 bool EthernetUDP::beginPacket(const ip_addr_t *ipaddr, uint16_t port) {
   if (pcb_ == nullptr) {
     pcb_ = udp_new();
+    applyMulticastTTL();
+    applyDiffServ();
   }
   if (pcb_ == nullptr) {
     return false;
@@ -341,6 +376,8 @@ bool EthernetUDP::send(const ip_addr_t *ipaddr, uint16_t port,
   }
   if (pcb_ == nullptr) {
     pcb_ = udp_new();
+    applyMulticastTTL();
+    applyDiffServ();
   }
   if (pcb_ == nullptr) {
     return false;

@@ -54,8 +54,11 @@ Three checks, and they answer different questions:
 `check-tidy.sh` skips itself with a message when no clang-tidy is present — it is
 not part of the Command Line Tools. The script says how to get one.
 
-`external/doctest` is a submodule and only the tests need it; a consumer that
-builds the library alone can pass `-DAES67_CORE_TESTS=OFF`.
+doctest is a submodule at the root of the monorepo, `external/doctest`, shared
+with the driver package; only the tests need it, and a consumer that builds the
+library alone can pass `-DAES67_CORE_TESTS=OFF`. Building this package outside
+the tree still works: the CMakeLists falls back to `../../external/doctest`
+when the root has not set `AES67_DOCTEST_DIR`.
 
 ## One seam you have to fill
 
