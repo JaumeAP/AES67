@@ -83,13 +83,31 @@ double PeriodMs(std::chrono::nanoseconds period) {
 
 std::chrono::nanoseconds LogIntervalToNs(int8_t logInterval) {
     constexpr int64_t kNsPerSecond = 1000000000;
+
+    // The reachable range is much narrower than int8_t: MsToLogInterval's
+    // input is a positive int of milliseconds, so the largest interval that
+    // can be configured is about 24.9 days and what comes back is at most 21.
+    // But the parameter is an int8_t, MsToLogInterval clamps to -128 and 127
+    // rather than to what this can represent, and a shift of 127 on an int64
+    // is undefined behaviour -- not a large number, undefined. Saying so in a
+    // comment left it to be believed rather than enforced, which is what the
+    // analyser was pointing at.
+    //
+    // 1e9 is just under 2^30, so a left shift of 33 is the last one that fits
+    // in an int64; on the right, 63 shifts the value away to zero and there is
+    // nothing beyond it to say. Neither bound is reachable through
+    // MsToLogInterval, and clamping to them changes nothing that happens --
+    // it only puts the limit where the compiler can see it.
+    constexpr int kMaxLeftShift = 33;
+    constexpr int kMaxRightShift = 63;
+
     if (logInterval >= 0) {
-        // MsToLogInterval's input is a positive int of milliseconds, so what
-        // comes back is at most 21 (about 24 days) and the shift stays inside
-        // an int64 with room to spare.
-        return std::chrono::nanoseconds(kNsPerSecond << logInterval);
+        const int shift = logInterval < kMaxLeftShift ? logInterval : kMaxLeftShift;
+        return std::chrono::nanoseconds(kNsPerSecond << shift);
     }
-    return std::chrono::nanoseconds(kNsPerSecond >> (-logInterval));
+    const int shift = -static_cast<int>(logInterval);
+    return std::chrono::nanoseconds(
+        kNsPerSecond >> (shift < kMaxRightShift ? shift : kMaxRightShift));
 }
 
 }  // namespace

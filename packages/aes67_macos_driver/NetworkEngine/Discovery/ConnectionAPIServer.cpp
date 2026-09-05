@@ -25,7 +25,7 @@ namespace AES67 {
 
 namespace {
 
-constexpr size_t kMaxRequestBytes = 64 * 1024;   // an SDP in a patch, and no more
+constexpr size_t kMaxRequestBytes = size_t{64} * 1024;  // an SDP in a patch, and no more
 constexpr int kListenBacklog = 8;
 constexpr int kSelectTimeoutMs = 250;   ///< how fast the accept loop notices stop()
 /// A client that connects and then says nothing is dropped. One thread
