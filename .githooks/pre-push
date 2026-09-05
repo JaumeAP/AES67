@@ -1,7 +1,7 @@
 #!/bin/bash
-# Runs the local build and test suite before any push. Replaces the deleted
-# GitHub Actions workflow: nothing verifies these commits server-side any more,
-# so this is the only gate left.
+# Runs every package's own gate before any push, through scripts/gate.sh.
+# Replaces the deleted GitHub Actions workflow: nothing verifies these commits
+# server-side any more, so this is the only gate left.
 #
 # Two speeds, on purpose. A push to a working branch gets the cheap half --
 # build and tests, seconds -- because that is where regressions show. A push to
@@ -81,8 +81,8 @@ if [ -z "$analyse" ] && [ "$to_default_branch" = "1" ]; then
 fi
 analyse="${analyse:-0}"
 
-echo "pre-push: running packages/aes67_macos_driver/scripts/ci-local.sh"
-if AES67_ANALYSE="$analyse" "$repo_root/packages/aes67_macos_driver/scripts/ci-local.sh"; then
+echo "pre-push: running scripts/gate.sh"
+if AES67_ANALYSE="$analyse" "$repo_root/scripts/gate.sh"; then
   exit 0
 fi
 echo "pre-push: build or tests failed -- push aborted. Fix, or push with --no-verify." >&2

@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
 project(aes67_core LANGUAGES CXX)
 
 # Platform-free by construction, and checked: see scripts/check-platform-free.sh
 # and the README. Nothing here may include an Apple framework, a socket header
 # or anything else that assumes an operating system -- that is the whole reason
-# this library was split out of aes67_macos_driver rather than being consumed
+# this library was split out of aes67-macos-driver rather than being consumed
 # from inside it, where "the base" would have meant "the macOS one".
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

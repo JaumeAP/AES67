@@ -1,5 +1,3 @@
-![tests](https://github.com/JaumeAP/t41-ptp/actions/workflows/tests.yml/badge.svg)
-
 # t41-ptp
 
 This [repository](https://github.com/IMS-AS-LUH/t41-ptp) provides the source code for the research paper "Sub-Microsecond Time Synchronization for Network-Connected Microcontrollers" ([Final published article](https://doi.org/10.1109/ICCE59016.2024.10444401), [Open Access: accepted version](https://doi.org/10.15488/16561)). This Arduino compatible library has been created to provide high precision time synchronization for the Teensy 4.1 microcontroller platform.
@@ -15,15 +13,13 @@ The library was created by the Architectures and Systems Group of the Institute 
 The parts this runs on, and where they can be ordered, are in
 [doc/hardware.md](doc/hardware.md).
 
-The parts this runs on, and where they can be ordered, are in
-[doc/hardware.md](doc/hardware.md).
-
 - Teensy 4.1 with Ethernet adapter
 - Working Teensy Arduino environment
 
-The two libraries this one needs are submodules:
-
-    git clone --recurse-submodules https://github.com/JaumeAP/t41-ptp
+This is a package of the `JaumeAP/AES67` monorepo. It used to be a repository
+of its own, `JaumeAP/t41-ptp`, which is archived and read-only now; the two
+libraries it needs were submodules there and are plain directories here, so
+nothing has to be initialised.
 
 - `libraries/QNEthernet` — QNEthernet with IEEE 1588 support, from [JaumeAP/QNEthernet](https://github.com/JaumeAP/QNEthernet/tree/multicast-ttl), itself [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) plus three commits. See below for why this is a fork and not upstream.
 - `libraries/Time` — `TimeLib.h`, used for the log output. This one is upstream's own, [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time).
@@ -127,7 +123,9 @@ Over eight hundred assertions covering the message parsers and their length guar
 
     make -C test board
 
-It needs PlatformIO on the path (`PIO=` overrides the command) and the submodules checked out. Nothing it produces is versioned; `make -C test clean` removes it along with the host binary. Both builds run on every push.
+It needs PlatformIO on the path (`PIO=` overrides the command). Nothing it produces is versioned; `make -C test clean` removes it along with the host binary.
+
+`scripts/gate.sh` is this package's gate: it runs the host tests with `-Werror`, and the board build with `--board` when PlatformIO is there. The monorepo's `scripts/gate.sh` calls it along with every other package's, and `.githooks/pre-push` runs that one, so a change here is checked before it can be pushed. It was not, until 2026-09-05: the workflow that used to run these two builds only fires at the root of a repository, and this is a package inside one.
 
 ## What this fork changed
 

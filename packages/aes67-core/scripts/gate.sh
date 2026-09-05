@@ -6,7 +6,7 @@
 #
 # Run by .githooks/pre-push. Until this existed, the three checks here only ran
 # when somebody remembered to type them -- and the consumer that did run one of
-# them (aes67_macos_driver calls check-platform-free.sh from its own gate) was
+# them (aes67-macos-driver calls check-platform-free.sh from its own gate) was
 # the only automatic coverage this library had. A base other projects build on
 # should not depend on a consumer for that.
 set -uo pipefail
@@ -56,7 +56,8 @@ scripts/check-platform-free.sh || { echo "FAIL: platform contract" >&2; exit 1; 
 # latent defects, not something that broke between two commits. Paying for it
 # on every push taxes the wrong moment.
 #
-# AES67_ANALYSE=1, or scripts/gate.sh --analyse. .githooks/pre-push sets it
+# AES67_ANALYSE=1, or scripts/gate.sh --analyse. The monorepo's
+# scripts/gate.sh passes the variable through, and .githooks/pre-push sets it
 # when the push is going to the default branch, after asking.
 if [ "${AES67_ANALYSE:-0}" = "1" ] || [ "$analyse" = "1" ]; then
   echo "==> Static analysis"
