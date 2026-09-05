@@ -4,6 +4,7 @@
 // This header defines custom implementations of system functions
 // that update our shared state instead of adjusting the system clock
 
+#include <cstdint>
 #include <time.h>
 #include <sys/time.h>
 

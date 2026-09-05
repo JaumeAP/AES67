@@ -25,6 +25,7 @@ add_library(aes67_core
     NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
     NetworkEngine/RTP/LockFreePacketPool.cpp
     NetworkEngine/RTP/BufferStatusMonitor.cpp
+    NetworkEngine/NMOSSettings.cpp
     NetworkEngine/PTP/PTPMasterSettings.cpp
     NetworkEngine/PTP/PhaseLockedLoop.cpp
     NetworkEngine/PTP/CustomSys.cpp
@@ -55,7 +56,7 @@ if(AES67_CORE_TESTS)
     # the README -- so it, and only it, links the test double that fills it.
     set(AES67_SEAM_STUB Tests/support/NetworkUtilsStub.cpp)
 
-    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper CompatibilityProfile DeviceChannelSettings NetworkErrorHandler PTPMasterSettings Resampling StreamConfig InteropSDP)
+    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper CompatibilityProfile DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable DolbyModelCatalog RTCPReceiverTable)
         set(extra_sources "")
         if(suite STREQUAL "StreamConfig")
             set(extra_sources ${AES67_SEAM_STUB})
@@ -72,4 +73,9 @@ if(AES67_CORE_TESTS)
     target_compile_definitions(TestInteropSDP PRIVATE
         AES67_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Tests/fixtures")
     set_tests_properties(InteropSDP PROPERTIES LABELS "unit;interop")
+
+    # The ring buffer has two suites: what it does, and what it does under two
+    # threads and a clock. The second is labelled for what it is, so a consumer
+    # that wants only the deterministic ones can exclude it.
+    set_tests_properties(RingBufferTiming PROPERTIES LABELS "unit;timing")
 endif()

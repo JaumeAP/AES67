@@ -1,6 +1,9 @@
 #include "PTPMasterSettings.h"
 #include "../../Driver/DebugLog.h"
 
+#include <cctype>
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -85,6 +88,29 @@ std::optional<std::string> extractStringField(const std::string& json, const std
     return std::nullopt;
 }
 
+/// An integer field, without exceptions: this parses a file the app wrote
+/// and a person may have edited by hand, and std::stoi throws on anything
+/// that is not a number.
+std::optional<int> extractIntField(const std::string& json, const std::string& key) {
+    const std::string needle = "\"" + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return std::nullopt;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return std::nullopt;
+    ++pos;
+    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
+    const size_t start = pos;
+    if (pos < json.size() && (json[pos] == '-' || json[pos] == '+')) ++pos;
+    const size_t digitsStart = pos;
+    while (pos < json.size() && std::isdigit(static_cast<unsigned char>(json[pos]))) ++pos;
+    if (pos == digitsStart) return std::nullopt;
+    errno = 0;
+    char* end = nullptr;
+    const long value = std::strtol(json.c_str() + start, &end, 10);
+    if (errno == ERANGE || value < INT_MIN || value > INT_MAX) return std::nullopt;
+    return static_cast<int>(value);
+}
+
 std::optional<bool> extractBoolField(const std::string& json, const std::string& key) {
     std::regex pattern("\"" + key + "\"\\s*:\\s*(true|false)");
     std::smatch match;
@@ -121,6 +147,15 @@ PTPMasterSettings PTPMasterSettingsManager::load() {
     if (auto v = extractBoolField(json, "requireLock")) settings.requireLock = *v;
     if (auto v = extractStringField(json, "clockSourceKind")) settings.clockSourceKind = *v;
     if (auto v = extractStringField(json, "lockToDeviceUID")) settings.lockToDeviceUID = *v;
+    if (auto v = extractIntField(json, "priority1")) settings.priority1 = *v;
+    if (auto v = extractIntField(json, "priority2")) settings.priority2 = *v;
+    if (auto v = extractIntField(json, "clockClass")) settings.clockClass = *v;
+    if (auto v = extractIntField(json, "clockAccuracy")) settings.clockAccuracy = *v;
+    if (auto v = extractIntField(json, "syncIntervalMs")) settings.syncIntervalMs = *v;
+    if (auto v = extractIntField(json, "announceIntervalMs")) settings.announceIntervalMs = *v;
+    if (auto v = extractIntField(json, "delayReqIntervalMs")) settings.delayReqIntervalMs = *v;
+    if (auto v = extractStringField(json, "delayMechanism")) settings.delayMechanism = *v;
+    if (auto v = extractIntField(json, "dscp")) settings.dscp = *v;
 
     AES67_LOGF("PTPMasterSettingsManager: Loaded from %s (masterCapable=%s, clockSourceKind=%s)",
                configPath_.c_str(), settings.masterCapable ? "true" : "false",
@@ -141,7 +176,16 @@ bool PTPMasterSettingsManager::save(const PTPMasterSettings& settings) {
     json << "  \"ptpEnabled\": " << (settings.ptpEnabled ? "true" : "false") << ",\n";
     json << "  \"requireLock\": " << (settings.requireLock ? "true" : "false") << ",\n";
     json << "  \"clockSourceKind\": \"" << jsonEscape(settings.clockSourceKind) << "\",\n";
-    json << "  \"lockToDeviceUID\": \"" << jsonEscape(settings.lockToDeviceUID) << "\"\n";
+    json << "  \"lockToDeviceUID\": \"" << jsonEscape(settings.lockToDeviceUID) << "\",\n";
+    json << "  \"priority1\": " << settings.priority1 << ",\n";
+    json << "  \"priority2\": " << settings.priority2 << ",\n";
+    json << "  \"clockClass\": " << settings.clockClass << ",\n";
+    json << "  \"clockAccuracy\": " << settings.clockAccuracy << ",\n";
+    json << "  \"syncIntervalMs\": " << settings.syncIntervalMs << ",\n";
+    json << "  \"announceIntervalMs\": " << settings.announceIntervalMs << ",\n";
+    json << "  \"delayReqIntervalMs\": " << settings.delayReqIntervalMs << ",\n";
+    json << "  \"delayMechanism\": \"" << jsonEscape(settings.delayMechanism) << "\",\n";
+    json << "  \"dscp\": " << settings.dscp << "\n";
     json << "}\n";
 
     std::ofstream file(configPath_);

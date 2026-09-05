@@ -1,6 +1,7 @@
 #ifndef ERROR_RECOVERY_MANAGER_H
 #define ERROR_RECOVERY_MANAGER_H
 
+#include <atomic>
 #include <functional>
 #include <chrono>
 #include <unordered_map>

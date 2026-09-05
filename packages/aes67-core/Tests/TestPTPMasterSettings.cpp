@@ -59,6 +59,19 @@ TEST_CASE("The defaults are the behaviour from before the feature existed") {
     CHECK(defaults.requireLock == false);
     CHECK(defaults.clockSourceKind == "internal");
     CHECK(defaults.lockToDeviceUID.empty());
+
+    // The dataset: every one of these is what the code had compiled in
+    // before it could be set, so a file from an older build reads the same
+    // as it always did.
+    CHECK(defaults.priority1 == 128);
+    CHECK(defaults.priority2 == 128);
+    CHECK(defaults.clockClass == 248);
+    CHECK(defaults.clockAccuracy == 0xFE);
+    CHECK(defaults.syncIntervalMs == 125);
+    CHECK(defaults.announceIntervalMs == 1000);
+    CHECK(defaults.delayReqIntervalMs == 1000);
+    CHECK(defaults.delayMechanism == "e2e");
+    CHECK(defaults.dscp == -1);
 }
 
 TEST_CASE("The environment override wins over the installed locations") {
@@ -127,6 +140,15 @@ TEST_CASE("Saving and loading round-trips every field") {
     written.requireLock = false;
     written.clockSourceKind = "device";
     written.lockToDeviceUID = "SomeDevice:1234";
+    written.priority1 = 100;
+    written.priority2 = 90;
+    written.clockClass = 13;
+    written.clockAccuracy = 0x21;
+    written.syncIntervalMs = 250;
+    written.announceIntervalMs = 2000;
+    written.delayReqIntervalMs = 125;
+    written.delayMechanism = "p2p";
+    written.dscp = 46;
 
     PTPMasterSettingsManager manager;
     REQUIRE(manager.save(written));
@@ -137,6 +159,38 @@ TEST_CASE("Saving and loading round-trips every field") {
     CHECK(read.requireLock == written.requireLock);
     CHECK(read.clockSourceKind == written.clockSourceKind);
     CHECK(read.lockToDeviceUID == written.lockToDeviceUID);
+    CHECK(read.priority1 == written.priority1);
+    CHECK(read.priority2 == written.priority2);
+    CHECK(read.clockClass == written.clockClass);
+    CHECK(read.clockAccuracy == written.clockAccuracy);
+    CHECK(read.syncIntervalMs == written.syncIntervalMs);
+    CHECK(read.announceIntervalMs == written.announceIntervalMs);
+    CHECK(read.delayReqIntervalMs == written.delayReqIntervalMs);
+    CHECK(read.delayMechanism == written.delayMechanism);
+    CHECK(read.dscp == written.dscp);
+}
+
+TEST_CASE("A negative DSCP survives the round trip, because it means unmarked") {
+    TempConfig cfg("{}");
+
+    PTPMasterSettings written;
+    written.dscp = -1;
+
+    PTPMasterSettingsManager manager;
+    REQUIRE(manager.save(written));
+    CHECK(manager.load().dscp == -1);
+}
+
+TEST_CASE("A field that is not a number keeps its default") {
+    TempConfig cfg("{\n  \"priority1\": \"one hundred\",\n  \"clockClass\": 6\n}\n");
+
+    PTPMasterSettingsManager manager;
+    const PTPMasterSettings settings = manager.load();
+
+    // The bad one is left alone and the good one beside it still reads:
+    // this file is edited by hand as often as it is written by the app.
+    CHECK(settings.priority1 == 128);
+    CHECK(settings.clockClass == 6);
 }
 
 TEST_CASE("A malformed file falls back to the defaults rather than half-reading it") {
