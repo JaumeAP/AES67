@@ -15,26 +15,34 @@ the `.cpp` files.
 
 ## Why it exists
 
-This code was written inside `aes67_macos_driver` and lived there. That made
+This code was written inside `aes67-macos-driver` and lived there. That made
 the macOS driver the base every other implementation had to consume, which is
 backwards: the ESP32-P4 firmware, a Linux daemon and a macOS driver are three
 peers, and none of them should have to take another's platform along to reuse a
 jitter buffer.
 
-Splitting it out makes them peers. What stays in `aes67_macos_driver` is what is
+Splitting it out makes them peers. What stays in `aes67-macos-driver` is what is
 genuinely macOS: the `AudioServerPlugIn`, libASPL, CoreAudio clock sources, the
 Accelerate codec.
 
 ## Building and checking
 
+This is a package of the `JaumeAP/AES67` monorepo. It used to be a repository
+of its own, `JaumeAP/aes67-core`, which is archived and read-only now.
+
 ```bash
-git clone --recurse-submodules https://github.com/JaumeAP/aes67-core.git
 cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
 ```
 
-`scripts/gate.sh` runs it, and `.githooks/pre-push` runs that — opt in per
-clone with `git config core.hooksPath .githooks`, since hook configuration is
-local and does not travel with a repository.
+`scripts/gate.sh` is this package's gate and runs all of that. The monorepo's
+`scripts/gate.sh` calls it along with every other package's, and
+`.githooks/pre-push` runs that one — opt in per clone with
+`git config core.hooksPath .githooks`, since hook configuration is local and
+does not travel with a repository.
+
+Building this package on its own works: doctest is a submodule at the root of
+the monorepo, `external/doctest`, and the CMakeLists falls back to that path
+when the root has not said where it is.
 
 The gate has two speeds. By default it builds, tests and checks the platform
 contract, which takes under a second. The static analysis costs minutes and is
@@ -69,7 +77,7 @@ not implement them. It cannot:
 the implementation opens sockets and enumerates interfaces, which is exactly
 what a platform-free library has no business doing.
 
-So the header is here and the implementation is yours. `aes67_macos_driver`
+So the header is here and the implementation is yours. `aes67-macos-driver`
 provides it in `aes67_net`; a firmware consumer provides one over lwIP. Linking
 `aes67_core` without supplying those three symbols fails at the final link,
 which is the right place for it to fail.
@@ -90,7 +98,7 @@ consumers can point `lib_extra_dirs` at the checkout.
 
 ## Licence
 
-GPL-3.0, inherited from `aes67_macos_driver`, where this code was written. That
+GPL-3.0, inherited from `aes67-macos-driver`, where this code was written. That
 is not a preference: 19 of the 23 translation units carry commits from a second
 author, so relicensing is not a decision one person can make.
 
@@ -101,5 +109,5 @@ nothing.
 ## History
 
 The commits here are the real ones — 87 of them, filtered from
-`aes67_macos_driver` so that `git log` and `git blame` still answer questions
+`aes67-macos-driver` so that `git log` and `git blame` still answer questions
 about this code. Anything older than the split lives in that repository.

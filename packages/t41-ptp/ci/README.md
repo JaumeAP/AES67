@@ -6,7 +6,7 @@ library in this repository and the two dependencies under `libraries/`.
 `src/main.cpp` is written from `examples/PTPNode/PTPNode.ino` with the
 prototypes an `.ino` gets from the Arduino preprocessor and a `.cpp` does
 not. The `board` target in `test/Makefile` does that and runs
-`pio run -d ci`, and the workflow calls the same target:
+`pio run -d ci`, and `scripts/gate.sh --board` calls the same target:
 
     make -C test board
 

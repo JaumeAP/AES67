@@ -1,43 +1,36 @@
-# Build directories
+# What every package in this tree produces, or what the machine leaves behind.
+# Anything that belongs to one package is ignored in that package's own
+# .gitignore -- this file used to be aes67-macos-driver's, moved to the root
+# by the monorepo import, and its rules were matching paths tree-wide by
+# accident: `Tests/Makefile`, `Examples/SimpleSDPParse`, `ManagerApp/.build/`
+# and the rest name directories only that package has.
+
+# Build directories, whatever package they belong to.
 build/
-build-pkg/
-# scripts/ci-local.sh --sanitize / --tsan and scripts/coverage.sh each use
-# their own tree so switching modes does not force a full rebuild of build/.
-build-san/
-build-tsan/
-build-cov/
+build-*/
 combined-pkg/
-*.xcodeproj/xcuserdata/
-*.xcworkspace/xcuserdata/
 
-# Compiled binaries
-*.driver
-*.app
-*.pkg
-*.dylib
-*.a
+# Compiled output.
 *.o
+*.a
+*.dylib
 
-# CMake
+# CMake, in-source runs included: the root-level artifacts were removed on
+# 2026-09-04 along with two committed arm64 binaries, and these rules stop new
+# ones appearing anywhere in the tree.
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 install_manifest.txt
+/Makefile
+/CTestTestfile.cmake
+/CPackConfig.cmake
+/CPackSourceConfig.cmake
 
-# Xcode
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-*.xccheckout
-*.moved-aside
-DerivedData/
-*.hmap
-*.ipa
-*.xcuserstate
-project.xcworkspace/
+# ctest writes this at the root of whatever tree it runs in.
+Testing/
 
-# macOS
+# macOS.
 .DS_Store
 .AppleDouble
 .LSOverride
@@ -46,55 +39,20 @@ Icon
 .Spotlight-V100
 .Trashes
 
-# Debug logs
+# Logs.
 *.log
-/tmp/
 
-# IDE
+# Editors and language servers.
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.cache/
 
-# Package files
-*.deb
-*.rpm
-*.tar.gz
-*.zip
-
-# Test outputs
-Tests/output/
-Tests/*.log
-
-# Swift build cache
-ManagerApp/.build/
-
-# Serena plugin
+# Serena plugin.
 .serena/
 
 # npx-skills universal-format mirror of .claude/skills/ (not read by any
-# tooling in this repo; .claude/skills/ is the copy that matters)
+# tooling in this repository; .claude/skills/ is the copy that matters).
 .agents/
-
-# In-source CMake runs must never recommit their artifacts (2026-08-31;
-# the root-level ones were removed on 2026-09-04 along with two committed
-# arm64 binaries, and these rules stop new ones)
-/Makefile
-/CTestTestfile.cmake
-/CPackConfig.cmake
-/CPackSourceConfig.cmake
-Examples/Makefile
-Examples/CTestTestfile.cmake
-Examples/ChannelMapperDemo
-Examples/SimpleSDPParse
-Tests/Makefile
-Tests/CTestTestfile.cmake
-Tests/Testing/
-Tests/Test*
-!Tests/Test*.cpp
-Tests/Benchmark*
-!Tests/Benchmark*.cpp
-
-# clangd index and cache
-.cache/

@@ -174,7 +174,7 @@ Nothing here is testable on its own: PTP needs something to synchronise
 with, and a stream needs somebody to receive it.
 
 1. **A clock to follow, or to be**: a real grandmaster, another Teensy, or
-   the Mac running `aes67ptpd` from the aes67_macos_driver project.
+   the Mac running `aes67ptpd` from the aes67-macos-driver project.
 2. **A receiver for the tone**: the AES67 macOS driver, or any AES67
    endpoint. What it should measure is 1 kHz at −20 dBFS RMS, one channel,
    48 kHz, one millisecond per packet.

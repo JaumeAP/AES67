@@ -35,10 +35,15 @@ the path, `PIO=` to override the command, and the submodules checked out):
 
 That target writes `ci/src/main.cpp` from `examples/PTPNode/PTPNode.ino`, prepending the ISR
 prototypes a `.cpp` build needs and a real `.ino` gets from the Arduino preprocessor, and then
-runs `pio run -d ci`. It is the only copy of that recipe — the workflow runs the same target, so
-adding or renaming an ISR in the example means editing `test/Makefile` and nothing else.
-`make -C test clean` removes `ci/src/main.cpp` and `ci/.pio` along with the host binary. Both jobs
-(`host-tests`, `board-build`) run on every push via `.github/workflows/tests.yml`.
+runs `pio run -d ci`. It is the only copy of that recipe — `scripts/gate.sh --board` runs the same
+target, so adding or renaming an ISR in the example means editing `test/Makefile` and nothing else.
+`make -C test clean` removes `ci/src/main.cpp` and `ci/.pio` along with the host binary.
+
+`scripts/gate.sh` is the gate: host tests with `-Werror`, and the board build only with `--board`,
+since PlatformIO downloads a toolchain on first use. The monorepo's `scripts/gate.sh` calls it and
+`.githooks/pre-push` runs that. The GitHub Actions workflow this replaced was deleted: Actions only
+reads workflows from the root of a repository, and this is a package inside one, so it never ran
+here and the badge it fed pointed at an archived repository.
 
 `libraries/QNEthernet` and `libraries/Time` are required for the board build, not for the host
 tests, which stub them out. They were submodules of this repository; inside the monorepo they are

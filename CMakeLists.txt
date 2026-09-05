@@ -4,9 +4,12 @@
 # The packages under packages/ came from separate repositories and each keeps
 # its own build files. This file only makes the macOS driver reachable from
 # the repository root, so `cmake -S . -B build` and `ctest --test-dir build`
-# still work the way they did before the move. The fork packages (t41-ptp,
-# QNEthernet) build with their own toolchains and are deliberately not wired
-# in here; packages/aes67-core is pulled in by the driver itself.
+# still work the way they did before the move. t41-ptp is cross-compiled for a
+# Teensy with the Arduino toolchain and is deliberately not wired in here;
+# packages/aes67-core is pulled in by the driver itself.
+#
+# Every package verifies itself: scripts/gate.sh runs each package's own gate,
+# and .githooks/pre-push runs that.
 #
 # The grandmaster firmware was a package here too. It is standalone again, in
 # JaumeAP/AES67-master-box-, and consumes t41-ptp as a submodule of its own.
@@ -41,4 +44,4 @@ if(NOT TARGET doctest_headers)
     target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
 endif()
 
-add_subdirectory(packages/aes67_macos_driver)
+add_subdirectory(packages/aes67-macos-driver)
