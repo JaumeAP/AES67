@@ -1,0 +1,254 @@
+#include "NetworkInterfaceDetection.h"
+#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <net/if_dl.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <cctype>
+
+namespace AES67 {
+
+std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    std::string primaryInterface;
+    
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            
+            // Check if it's an active ethernet interface
+            if ((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING) && 
+                (ifa->ifa_flags & IFF_LOOPBACK) == 0) {
+                
+                // Check if it's an ethernet interface (AF_LINK indicates data link layer info)
+                if (ifa->ifa_addr->sa_family == AF_INET) {  // IPv4 interfaces
+                    std::string name(ifa->ifa_name);
+                    
+                    // Look for ethernet interfaces (typically named en0, en1, etc.)
+                    // But also check for other common names
+                    if (name.substr(0, 2) == "en" ||  // Ethernet
+                        name.substr(0, 4) == "eth" || // Alternative naming
+                        name.substr(0, 4) == "thun" || // Thunderbolt Ethernet
+                        name.substr(0, 3) == "usb") { // USB Ethernet
+                    
+                        // Prefer interfaces with actual IP addresses (not link-local)
+                        struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                        std::string ip = inet_ntoa(addr->sin_addr);
+                        
+                        // Skip link-local addresses (169.254.x.x)
+                        if (ip.substr(0, 7) != "169.254") {
+                            primaryInterface = name;
+                            break;  // Return first active ethernet interface with valid IP
+                        }
+                    }
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+    
+    return primaryInterface;
+}
+
+std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
+    std::vector<std::string> interfaces;
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET) {  // IPv4 interfaces
+                std::string name(ifa->ifa_name);
+                
+                // Check if we already have this interface
+                bool found = false;
+                for (const auto& existing : interfaces) {
+                    if (existing == name) {
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    interfaces.push_back(name);
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+    
+    return interfaces;
+}
+
+bool NetworkInterfaceDetection::isInterfaceActive(const std::string& interfaceName) {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    bool isActive = false;
+    
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_name != nullptr && interfaceName == ifa->ifa_name) {
+                if ((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)) {
+                    isActive = true;
+                    break;
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+    
+    return isActive;
+}
+
+bool NetworkInterfaceDetection::isEthernetInterface(const std::string& interfaceName) {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    bool isEthernet = false;
+    
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_name != nullptr && interfaceName == ifa->ifa_name) {
+                // Check if it has a link layer address (MAC address)
+                if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_LINK) {
+                    // AF_LINK indicates it's a data link layer interface (like Ethernet)
+                    isEthernet = true;
+                    break;
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+    
+    return isEthernet;
+}
+
+std::string NetworkInterfaceDetection::getInterfaceIPAddress(const std::string& interfaceName) {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    std::string ipAddress;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_name != nullptr && interfaceName == ifa->ifa_name) {
+                if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+                    struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                    ipAddress = inet_ntoa(addr->sin_addr);
+                    break;
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return ipAddress;
+}
+
+bool NetworkInterfaceDetection::supportsMulticast(const std::string& interfaceName) {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    bool hasMulticast = false;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_name != nullptr && interfaceName == ifa->ifa_name) {
+                // Check if the interface supports multicast
+                if (ifa->ifa_flags & IFF_MULTICAST) {
+                    hasMulticast = true;
+                    break;
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return hasMulticast;
+}
+
+std::vector<std::string> NetworkInterfaceDetection::getMulticastCapableInterfaces() {
+    std::vector<std::string> interfaces;
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+
+            // Must be IPv4, active, and support multicast
+            if (ifa->ifa_addr->sa_family == AF_INET &&
+                (ifa->ifa_flags & IFF_UP) &&
+                (ifa->ifa_flags & IFF_RUNNING) &&
+                (ifa->ifa_flags & IFF_MULTICAST) &&
+                (ifa->ifa_flags & IFF_LOOPBACK) == 0) {
+
+                std::string name(ifa->ifa_name);
+
+                // Skip link-local addresses (169.254.x.x)
+                struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                std::string ip = inet_ntoa(addr->sin_addr);
+                if (ip.substr(0, 7) == "169.254") {
+                    continue;
+                }
+
+                // Check if we already have this interface
+                bool found = false;
+                for (const auto& existing : interfaces) {
+                    if (existing == name) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    interfaces.push_back(name);
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return interfaces;
+}
+
+std::string NetworkInterfaceDetection::detectPTPInterface() {
+    auto interfaces = getMulticastCapableInterfaces();
+
+    if (interfaces.empty()) {
+        // No suitable interfaces found, return default fallback
+        return "en0";
+    }
+
+    // First pass: Look for dedicated AES67/audio interface naming conventions
+    for (const auto& iface : interfaces) {
+        std::string lowerName = iface;
+        // Convert to lowercase for case-insensitive comparison
+        for (auto& c : lowerName) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+
+        if (lowerName.find("aes67") != std::string::npos ||
+            lowerName.find("audio") != std::string::npos ||
+            lowerName.find("ravenna") != std::string::npos ||
+            lowerName.find("dante") != std::string::npos) {
+            return iface;
+        }
+    }
+
+    // Second pass: Prefer standard Ethernet interfaces (en0, en1, etc.)
+    for (const auto& iface : interfaces) {
+        if (iface.substr(0, 2) == "en") {
+            return iface;
+        }
+    }
+
+    // Third pass: Accept other Ethernet-like interfaces
+    for (const auto& iface : interfaces) {
+        if (iface.substr(0, 3) == "eth" ||      // Alternative ethernet naming
+            iface.substr(0, 4) == "thun" ||     // Thunderbolt ethernet
+            iface.substr(0, 3) == "usb") {      // USB ethernet
+            return iface;
+        }
+    }
+
+    // Fall back to first available interface
+    return interfaces[0];
+}
+
+} // namespace AES67

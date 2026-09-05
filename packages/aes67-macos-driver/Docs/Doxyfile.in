@@ -1,0 +1,93 @@
+# Doxyfile.in
+# Doxygen configuration for AES67 macOS Audio Driver
+# CMake substitutes @VARIABLES@ during configure_file()
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+
+PROJECT_NAME           = "AES67 macOS Audio Driver"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "AES67/RAVENNA/Dante virtual audio driver for macOS"
+OUTPUT_DIRECTORY       = @CMAKE_CURRENT_BINARY_DIR@/docs
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+
+INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/Driver \
+                         @CMAKE_CURRENT_SOURCE_DIR@/NetworkEngine \
+                         @CMAKE_CURRENT_SOURCE_DIR@/Shared
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.hpp *.cpp
+EXCLUDE_PATTERNS       = */vendor/* */external/*
+
+#---------------------------------------------------------------------------
+# Extraction
+#---------------------------------------------------------------------------
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+
+#---------------------------------------------------------------------------
+# Build
+#---------------------------------------------------------------------------
+
+BUILTIN_STL_SUPPORT    = YES
+CPP_CLI_SUPPORT        = NO
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = NO
+GENERATE_TODOLIST      = YES
+GENERATE_BUGLIST       = YES
+
+#---------------------------------------------------------------------------
+# Warnings
+#---------------------------------------------------------------------------
+
+QUIET                  = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+
+#---------------------------------------------------------------------------
+# Source browsing
+#---------------------------------------------------------------------------
+
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+#---------------------------------------------------------------------------
+# Output formats
+#---------------------------------------------------------------------------
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_COLORSTYLE        = LIGHT
+SEARCHENGINE           = YES
+
+GENERATE_LATEX         = NO
+GENERATE_RTF           = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+
+#---------------------------------------------------------------------------
+# Preprocessor
+#---------------------------------------------------------------------------
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+PREDEFINED             = __APPLE__
+
+#---------------------------------------------------------------------------
+# Diagrams
+#---------------------------------------------------------------------------
+
+HAVE_DOT               = NO
+CLASS_DIAGRAMS         = YES
+COLLABORATION_GRAPH    = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO

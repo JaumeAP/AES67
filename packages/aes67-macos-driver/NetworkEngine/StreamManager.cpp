@@ -1,0 +1,1366 @@
+//
+// StreamManager.cpp
+// AES67 macOS Driver - Build #9
+// Unified management of all AES67 streams with validation
+//
+
+#include "StreamManager.h"
+#include "NetworkEngine/NetworkUtils.h"
+#include "NetworkEngine/Discovery/SDPFetcher.h"
+#include "Driver/DebugLog.h"
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <cctype>
+#include <cstdlib>
+#include <ctime>
+
+namespace AES67 {
+
+StreamManager::StreamManager(DeviceChannelBuffers& inputChannels, DeviceChannelBuffers& outputChannels)
+    : inputChannels_(inputChannels)
+    , outputChannels_(outputChannels)
+    , configManager_(std::make_unique<StreamConfigManager>())
+{
+}
+
+PTPDiagnostics StreamManager::getPTPDiagnostics(int domain) {
+    // Reports whatever is actually running — which, unless setPTPEnabled(true)
+    // has been called, is nothing, and the disconnected defaults are the
+    // honest answer. ptpManager_ (the member) stays unused: clocks are
+    // owned by PTPClockManager's singleton, keyed by domain, because
+    // several streams on the same domain must share one clock rather than
+    // each starting its own.
+    return PTPClockManager::getInstance().getDiagnostics(domain);
+}
+
+void StreamManager::setPTPEnabled(bool enabled) {
+    ptpEnabled_.store(enabled, std::memory_order_relaxed);
+    PTPClockManager::getInstance().setPTPEnabled(enabled);
+
+    if (enabled) {
+        // Start clocks for the domains already in use, so enabling PTP
+        // after streams exist behaves the same as enabling it before.
+        std::vector<int> domains;
+        {
+            std::lock_guard<std::mutex> lock(streamsMutex_);
+            for (const auto& [id, managed] : streams_) {
+                domains.push_back(managed.sdp.ptpDomain);
+            }
+        }
+        for (int domain : domains) {
+            ensurePTPClockForDomain(domain);
+        }
+    }
+    AES67_LOGF("StreamManager: PTP %s", enabled ? "enabled" : "disabled");
+}
+
+void StreamManager::ensurePTPClockForDomain(int domain) {
+    if (!ptpEnabled_.load(std::memory_order_relaxed)) return;
+    if (domain < 0) return; // -1 is SDP's "no PTP on this stream"
+
+    // getClockForDomain() creates and starts the clock if this domain
+    // doesn't have one yet, and returns the existing one otherwise — so
+    // calling it per stream is safe and is what makes streams on the same
+    // domain share a single clock.
+    PTPClockManager::getInstance().getClockForDomain(domain);
+    AES67_LOGF("StreamManager: PTP clock active for domain %d", domain);
+}
+
+StreamManager::~StreamManager() {
+    // removeAllStreams() joins threads, closes sockets and touches containers,
+    // any of which can throw. Letting that out of a destructor during unwinding
+    // is std::terminate, and this one runs at driver teardown, where an
+    // exception is already plausible.
+    try {
+        removeAllStreams();
+    } catch (const std::exception& e) {
+        AES67_LOGF("StreamManager: teardown threw: %s", e.what());
+    } catch (...) {
+        AES67_LOG("StreamManager: teardown threw a non-standard exception");
+    }
+}
+
+//
+// Stream Management - RX
+//
+
+StreamID StreamManager::addStream(const SDPSession& sdp) {
+    // Auto-create channel mapping
+    auto optMapping = mapper_.createDefaultMapping(sdp);
+    if (!optMapping) {
+        AES67_LOGF("StreamManager::addStream: failed to create default mapping for '%s' (%u channels)",
+                   sdp.sessionName.c_str(), sdp.numChannels);
+        return StreamID::null();
+    }
+
+    return addStream(sdp, *optMapping);
+}
+
+StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& mapping) {
+    std::unique_lock<std::mutex> lock(streamsMutex_);
+
+    // Validate stream can be added
+    std::string error;
+    if (!canAddStream(sdp, /*isTransmit=*/false, &error)) {
+        AES67_LOGF("StreamManager::addStream: validation failed for '%s': %s",
+                   sdp.sessionName.c_str(), error.c_str());
+        return StreamID::null();
+    }
+
+    // Generate unique stream ID
+    StreamID id = StreamID::generate();
+
+    // Check if stream already exists (shouldn't happen with UUIDs but be safe)
+    if (streams_.find(id) != streams_.end()) {
+        AES67_LOGF("StreamManager::addStream: duplicate stream ID for '%s'",
+                   sdp.sessionName.c_str());
+        return StreamID::null();
+    }
+
+    // Create complete mapping with stream ID
+    ChannelMapping completeMapping = mapping;
+    completeMapping.streamID = id;
+    completeMapping.streamName = sdp.sessionName;
+    completeMapping.streamChannelCount = sdp.numChannels;
+    completeMapping.deviceChannelCount = sdp.numChannels;
+
+    // Add mapping to mapper
+    if (!mapper_.addMapping(completeMapping)) {
+        AES67_LOGF("StreamManager::addStream: mapper rejected mapping for '%s' (devCh=%zu, count=%u)",
+                   sdp.sessionName.c_str(), mapping.deviceChannelStart, sdp.numChannels);
+        return StreamID::null();
+    }
+
+    // Create managed stream
+    ManagedStream managed;
+    managed.sdp = sdp;
+    managed.mapping = completeMapping;
+    managed.isTransmit = false;
+
+    // Create RTP receiver
+    managed.receiver = createReceiver(sdp, completeMapping);
+    if (!managed.receiver) {
+        AES67_LOGF("StreamManager::addStream: failed to create RTP receiver for '%s'",
+                   sdp.sessionName.c_str());
+        mapper_.removeMapping(id);
+        return StreamID::null();
+    }
+
+    // Only start receiver if IO is active (a Core Audio client has called StartIO).
+    // Otherwise the stream is created dormant and will be started by setIOActive(true).
+    if (ioActive_.load()) {
+        if (!managed.receiver->start()) {
+            AES67_LOGF("StreamManager::addStream: failed to start RTP receiver for '%s' (%s:%u)",
+                       sdp.sessionName.c_str(), sdp.connectionAddress.c_str(), sdp.port);
+            mapper_.removeMapping(id);
+            return StreamID::null();
+        }
+    }
+
+    // Build stream info
+    managed.info.id = id;
+    managed.info.name = sdp.sessionName;
+    managed.info.description = sdp.sessionInfo;
+
+    // Network addresses
+    managed.info.source.ip = sdp.sourceAddress;
+    managed.info.source.port = sdp.port;
+    managed.info.multicast.ip = sdp.connectionAddress;
+    managed.info.multicast.port = sdp.port;
+    managed.info.multicast.ttl = sdp.ttl;
+
+    // Audio format
+    if (sdp.encoding == "L16") {
+        managed.info.encoding = AudioEncoding::L16;
+    } else if (sdp.encoding == "L24") {
+        managed.info.encoding = AudioEncoding::L24;
+    } else {
+        managed.info.encoding = AudioEncoding::Unknown;
+    }
+
+    managed.info.sampleRate = sdp.sampleRate;
+    managed.info.numChannels = sdp.numChannels;
+    managed.info.payloadType = sdp.payloadType;
+
+    // Timing
+    managed.info.ptime = sdp.ptimeUs;  // StreamInfo::ptime is microseconds
+    managed.info.framecount = sdp.framecount;
+
+    // PTP
+    managed.info.ptp.domain = sdp.ptpDomain;
+
+    // State
+    managed.info.isActive = true;
+    managed.info.isConnected = false;
+    managed.info.startTime = std::chrono::steady_clock::now();
+
+    // Store stream
+    streams_[id] = std::move(managed);
+    rxChannelsInUse_.fetch_add(sdp.numChannels, std::memory_order_relaxed);
+    adoptGrandmaster(sdp.ptpMasterMAC);
+    ensurePTPClockForDomain(sdp.ptpDomain);
+
+    // Copy what the notification needs, then let the lock go BEFORE calling
+    // out or touching the disk. A callback runs somebody else's code — the
+    // Manager app's, the IS-05 patcher's — and any of it that asks this
+    // object a question deadlocks on a mutex that is not recursive
+    // (2026-09-04 audit). Writing the config file under the lock only added
+    // disk latency to every caller.
+    const StreamInfo added = streams_[id].info;
+    lock.unlock();
+
+    notifyStreamAdded(added);
+    autoSaveIfEnabled();
+
+    return id;
+}
+
+StreamID StreamManager::importSDPFile(const std::string& filepath) {
+    // Read SDP file
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        return StreamID::null();
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string sdpContent = buffer.str();
+
+    // Parse SDP
+    auto sdpSession = SDPParser::parseString(sdpContent);
+    if (!sdpSession) {
+        return StreamID::null();
+    }
+
+    // Add stream with auto-mapping
+    return addStream(*sdpSession);
+}
+
+StreamID StreamManager::importSDPURL(const std::string& url, std::string* errorOut) {
+    const SDPFetchResult fetched = SDPFetcher::fetch(url);
+    if (!fetched.ok()) {
+        if (errorOut) *errorOut = fetched.error;
+        return StreamID::null();
+    }
+
+    auto sdpSession = SDPParser::parseString(fetched.text);
+    if (!sdpSession) {
+        if (errorOut) *errorOut = "what " + url + " returned is not a session description";
+        return StreamID::null();
+    }
+
+    return addStream(*sdpSession);
+}
+
+bool StreamManager::removeStream(const StreamID& id) {
+    std::unique_lock<std::mutex> lock(streamsMutex_);
+
+    auto it = streams_.find(id);
+    if (it == streams_.end()) {
+        return false;
+    }
+
+    // Save info for callback before deletion
+    StreamInfo info = it->second.info;
+
+    // Stop receiver/transmitter
+    if (it->second.receiver) {
+        it->second.receiver->stop();
+    }
+    if (it->second.transmitter) {
+        it->second.transmitter->stop();
+    }
+
+    // Remove from mapper
+    mapper_.removeMapping(id);
+
+    // Keep the running totals in step with what's actually still open.
+    (it->second.isTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+        .fetch_sub(it->second.sdp.numChannels, std::memory_order_relaxed);
+
+    // Remove from map
+    streams_.erase(it);
+
+    // With nothing running there's no clock to agree with any more, so the
+    // next stream — whatever grandmaster it names — sets the new one.
+    recomputeActiveGrandmaster();
+
+    lock.unlock();   // see addStream: callbacks and disk go outside the lock
+
+    notifyStreamRemoved(info);
+    autoSaveIfEnabled();
+
+    return true;
+}
+
+void StreamManager::removeAllStreams() {
+    std::vector<StreamInfo> removed;
+    {
+        std::lock_guard<std::mutex> lock(streamsMutex_);
+
+        // Stop all streams
+        removed.reserve(streams_.size());
+        for (auto& pair : streams_) {
+            if (pair.second.receiver) {
+                pair.second.receiver->stop();
+            }
+            if (pair.second.transmitter) {
+                pair.second.transmitter->stop();
+            }
+            removed.push_back(pair.second.info);
+        }
+
+        streams_.clear();
+        mapper_.clearAll();
+        rxChannelsInUse_.store(0, std::memory_order_relaxed);
+        txChannelsInUse_.store(0, std::memory_order_relaxed);
+        recomputeActiveGrandmaster();
+    }
+
+    // Outside the lock, as everywhere else a callback is raised.
+    for (const StreamInfo& info : removed) {
+        notifyStreamRemoved(info);
+    }
+}
+
+//
+// Stream Management - TX
+//
+
+StreamID StreamManager::createTxStream(
+    const std::string& name,
+    const std::string& multicastIP,
+    uint16_t port,
+    uint16_t numChannels,
+    const ChannelMapping& mapping,
+    uint16_t sourcePort,
+    int dscp
+) {
+    std::unique_lock<std::mutex> lock(streamsMutex_);
+
+    // Build SDP session for transmit stream
+    SDPSession sdp;
+    sdp.sessionName = name;
+    sdp.connectionAddress = multicastIP;
+    sdp.port = port;
+    sdp.numChannels = numChannels;
+    sdp.sampleRate = currentDeviceSampleRate_.load();
+    sdp.encoding = "L24"; // Use L24 for best quality
+    sdp.payloadType = 97; // Dynamic payload type
+    sdp.sessionID = static_cast<uint64_t>(std::time(nullptr));
+    sdp.sessionVersion = 1;
+    sdp.dscp = dscp; // -1 = inherit the active profile's DSCP (createTransmitter)
+
+    // Validate
+    std::string error;
+    if (!canAddStream(sdp, /*isTransmit=*/true, &error)) {
+        AES67_LOGF("StreamManager::createTxStream: validation failed for '%s': %s",
+                   name.c_str(), error.c_str());
+        return StreamID::null();
+    }
+
+    // Generate stream ID
+    StreamID id = StreamID::generate();
+
+    // Create complete mapping with stream ID
+    ChannelMapping completeMapping = mapping;
+    completeMapping.streamID = id;
+    completeMapping.streamName = name;
+    completeMapping.streamChannelCount = numChannels;
+    completeMapping.deviceChannelCount = numChannels;
+
+    // Add mapping
+    if (!mapper_.addMapping(completeMapping)) {
+        AES67_LOGF("StreamManager::createTxStream: mapper rejected mapping for '%s' (devCh=%zu, count=%u)",
+                   name.c_str(), mapping.deviceChannelStart, numChannels);
+        return StreamID::null();
+    }
+
+    // Create managed stream
+    ManagedStream managed;
+    managed.sdp = sdp;
+    managed.mapping = completeMapping;
+    managed.isTransmit = true;
+
+    // Create RTP transmitter
+    managed.transmitter = createTransmitter(sdp, completeMapping, /*networkInterface=*/"", sourcePort);
+    if (!managed.transmitter) {
+        AES67_LOGF("StreamManager::createTxStream: failed to create RTP transmitter for '%s'",
+                   name.c_str());
+        mapper_.removeMapping(id);
+        return StreamID::null();
+    }
+
+    // Only start transmitter if IO is active (a Core Audio client has called StartIO).
+    // Otherwise the stream is created dormant and will be started by setIOActive(true).
+    if (ioActive_.load()) {
+        if (!managed.transmitter->start()) {
+            AES67_LOGF("StreamManager::createTxStream: failed to start RTP transmitter for '%s' (%s:%u)",
+                       name.c_str(), multicastIP.c_str(), port);
+            mapper_.removeMapping(id);
+            return StreamID::null();
+        }
+    }
+
+    // Build stream info
+    managed.info.id = id;
+    managed.info.name = name;
+    managed.info.multicast.ip = multicastIP;
+    managed.info.multicast.port = port;
+    managed.info.encoding = AudioEncoding::L24;
+    managed.info.sampleRate = sdp.sampleRate;
+    managed.info.numChannels = numChannels;
+    managed.info.payloadType = sdp.payloadType;
+    managed.info.isActive = true;
+    managed.info.startTime = std::chrono::steady_clock::now();
+
+    // Store stream
+    streams_[id] = std::move(managed);
+    txChannelsInUse_.fetch_add(numChannels, std::memory_order_relaxed);
+    adoptGrandmaster(sdp.ptpMasterMAC);
+    ensurePTPClockForDomain(sdp.ptpDomain);
+
+    const StreamInfo added = streams_[id].info;
+    lock.unlock();   // see addStream
+
+    notifyStreamAdded(added);
+    autoSaveIfEnabled();
+
+    return id;
+}
+
+namespace {
+
+/// PTP grandmaster identifiers arrive written every which way —
+/// "00-1B-21-AC-B5-4F", "00:1b:21:ac:b5:4f" — so compare them stripped of
+/// separators and case. Two spellings of the same clock are the same
+/// clock, and refusing a stream over punctuation would be worse than not
+/// checking at all.
+std::string normalizeGrandmaster(const std::string& id) {
+    std::string out;
+    out.reserve(id.size());
+    for (char c : id) {
+        if (c == '-' || c == ':' || c == '.') continue;
+        out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+} // namespace
+
+namespace {
+
+/// Advances a dotted-quad's last octet by `offset`. Returns false if the
+/// result would exceed 255 (or the input isn't a dotted quad) — callers
+/// must not silently wrap into a different /24.
+bool advanceLastOctet(const std::string& ip, unsigned offset, std::string& out) {
+    const size_t lastDot = ip.find_last_of('.');
+    if (lastDot == std::string::npos || lastDot + 1 >= ip.size()) return false;
+
+    const std::string prefix = ip.substr(0, lastDot + 1);
+    const std::string lastPart = ip.substr(lastDot + 1);
+    if (lastPart.empty() ||
+        lastPart.find_first_not_of("0123456789") != std::string::npos) {
+        return false;
+    }
+
+    // strtoul rather than std::stoul: the digits are validated above but not
+    // their number, and a long-enough run of them made std::stoul throw
+    // out_of_range — inside coreaudiod, where an escaped exception takes the
+    // audio daemon with it (2026-09-04 audit).
+    if (lastPart.size() > 3) return false;
+    const unsigned long base = std::strtoul(lastPart.c_str(), nullptr, 10);
+    if (base > 255) return false;
+    const unsigned long advanced = base + offset;
+    if (advanced > 255) return false;
+
+    out = prefix + std::to_string(advanced);
+    return true;
+}
+
+} // namespace
+
+std::vector<StreamID> StreamManager::createTxStreamFlows(
+    const std::string& baseName,
+    const std::string& baseMulticastIP,
+    uint16_t port,
+    uint16_t numChannels,
+    const ChannelMapping& mapping,
+    int dscp
+) {
+    // Note: deliberately NOT holding streamsMutex_ here — createTxStream()
+    // and removeStream() below each take it themselves.
+
+    std::vector<StreamID> created;
+    if (numChannels == 0) return created;
+
+    // See CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort's
+    // doc comment: true for the Dolby DMA profile's real Atmos Connect
+    // wire scheme (one multicast address, fixed destination port, source
+    // port stepped per flow); false is every other profile's AES67/Dante
+    // convention (multicast address stepped per flow, fixed port).
+    const auto profile = CompatibilityProfile::forKind(profileKind_.load(std::memory_order_relaxed));
+    const bool dolbyScheme = profile.useFixedMulticastWithPerFlowSourcePort;
+
+    // Which unit in the chain we're feeding, as a flow-port offset. Only
+    // the Dolby scheme distinguishes units by source port, so this is
+    // deliberately not applied to the address-stepping scheme — there it
+    // would silently mean nothing.
+    const unsigned unitOffset = dolbyScheme
+        ? txFlowPortOffset_.load(std::memory_order_relaxed)
+        : 0u;
+
+    constexpr uint16_t kPerFlow = StreamChannelMapper::kMaxChannelsPerFlow;
+    const unsigned flowCount = (numChannels + kPerFlow - 1) / kPerFlow;
+
+    for (unsigned flow = 0; flow < flowCount; ++flow) {
+        std::string flowIP = baseMulticastIP;
+        uint16_t flowSourcePort = 0;
+
+        if (dolbyScheme) {
+            // Fixed address, fixed destination port (both == baseMulticastIP/
+            // port for every flow, set above/below); only the source port
+            // steps, matching the DMA's own documented defaults (6517 fixed
+            // destination, 6518/6519/6520/... source) when the caller passes
+            // 6517 as `port`. unitOffset shifts the whole walk to the
+            // selected amplifier unit's own channel group — see
+            // setTxFlowPortOffset().
+            const unsigned candidate = static_cast<unsigned>(port) + 1 + unitOffset + flow;
+            if (candidate > 0xFFFF) {
+                AES67_LOGF("StreamManager::createTxStreamFlows: '%s' needs %u flows but "
+                           "source port %u + 1 + %u (unit offset) + %u overruns 65535 "
+                           "— rolling back",
+                           baseName.c_str(), flowCount, port, unitOffset, flow);
+                for (const auto& id : created) removeStream(id);
+                return {};
+            }
+            flowSourcePort = static_cast<uint16_t>(candidate);
+        } else if (!advanceLastOctet(baseMulticastIP, flow, flowIP)) {
+            AES67_LOGF("StreamManager::createTxStreamFlows: '%s' needs %u flows but "
+                       "%s + %u overruns the subnet — rolling back",
+                       baseName.c_str(), flowCount, baseMulticastIP.c_str(), flow);
+            for (const auto& id : created) removeStream(id);
+            return {};
+        }
+
+        // Last flow carries the remainder, which may be fewer than 8.
+        const uint16_t remaining = numChannels - static_cast<uint16_t>(flow * kPerFlow);
+        const uint16_t flowChannels = std::min<uint16_t>(remaining, kPerFlow);
+
+        ChannelMapping flowMapping = mapping;
+        flowMapping.deviceChannelStart =
+            static_cast<uint16_t>(mapping.deviceChannelStart + flow * kPerFlow);
+        flowMapping.streamChannelCount = flowChannels;
+        flowMapping.deviceChannelCount = flowChannels;
+        flowMapping.channelMap.clear(); // sequential within the flow; a custom
+                                        // map for the whole group wouldn't
+                                        // carry over meaningfully per-flow
+
+        const std::string flowName = (flowCount == 1)
+            ? baseName
+            : baseName + " (flow " + std::to_string(flow + 1) +
+              "/" + std::to_string(flowCount) + ")";
+
+        const StreamID id = createTxStream(flowName, flowIP, port, flowChannels, flowMapping, flowSourcePort, dscp);
+        if (id.isNull()) {
+            AES67_LOGF("StreamManager::createTxStreamFlows: flow %u/%u of '%s' failed "
+                       "— rolling back %zu already created",
+                       flow + 1, flowCount, baseName.c_str(), created.size());
+            for (const auto& previous : created) removeStream(previous);
+            return {};
+        }
+        created.push_back(id);
+    }
+
+    AES67_LOGF("StreamManager::createTxStreamFlows: '%s' created as %u flow(s) of up to %u channels",
+               baseName.c_str(), flowCount, kPerFlow);
+    return created;
+}
+
+bool StreamManager::exportSDPFile(const StreamID& id, const std::string& filepath) {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    auto it = streams_.find(id);
+    if (it == streams_.end()) {
+        return false;
+    }
+
+    // Generate SDP content
+    std::string sdpContent = SDPParser::generate(it->second.sdp);
+    if (sdpContent.empty()) {
+        return false;
+    }
+
+    // Write to file
+    std::ofstream file(filepath);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file << sdpContent;
+    return true;
+}
+
+//
+// Channel Mapping
+//
+
+bool StreamManager::updateMapping(const StreamID& id, const ChannelMapping& newMapping) {
+    std::unique_lock<std::mutex> lock(streamsMutex_);
+
+    auto it = streams_.find(id);
+    if (it == streams_.end()) {
+        return false;
+    }
+
+    // Update mapper
+    ChannelMapping completeMapping = newMapping;
+    completeMapping.streamID = id;
+    completeMapping.streamName = it->second.mapping.streamName;
+    completeMapping.streamChannelCount = it->second.sdp.numChannels;
+
+    if (!mapper_.updateMapping(completeMapping)) {
+        return false;
+    }
+
+    // Update managed stream
+    it->second.mapping = completeMapping;
+
+    // Update receiver/transmitter
+    bool updated = false;
+    if (it->second.receiver) {
+        updated = it->second.receiver->updateMapping(completeMapping);
+    } else if (it->second.transmitter) {
+        updated = it->second.transmitter->updateMapping(completeMapping);
+    }
+
+    if (!updated) return false;
+
+    const StreamInfo changed = it->second.info;
+    lock.unlock();   // see addStream
+
+    notifyStreamStatusChanged(changed);
+    autoSaveIfEnabled();
+
+    return true;
+}
+
+std::optional<ChannelMapping> StreamManager::getMapping(const StreamID& id) const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    return mapper_.getMapping(id);
+}
+
+std::vector<ChannelMapping> StreamManager::getAllMappings() const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    return mapper_.getAllMappings();
+}
+
+//
+// Query
+//
+
+std::vector<StreamInfo> StreamManager::getActiveStreams() const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    std::vector<StreamInfo> activeStreams;
+    for (const auto& pair : streams_) {
+        if (pair.second.info.isActive) {
+            activeStreams.push_back(pair.second.info);
+        }
+    }
+
+    return activeStreams;
+}
+
+std::vector<SDPSession> StreamManager::getTransmitSessions() const {
+    // The full SDP of every TX stream — what SAP announcement broadcasts so
+    // other AES67 gear can discover and subscribe to what this driver
+    // sends. RX streams are not announced: they are things this driver
+    // receives, not sources it offers.
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    std::vector<SDPSession> sessions;
+    for (const auto& pair : streams_) {
+        if (pair.second.isTransmit) {
+            sessions.push_back(pair.second.sdp);
+        }
+    }
+    return sessions;
+}
+
+std::vector<SDPSession> StreamManager::getReceiveSessions() const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    std::vector<SDPSession> sessions;
+    for (const auto& pair : streams_) {
+        if (!pair.second.isTransmit) {
+            sessions.push_back(pair.second.sdp);
+        }
+    }
+    return sessions;
+}
+
+void StreamManager::setAutoSinkFollow(bool enabled) {
+    autoSinkFollowEnabled_.store(enabled, std::memory_order_relaxed);
+}
+
+
+size_t StreamManager::updateReceiveStreamsFromAnnouncement(const SDPSession& announced) {
+    if (!autoSinkFollowEnabled_.load(std::memory_order_relaxed)) return 0;
+    if (announced.sessionName.empty()) return 0;
+
+    struct Pending {
+        StreamID id;
+        size_t deviceChannelStart;
+        SDPSession newSdp;
+    };
+    std::vector<Pending> pending;
+
+    // Phase 1: find matches under the lock, but don't mutate here —
+    // removeStream/addStream take the same lock. Collect what to do, release,
+    // then act through the public API (fully-tested paths).
+    {
+        std::lock_guard<std::mutex> lock(streamsMutex_);
+        for (const auto& pair : streams_) {
+            const ManagedStream& s = pair.second;
+            if (s.isTransmit) continue; // only receive sinks follow
+
+            const SinkFollowDecision d = evaluateSinkFollow(s.sdp, announced);
+            if (d == SinkFollowDecision::ChannelCountChanged) {
+                AES67_LOGF("StreamManager: source '%s' changed channel count "
+                           "(%u -> %u); not auto-following (needs manual re-map)",
+                           s.sdp.sessionName.c_str(), s.sdp.numChannels,
+                           announced.numChannels);
+                continue;
+            }
+            if (d != SinkFollowDecision::Follow) continue;
+
+            Pending p;
+            p.id = pair.first;
+            p.deviceChannelStart = s.mapping.deviceChannelStart;
+            p.newSdp = announced;
+            p.newSdp.sessionName = s.sdp.sessionName; // keep sink identity
+            pending.push_back(std::move(p));
+        }
+    }
+
+    // Phase 2: re-subscribe each match. removeStream frees its device
+    // channels, so re-adding at the same deviceChannelStart reclaims them.
+    size_t followed = 0;
+    for (const auto& p : pending) {
+        ChannelMapping newMapping;
+        newMapping.streamName = p.newSdp.sessionName;
+        newMapping.streamChannelCount = p.newSdp.numChannels;
+        newMapping.deviceChannelStart = p.deviceChannelStart;
+        newMapping.deviceChannelCount = p.newSdp.numChannels;
+
+        if (!removeStream(p.id)) continue;
+        StreamID newId = addStream(p.newSdp, newMapping);
+        if (!newId.isNull()) {
+            ++followed;
+            AES67_LOGF("StreamManager: sink '%s' followed source to %s:%u "
+                       "(%s %u ch @ %u Hz)",
+                       p.newSdp.sessionName.c_str(),
+                       p.newSdp.connectionAddress.c_str(), p.newSdp.port,
+                       p.newSdp.encoding.c_str(), p.newSdp.numChannels,
+                       p.newSdp.sampleRate);
+        } else {
+            AES67_LOGF("StreamManager: sink '%s' follow FAILED to re-add after "
+                       "source change — sink is now down", p.newSdp.sessionName.c_str());
+        }
+    }
+    return followed;
+}
+
+std::optional<StreamInfo> StreamManager::getStreamInfo(const StreamID& id) const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    auto it = streams_.find(id);
+    if (it != streams_.end()) {
+        return it->second.info;
+    }
+
+    return std::nullopt;
+}
+
+bool StreamManager::hasStream(const StreamID& id) const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    return streams_.find(id) != streams_.end();
+}
+
+size_t StreamManager::getStreamCount() const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    return streams_.size();
+}
+
+//
+// Validation
+//
+
+void StreamManager::setCompatibilityProfile(CompatibilityProfileKind kind) {
+    // Atomic rather than mutex-guarded: canAddStream() reads this, and it
+    // is already called with streamsMutex_ held (from addStream) as well as
+    // without it (from getAddStreamError) — so it can neither take the lock
+    // itself nor rely on callers having taken it.
+    profileKind_.store(kind, std::memory_order_relaxed);
+    AES67_LOGF("StreamManager: compatibility profile set to '%s'",
+               CompatibilityProfile::forKind(kind).displayName.c_str());
+    // Deliberately does NOT re-validate streams already added: tightening
+    // the profile shouldn't silently tear down running audio. It applies to
+    // everything added from here on.
+}
+
+CompatibilityProfileKind StreamManager::getCompatibilityProfileKind() const {
+    return profileKind_.load(std::memory_order_relaxed);
+}
+
+void StreamManager::adoptGrandmaster(const std::string& grandmaster) {
+    if (grandmaster.empty()) return; // A stream that declares none says nothing
+    std::lock_guard<std::mutex> lock(refClockMutex_);
+    if (activeGrandmaster_.empty()) {
+        activeGrandmaster_ = grandmaster;
+    }
+}
+
+void StreamManager::recomputeActiveGrandmaster() {
+    // Called with streamsMutex_ already held by the remove paths.
+    //
+    // Recompute from the streams that REMAIN rather than only clearing when
+    // none are left: the grandmaster was adopted from the first stream that
+    // declared one, so removing THAT stream while others (which may declare
+    // none, or the same one) keep running has to re-derive it — otherwise a
+    // stale grandmaster lingers and wrongly rejects the next stream that
+    // names a different one. First remaining declarer wins, same rule as
+    // adoption; empty if nothing left declares one.
+    std::string next;
+    for (const auto& [id, managed] : streams_) {
+        if (!managed.sdp.ptpMasterMAC.empty()) {
+            next = managed.sdp.ptpMasterMAC;
+            break;
+        }
+    }
+    std::lock_guard<std::mutex> lock(refClockMutex_);
+    activeGrandmaster_ = next;
+}
+
+std::string StreamManager::getActiveGrandmaster() const {
+    std::lock_guard<std::mutex> lock(refClockMutex_);
+    return activeGrandmaster_;
+}
+
+bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const {
+    if (!validateSampleRate(sdp, errorOut)) {
+        return false;
+    }
+
+    if (!validateChannelAvailability(sdp.numChannels, errorOut)) {
+        return false;
+    }
+
+    if (!validateNetworkConfig(sdp, errorOut)) {
+        return false;
+    }
+
+    // Profile limits last: the checks above are about whether this driver
+    // can carry the stream at all, this one is about whether the gear we're
+    // pointed at would accept it.
+    const auto profile = CompatibilityProfile::forKind(
+        profileKind_.load(std::memory_order_relaxed));
+    if (!profile.validate(sdp, isTransmit, errorOut)) {
+        return false;
+    }
+
+    // maxTotalChannels is cumulative across every stream in this direction
+    // while the profile is active — CompatibilityProfile::validate() can't
+    // check it, it only ever sees one SDPSession at a time.
+    if (profile.maxTotalChannels > 0) {
+        const uint32_t inUse = (isTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+                                    .load(std::memory_order_relaxed);
+        if (inUse + sdp.numChannels > profile.maxTotalChannels) {
+            if (errorOut) {
+                *errorOut = profile.displayName + ": " + std::to_string(sdp.numChannels) +
+                           " more channels would bring total " + (isTransmit ? "TX" : "RX") +
+                           " usage to " + std::to_string(inUse + sdp.numChannels) +
+                           ", over its " + std::to_string(profile.maxTotalChannels) + "-channel limit";
+            }
+            return false;
+        }
+    }
+
+    // User-configured per-direction cap (DeviceChannelSettings.rx/tx via
+    // setUsableChannelCount/setUsableTxChannelCount) — same cumulative check
+    // as maxTotalChannels above, just driven by the user's own selector
+    // instead of the active profile. Checked in addition to, not instead of,
+    // the profile limit: whichever is stricter wins.
+    const uint32_t usableCount = (isTransmit ? usableTxChannelCount_ : usableRxChannelCount_)
+                                      .load(std::memory_order_relaxed);
+    if (usableCount > 0) {
+        const uint32_t inUse = (isTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+                                    .load(std::memory_order_relaxed);
+        if (inUse + sdp.numChannels > usableCount) {
+            if (errorOut) {
+                *errorOut = std::to_string(sdp.numChannels) +
+                           " more channels would bring total " + (isTransmit ? "TX" : "RX") +
+                           " usage to " + std::to_string(inUse + sdp.numChannels) +
+                           ", over the " + std::to_string(usableCount) +
+                           " channels selected for " + (isTransmit ? "output" : "input") +
+                           " in ManagerApp";
+            }
+            return false;
+        }
+    }
+
+    // PTP lock, when the installation has asked for it. The AES67 Linux
+    // daemon makes this unconditional ("audio operations require the PTP
+    // slave to achieve locked status"); here it is opt-in, because this
+    // driver has carried audio without any PTP at all and switching it on
+    // by default could only ever take audio away from a working system.
+    if (requirePTPLock_.load(std::memory_order_relaxed) &&
+        ptpEnabled_.load(std::memory_order_relaxed) &&
+        sdp.ptpDomain >= 0) {
+        const auto diag = PTPClockManager::getInstance().getDiagnostics(sdp.ptpDomain);
+        if (!diag.isLocked) {
+            if (errorOut) {
+                *errorOut = "PTP clock for domain " + std::to_string(sdp.ptpDomain) +
+                            " is not locked yet — this installation is set to require lock "
+                            "before carrying audio";
+            }
+            return false;
+        }
+    }
+
+    // Reference clock last: everything above is about whether the stream
+    // is well-formed for this profile; this is about whether it can share
+    // a clock with what's already running. Two streams on different
+    // grandmasters drift, and drift is the kind of fault that sounds like
+    // "something is subtly wrong" for hours before anyone finds it.
+    if (!ignoreRefClockMismatch_.load(std::memory_order_relaxed) && !sdp.ptpMasterMAC.empty()) {
+        std::string active;
+        {
+            std::lock_guard<std::mutex> lock(refClockMutex_);
+            active = activeGrandmaster_;
+        }
+        if (!active.empty() &&
+            normalizeGrandmaster(active) != normalizeGrandmaster(sdp.ptpMasterMAC)) {
+            if (errorOut) {
+                *errorOut = "PTP grandmaster " + sdp.ptpMasterMAC +
+                            " differs from the one every current stream uses (" + active +
+                            ") — streams on different grandmasters drift against each other";
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string StreamManager::getAddStreamError(const SDPSession& sdp, bool isTransmit) const {
+    std::string error;
+    canAddStream(sdp, isTransmit, &error);
+    return error;
+}
+
+//
+// Device State
+//
+
+void StreamManager::setIOActive(bool active) {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    bool wasActive = ioActive_.exchange(active);
+    if (wasActive == active) {
+        return; // No state change
+    }
+
+    if (active) {
+        AES67_LOGF("StreamManager::setIOActive: Starting %zu stream(s)", streams_.size());
+        for (auto& [id, managed] : streams_) {
+            if (managed.receiver) {
+                managed.receiver->start();
+            }
+            if (managed.transmitter) {
+                managed.transmitter->start();
+            }
+        }
+    } else {
+        AES67_LOGF("StreamManager::setIOActive: Stopping %zu stream(s)", streams_.size());
+        for (auto& [id, managed] : streams_) {
+            if (managed.receiver) {
+                managed.receiver->stop();
+            }
+            if (managed.transmitter) {
+                managed.transmitter->stop();
+            }
+        }
+    }
+}
+
+bool StreamManager::setDeviceSampleRate(double sampleRate) {
+    if (sampleRate < 44100 || sampleRate > 384000) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+
+    // Check if any streams would be incompatible
+    for (const auto& pair : streams_) {
+        if (std::abs(pair.second.sdp.sampleRate - sampleRate) > 0.1) {
+            return false;
+        }
+    }
+
+    currentDeviceSampleRate_.store(sampleRate);
+    return true;
+}
+
+size_t StreamManager::getAvailableChannelCount() const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    return mapper_.getAvailableChannelCount();
+}
+
+//
+// Validation Helpers
+//
+
+bool StreamManager::validateSampleRate(const SDPSession& sdp, std::string* errorOut) const {
+    const double deviceRate = currentDeviceSampleRate_.load();
+
+    if (std::abs(sdp.sampleRate - deviceRate) > 0.1) {
+        if (errorOut) {
+            *errorOut = "Sample rate mismatch: stream=" + std::to_string(static_cast<int>(sdp.sampleRate)) +
+                       " Hz, device=" + std::to_string(static_cast<int>(deviceRate)) + " Hz";
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool StreamManager::validateChannelAvailability(uint16_t numChannels, std::string* errorOut) const {
+    if (numChannels == 0 || numChannels > 128) {
+        if (errorOut) {
+            *errorOut = "Invalid channel count: " + std::to_string(numChannels) + " (must be 1-128)";
+        }
+        return false;
+    }
+
+    size_t available = mapper_.getAvailableChannelCount();
+    if (numChannels > available) {
+        if (errorOut) {
+            *errorOut = "Insufficient channels: need " + std::to_string(numChannels) +
+                       ", have " + std::to_string(available);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool StreamManager::validateNetworkConfig(const SDPSession& sdp, std::string* errorOut) const {
+    if (sdp.connectionAddress.empty()) {
+        if (errorOut) {
+            *errorOut = "Missing multicast IP address";
+        }
+        return false;
+    }
+
+    // Check for valid multicast range (239.x.x.x for AES67)
+    if (sdp.connectionAddress.substr(0, 4) != "239.") {
+        if (errorOut) {
+            *errorOut = "Invalid multicast IP: " + sdp.connectionAddress +
+                       " (AES67 requires 239.x.x.x)";
+        }
+        return false;
+    }
+
+    if (sdp.port == 0) {
+        if (errorOut) {
+            *errorOut = "Invalid port: 0";
+        }
+        return false;
+    }
+
+    // Check multicast routing configuration
+    // Get primary ethernet interface for the check
+    std::string primaryIface = NetworkUtils::getPrimaryEthernetInterface();
+
+    if (!NetworkUtils::hasMulticastRoute(primaryIface)) {
+        if (errorOut) {
+            std::string iface = primaryIface.empty() ? "en0" : primaryIface;
+            *errorOut = "WARNING: Multicast routing not configured. Audio may not flow.\n"
+                       "To fix, run: " + NetworkUtils::getMulticastRouteCommand(iface) + "\n"
+                       "Stream will be added but may not receive traffic.";
+        }
+        // Log warning but don't block stream addition
+        AES67_LOG("WARNING: Multicast routing not configured - audio may not flow");
+        if (!primaryIface.empty()) {
+            AES67_LOGF("Run: %s", NetworkUtils::getMulticastRouteCommand(primaryIface).c_str());
+        }
+        // Return true to allow stream addition with warning
+    }
+
+    return true;
+}
+
+//
+// Stream Creation Helpers
+//
+
+std::unique_ptr<RTPReceiver> StreamManager::createReceiver(
+    const SDPSession& sdp,
+    const ChannelMapping& mapping,
+    size_t jitterBufferDepth,
+    const std::string& networkInterface
+) {
+    // Receivers write decoded network audio to INPUT buffers (Network → Core Audio)
+    return std::make_unique<RTPReceiver>(sdp, mapping, inputChannels_, jitterBufferDepth,
+                                        networkInterface,
+                                        playoutDelaySamples_.load(std::memory_order_relaxed));
+}
+
+std::unique_ptr<RTPTransmitter> StreamManager::createTransmitter(
+    const SDPSession& sdp,
+    const ChannelMapping& mapping,
+    const std::string& networkInterface,
+    uint16_t sourcePort
+) {
+    // Mark outgoing audio with whatever DSCP the active profile documents
+    // for its gear (-1 = nothing documented, leave the socket unmarked).
+    // This is the one place the profiles' recommendedDscp actually reaches
+    // the wire — see CompatibilityProfile::recommendedDscp.
+    const auto profile = CompatibilityProfile::forKind(profileKind_.load(std::memory_order_relaxed));
+    const int effectiveDscp = resolveEffectiveDscp(sdp.dscp, profile.recommendedDscp);
+
+    // Transmitters read audio from OUTPUT buffers (Core Audio → Network)
+    return std::make_unique<RTPTransmitter>(sdp, mapping, outputChannels_, networkInterface,
+                                            sourcePort, effectiveDscp);
+}
+
+//
+// Callback Invocation
+//
+
+void StreamManager::notifyStreamAdded(const StreamInfo& info) {
+    if (streamAddedCallback_) {
+        streamAddedCallback_(info);
+    }
+}
+
+void StreamManager::notifyStreamRemoved(const StreamInfo& info) {
+    if (streamRemovedCallback_) {
+        streamRemovedCallback_(info);
+    }
+}
+
+void StreamManager::notifyStreamStatusChanged(const StreamInfo& info) {
+    if (streamStatusCallback_) {
+        streamStatusCallback_(info);
+    }
+}
+
+//
+// Configuration Persistence
+//
+
+bool StreamManager::loadSavedStreams() {
+    // Every stream restored here is announced after the lock goes, for the
+    // reason addStream records: a callback is somebody else's code.
+    std::vector<StreamInfo> restored;
+    std::unique_lock<std::mutex> lock(streamsMutex_);
+
+    // Load configurations from disk
+    auto configs = configManager_->loadConfig();
+    if (!configs) {
+        AES67_LOG("StreamManager: No saved stream configurations found");
+        return false;
+    }
+
+    AES67_LOGF("StreamManager: Loading %zu saved stream configurations", configs->size());
+
+    // Add each saved stream
+    int loadedCount = 0;
+    int failedCount = 0;
+
+    for (const auto& config : *configs) {
+        // Skip disabled streams
+        if (!config.enabled) {
+            AES67_LOGF("StreamManager: Skipping disabled stream: %s", config.sdp.sessionName.c_str());
+            continue;
+        }
+
+        // Validate config
+        if (!config.isValid()) {
+            AES67_LOGF("StreamManager: Invalid stream config: %s", config.sdp.sessionName.c_str());
+            failedCount++;
+            continue;
+        }
+
+        // Check if stream can be added (validate sample rate, channels, etc.)
+        // loadSavedStreams() only ever restores RX streams.
+        std::string error;
+        if (!canAddStream(config.sdp, /*isTransmit=*/false, &error)) {
+            AES67_LOGF("StreamManager: Cannot add stream '%s': %s",
+                      config.sdp.sessionName.c_str(), error.c_str());
+            failedCount++;
+            continue;
+        }
+
+        // Generate new StreamID (use the one from saved mapping)
+        StreamID id = config.mapping.streamID;
+
+        // Check if stream already exists
+        if (streams_.find(id) != streams_.end()) {
+            AES67_LOGF("StreamManager: Stream already exists: %s", config.sdp.sessionName.c_str());
+            failedCount++;
+            continue;
+        }
+
+        // Add mapping to mapper
+        if (!mapper_.addMapping(config.mapping)) {
+            AES67_LOGF("StreamManager: Failed to add mapping for stream: %s",
+                      config.sdp.sessionName.c_str());
+            failedCount++;
+            continue;
+        }
+
+        // Create managed stream
+        ManagedStream managed;
+        managed.sdp = config.sdp;
+        managed.mapping = config.mapping;
+        managed.isTransmit = (config.sdp.direction == "sendonly" || config.sdp.direction == "sendrecv");
+
+        // Create RTP receiver or transmitter (only start if IO is active)
+        if (managed.isTransmit) {
+            managed.transmitter = createTransmitter(config.sdp, config.mapping, config.networkInterface);
+            if (!managed.transmitter) {
+                mapper_.removeMapping(id);
+                failedCount++;
+                continue;
+            }
+            if (ioActive_.load() && !managed.transmitter->start()) {
+                mapper_.removeMapping(id);
+                failedCount++;
+                continue;
+            }
+        } else {
+            managed.receiver = createReceiver(config.sdp, config.mapping, config.jitterBufferDepth, config.networkInterface);
+            if (!managed.receiver) {
+                mapper_.removeMapping(id);
+                failedCount++;
+                continue;
+            }
+            if (ioActive_.load() && !managed.receiver->start()) {
+                mapper_.removeMapping(id);
+                failedCount++;
+                continue;
+            }
+        }
+
+        // Build stream info (same as in addStream)
+        managed.info.id = id;
+        managed.info.name = config.sdp.sessionName;
+        managed.info.description = config.sdp.sessionInfo;
+        managed.info.source.ip = config.sdp.sourceAddress;
+        managed.info.source.port = config.sdp.port;
+        managed.info.multicast.ip = config.sdp.connectionAddress;
+        managed.info.multicast.port = config.sdp.port;
+        managed.info.multicast.ttl = config.sdp.ttl;
+
+        if (config.sdp.encoding == "L16") {
+            managed.info.encoding = AudioEncoding::L16;
+        } else if (config.sdp.encoding == "L24") {
+            managed.info.encoding = AudioEncoding::L24;
+        } else {
+            managed.info.encoding = AudioEncoding::Unknown;
+        }
+
+        managed.info.sampleRate = config.sdp.sampleRate;
+        managed.info.numChannels = config.sdp.numChannels;
+        managed.info.payloadType = config.sdp.payloadType;
+        managed.info.ptime = config.sdp.ptimeUs;
+        managed.info.framecount = config.sdp.framecount;
+        managed.info.ptp.domain = config.sdp.ptpDomain;
+        managed.info.isActive = true;
+        managed.info.isConnected = false;
+        managed.info.startTime = std::chrono::steady_clock::now();
+
+        // Count it toward the direction it actually is. A persisted
+        // sendonly/sendrecv stream is restored as a TX transmitter above,
+        // so it belongs in the TX total; counting every restored stream as
+        // RX (as this once did) meant removeStream() later decremented
+        // txChannelsInUse_ for a stream that was never added to it, wrapping
+        // the unsigned counter and jamming the TX cap.
+        const bool restoredIsTransmit = managed.isTransmit;
+
+        // Store stream
+        streams_[id] = std::move(managed);
+        (restoredIsTransmit ? txChannelsInUse_ : rxChannelsInUse_)
+            .fetch_add(config.sdp.numChannels, std::memory_order_relaxed);
+        adoptGrandmaster(config.sdp.ptpMasterMAC);
+        ensurePTPClockForDomain(config.sdp.ptpDomain);
+
+        restored.push_back(streams_[id].info);
+
+        loadedCount++;
+        AES67_LOGF("StreamManager: Loaded stream: %s (%s)",
+                  config.sdp.sessionName.c_str(),
+                  id.toString().c_str());
+    }
+
+    AES67_LOGF("StreamManager: Loaded %d streams successfully, %d failed",
+              loadedCount, failedCount);
+
+    lock.unlock();
+    for (const StreamInfo& info : restored) {
+        notifyStreamAdded(info);
+    }
+
+    return loadedCount > 0;
+}
+
+bool StreamManager::saveAllStreams() {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    return saveAllStreamsInternal();
+}
+
+bool StreamManager::saveAllStreamsInternal() {
+    // NOTE: Caller must hold streamsMutex_ lock
+
+    std::vector<PersistedStreamConfig> configs;
+    configs.reserve(streams_.size());
+
+    // Convert all streams to persisted configs
+    for (const auto& pair : streams_) {
+        const auto& managed = pair.second;
+
+        PersistedStreamConfig config = StreamConfigManager::createConfig(
+            managed.sdp,
+            managed.mapping,
+            managed.info.description
+        );
+
+        configs.push_back(config);
+    }
+
+    // Save to disk
+    bool success = configManager_->saveConfig(configs);
+
+    if (success) {
+        AES67_LOGF("StreamManager: Saved %zu stream configurations to disk", configs.size());
+    } else {
+        AES67_LOG("StreamManager: Failed to save stream configurations");
+    }
+
+    return success;
+}
+
+void StreamManager::autoSaveIfEnabled() {
+    // NOTE: We're already holding streamsMutex_ when this is called
+    // from addStream/removeStream/updateMapping, so use the internal version
+    if (autoSaveEnabled_) {
+        saveAllStreamsInternal();
+    }
+}
+
+} // namespace AES67

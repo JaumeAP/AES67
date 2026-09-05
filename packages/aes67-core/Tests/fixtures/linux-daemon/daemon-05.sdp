@@ -1,0 +1,15 @@
+v=0
+o=- 2 0 IN IP4 10.0.0.13
+s=ALSA Source 2
+c=IN IP4 239.1.0.3/15
+t=0 0
+a=clock-domain:PTPv2 0
+m=audio 5004 RTP/AVP 98
+c=IN IP4 239.1.0.3/15
+a=rtpmap:98 L16/48000/2
+a=sync-time:0
+a=framecount:48
+a=ptime:1
+a=mediaclk:direct=0
+a=ts-refclk:ptp=IEEE1588-2008:00-10-4B-FF-FE-7A-87-FC:0
+a=recvonly

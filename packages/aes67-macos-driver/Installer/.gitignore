@@ -1,0 +1,58 @@
+# Build directories
+build/
+*.build/
+DerivedData/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Installer build artifacts
+Installer/output/
+Installer/payload/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.swiftpm/
+.build/
+*.swiftmodule
+
+# Test outputs
+*.log
+Testing/
+Tests/*.dSYM/
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Compiled binaries
+*.o
+*.a
+*.dylib
+
+# Built driver and apps (source only, not binaries)
+*.driver
+*.app
+*.pkg
+*.dmg

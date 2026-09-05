@@ -1,0 +1,58 @@
+# What every package in this tree produces, or what the machine leaves behind.
+# Anything that belongs to one package is ignored in that package's own
+# .gitignore -- this file used to be aes67-macos-driver's, moved to the root
+# by the monorepo import, and its rules were matching paths tree-wide by
+# accident: `Tests/Makefile`, `Examples/SimpleSDPParse`, `ManagerApp/.build/`
+# and the rest name directories only that package has.
+
+# Build directories, whatever package they belong to.
+build/
+build-*/
+combined-pkg/
+
+# Compiled output.
+*.o
+*.a
+*.dylib
+
+# CMake, in-source runs included: the root-level artifacts were removed on
+# 2026-09-04 along with two committed arm64 binaries, and these rules stop new
+# ones appearing anywhere in the tree.
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+/Makefile
+/CTestTestfile.cmake
+/CPackConfig.cmake
+/CPackSourceConfig.cmake
+
+# ctest writes this at the root of whatever tree it runs in.
+Testing/
+
+# macOS.
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Logs.
+*.log
+
+# Editors and language servers.
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cache/
+
+# Serena plugin.
+.serena/
+
+# npx-skills universal-format mirror of .claude/skills/ (not read by any
+# tooling in this repository; .claude/skills/ is the copy that matters).
+.agents/

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>AES67 macOS Audio Driver</title>
+    <organization>com.aes67.driver</organization>
+    <domains enable_localSystem="true"/>
+
+    <options customize="never" require-scripts="true" rootVolumeOnly="true" />
+
+    <!-- Define documents displayed at various steps -->
+    <welcome    file="welcome.html"    mime-type="text/html" />
+    <license    file="license.txt"     mime-type="text/plain" />
+    <readme     file="readme.html"     mime-type="text/html" />
+    <conclusion file="conclusion.html" mime-type="text/html" />
+
+    <!-- System requirements -->
+    <installation-check script="checkSystem()"/>
+
+    <script>
+    <![CDATA[
+        function checkSystem() {
+            var osVersion = system.version.ProductVersion;
+            var osMajor = parseInt(osVersion.split('.')[0]);
+
+            // Require macOS 13.0 or later
+            if (osMajor < 13) {
+                my.result.title = 'Incompatible macOS Version';
+                my.result.message = 'This driver requires macOS 13.0 (Ventura) or later. You are running macOS ' + osVersion + '.';
+                my.result.type = 'Fatal';
+                return false;
+            }
+
+            // Warn about Apple Silicon requirement
+            var arch = system.sysctl('hw.machine');
+            if (arch !== 'arm64') {
+                my.result.title = 'Architecture Warning';
+                my.result.message = 'This driver is optimized for Apple Silicon Macs. Intel Macs are not officially supported and the driver may not work correctly.';
+                my.result.type = 'Warning';
+            }
+
+            return true;
+        }
+    ]]>
+    </script>
+
+    <!-- Define installer choice/action -->
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.aes67.driver"/>
+        </line>
+    </choices-outline>
+
+    <choice id="default"/>
+
+    <choice
+        id="com.aes67.driver"
+        visible="true"
+        title="AES67 Audio Driver"
+        description="Installs the AES67 network audio driver (experimental - use at your own risk)"
+        start_selected="true"
+        start_enabled="true"
+        start_visible="true">
+        <pkg-ref id="com.aes67.driver"/>
+    </choice>
+
+    <pkg-ref
+        id="com.aes67.driver"
+        version="1.0.0"
+        auth="root">
+        AES67Driver.pkg
+    </pkg-ref>
+
+</installer-gui-script>

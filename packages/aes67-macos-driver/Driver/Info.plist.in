@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <key>CFBundleExecutable</key>
+    <string>AES67Driver</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>com.aes67driver.audiodevice</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>AES67</string>
+
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+
+    <key>CFBundleVersion</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+
+    <key>CFBundleSignature</key>
+    <string>????</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2025 AES67 Driver. Build #${MACOSX_BUNDLE_BUNDLE_VERSION}.</string>
+
+    <key>AudioServerPlugIn_FactoryUUID</key>
+    <string>E31B6C42-6B3D-4F3A-9A85-6D8F7E9B4C1D</string>
+
+    <key>AudioServerPlugIn_ResourceBundle</key>
+    <string>com.aes67driver.audiodevice</string>
+
+    <key>CFPlugInFactories</key>
+    <dict>
+        <key>E31B6C42-6B3D-4F3A-9A85-6D8F7E9B4C1D</key>
+        <string>Create</string>
+    </dict>
+
+    <key>CFPlugInTypes</key>
+    <dict>
+        <key>443ABAB8-E7B3-491A-B985-BEB9187030DB</key>
+        <array>
+            <string>E31B6C42-6B3D-4F3A-9A85-6D8F7E9B4C1D</string>
+        </array>
+    </dict>
+</dict>
+</plist>

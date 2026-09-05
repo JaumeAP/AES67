@@ -1,0 +1,89 @@
+#!/bin/bash
+# Runs every package's own gate before any push, through scripts/gate.sh.
+# Replaces the deleted GitHub Actions workflow: nothing verifies these commits
+# server-side any more, so this is the only gate left.
+#
+# Two speeds, on purpose. A push to a working branch gets the cheap half --
+# build and tests, seconds -- because that is where regressions show. A push to
+# the default branch is the result somebody else will pull, so it is worth the
+# full gate with static analysis, which costs minutes. The hook asks first
+# rather than deciding for you.
+#
+# Answering is optional in every direction:
+#   AES67_ANALYSE=1   run the analysis without being asked
+#   AES67_ANALYSE=0   skip it without being asked
+#   SKIP_LOCAL_CI=1   skip the whole gate (or push with --no-verify)
+#
+# Without a terminal -- a script, an agent, CI of any kind -- the question
+# cannot be answered, so it is not asked: the analysis is skipped and the push
+# proceeds. A hook that blocks on a prompt nobody can see is a hung push.
+set -uo pipefail
+
+if [ "${SKIP_LOCAL_CI:-0}" = "1" ]; then
+  echo "pre-push: skipped (SKIP_LOCAL_CI=1)"
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+# Three things come off stdin: whether anything is being pushed at all, whether
+# it is only deletions, and whether the default branch is among the targets.
+# No lines means git found nothing to send -- "everything up-to-date" -- which
+# is not the same as a deletion, and saying so avoids a message that reads like
+# a bug report.
+saw_refs=0
+only_deletes=1
+to_default_branch=0
+default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+default_branch="${default_branch:-main}"
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ -z "${local_sha:-}" ] && continue
+  saw_refs=1
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] || only_deletes=0
+  [ "${remote_ref:-}" = "refs/heads/$default_branch" ] && to_default_branch=1
+done
+
+if [ "$saw_refs" = "0" ]; then
+  echo "pre-push: nothing to push"
+  exit 0
+fi
+
+if [ "$only_deletes" = "1" ]; then
+  echo "pre-push: deletion only, nothing to build"
+  exit 0
+fi
+
+analyse="${AES67_ANALYSE:-}"
+if [ -z "$analyse" ] && [ "$to_default_branch" = "1" ]; then
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    printf 'pre-push: pushing to %s. Run the full gate with static analysis? [Y/n] ' \
+      "$default_branch" > /dev/tty
+    # Three outcomes, not two. A person pressing enter means yes, so an empty
+    # line accepts. But read failing -- end of file, nothing on the other side
+    # -- and read timing out both mean nobody is there, and nobody there must
+    # not mean yes: a terminal can exist with no human attached to it, which is
+    # exactly what an agent or a CI shell looks like. Answering for them by
+    # default is how a "fast push" spends three minutes on analysis.
+    if read -r -t 30 answer < /dev/tty; then
+      case "$answer" in
+        [Nn]*) analyse=0 ;;
+        *)     analyse=1 ;;
+      esac
+    else
+      printf '\npre-push: no answer; skipping analysis (AES67_ANALYSE=1 to force)\n' > /dev/tty
+      analyse=0
+    fi
+  else
+    echo "pre-push: pushing to $default_branch with no terminal to ask on; skipping analysis (AES67_ANALYSE=1 to force)"
+    analyse=0
+  fi
+fi
+analyse="${analyse:-0}"
+
+echo "pre-push: running scripts/gate.sh"
+if AES67_ANALYSE="$analyse" "$repo_root/scripts/gate.sh"; then
+  exit 0
+fi
+echo "pre-push: build or tests failed -- push aborted. Fix, or push with --no-verify." >&2
+exit 1

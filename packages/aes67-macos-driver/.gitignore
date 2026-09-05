@@ -1,0 +1,44 @@
+# What this package builds and what its tooling leaves behind. Anything that
+# every package produces -- build directories, CMake caches, editor and macOS
+# droppings -- is at the root; these are the rules that name paths only this
+# package has, and that used to sit at the root and match tree-wide.
+
+# Packaging.
+build-pkg/
+*.driver
+*.app
+*.pkg
+
+# Xcode.
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace/
+
+# Swift build cache for the manager app.
+ManagerApp/.build/
+
+# Test output.
+Tests/output/
+Tests/*.log
+
+# In-source CMake runs must never recommit their artifacts.
+Examples/Makefile
+Examples/CTestTestfile.cmake
+Examples/ChannelMapperDemo
+Examples/SimpleSDPParse
+Tests/Makefile
+Tests/CTestTestfile.cmake
+Tests/Test*
+!Tests/Test*.cpp
+Tests/Benchmark*
+!Tests/Benchmark*.cpp

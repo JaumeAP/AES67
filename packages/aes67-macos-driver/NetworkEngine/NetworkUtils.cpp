@@ -1,0 +1,318 @@
+#include "NetworkEngine/NetworkUtils.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+#include <cstring>
+#include <unistd.h>
+#include <iostream>
+
+namespace AES67 {
+
+namespace {
+// Resolve `interfaceName` (an interface name like "en0", or a literal IPv4
+// address) into mreq's ifindex/address. Factored out 2026-08-31: join and
+// leave carried byte-identical copies of this block, the classic spot
+// where a fix lands in one and silently misses the other.
+void resolveMulticastInterface(const std::string& interfaceName, struct ip_mreqn& mreq) {
+    mreq.imr_ifindex = if_nametoindex(interfaceName.c_str());
+    if (mreq.imr_ifindex != 0) return;
+    struct in_addr interfaceAddr;
+    if (inet_aton(interfaceName.c_str(), &interfaceAddr) != 0) {
+        mreq.imr_address = interfaceAddr;
+        return;
+    }
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET &&
+                interfaceName == ifa->ifa_name) {
+                mreq.imr_address = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+                break;
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+}
+} // namespace
+
+
+bool NetworkUtils::joinMulticastGroup(int sockfd, const std::string& multicastAddr, 
+                                      const std::string& interfaceName) {
+    struct ip_mreqn mreq;
+    memset(&mreq, 0, sizeof(mreq));
+    
+    // Set multicast group address
+    mreq.imr_multiaddr.s_addr = inet_addr(multicastAddr.c_str());
+    if (mreq.imr_multiaddr.s_addr == INADDR_NONE) {
+        return false; // Invalid address
+    }
+    
+    // Set interface
+    resolveMulticastInterface(interfaceName, mreq);
+
+    // Join multicast group
+    if (setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        perror("Failed to join multicast group");
+        return false;
+    }
+    
+    return true;
+}
+
+bool NetworkUtils::leaveMulticastGroup(int sockfd, const std::string& multicastAddr, 
+                                       const std::string& interfaceName) {
+    struct ip_mreqn mreq;
+    memset(&mreq, 0, sizeof(mreq));
+    
+    // Set multicast group address
+    mreq.imr_multiaddr.s_addr = inet_addr(multicastAddr.c_str());
+    if (mreq.imr_multiaddr.s_addr == INADDR_NONE) {
+        return false; // Invalid address
+    }
+    
+    // Set interface
+    resolveMulticastInterface(interfaceName, mreq);
+
+    // Leave multicast group
+    if (setsockopt(sockfd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        perror("Failed to leave multicast group");
+        return false;
+    }
+    
+    return true;
+}
+
+bool NetworkUtils::setQoSTrafficClass(int sockfd, int dscpValue) {
+    // Convert DSCP value to the format expected by IP_TOS
+    // DSCP is upper 6 bits of TOS field
+    int tosValue = (dscpValue & 0x3F) << 2;
+    
+    if (setsockopt(sockfd, IPPROTO_IP, IP_TOS, &tosValue, sizeof(tosValue)) < 0) {
+        perror("Failed to set IP_TOS for QoS");
+        return false;
+    }
+    
+    return true;
+}
+
+bool NetworkUtils::bindToInterface(int sockfd, const std::string& interfaceName) {
+    // Use SO_BINDTODEVICE to bind socket to a specific interface
+    // This may require root privileges
+    if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, 
+                   interfaceName.c_str(), interfaceName.length()) < 0) {
+        // On macOS, SO_BINDTODEVICE is not available, so we use IP_BOUND_IF instead
+#ifdef __APPLE__
+        unsigned int if_index = if_nametoindex(interfaceName.c_str());
+        if (if_index == 0) {
+            return false;
+        }
+        
+        if (setsockopt(sockfd, IPPROTO_IP, IP_BOUND_IF, &if_index, sizeof(if_index)) < 0) {
+            perror("Failed to bind to interface");
+            return false;
+        }
+#else
+        perror("Failed to bind to interface");
+        return false;
+#endif
+    }
+    
+    return true;
+}
+
+std::vector<std::string> NetworkUtils::getNetworkInterfaces() {
+    std::vector<std::string> interfaces;
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET) {  // IPv4 interfaces
+                interfaces.push_back(ifa->ifa_name);
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+    
+    return interfaces;
+}
+
+std::string NetworkUtils::getPrimaryEthernetInterface() {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    std::string primaryInterface;
+    
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET) {  // IPv4 interfaces
+                std::string name(ifa->ifa_name);
+                
+                // Look for ethernet interfaces (typically named en0, en1, etc.)
+                if (name.substr(0, 2) == "en" && isdigit(name[2])) {
+                    // Prefer interfaces that are up and running
+                    if ((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)) {
+                        primaryInterface = name;
+                        break;  // Return first active ethernet interface
+                    }
+                    // If we haven't found any active interface yet, keep this one as backup
+                    if (primaryInterface.empty()) {
+                        primaryInterface = name;
+                    }
+                }
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+    
+    return primaryInterface;
+}
+
+bool NetworkUtils::isValidMulticastAddress(const std::string& addr) {
+    // inet_pton, not inet_aton: the older call accepts the classful
+    // shorthands, so "239.69.0" came back true as 239.69.0.0 and "0351.69.0.1"
+    // as an octal address. Addresses reach this from SDP bodies and settings
+    // files, where a three-part group is a typo, not a form to complete for
+    // the sender — and isIPv4Address next door has always been strict, so the
+    // two disagreed about the same text (2026-09-04, found by this function's
+    // first test).
+    struct in_addr in_addr_var;
+    if (inet_pton(AF_INET, addr.c_str(), &in_addr_var) != 1) {
+        return false; // Not a valid IPv4 address
+    }
+
+    // Check if it's in the multicast range (224.0.0.0 to 239.255.255.255)
+    uint32_t ip = ntohl(in_addr_var.s_addr);
+    return (ip >= 0xE0000000 && ip <= 0xEFFFFFFF); // 224.0.0.0 to 239.255.255.255
+}
+
+bool NetworkUtils::hasMulticastRoute(const std::string& interfaceName) {
+    // On macOS, check routing table for 239.0.0.0/8
+    // Use netstat -rn to list routes, grep for 239 range
+    FILE* fp = popen("netstat -rn 2>/dev/null | grep -E '^239'", "r");
+    if (!fp) {
+        return false;
+    }
+
+    char buffer[256];
+    bool hasRoute = false;
+
+    // Read output line by line
+    while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+        // If interfaceName is specified, check if it matches
+        if (!interfaceName.empty()) {
+            // netstat output format: destination gateway flags refs use if
+            // Example: 239.0.0.0/8     192.168.1.1    UGSc  0  0  en0
+            std::string line(buffer);
+
+            // Simple check: does the line contain the interface name?
+            if (line.find(interfaceName) != std::string::npos) {
+                hasRoute = true;
+                break;
+            }
+        } else {
+            // Any route to 239.x.x.x is acceptable
+            hasRoute = true;
+            break;
+        }
+    }
+
+    pclose(fp);
+    return hasRoute;
+}
+
+std::string NetworkUtils::getMulticastRouteCommand(const std::string& interfaceName) {
+    std::string iface = interfaceName.empty() ? "en0" : interfaceName;
+    return "sudo route add -net 239.0.0.0/8 -interface " + iface;
+}
+
+bool NetworkUtils::isIPv4Address(const std::string& str) {
+    if (str.empty()) return false;
+
+    // macOS accepts a leading zero in a component and reads the component as
+    // decimal anyway, so inet_pton alone maps "0177.0.0.1" to 177.0.0.1 rather
+    // than refusing it. An interface spec is either an address or a name, and a
+    // string that looks octal must not be taken for the first, so the octal
+    // form is rejected here rather than left to the platform.
+    for (size_t i = 0; i < str.size(); ++i) {
+        const bool startsComponent = (i == 0) || (str[i - 1] == '.');
+        if (!startsComponent || str[i] != '0') continue;
+        const bool componentContinues = (i + 1 < str.size()) && (str[i + 1] != '.');
+        if (componentContinues) return false;
+    }
+
+    struct in_addr addr;
+    return inet_pton(AF_INET, str.c_str(), &addr) == 1;
+}
+
+std::string NetworkUtils::getInterfaceIP(const std::string& interfaceName) {
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+    std::string result;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family == AF_INET &&
+                interfaceName == ifa->ifa_name) {
+                char ip[INET_ADDRSTRLEN];
+                struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+                inet_ntop(AF_INET, &sa->sin_addr, ip, sizeof(ip));
+                result = ip;
+                break;
+            }
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return result;
+}
+
+std::string NetworkUtils::resolveInterfaceToIP(const std::string& interfaceSpec) {
+    // Empty string -> auto-detect best interface
+    if (interfaceSpec.empty()) {
+        std::string primaryIface = getPrimaryEthernetInterface();
+        if (!primaryIface.empty()) {
+            return getInterfaceIP(primaryIface);
+        }
+        return "";
+    }
+
+    // Already an IP address -> return as-is
+    if (isIPv4Address(interfaceSpec)) {
+        return interfaceSpec;
+    }
+
+    // Interface name -> resolve to IP
+    return getInterfaceIP(interfaceSpec);
+}
+
+std::vector<std::pair<std::string, std::string>> NetworkUtils::getActiveInterfacesWithIPs() {
+    std::vector<std::pair<std::string, std::string>> result;
+    struct ifaddrs *ifaddrs_ptr, *ifa;
+
+    if (getifaddrs(&ifaddrs_ptr) == 0) {
+        for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == nullptr) continue;
+            if (ifa->ifa_addr->sa_family != AF_INET) continue;
+
+            // Skip loopback
+            if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+
+            // Only include interfaces that are up
+            if (!(ifa->ifa_flags & IFF_UP)) continue;
+
+            char ip[INET_ADDRSTRLEN];
+            struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+            inet_ntop(AF_INET, &sa->sin_addr, ip, sizeof(ip));
+
+            result.emplace_back(ifa->ifa_name, ip);
+        }
+        freeifaddrs(ifaddrs_ptr);
+    }
+
+    return result;
+}
+
+} // namespace AES67
