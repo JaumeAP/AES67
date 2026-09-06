@@ -1,7 +1,7 @@
 # References
 
 What each `CompatibilityProfile` constraint
-(NetworkEngine/CompatibilityProfile.h) is based on, and where the claims in
+(NetworkEngine/Profiles/CompatibilityProfile.h) is based on, and where the claims in
 its caveats text come from. Not authored by this project — copyright belongs
 to the original publisher (Dolby Laboratories).
 

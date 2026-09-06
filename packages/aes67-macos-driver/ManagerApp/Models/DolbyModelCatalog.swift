@@ -2,7 +2,7 @@
 // DolbyModelCatalog.swift
 // AES67 Manager App
 //
-// Hand-synced mirror of NetworkEngine/DolbyModelCatalog.h — the fixed
+// Hand-synced mirror of NetworkEngine/Profiles/DolbyModelCatalog.h — the fixed
 // model → channel-count/direction facts PTP detection can't supply. Kept in
 // step with that header the same way the CompatibilityProfile list is.
 // The user assigns each detected element a model here; the channel count that

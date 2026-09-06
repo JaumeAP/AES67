@@ -20,7 +20,7 @@
 //
 // Channel counts are aligned with the same gear's CompatibilityProfile
 // (DAC3202 32, DMA 16/24/32 per single unit, CP850/CP950A 64, CP950 16) —
-// see NetworkEngine/CompatibilityProfile.cpp. Directions are from THIS
+// see NetworkEngine/Profiles/CompatibilityProfile.cpp. Directions are from THIS
 // driver's own side: an amplifier is a sink we feed (Output), a cinema
 // processor is a source that feeds us (Input) — matching those profiles'
 // TransmitOnly / ReceiveOnly directions.

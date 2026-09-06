@@ -1,7 +1,7 @@
 //
 // TestCompatibilityProfile.cpp
 // AES67 macOS Driver
-// Tests for the per-standard constraint sets (NetworkEngine/CompatibilityProfile.h).
+// Tests for the per-standard constraint sets (NetworkEngine/Profiles/CompatibilityProfile.h).
 //
 // Pure validation logic — no sockets, no driver, no persistence of the
 // user's actual selection. Safe in the standard suite.
@@ -24,7 +24,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "NetworkEngine/CompatibilityProfile.h"
+#include "NetworkEngine/Profiles/CompatibilityProfile.h"
 
 #include <cmath>
 #include <iostream>

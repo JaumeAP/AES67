@@ -19,7 +19,7 @@ add_library(aes67_core
     NetworkEngine/StreamConfig.cpp
     NetworkEngine/DeviceChannelSettings.cpp
     NetworkEngine/AmplifierUnitSettings.cpp
-    NetworkEngine/CompatibilityProfile.cpp
+    NetworkEngine/Profiles/CompatibilityProfile.cpp
     NetworkEngine/NetworkErrorHandler.cpp
     NetworkEngine/DoPDecoder.cpp
     NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp

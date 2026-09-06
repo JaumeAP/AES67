@@ -10,7 +10,7 @@
 // ts-refclk form (now fixed; regression-pinned in TestSDPParser).
 //
 #include "Driver/SDPParser.h"
-#include "NetworkEngine/CompatibilityProfile.h"
+#include "NetworkEngine/Profiles/CompatibilityProfile.h"
 #include "NetworkEngine/RTP/PCMCodec.h"
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include <cmath>
