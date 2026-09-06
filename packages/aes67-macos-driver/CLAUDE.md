@@ -261,7 +261,7 @@ SwiftUI app in `ManagerApp/`; `Models/DriverManager.swift` wraps `DriverManager.
 
 ### Conventions
 
-- C++17 throughout the native code (`CMAKE_CXX_STANDARD 17`, enforced). Warnings are `-Wall -Wextra -Wpedantic` with unused-parameter and missing-field-initializer silenced; keep new code warning-clean under those flags.
+- C++20 throughout the native code (`CMAKE_CXX_STANDARD 20`, enforced). Warnings are `-Wall -Wextra -Wpedantic` with unused-parameter and missing-field-initializer silenced; keep new code warning-clean under those flags.
 - Everything native lives in the `AES67` namespace.
 - Header/impl pairs use `.h`/`.cpp` except the core's `Shared/RingBuffer.hpp` (header-only) and `Shared/Config.hpp`.
 - Preserve the RT-safety boundary described above in any change touching `Driver/AES67IOHandler.*` or `NetworkEngine/RTSafeStreamInterface.h` — this is the one architectural invariant the codebase is built around, and it's checked by convention/review, not by a static analyzer.

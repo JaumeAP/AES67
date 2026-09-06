@@ -6,7 +6,7 @@ project(aes67_core LANGUAGES CXX)
 # or anything else that assumes an operating system -- that is the whole reason
 # this library was split out of aes67-macos-driver rather than being consumed
 # from inside it, where "the base" would have meant "the macOS one".
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(aes67_core
