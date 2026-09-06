@@ -22,7 +22,9 @@ EXTRA_CXXFLAGS ?=
 PIO ?= pio
 
 BIN = t41-ptp-test
-SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-servo.cpp ../src/ptp/l2ptp.cpp ../src/ptp/l3ptp.cpp \
+SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-config.cpp ../src/ptp/ptp-discipline.cpp \
+      ../src/ptp/ptp-parse.cpp ../src/ptp/ptp-send.cpp \
+      ../src/ptp/ptp-servo.cpp ../src/ptp/l2ptp.cpp ../src/ptp/l3ptp.cpp \
       stubs/stubs.cpp ptp_messages.cpp test_ptp_base.cpp test_transport.cpp \
       test_servo.cpp test_main.cpp
 

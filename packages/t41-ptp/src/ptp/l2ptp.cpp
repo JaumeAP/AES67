@@ -211,7 +211,20 @@ void l2PTP::sendPTPMessage(const uint8_t *buf, int size, bool /*generalMessage*/
     const int fill = 46-w;
     if(fill>0){
         uint8_t buf0[46] = {0};
-        w+=static_cast<int>(qindesign::network::EthernetFrame.write(buf0, static_cast<size_t>(fill)));
+        const int padded =
+            static_cast<int>(qindesign::network::EthernetFrame.write(buf0, static_cast<size_t>(fill)));
+        // Checked like every other write here. A short padding write leaves a
+        // frame under Ethernet's minimum, which the hardware either pads with
+        // whatever is in its buffer or drops -- and the message went nowhere
+        // either way. It was the one write in this function whose result was
+        // added to a total and never looked at.
+        if (padded != fill)
+        {
+            qindesign::network::EthernetFrame.endFrame();
+            txFailureCount++;
+            return;
+        }
+        w += padded;
     }
     // The result is checked. It used to be collected into a variable
     // nobody read, with the check commented out just below, so a Sync or

@@ -521,6 +521,16 @@ private:
     void parseAnnounceMessage(const uint8_t *buf);
     MasterDataset ownDataset() const;
     void updatePortState();
+
+    // The phases of update(), in the order it calls them. Split out of a
+    // hundred-and-forty-line function: the order matters and the reasons are
+    // on each one.
+    void serviceDelayExchange();
+    void serviceDelayRequestPacing();
+    void serviceSyncPair();
+    void serviceAnnounceTimeout();
+    void serviceSyncReceipt();
+    void serviceExternalReference();
     bool fromSelectedMaster(const uint8_t *buf) const;
     void parseSyncMessage(const uint8_t *buf, const timespec &recv_ts);
     void parseFollowUpMessage(const uint8_t *buf);
