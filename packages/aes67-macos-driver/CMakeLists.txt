@@ -158,6 +158,7 @@ set(DRIVER_SOURCES
     Driver/AES67Device.cpp
     Driver/AES67IOHandler.cpp
     Driver/AudioThreadPriority.cpp
+    Driver/DeviceActivation.cpp
     NetworkEngine/RTP/PCMCodec.cpp
     NetworkEngine/PTP/PTPClock.cpp
     NetworkEngine/PTP/PTPDInterface.cpp
@@ -298,20 +299,27 @@ endif()
 option(BUILD_MANAGER_APP "Build the SwiftUI Manager app" ON)
 
 if(APPLE AND ASPL_FOUND AND BUILD_MANAGER_APP)
+    # The app carries the driver, the daemon and the daemon's plist as
+    # resources, and is what puts them on the system. build.sh takes them from
+    # this binary directory.
     add_custom_target(ManagerApp ALL
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
+        COMMAND ${CMAKE_COMMAND} -E env AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
         COMMENT "Building AES67 Manager App (SwiftUI)"
+        DEPENDS AES67Driver aes67ptpd
         VERBATIM
     )
 
-    # Installer target (explicit only — not part of ALL)
-    add_custom_target(installer
+    # Disk image (explicit only — not part of ALL). This is the whole of the
+    # delivery: the app installs the driver, the daemon and the LaunchDaemon
+    # itself, so there is no package to build and no installer to run.
+    add_custom_target(dmg
         COMMAND ${CMAKE_COMMAND} -E env AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-                ${CMAKE_CURRENT_SOURCE_DIR}/Installer/build-installer.sh
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Installer
-        COMMENT "Building .pkg installer"
-        DEPENDS AES67Driver ManagerApp
+                ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build-dmg.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
+        COMMENT "Building AES67Manager.dmg"
+        DEPENDS ManagerApp
         VERBATIM
     )
 
@@ -421,8 +429,10 @@ set(CPACK_PACKAGE_VERSION_MINOR ${VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${VERSION_PATCH})
 
 if(APPLE)
-    set(CPACK_GENERATOR "productbuild")
-    set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+    # A disk image holding the app, not a package that installs system files:
+    # everything privileged is put down by the app itself. See the `dmg`
+    # target above; CPack is left configured for anyone running it by hand.
+    set(CPACK_GENERATOR "DragNDrop")
 endif()
 
 include(CPack)
@@ -444,7 +454,7 @@ message(STATUS "  RTP: SimpleRTP (minimal implementation)")
 message(STATUS "  libASPL: ${ASPL_INCLUDE_DIR}")
 message(STATUS "  PTP: IEEE 1588 slave-only (PTPSlave.cpp, stub fallback available)")
 message(STATUS "  Manager App: ManagerApp target (SwiftUI)")
-message(STATUS "  Installer: make installer")
+message(STATUS "  Delivery: make dmg")
 message(STATUS "  Tests: ${BUILD_TESTS}")
 message(STATUS "  Examples: ${BUILD_EXAMPLES}")
 message(STATUS "")

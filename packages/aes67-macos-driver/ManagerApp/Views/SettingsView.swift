@@ -235,7 +235,7 @@ struct DriverSettings: View {
                 HStack {
                     Text("Status")
                     Spacer()
-                    StatusBadge(isConnected: driverManager.isDriverLoaded)
+                    StatusBadge(isConnected: driverManager.isDriverInstalled)
                 }
 
                 HStack {

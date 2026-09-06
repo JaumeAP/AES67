@@ -156,7 +156,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### What this is
 
-A user-space AES67 (AES67-2018) network audio driver for macOS, implemented as a Core Audio `AudioServerPlugIn` using the [libASPL](https://github.com/gavv/libASPL) framework — no kernel extension. Companion pieces: a SwiftUI menu-bar Manager app, a `.pkg` installer, and CLI test tools for exercising the RTP path over loopback.
+A user-space AES67 (AES67-2018) network audio driver for macOS, implemented as a Core Audio `AudioServerPlugIn` using the [libASPL](https://github.com/gavv/libASPL) framework — no kernel extension. Companion pieces: a SwiftUI menu-bar Manager app -- which is also how the driver, the PTP daemon and its LaunchDaemon reach the system, there being no `.pkg` any more -- and CLI test tools for exercising the RTP path over loopback.
 
 **Status matters here.** The RX path is verified with real AES67 hardware; TX, network PTP, and the Manager app are unverified. README.md's "Current Status" / "Known Limitations" sections are the source of truth — don't upgrade a feature's claimed status in docs or comments unless you've actually verified it (real hardware or, at minimum, a passing new test that exercises it).
 

@@ -6,6 +6,7 @@
 
 #include "AES67Device.h"
 #include "Driver/DebugLog.h"
+#include "Driver/DeviceActivation.h"
 #include <aspl/Plugin.hpp>
 #include <aspl/Driver.hpp>
 #include <CoreAudio/AudioServerPlugIn.h>
@@ -24,6 +25,15 @@ public:
     explicit AES67Plugin(std::shared_ptr<aspl::Context> context)
         : aspl::Plugin(context)
     {
+        // Deactivated means installed but not published: no device is built
+        // and none is registered, so nothing appears in Core Audio and the
+        // settings the driver only reads at startup are free to be edited.
+        // See Driver/DeviceActivation.h.
+        if (!DeviceActivationManager().load().active) {
+            AES67_LOG("AES67Plugin constructor: device deactivated, publishing nothing");
+            return;
+        }
+
         AES67_LOG("AES67Plugin constructor: Creating AES67Device...");
         // Create the AES67 audio device
         device_ = std::make_shared<AES67Device>(context);

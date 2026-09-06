@@ -279,9 +279,10 @@ cmake --build build --target aes67ptpd
 sudo ./build/aes67ptpd --interface en0 --domain 0 --verbose
 ```
 
-The installer places it at `/usr/local/libexec/aes67ptpd` with
-`Installer/com.aes67driver.ptpd.plist`, and `Installer/uninstall.sh` removes
-both.
+The Manager app places it at `/usr/local/libexec/aes67ptpd` with
+`ManagerApp/Resources/com.aes67driver.ptpd.plist` at
+`/Library/LaunchDaemons/`, in the same privileged step that installs the
+driver, and its Uninstall button removes all three.
 
 ### Validate the installed driver
 

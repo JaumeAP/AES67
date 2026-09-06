@@ -85,6 +85,20 @@ target_link_libraries(TestPTPClock PRIVATE aes67_net)
 target_link_libraries(TestPTPClock PRIVATE doctest_headers)
 target_compile_features(TestPTPClock PRIVATE cxx_std_17)
 
+# Test: device activation — whether the plug-in publishes a device at all.
+add_executable(TestDeviceActivation
+    TestDeviceActivation.cpp
+    ../Driver/DeviceActivation.cpp
+)
+
+target_include_directories(TestDeviceActivation PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+target_link_libraries(TestDeviceActivation PRIVATE aes67_core)
+target_link_libraries(TestDeviceActivation PRIVATE doctest_headers)
+target_compile_features(TestDeviceActivation PRIVATE cxx_std_17)
+
 # Test: PTP Master / BMCA — offline only, see TestPTPMaster.cpp's own header
 # comment for why it doesn't touch sockets.
 add_executable(TestPTPMaster
@@ -538,6 +552,7 @@ add_test(NAME StreamManager COMMAND TestStreamManager)
 add_test(NAME PCMCodec COMMAND TestPCMCodec)
 add_test(NAME MultiStream COMMAND TestMultiStream)
 add_test(NAME IntegrationAudioPath COMMAND TestIntegrationAudioPath)
+add_test(NAME DeviceActivation COMMAND TestDeviceActivation)
 
 # Labels drive what the local gate runs. scripts/gate.sh excludes the
 # `timing` label rather than naming suites in a regex, so a new test that
@@ -557,6 +572,7 @@ set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTPTransmitter PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
 set_tests_properties(PTPMaster PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(DeviceActivation PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
