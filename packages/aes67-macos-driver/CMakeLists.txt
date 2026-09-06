@@ -307,7 +307,8 @@ if(APPLE AND ASPL_FOUND AND BUILD_MANAGER_APP)
 
     # Installer target (explicit only — not part of ALL)
     add_custom_target(installer
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/Installer/build-installer.sh
+        COMMAND ${CMAKE_COMMAND} -E env AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/Installer/build-installer.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Installer
         COMMENT "Building .pkg installer"
         DEPENDS AES67Driver ManagerApp

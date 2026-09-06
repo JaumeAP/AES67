@@ -16,9 +16,14 @@ Installer/
 ├── scripts/
 │   ├── preinstall          # Pre-installation checks
 │   └── postinstall         # Post-installation setup (copies driver, restarts Core Audio)
-├── output/                 # Generated packages (created during build)
-└── payload/                # Temporary payload directory (created during build)
+└── README.md               # This file
 ```
+
+Nothing is generated inside this directory. The package and the payload it is
+built from go to `Installer/output/` and `Installer/payload/` under the CMake
+binary directory, which the `installer` target passes in as `AES67_BUILD_DIR`.
+A standalone run of the script with no such variable falls back to
+`<package>/build`.
 
 ## Building the Installer Package
 
@@ -47,15 +52,18 @@ cd Installer
 ```
 
 This will create:
-- **Component package**: `output/AES67Driver.pkg`
-- **Final package**: `output/AES67Driver-1.0.0-arm64.pkg`
+- **Component package**: `$AES67_BUILD_DIR/Installer/output/AES67Driver.pkg`
+- **Final package**: `$AES67_BUILD_DIR/Installer/output/AES67Driver-1.0.0-arm64.pkg`
 
 ### Package Output
 
 The installer package will be created at:
 ```
-Installer/output/AES67Driver-1.0.0-arm64.pkg
+$AES67_BUILD_DIR/Installer/output/AES67Driver-1.0.0-arm64.pkg
 ```
+
+Built from the monorepo root, that is
+`build/packages/aes67-macos-driver/Installer/output/`.
 
 ## Installing the Package
 
@@ -69,7 +77,7 @@ Installer/output/AES67Driver-1.0.0-arm64.pkg
 ### Command Line Installation
 
 ```bash
-sudo installer -pkg Installer/output/AES67Driver-1.0.0-arm64.pkg -target /
+sudo installer -pkg "$AES67_BUILD_DIR/Installer/output/AES67Driver-1.0.0-arm64.pkg" -target /
 ```
 
 ### Installation Log

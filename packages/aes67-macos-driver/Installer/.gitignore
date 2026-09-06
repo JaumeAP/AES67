@@ -11,10 +11,6 @@ Makefile
 *.cmake
 !CMakeLists.txt
 
-# Installer build artifacts
-Installer/output/
-Installer/payload/
-
 # macOS
 .DS_Store
 .AppleDouble

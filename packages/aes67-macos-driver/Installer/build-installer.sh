@@ -15,10 +15,15 @@ echo ""
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="$PROJECT_ROOT/build"
+# Where the driver, the daemon and everything this script produces live. CMake
+# passes its own binary directory, which in the monorepo is not under this
+# package at all; the fallback is what a standalone build of this package uses.
+BUILD_DIR="${AES67_BUILD_DIR:-$PROJECT_ROOT/build}"
 INSTALLER_DIR="$SCRIPT_DIR"
-OUTPUT_DIR="$INSTALLER_DIR/output"
-PAYLOAD_DIR="$INSTALLER_DIR/payload"
+# Out of the source tree: everything below is generated, and the source tree
+# holds no build artifacts.
+OUTPUT_DIR="$BUILD_DIR/Installer/output"
+PAYLOAD_DIR="$BUILD_DIR/Installer/payload"
 SCRIPTS_DIR="$INSTALLER_DIR/scripts"
 
 # --build flag: build missing artifacts before packaging
@@ -28,8 +33,8 @@ if [ "$1" = "--build" ]; then
 
     if [ ! -d "$BUILD_DIR/AES67Driver.driver" ]; then
         echo "Building driver..."
-        mkdir -p "$BUILD_DIR"
-        (cd "$BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=Release && make AES67Driver)
+        cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+        cmake --build "$BUILD_DIR" --target AES67Driver
         echo ""
     fi
 
