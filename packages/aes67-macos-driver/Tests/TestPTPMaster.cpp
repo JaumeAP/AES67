@@ -20,7 +20,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "NetworkEngine/PTP/PTPBMCA.h"
+#include "NetworkEngine/PTP/PTPProtocolTypes.h"
 #include "NetworkEngine/PTP/PTPClockSource.h"
 
 #include <iostream>
@@ -34,26 +34,21 @@ namespace {
 PTPAnnounceData makeAnnounce(uint8_t priority1, uint8_t clockClass, uint8_t accuracy,
                              uint16_t variance, uint8_t priority2, uint8_t identityLastByte) {
     PTPAnnounceData d{};
-    d.grandmasterPriority1 = priority1;
-    d.grandmasterClockClass = clockClass;
-    d.grandmasterClockAccuracy = accuracy;
-    d.grandmasterOffsetScaledLogVariance = variance;
-    d.grandmasterPriority2 = priority2;
-    d.grandmasterIdentity.id.fill(0);
-    d.grandmasterIdentity.id[7] = identityLastByte;
+    d.dataset.priority1 = priority1;
+    d.dataset.clockClass = clockClass;
+    d.dataset.clockAccuracy = accuracy;
+    d.dataset.offsetScaledLogVariance = variance;
+    d.dataset.priority2 = priority2;
+    d.dataset.grandmasterIdentity[7] = identityLastByte;
+    d.dataset.stepsRemoved = 0;
     return d;
 }
 
-/// Same fields bmcaCompare() reads. Two datasets equal by this measure are
-/// indistinguishable to bmcaCompare — see the "no deadlock" test below for
-/// why that's the one case its guarantee doesn't (and can't) cover.
+/// Same fields isBetterMaster() reads. Two datasets equal by this measure are
+/// indistinguishable to it — see the "no deadlock" test below for why that's
+/// the one case its guarantee doesn't (and can't) cover.
 bool sameQuality(const PTPAnnounceData& x, const PTPAnnounceData& y) {
-    return x.grandmasterPriority1 == y.grandmasterPriority1 &&
-           x.grandmasterClockClass == y.grandmasterClockClass &&
-           x.grandmasterClockAccuracy == y.grandmasterClockAccuracy &&
-           x.grandmasterOffsetScaledLogVariance == y.grandmasterOffsetScaledLogVariance &&
-           x.grandmasterPriority2 == y.grandmasterPriority2 &&
-           x.grandmasterIdentity == y.grandmasterIdentity;
+    return !isBetterMaster(x.dataset, y.dataset) && !isBetterMaster(y.dataset, x.dataset);
 }
 
 } // namespace
@@ -69,8 +64,8 @@ TEST_CASE("BMCA Priority1 Decides") {
     // still win: priority1 is compared first.
     auto a = makeAnnounce(10, 255, 0xFE, 0xFFFF, 255, 0xFF);
     auto b = makeAnnounce(20, 6, 0x20, 0x0000, 0, 0x00);
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
-    CHECK(bmcaCompare(b, a) == PTPBMCAWinner::B);
+    CHECK(isBetterMaster(a.dataset, b.dataset));
+    CHECK_FALSE(isBetterMaster(b.dataset, a.dataset));
     std::cout << "PASS" << std::endl;
 }
 
@@ -78,7 +73,7 @@ TEST_CASE("BMCA Clock Class Tiebreak") {
     std::cout << "Test: A2 · equal priority1 falls through to clockClass... ";
     auto a = makeAnnounce(128, 6, 0xFE, 0xFFFF, 128, 0x01);   // GPS-locked
     auto b = makeAnnounce(128, 248, 0xFE, 0xFFFF, 128, 0x01); // free-running
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
+    CHECK(isBetterMaster(a.dataset, b.dataset));
     std::cout << "PASS" << std::endl;
 }
 
@@ -86,7 +81,7 @@ TEST_CASE("BMCA Accuracy Tiebreak") {
     std::cout << "Test: A3 · equal priority1+clockClass falls through to clockAccuracy... ";
     auto a = makeAnnounce(128, 13, 0x21, 0xFFFF, 128, 0x01); // within 1us
     auto b = makeAnnounce(128, 13, 0xFE, 0xFFFF, 128, 0x01); // unknown
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
+    CHECK(isBetterMaster(a.dataset, b.dataset));
     std::cout << "PASS" << std::endl;
 }
 
@@ -94,7 +89,7 @@ TEST_CASE("BMCA Variance Tiebreak") {
     std::cout << "Test: A4 · equal so far falls through to offsetScaledLogVariance... ";
     auto a = makeAnnounce(128, 13, 0x21, 0x1000, 128, 0x01);
     auto b = makeAnnounce(128, 13, 0x21, 0x8000, 128, 0x01);
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
+    CHECK(isBetterMaster(a.dataset, b.dataset));
     std::cout << "PASS" << std::endl;
 }
 
@@ -102,7 +97,7 @@ TEST_CASE("BMCA Priority2 Tiebreak") {
     std::cout << "Test: A5 · equal so far falls through to priority2... ";
     auto a = makeAnnounce(128, 13, 0x21, 0x1000, 50, 0x01);
     auto b = makeAnnounce(128, 13, 0x21, 0x1000, 200, 0x01);
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
+    CHECK(isBetterMaster(a.dataset, b.dataset));
     std::cout << "PASS" << std::endl;
 }
 
@@ -110,8 +105,8 @@ TEST_CASE("BMCA Identity Tiebreak") {
     std::cout << "Test: A6 · fully tied quality falls through to clockIdentity, deterministically... ";
     auto a = makeAnnounce(128, 13, 0x21, 0x1000, 128, 0x01);
     auto b = makeAnnounce(128, 13, 0x21, 0x1000, 128, 0x02);
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
-    CHECK(bmcaCompare(b, a) == PTPBMCAWinner::B);
+    CHECK(isBetterMaster(a.dataset, b.dataset));
+    CHECK_FALSE(isBetterMaster(b.dataset, a.dataset));
     std::cout << "PASS" << std::endl;
 }
 
@@ -122,18 +117,13 @@ TEST_CASE("BMCA Never Deadlocks") {
     // both start transmitting as master forever.
     //
     // Deliberately includes a value-duplicate (samples[4] == samples[0]) to
-    // exercise the one case bmcaCompare's own doc comment already calls
-    // out: on a full tie it returns A unconditionally, which — for two
-    // callers each comparing themselves as the first argument against an
-    // identical competitor — means BOTH would claim victory. That's not
-    // tested as "must not happen" here, because it's real: it's just not
-    // reachable in practice. clockIdentity comes from a MAC address, unique
-    // per real NIC, so two genuinely different clocks never carry identical
-    // datasets; and PTPMaster::handleForeignAnnounce filters out hearing its
-    // own Announce echoed back (identity match) before this function is
-    // ever called with a truly-tied pair. The guarantee this test checks —
-    // no deadlock — only needs to hold when the two datasets differ, which
-    // is the only case that can occur between two distinct real clocks.
+    // exercise the one case the comparison cannot decide: on a full tie it
+    // says neither is better, so each caller keeps what it had. Not reachable
+    // between two distinct real clocks anyway — clockIdentity comes from a
+    // MAC address, unique per real NIC — and PTPMaster::handleForeignAnnounce
+    // filters out hearing its own Announce echoed back before the comparison
+    // is reached. The guarantee this test checks — no deadlock — only needs
+    // to hold when the two datasets differ.
     PTPAnnounceData samples[] = {
         makeAnnounce(128, 6, 0x20, 0x1000, 128, 0x01),
         makeAnnounce(128, 6, 0x20, 0x1000, 128, 0x02),
@@ -144,27 +134,27 @@ TEST_CASE("BMCA Never Deadlocks") {
     for (auto& x : samples) {
         for (auto& y : samples) {
             if (sameQuality(x, y)) continue; // see comment above
-            const auto xy = bmcaCompare(x, y);
-            const auto yx = bmcaCompare(y, x);
+            const bool xy = isBetterMaster(x.dataset, y.dataset);
+            const bool yx = isBetterMaster(y.dataset, x.dataset);
             // Both can agree "x wins" (xy=A, yx=B) or "y wins" (xy=B, yx=A);
             // what must never happen, for genuinely differing data, is both
             // claiming victory — that's the two-master standoff.
-            const bool bothClaimWin = (xy == PTPBMCAWinner::A && yx == PTPBMCAWinner::A);
+            const bool bothClaimWin = (xy && yx);
             CHECK(!bothClaimWin);
         }
     }
     std::cout << "PASS" << std::endl;
 }
 
-TEST_CASE("BMCA Identical Datasets Favor First Argument") {
-    std::cout << "Test: A8 · fully identical datasets: bmcaCompare() always favors its first argument (documented, not a bug)... ";
+TEST_CASE("BMCA Identical Datasets Favour Neither") {
+    std::cout << "Test: A8 · fully identical datasets: neither is the better master... ";
     auto a = makeAnnounce(128, 6, 0x20, 0x1000, 128, 0x01);
     auto b = a; // byte-for-byte identical
-    CHECK(bmcaCompare(a, b) == PTPBMCAWinner::A);
-    CHECK(bmcaCompare(b, a) == PTPBMCAWinner::A);
-    // The pattern above IS the caller-dependent-outcome PTPBMCA.h's comment
-    // warns about. It's harmless only because it's unreachable between two
-    // distinct real clocks — see testBMCANeverDeadlocks() above.
+    CHECK_FALSE(isBetterMaster(a.dataset, b.dataset));
+    CHECK_FALSE(isBetterMaster(b.dataset, a.dataset));
+    // The comparison is strict, so a tie is a tie from both sides and each
+    // caller keeps whichever master it already had. Two distinct real clocks
+    // cannot reach this anyway: clockIdentity comes from a MAC address.
     std::cout << "PASS" << std::endl;
 }
 
@@ -195,9 +185,9 @@ TEST_CASE("Internal Clock Source Never Claims Slave Only") {
     std::cout << "Test: B3 · InternalClockSource never reports clockClass 255 (slave-only)... ";
     InternalClockSource src;
     // PTPMaster::evaluateBMCA() refuses to transmit at all if the active
-    // source ever reports kPTPClockClassSlaveOnly — this is the guarantee
+    // source ever reports PTP_CLOCK_CLASS_SLAVE_ONLY — this is the guarantee
     // that check depends on for the Internal source.
-    CHECK(src.clockClass() != kPTPClockClassSlaveOnly);
+    CHECK(src.clockClass() != PTP_CLOCK_CLASS_SLAVE_ONLY);
     std::cout << "PASS" << std::endl;
 }
 

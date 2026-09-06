@@ -290,14 +290,14 @@ bool PTPMaster::getInterfaceMAC(uint8_t mac[6]) const {
 
 PTPAnnounceData PTPMaster::ourAnnounceData() const {
     PTPAnnounceData data{};
-    data.masterPortId = selfPortId_;
-    data.grandmasterIdentity = grandmasterIdentity_;
-    data.grandmasterClockClass = clockSource_.clockClass();
-    data.grandmasterClockAccuracy = static_cast<uint8_t>(clockSource_.clockAccuracy());
-    data.grandmasterOffsetScaledLogVariance = 0xFFFF; // unknown/worst — honest default, no variance estimator yet
-    data.grandmasterPriority1 = config_.priority1;
-    data.grandmasterPriority2 = config_.priority2;
-    data.stepsRemoved = 0; // we are the grandmaster, not relaying
+    data.setSourcePort(selfPortId_);
+    data.setGrandmasterId(grandmasterIdentity_);
+    data.dataset.clockClass = clockSource_.clockClass();
+    data.dataset.clockAccuracy = static_cast<uint8_t>(clockSource_.clockAccuracy());
+    data.dataset.offsetScaledLogVariance = 0xFFFF; // unknown/worst — honest default, no variance estimator yet
+    data.dataset.priority1 = config_.priority1;
+    data.dataset.priority2 = config_.priority2;
+    data.dataset.stepsRemoved = 0; // we are the grandmaster, not relaying
     data.timeSource = 0xA0; // INTERNAL_OSCILLATOR, §7.6.2.6 Table 7 — true for both clock sources today
     data.logAnnounceInterval = logAnnounceInterval_;
     return data;
@@ -311,7 +311,7 @@ std::optional<PTPAnnounceData> PTPMaster::currentCompetitor() const {
 void PTPMaster::evaluateBMCA() {
     // A clock that can't legally be a grandmaster (see PTPBMCA.h) never
     // transmits, full stop — no amount of network silence changes that.
-    if (clockSource_.clockClass() == kPTPClockClassSlaveOnly) {
+    if (clockSource_.clockClass() == PTP_CLOCK_CLASS_SLAVE_ONLY) {
         role_.store(PTPMasterRole::Passive, std::memory_order_release);
         return;
     }
@@ -341,8 +341,10 @@ void PTPMaster::evaluateBMCA() {
         return;
     }
 
-    const auto winner = bmcaCompare(ourAnnounceData(), *competitor);
-    role_.store(winner == PTPBMCAWinner::A ? PTPMasterRole::Master : PTPMasterRole::Passive,
+    // A tie goes to us: isBetterMaster is strict, so a competitor that is not
+    // strictly better leaves this port announcing, exactly as before.
+    const bool weWin = !isBetterMaster(competitor->dataset, ourAnnounceData().dataset);
+    role_.store(weWin ? PTPMasterRole::Master : PTPMasterRole::Passive,
                 std::memory_order_release);
 }
 
@@ -351,16 +353,16 @@ void PTPMaster::handleForeignAnnounce(const PTPHeader& header, const uint8_t* da
     if (len < kAnnounceMessageSize) return;
 
     PTPAnnounceData announce{};
-    announce.masterPortId = header.sourcePortIdentity;
-    announce.grandmasterPriority1 = data[kAnnounceGMPriority1Offset];
-    announce.grandmasterClockClass = data[kAnnounceGMClassOffset];
-    announce.grandmasterClockAccuracy = data[kAnnounceGMAccuracyOffset];
-    announce.grandmasterOffsetScaledLogVariance =
+    announce.setSourcePort(header.sourcePortIdentity);
+    announce.dataset.priority1 = data[kAnnounceGMPriority1Offset];
+    announce.dataset.clockClass = data[kAnnounceGMClassOffset];
+    announce.dataset.clockAccuracy = data[kAnnounceGMAccuracyOffset];
+    announce.dataset.offsetScaledLogVariance =
         static_cast<uint16_t>((data[kAnnounceGMVarianceOffset] << 8) | data[kAnnounceGMVarianceOffset + 1]);
-    announce.grandmasterPriority2 = data[kAnnounceGMPriority2Offset];
+    announce.dataset.priority2 = data[kAnnounceGMPriority2Offset];
     for (size_t i = 0; i < 8; ++i)
-        announce.grandmasterIdentity.id[i] = data[kAnnounceGMIdentityOffset + i];
-    announce.stepsRemoved =
+        announce.dataset.grandmasterIdentity[i] = data[kAnnounceGMIdentityOffset + i];
+    announce.dataset.stepsRemoved =
         static_cast<uint16_t>((data[kAnnounceStepsRemovedOffset] << 8) | data[kAnnounceStepsRemovedOffset + 1]);
     announce.timeSource = data[kAnnounceTimeSourceOffset];
     announce.logAnnounceInterval = header.logMessageInterval;
@@ -368,7 +370,7 @@ void PTPMaster::handleForeignAnnounce(const PTPHeader& header, const uint8_t* da
 
     // Hearing our own Announce looped back (multicast on the same host, or
     // a switch that reflects it) isn't a competitor.
-    if (announce.grandmasterIdentity == grandmasterIdentity_) return;
+    if (announce.grandmasterId() == grandmasterIdentity_) return;
 
     foreignAnnounceCount_.fetch_add(1, std::memory_order_relaxed);
 
@@ -377,7 +379,7 @@ void PTPMaster::handleForeignAnnounce(const PTPHeader& header, const uint8_t* da
     // just "the last one heard": with more than one foreign master on the
     // segment, always compare against the best of them, not whichever
     // happened to arrive most recently.
-    if (!competitor_.has_value() || bmcaCompare(announce, *competitor_) == PTPBMCAWinner::A) {
+    if (!competitor_.has_value() || isBetterMaster(announce.dataset, competitor_->dataset)) {
         competitor_ = announce;
     }
     competitorLastSeen_ = announce.lastReceived;
@@ -488,15 +490,15 @@ bool PTPMaster::sendAnnounce() {
     // TAI-equivalent per the Media Profile.
     msg[46] = 0; // reserved
 
-    msg[kAnnounceGMPriority1Offset] = data.grandmasterPriority1;
-    msg[kAnnounceGMClassOffset] = data.grandmasterClockClass;
-    msg[kAnnounceGMAccuracyOffset] = data.grandmasterClockAccuracy;
-    msg[kAnnounceGMVarianceOffset] = static_cast<uint8_t>((data.grandmasterOffsetScaledLogVariance >> 8) & 0xFF);
-    msg[kAnnounceGMVarianceOffset + 1] = static_cast<uint8_t>(data.grandmasterOffsetScaledLogVariance & 0xFF);
-    msg[kAnnounceGMPriority2Offset] = data.grandmasterPriority2;
-    for (int i = 0; i < 8; ++i) msg[kAnnounceGMIdentityOffset + i] = data.grandmasterIdentity.id[i];
-    msg[kAnnounceStepsRemovedOffset] = static_cast<uint8_t>((data.stepsRemoved >> 8) & 0xFF);
-    msg[kAnnounceStepsRemovedOffset + 1] = static_cast<uint8_t>(data.stepsRemoved & 0xFF);
+    msg[kAnnounceGMPriority1Offset] = data.dataset.priority1;
+    msg[kAnnounceGMClassOffset] = data.dataset.clockClass;
+    msg[kAnnounceGMAccuracyOffset] = data.dataset.clockAccuracy;
+    msg[kAnnounceGMVarianceOffset] = static_cast<uint8_t>((data.dataset.offsetScaledLogVariance >> 8) & 0xFF);
+    msg[kAnnounceGMVarianceOffset + 1] = static_cast<uint8_t>(data.dataset.offsetScaledLogVariance & 0xFF);
+    msg[kAnnounceGMPriority2Offset] = data.dataset.priority2;
+    for (int i = 0; i < 8; ++i) msg[kAnnounceGMIdentityOffset + i] = data.dataset.grandmasterIdentity[i];
+    msg[kAnnounceStepsRemovedOffset] = static_cast<uint8_t>((data.dataset.stepsRemoved >> 8) & 0xFF);
+    msg[kAnnounceStepsRemovedOffset + 1] = static_cast<uint8_t>(data.dataset.stepsRemoved & 0xFF);
     msg[kAnnounceTimeSourceOffset] = data.timeSource;
 
     struct sockaddr_in dest{};

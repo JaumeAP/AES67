@@ -61,6 +61,12 @@ transport-agnostic: it calls three protected
 virtuals (`initSockets`, `closeSockets`, `updateSockets`, plus `sendPTPMessage`) that the concrete
 transport implements.
 
+**`src/ptp/ptp-bmca.h`** holds the 1588 §9.3 dataset comparison and the `MasterDataset` it
+compares, split out of `ptp-base.h` and included back into it. It is consumed off the board as
+well: the AES67 macOS driver's platform-free core includes this exact file rather than keeping the
+copy of the comparison it used to have. Nothing of Arduino, QNEthernet or the Teensy may go into
+it — that core's `scripts/check-platform-free.sh` follows the include and fails if it does.
+
 **`t41ptp::servoUpdate()`** (`src/ptp/ptp-servo.h`/`.cpp`) is the PI(+feedforward) servo's
 decision, apart from the hardware that carries it out: free functions over plain numbers, no
 Arduino and no QNEthernet, taking a `ServoTuning` and a `ServoState` and returning what should

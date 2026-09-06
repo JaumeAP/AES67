@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import ServiceManagement
 import SwiftUI
 import CoreAudio
 
@@ -201,14 +202,19 @@ class DriverManager: ObservableObject {
     private static let driverName = "AES67Driver.driver"
     private static let driverInstallPath = "/Library/Audio/Plug-Ins/HAL/\(driverName)"
 
-    // The privileged PTP daemon and its LaunchDaemon travel with the driver:
-    // one install button puts all three down, one uninstall button takes all
-    // three away. coreaudiod cannot bind UDP 319/320, which is why that work
-    // lives in a root process at all (Daemon/aes67ptpd.cpp).
+    // The PTP daemon travels with the driver: one Install button puts both in
+    // place, one Uninstall button takes both away. coreaudiod cannot bind UDP
+    // 319/320, which is why that work lives in a separate process at all
+    // (Daemon/aes67ptpd.cpp).
+    //
+    // The daemon is not copied anywhere. It ships inside this app --
+    // Contents/MacOS/aes67ptpd, with its launchd plist in
+    // Contents/Library/LaunchDaemons -- and SMAppService registers it there,
+    // which is how macOS 13 and later wants an app to install a daemon.
+    // Registering asks the user once, in System Settings > Login Items;
+    // unregistering is the uninstall.
     private static let daemonName = "aes67ptpd"
-    private static let daemonInstallPath = "/usr/local/libexec/\(daemonName)"
     private static let daemonPlistName = "com.aes67driver.ptpd.plist"
-    private static let daemonPlistInstallPath = "/Library/LaunchDaemons/\(daemonPlistName)"
 
     /// Path to the driver bundle embedded in this app, or nil if this build
     /// of the app doesn't carry one (e.g. AES67Driver wasn't built when
@@ -217,24 +223,59 @@ class DriverManager: ObservableObject {
         embeddedResourceURL(Self.driverName)
     }
 
-    /// Path to the PTP daemon embedded in this app, or nil if this build does
-    /// not carry one. Absent is not fatal: the driver runs on the local clock
-    /// without it, exactly as it did before the daemon existed.
-    private var embeddedDaemonURL: URL? {
-        embeddedResourceURL(Self.daemonName)
-    }
-
-    /// Path to the daemon's LaunchDaemon plist embedded in this app.
-    private var embeddedDaemonPlistURL: URL? {
-        embeddedResourceURL(Self.daemonPlistName)
-    }
-
     private func embeddedResourceURL(_ name: String) -> URL? {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent(name),
               FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
         return url
+    }
+
+    /// Whether this build of the app carries the daemon and its plist where
+    /// SMAppService looks for them. Absent is not fatal: the driver runs on
+    /// the local clock without the daemon, exactly as it did before it existed.
+    private var carriesDaemon: Bool {
+        guard let bundle = Bundle.main.bundleURL as URL? else { return false }
+        let program = bundle.appendingPathComponent("Contents/MacOS/\(Self.daemonName)")
+        let plist = bundle.appendingPathComponent(
+            "Contents/Library/LaunchDaemons/\(Self.daemonPlistName)")
+        return FileManager.default.fileExists(atPath: program.path)
+            && FileManager.default.fileExists(atPath: plist.path)
+    }
+
+    /// Registers the bundled PTP daemon with launchd, or reports why it could
+    /// not. Separate from the driver's privileged install: this one needs no
+    /// administrator password, it needs the user's approval in Login Items.
+    private func registerDaemon() {
+        guard carriesDaemon else { return }
+        guard #available(macOS 13.0, *) else {
+            showAlert(title: "PTP Daemon Not Registered",
+                     message: "Registering a daemon needs macOS 13 or later. The driver will "
+                            + "run on the local clock.")
+            return
+        }
+        let service = SMAppService.daemon(plistName: Self.daemonPlistName)
+        do {
+            try service.register()
+        } catch {
+            showAlert(title: "PTP Daemon Not Registered",
+                     message: "The driver is installed and will run on the local clock. "
+                            + "Registering the PTP daemon failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Unregisters it. A daemon that was never registered is not an error.
+    private func unregisterDaemon() {
+        guard #available(macOS 13.0, *), carriesDaemon else { return }
+        let service = SMAppService.daemon(plistName: Self.daemonPlistName)
+        if service.status == .notRegistered { return }
+        do {
+            try service.unregister()
+        } catch {
+            showAlert(title: "PTP Daemon Still Registered",
+                     message: "The driver was removed. Unregistering the PTP daemon failed: "
+                            + "\(error.localizedDescription)")
+        }
     }
 
     /// Bound to the main window's install switch: true installs, false
@@ -261,35 +302,21 @@ class DriverManager: ObservableObject {
 
         // ditto, not cp -R: preserves the bundle's resource fork / extended
         // attributes, which cp -R can silently drop.
-        var commands = [
-            "ditto '\(source.path)' '\(Self.driverInstallPath)'",
-            "chown -R root:wheel '\(Self.driverInstallPath)'",
-            "chmod -R 755 '\(Self.driverInstallPath)'",
+        let q = PrivilegedScript.shellQuoted
+        let commands = [
+            "ditto \(q(source.path)) \(q(Self.driverInstallPath))",
+            "chown -R root:wheel \(q(Self.driverInstallPath))",
+            "chmod -R 755 \(q(Self.driverInstallPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
         ]
 
-        // The daemon and its plist, when this build carries them. bootout
-        // first so reinstalling replaces a running instance rather than
-        // failing on a job that is already loaded.
-        if let daemon = embeddedDaemonURL, let plist = embeddedDaemonPlistURL {
-            commands += [
-                "mkdir -p '\((Self.daemonInstallPath as NSString).deletingLastPathComponent)'",
-                "launchctl bootout system '\(Self.daemonPlistInstallPath)' 2>/dev/null || true",
-                "ditto '\(daemon.path)' '\(Self.daemonInstallPath)'",
-                "chown root:wheel '\(Self.daemonInstallPath)'",
-                "chmod 755 '\(Self.daemonInstallPath)'",
-                "ditto '\(plist.path)' '\(Self.daemonPlistInstallPath)'",
-                "chown root:wheel '\(Self.daemonPlistInstallPath)'",
-                "chmod 644 '\(Self.daemonPlistInstallPath)'",
-                // Not fatal: without the daemon the driver uses the local clock.
-                "launchctl bootstrap system '\(Self.daemonPlistInstallPath)' || true",
-            ]
+        guard let source = PrivilegedScript.adminShell(commands) else {
+            showAlert(title: "Install Failed",
+                     message: "The install command could not be built. This is a defect, not "
+                            + "something to retry.")
+            return
         }
-
-        commands.append("launchctl kickstart -kp system/com.apple.audio.coreaudiod")
-
-        let script = NSAppleScript(source: """
-            do shell script "\(commands.joined(separator: " && "))" with administrator privileges
-            """)
+        let script = NSAppleScript(source: source)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
 
@@ -297,6 +324,13 @@ class DriverManager: ObservableObject {
             showAlert(title: "Install Failed",
                      message: "Could not install the AES67 driver: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
         }
+        // The daemon is registered separately, and only if the driver went in:
+        // it is launchd's business, not the privileged copy's, and it asks the
+        // user rather than the administrator.
+        if error == nil {
+            registerDaemon()
+        }
+
         // Refresh either way: the switch should reflect what's actually
         // there, not what we asked for.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -304,17 +338,24 @@ class DriverManager: ObservableObject {
         }
     }
 
-    /// Removes the driver, the PTP daemon and its LaunchDaemon from the
-    /// system, and restarts Core Audio.
+    /// Removes the driver and unregisters the PTP daemon, and restarts Core
+    /// Audio.
     func uninstallDriver() {
-        // bootout before removing the plist: launchd is told to let go of the
-        // job while the file it was bootstrapped from still exists.
-        let script = NSAppleScript(source: """
-            do shell script "launchctl bootout system '\(Self.daemonPlistInstallPath)' 2>/dev/null; \
-            rm -f '\(Self.daemonPlistInstallPath)' '\(Self.daemonInstallPath)'; \
-            rm -rf '\(Self.driverInstallPath)' && \
-            launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
-            """)
+        // The daemon goes first, while the app that owns it is still the one
+        // asking: unregistering is launchd's business and needs no password.
+        unregisterDaemon()
+
+        let q = PrivilegedScript.shellQuoted
+        guard let source = PrivilegedScript.adminShell([
+            "rm -rf \(q(Self.driverInstallPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+        ]) else {
+            showAlert(title: "Uninstall Failed",
+                     message: "The uninstall command could not be built. This is a defect, not "
+                            + "something to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
 
@@ -356,14 +397,37 @@ class DriverManager: ObservableObject {
     /// every other startup-read setting works the same way.
     func setDeviceActive(_ active: Bool) {
         let directory = (Self.activationPath as NSString).deletingLastPathComponent
-        let json = "{\n  \"active\": \(active ? "true" : "false")\n}"
+        let json = "{\n  \"active\": \(active ? "true" : "false")\n}\n"
 
-        let script = NSAppleScript(source: """
-            do shell script "mkdir -p '\(directory)' && \
-            printf '%s' '\(json)' > '\(Self.activationPath)' && \
-            chmod 644 '\(Self.activationPath)' && \
-            launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
-            """)
+        // The JSON is written unprivileged to a temporary file and copied into
+        // place by the privileged script, rather than being echoed from inside
+        // it. A shell command is an AppleScript string literal, and JSON is
+        // double quotes and newlines: putting it there ends the literal.
+        let staged = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("aes67-device_active-\(UUID().uuidString).json")
+        do {
+            try json.write(to: staged, atomically: true, encoding: .utf8)
+        } catch {
+            showAlert(title: active ? "Activate Failed" : "Deactivate Failed",
+                     message: "Could not write the setting: \(error.localizedDescription)")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: staged) }
+
+        let q = PrivilegedScript.shellQuoted
+        guard let source = PrivilegedScript.adminShell([
+            "mkdir -p \(q(directory))",
+            "/bin/cp \(q(staged.path)) \(q(Self.activationPath))",
+            "chown root:wheel \(q(Self.activationPath))",
+            "chmod 644 \(q(Self.activationPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+        ]) else {
+            showAlert(title: active ? "Activate Failed" : "Deactivate Failed",
+                     message: "The command could not be built. This is a defect, not something "
+                            + "to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
 

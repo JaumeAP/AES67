@@ -1,6 +1,6 @@
 //
 // PTPSettingsMapping.h
-// AES67 macOS Driver
+// AES67
 //
 // What the installation configured, carried into the two configs the PTP
 // engines actually take.
@@ -12,9 +12,8 @@
 //
 #pragma once
 
-#include "NetworkEngine/PTP/PTPMaster.h"
 #include "NetworkEngine/PTP/PTPMasterSettings.h"
-#include "NetworkEngine/PTP/PTPSlave.h"
+#include "NetworkEngine/PTP/PTPProtocolTypes.h"
 
 namespace AES67 {
 

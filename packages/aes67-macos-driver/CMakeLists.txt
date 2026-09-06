@@ -208,7 +208,6 @@ set(AES67_NET_SOURCES
     NetworkEngine/RTP/RTPReceiver.cpp
     NetworkEngine/RTP/RTPTransmitter.cpp
     NetworkEngine/PTP/PTPSlave.cpp
-    NetworkEngine/PTP/PTPSettingsMapping.cpp
     NetworkEngine/PTP/PTPService.cpp
     NetworkEngine/PTP/PTPMaster.cpp
     NetworkEngine/PTP/PTPPeerObserver.cpp
@@ -310,6 +309,17 @@ if(APPLE AND ASPL_FOUND AND BUILD_MANAGER_APP)
         DEPENDS AES67Driver aes67ptpd
         VERBATIM
     )
+
+    # The app's own host tests: plain Swift over plain values, no SwiftUI and
+    # no driver. See ManagerApp/run-tests.sh.
+    if(BUILD_TESTS)
+        add_test(NAME ManagerAppUnit
+                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/run-tests.sh)
+        set_tests_properties(ManagerAppUnit PROPERTIES
+            LABELS "unit"
+            TIMEOUT 120
+            ENVIRONMENT "AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
 
     # Disk image (explicit only — not part of ALL). This is the whole of the
     # delivery: the app installs the driver, the daemon and the LaunchDaemon

@@ -56,6 +56,14 @@ std::vector<std::string> DeviceActivationManager::getConfigSearchPaths() {
     const char* envPath = std::getenv("AES67_DEVICE_ACTIVATION_PATH");
     if (envPath && envPath[0] != '\0') paths.push_back(envPath);
 
+    // /Library before the home directory, which is the other way round from
+    // the settings that came before this one. This flag is written by the
+    // Manager app through an administrator prompt, and /Library is the only
+    // place it can write: the driver is constructed inside coreaudiod, whose
+    // HOME is not the logged-in user's. A stray copy under some home directory
+    // must not decide whether the device appears.
+    paths.push_back("/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile));
+
     const char* home = std::getenv("HOME");
     if (!home) {
         struct passwd* pw = getpwuid(getuid());
@@ -65,7 +73,6 @@ std::vector<std::string> DeviceActivationManager::getConfigSearchPaths() {
         paths.push_back(std::string(home) + "/Library/Application Support/AES67Driver/" + kDefaultConfigFile);
     }
 
-    paths.push_back("/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile));
     return paths;
 }
 

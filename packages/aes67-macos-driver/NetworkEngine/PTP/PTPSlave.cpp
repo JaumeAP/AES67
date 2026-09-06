@@ -267,8 +267,8 @@ void PTPSlave::updateDiagnostics(PTPDiagnostics& diag) const {
         diag.isConnected = hasMaster_;
         if (hasMaster_) {
             diag.masterClockID = grandmasterIdentity_.toString();
-            diag.clockClass = static_cast<int>(currentMaster_.grandmasterClockClass);
-            diag.clockAccuracy = static_cast<int>(currentMaster_.grandmasterClockAccuracy);
+            diag.clockClass = static_cast<int>(currentMaster_.dataset.clockClass);
+            diag.clockAccuracy = static_cast<int>(currentMaster_.dataset.clockAccuracy);
         } else {
             diag.masterClockID = "";
         }
@@ -1162,33 +1162,6 @@ void PTPSlave::handleDelayResp(const PTPHeader& header, const uint8_t* data, siz
 // happened to arrive first. Identity last is what makes it stable: every
 // slave on the segment reaches the same answer, whatever order they heard
 // them in.
-static bool isBetterGrandmaster(const PTPAnnounceData& candidate,
-                                const PTPAnnounceData& current) {
-    if (candidate.grandmasterPriority1 != current.grandmasterPriority1) {
-        return candidate.grandmasterPriority1 < current.grandmasterPriority1;
-    }
-    if (candidate.grandmasterClockClass != current.grandmasterClockClass) {
-        return candidate.grandmasterClockClass < current.grandmasterClockClass;
-    }
-    if (candidate.grandmasterClockAccuracy != current.grandmasterClockAccuracy) {
-        return candidate.grandmasterClockAccuracy < current.grandmasterClockAccuracy;
-    }
-    if (candidate.grandmasterOffsetScaledLogVariance
-        != current.grandmasterOffsetScaledLogVariance) {
-        return candidate.grandmasterOffsetScaledLogVariance
-               < current.grandmasterOffsetScaledLogVariance;
-    }
-    if (candidate.grandmasterPriority2 != current.grandmasterPriority2) {
-        return candidate.grandmasterPriority2 < current.grandmasterPriority2;
-    }
-    for (int i = 0; i < 8; ++i) {
-        if (candidate.grandmasterIdentity.id[i] != current.grandmasterIdentity.id[i]) {
-            return candidate.grandmasterIdentity.id[i] < current.grandmasterIdentity.id[i];
-        }
-    }
-    return false;   // the same clock, which is never better than itself
-}
-
 void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size_t len) {
     if (len < kMinAnnounceSize) return;
 
@@ -1196,16 +1169,18 @@ void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size
 
     // Parse announce data
     PTPAnnounceData announce;
-    announce.masterPortId = header.sourcePortIdentity;
-    announce.grandmasterPriority1 = data[kAnnounceGMPriority1Offset];
-    announce.grandmasterClockClass = data[kAnnounceGMClassOffset];
-    announce.grandmasterClockAccuracy = data[kAnnounceGMAccuracyOffset];
-    announce.grandmasterOffsetScaledLogVariance =
+    announce.setSourcePort(header.sourcePortIdentity);
+    announce.dataset.priority1 = data[kAnnounceGMPriority1Offset];
+    announce.dataset.clockClass = data[kAnnounceGMClassOffset];
+    announce.dataset.clockAccuracy = data[kAnnounceGMAccuracyOffset];
+    announce.dataset.offsetScaledLogVariance =
         (static_cast<uint16_t>(data[kAnnounceGMVarianceOffset]) << 8) |
         data[kAnnounceGMVarianceOffset + 1];
-    announce.grandmasterPriority2 = data[kAnnounceGMPriority2Offset];
-    parseClockIdentity(data, kAnnounceGMIdentityOffset, announce.grandmasterIdentity);
-    announce.stepsRemoved =
+    announce.dataset.priority2 = data[kAnnounceGMPriority2Offset];
+    PTPClockIdentity announcedGrandmaster{};
+    parseClockIdentity(data, kAnnounceGMIdentityOffset, announcedGrandmaster);
+    announce.setGrandmasterId(announcedGrandmaster);
+    announce.dataset.stepsRemoved =
         (static_cast<uint16_t>(data[kAnnounceStepsRemovedOffset]) << 8) |
         data[kAnnounceStepsRemovedOffset + 1];
     announce.timeSource = data[kAnnounceTimeSourceOffset];
@@ -1224,32 +1199,32 @@ void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size
     if (!hasMaster_) {
         // Accept this master (simplified BMCA — first announce wins for slave-only)
         currentMaster_ = announce;
-        grandmasterIdentity_ = announce.grandmasterIdentity;
+        grandmasterIdentity_ = announcedGrandmaster;
         hasMaster_ = true;
 
-        clockClass_.store(announce.grandmasterClockClass, std::memory_order_release);
-        clockAccuracy_.store(announce.grandmasterClockAccuracy, std::memory_order_release);
+        clockClass_.store(announce.dataset.clockClass, std::memory_order_release);
+        clockAccuracy_.store(announce.dataset.clockAccuracy, std::memory_order_release);
 
         std::cout << "[PTPSlave] Accepted master: "
-                  << announce.grandmasterIdentity.toString()
-                  << " class=" << static_cast<int>(announce.grandmasterClockClass)
-                  << " accuracy=0x" << std::hex << static_cast<int>(announce.grandmasterClockAccuracy)
+                  << announcedGrandmaster.toString()
+                  << " class=" << static_cast<int>(announce.dataset.clockClass)
+                  << " accuracy=0x" << std::hex << static_cast<int>(announce.dataset.clockAccuracy)
                   << std::dec << std::endl;
     } else {
-        const bool isBetter = isBetterGrandmaster(announce, currentMaster_);
+        const bool isBetter = isBetterMaster(announce.dataset, currentMaster_.dataset);
 
         if (isBetter) {
             std::cout << "[PTPSlave] Switching to better master: "
-                      << announce.grandmasterIdentity.toString() << std::endl;
+                      << announcedGrandmaster.toString() << std::endl;
             currentMaster_ = announce;
-            grandmasterIdentity_ = announce.grandmasterIdentity;
-            clockClass_.store(announce.grandmasterClockClass, std::memory_order_release);
-            clockAccuracy_.store(announce.grandmasterClockAccuracy, std::memory_order_release);
+            grandmasterIdentity_ = announcedGrandmaster;
+            clockClass_.store(announce.dataset.clockClass, std::memory_order_release);
+            clockAccuracy_.store(announce.dataset.clockAccuracy, std::memory_order_release);
 
             // Reset lock on master change
             locked_.store(false, std::memory_order_release);
             consecutiveGoodMeasurements_ = 0;
-        } else if (announce.grandmasterIdentity == grandmasterIdentity_) {
+        } else if (announcedGrandmaster == grandmasterIdentity_) {
             // Same master, refresh timeout
             currentMaster_.lastReceived = announce.lastReceived;
         }

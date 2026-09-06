@@ -14,10 +14,15 @@
 // settings the driver only reads at startup can be edited while nothing is
 // using it.
 //
-// Same directory and search-path convention as PTPMasterSettings and the
-// rest: $AES67_DEVICE_ACTIVATION_PATH, then ~/Library/Application Support/
-// AES67Driver/device_active.json, then the same path under /Library. This
-// lives in the driver package rather than the core because publishing a
+// Same directory as PTPMasterSettings and the rest, but not the same search
+// order: $AES67_DEVICE_ACTIVATION_PATH, then /Library/Application Support/
+// AES67Driver/device_active.json, and only then the copy under a home
+// directory. The Manager app writes this one to /Library through an
+// administrator prompt, because the plug-in is constructed inside coreaudiod
+// and its HOME is not the logged-in user's; a file left under some home
+// directory must not be what decides whether the device appears.
+//
+// This lives in the driver package rather than the core because publishing a
 // device is a Core Audio HAL concept, not a platform-free one.
 //
 #pragma once

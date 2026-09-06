@@ -142,6 +142,7 @@ The implementation was audited five times and the findings fixed. The changes th
 - `reset()` no longer zeroes the hardware clock: that happens once, on the first `begin()`.
 - `getBindFailureCount()` counts since boot, like `getTxFailureCount()`: `reset()` used to clear the bind failures and leave the transmit ones alone.
 - `clockIdentity` is the EUI-48 to EUI-64 mapping the standard defines, not the MAC with `FF FF` in front, so the identity on the wire is different from earlier versions.
+- The dataset comparison of §9.3 and the `MasterDataset` it compares moved out of `ptp-base` into `src/ptp/ptp-bmca.h`. Same code, on its own so that it can be included without the board: the AES67 macOS driver's platform-free core had written the same comparison from this one and now includes this file instead of keeping a copy that can drift. Nothing of Arduino, QNEthernet or the Teensy may enter that header — the core's `check-platform-free.sh` follows the include and fails if it does.
 
 ## Citation
 

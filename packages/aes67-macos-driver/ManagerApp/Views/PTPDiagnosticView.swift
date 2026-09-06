@@ -641,6 +641,12 @@ struct PTPDiagnosticView: View {
                         }
                     }
                 }
+                // Every field in this box is read when Core Audio constructs
+                // the device, so it is editable only while the device is
+                // inactive -- same rule as the compatibility profile and the
+                // channel counts. The Restart button below stays live: it is
+                // what applies a change made while inactive.
+                .disabled(driverManager.isDeviceActive)
                 .onAppear {
                     clockSources = driverManager.listAvailableClockSources()
                 }

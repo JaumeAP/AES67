@@ -18,7 +18,6 @@
 //
 #pragma once
 
-#include "PTPBMCA.h"
 #include "NetworkEngine/PTP/PTPClockSource.h"
 #include "PTPSlave.h"   // PTPMessageType, PTPTimestamp, PTPClockIdentity,
                         // PTPPortIdentity, PTPHeader, PTPAnnounceData
@@ -38,38 +37,8 @@ enum class PTPMasterRole {
     Passive,    // A better clock is on the wire: not transmitting, deferring to it
 };
 
-struct PTPMasterConfig {
-    int domain = 0;
-    std::string interfaceName = "en0";
-
-    // IEEE 1588 §7.6.3 defaults. Lower priority1 makes this clock more
-    // likely to win BMCA — leave at the spec default unless there's a
-    // reason to bias selection.
-    uint8_t priority1 = 128;
-    uint8_t priority2 = 128;
-
-    // DSCP to mark this port's outgoing PTP with, or -1 to leave it
-    // unmarked. Same reasoning as PTPSlaveConfig::dscp.
-    int dscp = -1;
-
-    int syncIntervalMs = 125;       // 8/s — matches what PTPSlave expects
-    int announceIntervalMs = 1000;  // 1/s, AES67 Media Profile default
-
-    // logMinDelayReqInterval advertised in Delay_Resp: the rate this master
-    // asks its slaves to send Delay_Req at, in log2 seconds. 0 is one per
-    // second, which is what was hard-coded before and what AES67 uses.
-    int8_t logMinDelayReqInterval = 0;
-    int announceReceiptTimeoutMultiplier = 3; // silence this many announce
-                                               // intervals before assuming
-                                               // we're alone on the segment
-
-    // IEEE 1588-2008 §13.1 ports. Defaults are the spec's; overridable so
-    // an unprivileged loopback test can run a master and a slave against
-    // each other on high ports (2026-08-31 — ports below 1024 need root,
-    // which is why the PTP exchange had never been exercised end to end).
-    uint16_t eventPort = 319;
-    uint16_t generalPort = 320;
-};
+// PTPMasterConfig is plain data and lives in the core, alongside the wire
+// types: NetworkEngine/PTP/PTPProtocolTypes.h, included through PTPSlave.h.
 
 class PTPMaster {
 public:

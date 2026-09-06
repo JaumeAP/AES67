@@ -27,6 +27,7 @@ add_library(aes67_core
     NetworkEngine/RTP/BufferStatusMonitor.cpp
     NetworkEngine/NMOSSettings.cpp
     NetworkEngine/PTP/PTPMasterSettings.cpp
+    NetworkEngine/PTP/PTPSettingsMapping.cpp
     NetworkEngine/PTP/PhaseLockedLoop.cpp
     NetworkEngine/PTP/CustomSys.cpp
     NetworkEngine/Resampling/Resampler.cpp
@@ -36,7 +37,18 @@ add_library(aes67_core
     NetworkEngine/Resampling/SampleRateAdapter.cpp
 )
 
-target_include_directories(aes67_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# The 1588 dataset comparison comes from the Teensy PTP library rather than
+# being written twice; see NetworkEngine/PTP/PTPProtocolTypes.h. Only that one
+# header is reached, and it is plain data plus a pure function -- the
+# platform-free contract still holds, and check-platform-free.sh follows the
+# include to prove it.
+set(AES67_T41_PTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../t41-ptp/src"
+    CACHE PATH "Directory holding the Teensy PTP library's headers")
+
+target_include_directories(aes67_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${AES67_T41_PTP_DIR}
+)
 target_compile_options(aes67_core PRIVATE -Wall -Wextra -Wpedantic
     -Wno-unused-parameter -Wno-missing-field-initializers)
 
@@ -63,7 +75,7 @@ if(AES67_CORE_TESTS)
     # the README -- so it, and only it, links the test double that fills it.
     set(AES67_SEAM_STUB Tests/support/NetworkUtilsStub.cpp)
 
-    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper CompatibilityProfile DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable DolbyModelCatalog RTCPReceiverTable)
+    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper CompatibilityProfile DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable DolbyModelCatalog RTCPReceiverTable)
         set(extra_sources "")
         if(suite STREQUAL "StreamConfig")
             set(extra_sources ${AES67_SEAM_STUB})

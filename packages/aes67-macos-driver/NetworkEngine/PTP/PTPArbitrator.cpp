@@ -95,8 +95,8 @@ void PTPArbitrator::updateDiagnostics(PTPDiagnostics& diag) const {
     if (!weAreMaster) {
         if (auto competitor = master_->currentCompetitor()) {
             diag.hasCompetitor = true;
-            diag.competitorPriority1 = competitor->grandmasterPriority1;
-            diag.competitorPriority2 = competitor->grandmasterPriority2;
+            diag.competitorPriority1 = competitor->dataset.priority1;
+            diag.competitorPriority2 = competitor->dataset.priority2;
         } else {
             diag.hasCompetitor = false;
         }

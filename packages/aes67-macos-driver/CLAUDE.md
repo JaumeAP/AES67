@@ -203,6 +203,17 @@ Tests carry CTest labels: `unit`, `timing` (wall-clock or multi-threaded), `netw
 
 Test suites use doctest (the `external/doctest` submodule at the root of the monorepo, shared with the core; link `doctest_headers`, define `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); the migration off hand-written `main`s finished, so a new suite has no other shape to copy. Never use bare `assert()` in a test: the gate builds Release with `-DNDEBUG` and it compiles away silently.
 
+The Manager app has host tests of its own: `ManagerApp/run-tests.sh`, registered as the CTest
+`ManagerAppUnit`. Plain `swiftc`, no XCTest and no SwiftPM, covering the parts that are pure values
+-- today `Models/PrivilegedScript.swift`, which builds the one privileged command the app runs.
+That command crosses AppleScript's escaping and then the shell's, and getting it wrong produces a
+script that silently fails to compile rather than an error anyone sees.
+
+The app installs the driver itself (`DriverManager.installDriver`), and registers the PTP daemon
+with `SMAppService` from the copy inside its own bundle (`Contents/MacOS/aes67ptpd`, plist in
+`Contents/Library/LaunchDaemons`) rather than copying anything into `/Library` or `/usr/local`.
+There is no `.pkg`: `make dmg` builds the disk image that is the whole delivery.
+
 Manager app can be built standalone: `cd ManagerApp && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
 CTest names map 1:1 to `Tests/*.cpp` — `Tests/CMakeLists.txt` is the list, not this file; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.

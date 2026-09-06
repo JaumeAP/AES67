@@ -4,61 +4,12 @@
 // AudioServerPlugIn entry point
 //
 
-#include "AES67Device.h"
+#include "Driver/AES67Plugin.h"
 #include "Driver/DebugLog.h"
-#include "Driver/DeviceActivation.h"
-#include <aspl/Plugin.hpp>
 #include <aspl/Driver.hpp>
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <memory>
 
-namespace AES67 {
-
-//
-// AES67 Driver Plugin
-//
-// This is the main entry point for the AudioServerPlugIn
-// macOS Core Audio will load this plugin and create our virtual audio device
-//
-class AES67Plugin : public aspl::Plugin {
-public:
-    explicit AES67Plugin(std::shared_ptr<aspl::Context> context)
-        : aspl::Plugin(context)
-    {
-        // Deactivated means installed but not published: no device is built
-        // and none is registered, so nothing appears in Core Audio and the
-        // settings the driver only reads at startup are free to be edited.
-        // See Driver/DeviceActivation.h.
-        if (!DeviceActivationManager().load().active) {
-            AES67_LOG("AES67Plugin constructor: device deactivated, publishing nothing");
-            return;
-        }
-
-        AES67_LOG("AES67Plugin constructor: Creating AES67Device...");
-        // Create the AES67 audio device
-        device_ = std::make_shared<AES67Device>(context);
-        AES67_LOG("AES67Plugin constructor: Device created successfully");
-
-        AES67_LOG("AES67Plugin constructor: Initializing device...");
-        // Initialize device (now that shared_ptr is fully constructed)
-        device_->Initialize();
-        AES67_LOG("AES67Plugin constructor: Device initialized successfully");
-
-        AES67_LOG("AES67Plugin constructor: Registering device with plugin...");
-        // Register device with the plugin
-        AddDevice(device_);
-        AES67_LOG("AES67Plugin constructor: Device registered successfully");
-    }
-
-    std::string GetManufacturer() const override {
-        return "AES67 Driver Project";
-    }
-
-private:
-    std::shared_ptr<AES67Device> device_;
-};
-
-} // namespace AES67
 
 //
 // C API Entry Point (Required by AudioServerPlugIn)

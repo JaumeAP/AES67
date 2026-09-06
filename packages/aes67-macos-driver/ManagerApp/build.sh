@@ -34,6 +34,7 @@ swiftc -o AES67Manager \
   -framework UniformTypeIdentifiers \
   Models/StreamInfo.swift \
   Models/DriverManager.swift \
+  Models/PrivilegedScript.swift \
   Models/DolbyModelCatalog.swift \
   Models/MenuBarManager.swift \
   Views/ContentView.swift \
@@ -83,19 +84,38 @@ fi
 
 # The daemon binds UDP 319/320, which coreaudiod cannot; the driver runs on
 # the local clock without it.
+#
+# It goes where SMAppService expects a daemon the app registers: the launchd
+# plist in Contents/Library/LaunchDaemons and the executable inside the bundle,
+# named by BundleProgram. Nothing is copied to /Library or /usr/local -- launchd
+# runs it from in here, and unregistering is what removes it.
 PTPD_BINARY="$BUILD_DIR/aes67ptpd"
 if [ -f "$PTPD_BINARY" ]; then
     echo "Embedding aes67ptpd..."
-    rm -f "AES67Manager.app/Contents/Resources/aes67ptpd"
-    ditto "$PTPD_BINARY" "AES67Manager.app/Contents/Resources/aes67ptpd"
-    ditto "Resources/com.aes67driver.ptpd.plist" "AES67Manager.app/Contents/Resources/com.aes67driver.ptpd.plist"
+    mkdir -p "AES67Manager.app/Contents/Library/LaunchDaemons"
+    rm -f "AES67Manager.app/Contents/MacOS/aes67ptpd"
+    ditto "$PTPD_BINARY" "AES67Manager.app/Contents/MacOS/aes67ptpd"
+    ditto "Resources/com.aes67driver.ptpd.plist" \
+          "AES67Manager.app/Contents/Library/LaunchDaemons/com.aes67driver.ptpd.plist"
 else
     echo "WARNING: $PTPD_BINARY not found — building without the PTP daemon."
     echo "         The driver will fall back to the local clock."
 fi
 
-# Sign the app
+# Sign inside out, one component at a time.
+#
+# Not `codesign --deep`: Apple documents it as unsuitable for anything but
+# emergency repair, it signs nested code with the outer target's options rather
+# than each component's own, and it is on its way out. The order matters --
+# every nested piece has to carry its own signature before the enclosing bundle
+# is sealed over it, or the outer seal covers an unsigned payload.
 echo "Signing app..."
-codesign --force --deep --sign - --options runtime AES67Manager.app
+for nested in \
+    "AES67Manager.app/Contents/MacOS/aes67ptpd" \
+    "AES67Manager.app/Contents/Resources/AES67Driver.driver"
+do
+    [ -e "$nested" ] && codesign --force --sign - --options runtime --timestamp=none "$nested"
+done
+codesign --force --sign - --options runtime --timestamp=none AES67Manager.app
 
 echo "Build complete: AES67Manager.app"
