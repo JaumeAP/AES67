@@ -64,8 +64,9 @@ struct ContentView: View {
     /// and group-of-8/aux-pair semantics on each side. The device always
     /// presents all 128 channels to Core Audio in both directions; this only
     /// caps how many of them streams may actually be assigned. Only editable
-    /// while the driver is uninstalled: the driver reads both once when Core
-    /// Audio constructs the device.
+    /// while the device is deactivated: the driver reads both once when Core
+    /// Audio constructs the device, so an installed but deactivated driver is
+    /// exactly the state in which changing them is meaningful.
     ///
     /// A selector is additionally disabled when the active compatibility
     /// profile rules its direction out entirely (CP850 = receive-only, so
@@ -75,7 +76,7 @@ struct ContentView: View {
     /// special case for any one profile.
     @ViewBuilder
     private var channelCountBar: some View {
-        let locked = driverManager.isDriverLoaded
+        let locked = driverManager.isDeviceActive
         let direction = driverManager.activeCompatibilityProfile.direction
         let rxRuledOut = direction == .transmitOnly
         let txRuledOut = direction == .receiveOnly
@@ -309,20 +310,32 @@ struct ContentView: View {
 
                 Spacer()
 
-                // Install switch: on installs the driver into the HAL, off
-                // removes it. Reflects isDriverLoaded, which
-                // checkDriverStatus() keeps in sync with what's actually on
-                // disk — not just whatever this switch was last set to.
+                // Two controls, two states. The button puts the driver, the
+                // PTP daemon and its LaunchDaemon down or takes them away;
+                // the switch decides whether the installed driver publishes a
+                // device to Core Audio at all. Both reflect what is actually
+                // on disk — checkDriverStatus() and loadDeviceActivation()
+                // read it back rather than trusting what was last asked for.
+                Button(driverManager.isDriverInstalled ? "Uninstall Driver" : "Install Driver") {
+                    driverManager.setDriverInstalled(!driverManager.isDriverInstalled)
+                }
+                .help(driverManager.isDriverInstalled
+                      ? "Remove the driver, the PTP daemon and its LaunchDaemon"
+                      : "Install the driver, the PTP daemon and its LaunchDaemon")
+
                 Toggle(isOn: Binding(
-                    get: { driverManager.isDriverLoaded },
-                    set: { driverManager.setDriverInstalled($0) }
+                    get: { driverManager.isDeviceActive },
+                    set: { driverManager.setDeviceActive($0) }
                 )) {
-                    Text(driverManager.isDriverLoaded ? "Driver Active" : "Driver Not Found")
+                    Text(driverManager.isDeviceActive ? "Device Active" : "Device Inactive")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 .toggleStyle(.switch)
-                .help("Install or remove the AES67 driver from Core Audio")
+                .disabled(!driverManager.isDriverInstalled)
+                .help(driverManager.isDriverInstalled
+                      ? "Show or hide the AES67 device in Core Audio. Parameters are editable only while it is inactive"
+                      : "Install the driver first")
             }
         }
         .sheet(isPresented: $driverManager.showAddStreamSheet) {

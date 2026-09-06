@@ -4,6 +4,10 @@
 #include <limits>
 
 #include "ptp-servo.h"
+// MasterDataset, isBetterMaster, sameSource and MAX_STEPS_REMOVED: the
+// dataset comparison of 1588 §9.3, on its own so that the AES67 macOS
+// driver's core can include it without the board coming with it.
+#include "ptp-bmca.h"
 
 // How much this library says on the serial port: 0 silent, 1 the normal
 // messages, 2 and above the detail of every message.
@@ -190,27 +194,6 @@ constexpr unsigned long DELAY_REQUEST_TIMEOUT_MS = 10;
 // counts as gone and the choice is made again.
 constexpr int ANNOUNCE_RECEIPT_TIMEOUT_INTERVALS = 3;
 
-// A clock further away than this is not one 1588 lets a port follow: the
-// field is eight bits and 255 is what a message that has gone round a
-// loop ends up carrying.
-constexpr uint16_t MAX_STEPS_REMOVED = 255;
-
-// What an Announce says about the clock behind it. The fields the
-// dataset comparison of 1588 needs, in the order it compares them.
-struct MasterDataset
-{
-    uint8_t priority1 = 255;
-    uint8_t clockClass = 255;
-    uint8_t clockAccuracy = 0xff;
-    uint16_t offsetScaledLogVariance = 0xffff;
-    uint8_t priority2 = 255;
-    uint8_t grandmasterIdentity[8] = {0};
-    uint16_t stepsRemoved = 0xffff;
-
-    // Which port sent it: the sourcePortIdentity of the Announce, and the
-    // only source whose Sync this clock will follow once it has chosen.
-    uint8_t portIdentity[10] = {0};
-};
 
 // Where this port stands, in the terms 1588 uses.
 //

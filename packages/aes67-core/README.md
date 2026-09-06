@@ -5,8 +5,16 @@ SDP parsing and generation, the RTP wire header, a lock-free jitter buffer and
 packet pool, the media-clock PLL, the resampling chain, channel mapping,
 compatibility profiles and stream configuration. Also the pieces that describe
 rather than do: the single-producer ring buffer and the real-time view over it,
-the PTP time types and the clock-source interface a platform implements, and
-the PTP peer, RTCP receiver and Dolby model tables.
+the PTP time types and the clock-source interface a platform implements, the
+IEEE 1588 message and configuration types, and the PTP peer, RTCP receiver and
+Dolby model tables.
+
+One header comes from outside: the 1588 dataset comparison of §9.3 and the
+dataset it compares are `packages/t41-ptp/src/ptp/ptp-bmca.h`. That
+implementation came first and this one was written from it, so rather than keep
+a second copy that can drift, `NetworkEngine/PTP/PTPProtocolTypes.h` includes
+it. It is plain data and one pure function; `scripts/check-platform-free.sh`
+follows the include and fails if anything of the board ever appears in it.
 
 C++20, no dependencies, no platform headers. That is checked rather than
 claimed — `scripts/check-platform-free.sh` fails on an Apple framework or a

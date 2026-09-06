@@ -279,9 +279,12 @@ cmake --build build --target aes67ptpd
 sudo ./build/aes67ptpd --interface en0 --domain 0 --verbose
 ```
 
-The installer places it at `/usr/local/libexec/aes67ptpd` with
-`Installer/com.aes67driver.ptpd.plist`, and `Installer/uninstall.sh` removes
-both.
+The Manager app ships it inside its own bundle, at
+`Contents/MacOS/aes67ptpd` with its launchd plist in
+`Contents/Library/LaunchDaemons/`, and registers it with `SMAppService` when
+the driver is installed -- nothing is copied into `/usr/local` or
+`/Library/LaunchDaemons`. Registering asks for approval once, in System
+Settings > Login Items; the Uninstall button unregisters it.
 
 ### Validate the installed driver
 

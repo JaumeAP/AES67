@@ -5,6 +5,7 @@
 //
 
 import Foundation
+import ServiceManagement
 import SwiftUI
 import CoreAudio
 
@@ -77,7 +78,23 @@ struct PTPDiagnostics {
 
 class DriverManager: ObservableObject {
     @Published var streams: [StreamInfo] = []
-    @Published var isDriverLoaded: Bool = false
+
+    /// Whether the driver bundle is in the HAL. Installed, not necessarily
+    /// publishing anything — see isDeviceActive.
+    @Published var isDriverInstalled: Bool = false
+
+    /// Whether the installed driver publishes its device to Core Audio.
+    ///
+    /// Two separate things: the bundle can sit in the HAL while the device it
+    /// would publish is absent from every application's device list. That is
+    /// what makes the startup-read settings editable — the driver reads them
+    /// when Core Audio constructs the plug-in, so changing them while a device
+    /// is live would leave the UI saying one thing and the driver doing
+    /// another. Deactivate, edit, activate.
+    ///
+    /// True when nothing has been written yet, matching the driver's own
+    /// default (Driver/DeviceActivation.h).
+    @Published var isDeviceActive: Bool = true
     @Published var showAddStreamSheet: Bool = false
     @Published var totalChannelsUsed: Int = 0
 
@@ -99,6 +116,7 @@ class DriverManager: ObservableObject {
         currentRefreshInterval = UserDefaults.standard.double(forKey: "refreshInterval")
         if currentRefreshInterval < 0.5 { currentRefreshInterval = 1.0 }
         checkDriverStatus()
+        loadDeviceActivation()
         loadConfiguration()
         loadDeviceSampleRate()
         loadPTPMasterSettings()
@@ -114,13 +132,13 @@ class DriverManager: ObservableObject {
     func checkDriverStatus() {
         // Check if AES67Driver.driver exists in HAL plugins
         let driverPath = "/Library/Audio/Plug-Ins/HAL/AES67Driver.driver"
-        isDriverLoaded = FileManager.default.fileExists(atPath: driverPath)
+        isDriverInstalled = FileManager.default.fileExists(atPath: driverPath)
     }
 
     func checkDriverInstallation() {
         checkDriverStatus()
 
-        if isDriverLoaded {
+        if isDriverInstalled {
             showAlert(title: "Driver Installed",
                      message: "AES67 driver is properly installed at /Library/Audio/Plug-Ins/HAL/")
         } else {
@@ -175,7 +193,7 @@ class DriverManager: ObservableObject {
     // This app carries its own copy of AES67Driver.driver, embedded at build
     // time into AES67Manager.app/Contents/Resources/ (see ManagerApp/build.sh).
     // Nothing here runs automatically on launch or quit: the main window has
-    // a switch (ContentView) bound to isDriverLoaded that calls
+    // a switch (ContentView) bound to isDriverInstalled that calls
     // setDriverInstalled() when the user flips it. Launch just reflects
     // whatever's actually installed (checkDriverStatus(), called from
     // init() below); quitting leaves the driver exactly as the last flip
@@ -184,19 +202,84 @@ class DriverManager: ObservableObject {
     private static let driverName = "AES67Driver.driver"
     private static let driverInstallPath = "/Library/Audio/Plug-Ins/HAL/\(driverName)"
 
+    // The PTP daemon travels with the driver: one Install button puts both in
+    // place, one Uninstall button takes both away. coreaudiod cannot bind UDP
+    // 319/320, which is why that work lives in a separate process at all
+    // (Daemon/aes67ptpd.cpp).
+    //
+    // The daemon is not copied anywhere. It ships inside this app --
+    // Contents/MacOS/aes67ptpd, with its launchd plist in
+    // Contents/Library/LaunchDaemons -- and SMAppService registers it there,
+    // which is how macOS 13 and later wants an app to install a daemon.
+    // Registering asks the user once, in System Settings > Login Items;
+    // unregistering is the uninstall.
+    private static let daemonName = "aes67ptpd"
+    private static let daemonPlistName = "com.aes67driver.ptpd.plist"
+
     /// Path to the driver bundle embedded in this app, or nil if this build
     /// of the app doesn't carry one (e.g. AES67Driver wasn't built when
     /// ManagerApp/build.sh ran).
     private var embeddedDriverURL: URL? {
-        guard let url = Bundle.main.resourceURL?.appendingPathComponent(Self.driverName),
+        embeddedResourceURL(Self.driverName)
+    }
+
+    private func embeddedResourceURL(_ name: String) -> URL? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent(name),
               FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
         return url
     }
 
+    /// Whether this build of the app carries the daemon and its plist where
+    /// SMAppService looks for them. Absent is not fatal: the driver runs on
+    /// the local clock without the daemon, exactly as it did before it existed.
+    private var carriesDaemon: Bool {
+        guard let bundle = Bundle.main.bundleURL as URL? else { return false }
+        let program = bundle.appendingPathComponent("Contents/MacOS/\(Self.daemonName)")
+        let plist = bundle.appendingPathComponent(
+            "Contents/Library/LaunchDaemons/\(Self.daemonPlistName)")
+        return FileManager.default.fileExists(atPath: program.path)
+            && FileManager.default.fileExists(atPath: plist.path)
+    }
+
+    /// Registers the bundled PTP daemon with launchd, or reports why it could
+    /// not. Separate from the driver's privileged install: this one needs no
+    /// administrator password, it needs the user's approval in Login Items.
+    private func registerDaemon() {
+        guard carriesDaemon else { return }
+        guard #available(macOS 13.0, *) else {
+            showAlert(title: "PTP Daemon Not Registered",
+                     message: "Registering a daemon needs macOS 13 or later. The driver will "
+                            + "run on the local clock.")
+            return
+        }
+        let service = SMAppService.daemon(plistName: Self.daemonPlistName)
+        do {
+            try service.register()
+        } catch {
+            showAlert(title: "PTP Daemon Not Registered",
+                     message: "The driver is installed and will run on the local clock. "
+                            + "Registering the PTP daemon failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Unregisters it. A daemon that was never registered is not an error.
+    private func unregisterDaemon() {
+        guard #available(macOS 13.0, *), carriesDaemon else { return }
+        let service = SMAppService.daemon(plistName: Self.daemonPlistName)
+        if service.status == .notRegistered { return }
+        do {
+            try service.unregister()
+        } catch {
+            showAlert(title: "PTP Daemon Still Registered",
+                     message: "The driver was removed. Unregistering the PTP daemon failed: "
+                            + "\(error.localizedDescription)")
+        }
+    }
+
     /// Bound to the main window's install switch: true installs, false
-    /// uninstalls. isDriverLoaded is the source of truth for the switch's
+    /// uninstalls. isDriverInstalled is the source of truth for the switch's
     /// position — this only triggers the side effect, checkDriverStatus()
     /// afterwards is what actually moves the switch.
     func setDriverInstalled(_ installed: Bool) {
@@ -219,12 +302,21 @@ class DriverManager: ObservableObject {
 
         // ditto, not cp -R: preserves the bundle's resource fork / extended
         // attributes, which cp -R can silently drop.
-        let script = NSAppleScript(source: """
-            do shell script "ditto '\(source.path)' '\(Self.driverInstallPath)' && \
-            chown -R root:wheel '\(Self.driverInstallPath)' && \
-            chmod -R 755 '\(Self.driverInstallPath)' && \
-            launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
-            """)
+        let q = PrivilegedScript.shellQuoted
+        let commands = [
+            "ditto \(q(source.path)) \(q(Self.driverInstallPath))",
+            "chown -R root:wheel \(q(Self.driverInstallPath))",
+            "chmod -R 755 \(q(Self.driverInstallPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+        ]
+
+        guard let source = PrivilegedScript.adminShell(commands) else {
+            showAlert(title: "Install Failed",
+                     message: "The install command could not be built. This is a defect, not "
+                            + "something to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
 
@@ -232,6 +324,13 @@ class DriverManager: ObservableObject {
             showAlert(title: "Install Failed",
                      message: "Could not install the AES67 driver: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
         }
+        // The daemon is registered separately, and only if the driver went in:
+        // it is launchd's business, not the privileged copy's, and it asks the
+        // user rather than the administrator.
+        if error == nil {
+            registerDaemon()
+        }
+
         // Refresh either way: the switch should reflect what's actually
         // there, not what we asked for.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -239,12 +338,24 @@ class DriverManager: ObservableObject {
         }
     }
 
-    /// Removes the driver from the HAL and restarts Core Audio.
+    /// Removes the driver and unregisters the PTP daemon, and restarts Core
+    /// Audio.
     func uninstallDriver() {
-        let script = NSAppleScript(source: """
-            do shell script "rm -rf '\(Self.driverInstallPath)' && \
-            launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
-            """)
+        // The daemon goes first, while the app that owns it is still the one
+        // asking: unregistering is launchd's business and needs no password.
+        unregisterDaemon()
+
+        let q = PrivilegedScript.shellQuoted
+        guard let source = PrivilegedScript.adminShell([
+            "rm -rf \(q(Self.driverInstallPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+        ]) else {
+            showAlert(title: "Uninstall Failed",
+                     message: "The uninstall command could not be built. This is a defect, not "
+                            + "something to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
 
@@ -254,6 +365,80 @@ class DriverManager: ObservableObject {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.checkDriverStatus()
+        }
+    }
+
+    // MARK: - Device Activation
+    //
+    // Installed and active are two different states, and this is the second
+    // one. The flag goes to /Library/Application Support/AES67Driver, not to
+    // the home directory the other settings use: the driver reads it from
+    // inside coreaudiod, whose HOME is not the logged-in user's, so a copy
+    // under ~/Library would never be seen. Writing there needs privileges,
+    // which the same script already needs to restart Core Audio.
+
+    private static let activationPath =
+        "/Library/Application Support/AES67Driver/device_active.json"
+
+    /// Reads the flag the driver reads. Absent means active, which is what a
+    /// driver installed before this setting existed does.
+    func loadDeviceActivation() {
+        guard let data = FileManager.default.contents(atPath: Self.activationPath),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let active = obj["active"] as? Bool else {
+            isDeviceActive = true
+            return
+        }
+        isDeviceActive = active
+    }
+
+    /// Writes the flag and restarts Core Audio so the plug-in is constructed
+    /// again and reads it. There is no live channel into a running driver —
+    /// every other startup-read setting works the same way.
+    func setDeviceActive(_ active: Bool) {
+        let directory = (Self.activationPath as NSString).deletingLastPathComponent
+        let json = "{\n  \"active\": \(active ? "true" : "false")\n}\n"
+
+        // The JSON is written unprivileged to a temporary file and copied into
+        // place by the privileged script, rather than being echoed from inside
+        // it. A shell command is an AppleScript string literal, and JSON is
+        // double quotes and newlines: putting it there ends the literal.
+        let staged = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("aes67-device_active-\(UUID().uuidString).json")
+        do {
+            try json.write(to: staged, atomically: true, encoding: .utf8)
+        } catch {
+            showAlert(title: active ? "Activate Failed" : "Deactivate Failed",
+                     message: "Could not write the setting: \(error.localizedDescription)")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: staged) }
+
+        let q = PrivilegedScript.shellQuoted
+        guard let source = PrivilegedScript.adminShell([
+            "mkdir -p \(q(directory))",
+            "/bin/cp \(q(staged.path)) \(q(Self.activationPath))",
+            "chown root:wheel \(q(Self.activationPath))",
+            "chmod 644 \(q(Self.activationPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+        ]) else {
+            showAlert(title: active ? "Activate Failed" : "Deactivate Failed",
+                     message: "The command could not be built. This is a defect, not something "
+                            + "to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+
+        if let error = error {
+            showAlert(title: active ? "Activate Failed" : "Deactivate Failed",
+                     message: "Could not change the device's state: \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+        }
+        // Read back rather than trusting the write: the switch shows what the
+        // driver will actually see.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.loadDeviceActivation()
         }
     }
 

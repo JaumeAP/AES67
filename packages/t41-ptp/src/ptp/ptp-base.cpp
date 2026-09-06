@@ -1101,63 +1101,6 @@ void PTPBase::parsePTPMessage(const uint8_t *buf, int size, const timespec &recv
 // priority1, then the clock quality, then priority2, then the identity of
 // the grandmaster itself, and only then how far away it is and which port
 // sent word of it. Lower wins at every step.
-static bool isBetterMaster(const MasterDataset &candidate, const MasterDataset &current)
-{
-    if (candidate.priority1 != current.priority1)
-    {
-        return candidate.priority1 < current.priority1;
-    }
-    if (candidate.clockClass != current.clockClass)
-    {
-        return candidate.clockClass < current.clockClass;
-    }
-    if (candidate.clockAccuracy != current.clockAccuracy)
-    {
-        return candidate.clockAccuracy < current.clockAccuracy;
-    }
-    if (candidate.offsetScaledLogVariance != current.offsetScaledLogVariance)
-    {
-        return candidate.offsetScaledLogVariance < current.offsetScaledLogVariance;
-    }
-    if (candidate.priority2 != current.priority2)
-    {
-        return candidate.priority2 < current.priority2;
-    }
-    for (int i = 0; i < 8; i++)
-    {
-        if (candidate.grandmasterIdentity[i] != current.grandmasterIdentity[i])
-        {
-            return candidate.grandmasterIdentity[i] < current.grandmasterIdentity[i];
-        }
-    }
-    // Same grandmaster, reached two ways: the shorter way through the
-    // network wins, and a tie there is broken by the port that spoke.
-    if (candidate.stepsRemoved != current.stepsRemoved)
-    {
-        return candidate.stepsRemoved < current.stepsRemoved;
-    }
-    for (int i = 0; i < 10; i++)
-    {
-        if (candidate.portIdentity[i] != current.portIdentity[i])
-        {
-            return candidate.portIdentity[i] < current.portIdentity[i];
-        }
-    }
-    return false;
-}
-
-static bool sameSource(const MasterDataset &a, const MasterDataset &b)
-{
-    for (int i = 0; i < 10; i++)
-    {
-        if (a.portIdentity[i] != b.portIdentity[i])
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 void PTPBase::parseAnnounceMessage(const uint8_t *buf)
 {
     // Our own Announce, heard back: a port that is master and slave at

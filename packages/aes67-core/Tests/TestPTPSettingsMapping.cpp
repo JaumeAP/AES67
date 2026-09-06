@@ -1,6 +1,6 @@
 //
 // TestPTPSettingsMapping.cpp
-// AES67 macOS Driver
+// AES67
 //
 // What the installation configured has to arrive at the engines that put
 // it on the wire. The dataset is settable so that a driver can slot into
@@ -14,7 +14,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "NetworkEngine/PTP/PTPDInterface.h"
+#include "NetworkEngine/PTP/PTPSettingsMapping.h"
 
 using namespace AES67;
 

@@ -156,7 +156,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### What this is
 
-A user-space AES67 (AES67-2018) network audio driver for macOS, implemented as a Core Audio `AudioServerPlugIn` using the [libASPL](https://github.com/gavv/libASPL) framework — no kernel extension. Companion pieces: a SwiftUI menu-bar Manager app, a `.pkg` installer, and CLI test tools for exercising the RTP path over loopback.
+A user-space AES67 (AES67-2018) network audio driver for macOS, implemented as a Core Audio `AudioServerPlugIn` using the [libASPL](https://github.com/gavv/libASPL) framework — no kernel extension. Companion pieces: a SwiftUI menu-bar Manager app -- which is also how the driver, the PTP daemon and its LaunchDaemon reach the system, there being no `.pkg` any more -- and CLI test tools for exercising the RTP path over loopback.
 
 **Status matters here.** The RX path is verified with real AES67 hardware; TX, network PTP, and the Manager app are unverified. README.md's "Current Status" / "Known Limitations" sections are the source of truth — don't upgrade a feature's claimed status in docs or comments unless you've actually verified it (real hardware or, at minimum, a passing new test that exercises it).
 
@@ -202,6 +202,17 @@ Build options (pass as `-DOPTION=OFF` to skip): `BUILD_TESTS`, `BUILD_EXAMPLES`,
 Tests carry CTest labels: `unit`, `timing` (wall-clock or multi-threaded), `network` (needs real multicast), `integration`, `interop` (replayed traffic from real gear). The gate runs `ctest -LE timing`, so labelling a new test is what excludes it — never add a name to a regex. Every test has `TIMEOUT 60`, except `PTPLoopback` at 90. Extra modes: `scripts/gate.sh --sanitize` (ASan+UBSan) and `--tsan` (ThreadSanitizer) build in their own tree and run everything except `network`; `scripts/coverage.sh` produces an llvm-cov report from a `-DAES67_COVERAGE=ON` build.
 
 Test suites use doctest (the `external/doctest` submodule at the root of the monorepo, shared with the core; link `doctest_headers`, define `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); the migration off hand-written `main`s finished, so a new suite has no other shape to copy. Never use bare `assert()` in a test: the gate builds Release with `-DNDEBUG` and it compiles away silently.
+
+The Manager app has host tests of its own: `ManagerApp/run-tests.sh`, registered as the CTest
+`ManagerAppUnit`. Plain `swiftc`, no XCTest and no SwiftPM, covering the parts that are pure values
+-- today `Models/PrivilegedScript.swift`, which builds the one privileged command the app runs.
+That command crosses AppleScript's escaping and then the shell's, and getting it wrong produces a
+script that silently fails to compile rather than an error anyone sees.
+
+The app installs the driver itself (`DriverManager.installDriver`), and registers the PTP daemon
+with `SMAppService` from the copy inside its own bundle (`Contents/MacOS/aes67ptpd`, plist in
+`Contents/Library/LaunchDaemons`) rather than copying anything into `/Library` or `/usr/local`.
+There is no `.pkg`: `make dmg` builds the disk image that is the whole delivery.
 
 Manager app can be built standalone: `cd ManagerApp && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 

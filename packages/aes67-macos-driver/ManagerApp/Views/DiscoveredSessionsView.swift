@@ -82,7 +82,7 @@ struct DiscoveredSessionsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if !driverManager.isDriverLoaded {
+        if !driverManager.isDriverInstalled {
             notice("The driver isn't installed, so nothing is listening for announcements. "
                  + "Turn it on from the main window.",
                    icon: "power")

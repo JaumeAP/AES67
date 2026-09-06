@@ -149,6 +149,8 @@ struct AudioSettings: View {
 // MARK: - Network Settings
 
 struct NetworkSettings: View {
+    @EnvironmentObject var driverManager: DriverManager
+
     @AppStorage("preferredInterface") private var preferredInterface = "auto"
     @AppStorage("defaultMulticastTTL") private var defaultMulticastTTL = 32
     @AppStorage("defaultPort") private var defaultPort = 5004
@@ -164,6 +166,13 @@ struct NetworkSettings: View {
                     }
                 }
                 .pickerStyle(.menu)
+                // Read when Core Audio constructs the device, like the
+                // profile and the channel counts: editable only while the
+                // device is inactive.
+                .disabled(driverManager.isDeviceActive)
+                .help(driverManager.isDeviceActive
+                      ? "Deactivate the device to change the interface"
+                      : "")
             }
 
             Section("Multicast Defaults") {
@@ -235,7 +244,7 @@ struct DriverSettings: View {
                 HStack {
                     Text("Status")
                     Spacer()
-                    StatusBadge(isConnected: driverManager.isDriverLoaded)
+                    StatusBadge(isConnected: driverManager.isDriverInstalled)
                 }
 
                 HStack {

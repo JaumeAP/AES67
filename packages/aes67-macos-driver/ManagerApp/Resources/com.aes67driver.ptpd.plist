@@ -7,6 +7,12 @@
   restarts and plugin reloads, and publishes offset and path delay on
   /var/run/aes67ptpd.sock for the driver (and anything else) to read.
 
+  Registered by AES67Manager.app with SMAppService, which is how an app on
+  macOS 13 and later installs a daemon: this file ships inside the app at
+  Contents/Library/LaunchDaemons/ and launchd runs it from there. There is
+  nothing to copy into /Library/LaunchDaemons and nothing to bootstrap by
+  hand; the app's Uninstall button unregisters it.
+
   It is a LaunchDaemon for lifecycle, not for privilege: on current macOS an
   unprivileged process binds UDP 319/320 without trouble. It starts as root
   only so that it can create the status socket in /var/run, and drops to
@@ -19,9 +25,15 @@
     <key>Label</key>
     <string>com.aes67driver.ptpd</string>
 
+    <!-- Registered by the Manager app through SMAppService, so launchd runs
+         the executable from inside the app bundle: BundleProgram is relative
+         to AES67Manager.app, and nothing is copied to /usr/local. -->
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/aes67ptpd</string>
+
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/libexec/aes67ptpd</string>
+        <string>aes67ptpd</string>
         <string>--interface</string>
         <string>en0</string>
         <string>--domain</string>

@@ -123,7 +123,7 @@ struct ProfileParametersView: View {
                 let current = direction == .input
                     ? driverManager.rxChannelCount
                     : driverManager.txChannelCount
-                let locked = driverManager.isDriverLoaded
+                let locked = driverManager.isDeviceActive
 
                 HStack {
                     Text("\(peers.count) found")
@@ -466,9 +466,9 @@ struct ProfileParametersView: View {
                 .font(.callout)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if driverManager.isDriverLoaded {
-                Label("The driver is installed — parameters read at startup only take effect "
-                      + "the next time Core Audio starts it.",
+            if driverManager.isDeviceActive {
+                Label("The device is active — parameters read at startup are locked. "
+                      + "Deactivate it to change them.",
                       systemImage: "info.circle")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -611,7 +611,7 @@ struct ProfileParametersView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 140)
-                    .disabled(driverManager.isDriverLoaded)
+                    .disabled(driverManager.isDeviceActive)
                 } else {
                     Text("Single unit")
                         .foregroundColor(.secondary)
@@ -641,7 +641,7 @@ struct ProfileParametersView: View {
                         }
                         .labelsHidden()
                         .frame(maxWidth: 180, alignment: .leading)
-                        .disabled(driverManager.isDriverLoaded)
+                        .disabled(driverManager.isDeviceActive)
                         Spacer()
                     }
                 }

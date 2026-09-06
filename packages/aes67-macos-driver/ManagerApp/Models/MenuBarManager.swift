@@ -63,7 +63,7 @@ class MenuBarManager: NSObject, ObservableObject {
         menu.addItem(statusMenuItem)
 
         // Driver status
-        let driverStatus = driverManager.isDriverLoaded ? "✓ Driver Loaded" : "✗ Driver Not Loaded"
+        let driverStatus = driverManager.isDriverInstalled ? "✓ Driver Loaded" : "✗ Driver Not Loaded"
         let driverItem = NSMenuItem(title: driverStatus, action: nil, keyEquivalent: "")
         driverItem.isEnabled = false
         menu.addItem(driverItem)
