@@ -8,7 +8,7 @@ rather than do: the single-producer ring buffer and the real-time view over it,
 the PTP time types and the clock-source interface a platform implements, and
 the PTP peer, RTCP receiver and Dolby model tables.
 
-C++17, no dependencies, no platform headers. That is checked rather than
+C++20, no dependencies, no platform headers. That is checked rather than
 claimed — `scripts/check-platform-free.sh` fails on an Apple framework or a
 socket header anywhere in the library, following includes rather than trusting
 the `.cpp` files.
@@ -93,7 +93,7 @@ includes is clean, and only a real link showed that the code behind it is not.
 ## Consuming it
 
 As a CMake subproject, a submodule, or by listing the sources directly — the
-library has no build-system opinion beyond a C++17 compiler. PlatformIO
+library has no build-system opinion beyond a C++20 compiler. PlatformIO
 consumers can point `lib_extra_dirs` at the checkout.
 
 ## Licence

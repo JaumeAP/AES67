@@ -365,7 +365,7 @@ Contributions welcome, especially:
 
 ### Guidelines
 
-- C++17 standard
+- C++20 standard
 - Maintain lock-free audio thread safety
 - Add unit tests for new code
 

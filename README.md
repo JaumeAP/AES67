@@ -9,8 +9,8 @@ not because they build together.
 
 | Package | What it is | Built with |
 |---------|------------|------------|
-| [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, compatibility profiles, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++17 |
-| [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app, the installer and the tools | CMake, C++17 and Objective-C++ |
+| [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, compatibility profiles, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
+| [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app, the installer and the tools | CMake, C++20 and Objective-C++ |
 | [`packages/t41-ptp`](packages/t41-ptp) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
 
 The grandmaster firmware that consumes `t41-ptp` is not here: it is
