@@ -12,7 +12,7 @@ CXX ?= c++
 # board's compiler sees narrowings this one does not: long is 32 bits there
 # and 64 here. Keeping the host build clean under them is what stops a
 # truncation from reaching the Teensy unnoticed.
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src -I ../../aes67-profiles
 
 # Set by CI to -Werror. A warning that only appears on another compiler
 # should fail there, not be argued about later.

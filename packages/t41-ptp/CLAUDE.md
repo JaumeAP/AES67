@@ -99,6 +99,12 @@ it only answers what arrives and emits what the sketch asks it to. `ppsInterrupt
 an external PPS reference in from an ISR. See README.md's "Using the library" section for the full
 API surface (state getters, Announce dataset setters, servo gains, rate/identity setters).
 
+`applyProfile()` takes a `ProfileSettings` and applies it through the setters that clamp and
+validate each value. It holds no table: the three profiles it used to carry in a switch are in
+`packages/aes67-profiles/Profiles/PtpProfiles.h`, freestanding headers this firmware includes
+(`ci/platformio.ini` adds the include path) and the macOS core reads too. A sketch with only this
+library writes the five numbers itself.
+
 This library is IEEE 1588 and nothing else. Anything that carries or describes a media stream --
 the RTP paths, SDP, SAP, the discovery around them, an IS-04 registration -- belongs to the sketch
 that owns the audio and not here; `JaumeAP/aes67-master-box` holds those, and its `docs/continuity-notes.md`

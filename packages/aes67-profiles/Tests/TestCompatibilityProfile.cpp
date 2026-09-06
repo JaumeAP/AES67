@@ -1,7 +1,7 @@
 //
 // TestCompatibilityProfile.cpp
 // AES67 macOS Driver
-// Tests for the per-standard constraint sets (NetworkEngine/Profiles/CompatibilityProfile.h).
+// Tests for the per-standard constraint sets (Profiles/CompatibilityProfile.h).
 //
 // Pure validation logic — no sockets, no driver, no persistence of the
 // user's actual selection. Safe in the standard suite.
@@ -24,7 +24,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "NetworkEngine/Profiles/CompatibilityProfile.h"
+#include "Profiles/CompatibilityProfile.h"
 
 #include <cmath>
 #include <iostream>
@@ -38,16 +38,14 @@ namespace {
 /// A stream every profile here should accept in its own permitted
 /// direction: 48 kHz, L24, 1 ms, 8 channels, Dante's multicast range (which
 /// also happens to be a perfectly ordinary AES67 address), domain 0.
-SDPSession baselineSession() {
-    SDPSession sdp;
-    sdp.sessionName = "test";
-    sdp.connectionAddress = "239.69.1.10";
-    sdp.port = 5004;
-    sdp.numChannels = 8;
-    sdp.sampleRate = 48000.0;
-    sdp.encoding = "L24";
-    sdp.ptimeUs = 1000;
-    return sdp;
+StreamDescription baselineSession() {
+    StreamDescription stream;
+    stream.connectionAddress = "239.69.1.10";
+    stream.numChannels = 8;
+    stream.sampleRate = 48000.0;
+    stream.encoding = "L24";
+    stream.ptimeUs = 1000;
+    return stream;
 }
 
 /// Whether THIS driver would be transmitting when talking to the gear a

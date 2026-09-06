@@ -867,7 +867,7 @@ bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::st
     // pointed at would accept it.
     const auto profile = CompatibilityProfile::forKind(
         profileKind_.load(std::memory_order_relaxed));
-    if (!profile.validate(sdp, isTransmit, errorOut)) {
+    if (!profile.validate(describeStream(sdp), isTransmit, errorOut)) {
         return false;
     }
 

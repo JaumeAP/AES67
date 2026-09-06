@@ -144,32 +144,13 @@ void PTPBase::setStepsRemoved(uint16_t val)
     updatePortState();
 }
 
-void PTPBase::applyProfile(Profile profile)
+void PTPBase::applyProfile(const ProfileSettings &settings)
 {
-    switch (profile)
-    {
-    case Profile::Default1588:
-        setDomainNumber(0);
-        setMajorSdoId(0);
-        setLogSyncInterval(0);         // 1 s
-        setLogAnnounceInterval(1);     // 2 s
-        setLogMinDelayReqInterval(0);  // 1 s
-        break;
-    case Profile::AES67Media:
-        setDomainNumber(0);
-        setMajorSdoId(0);
-        setLogSyncInterval(-3);        // eight per second
-        setLogAnnounceInterval(0);     // 1 s
-        setLogMinDelayReqInterval(-3); // eight per second
-        break;
-    case Profile::GPTP:
-        setDomainNumber(0);
-        setMajorSdoId(1);
-        setLogSyncInterval(-3);        // eight per second
-        setLogAnnounceInterval(0);     // 1 s
-        setLogMinDelayReqInterval(0);  // Pdelay_Req once a second
-        break;
-    }
+    setDomainNumber(settings.domainNumber);
+    setMajorSdoId(settings.majorSdoId);
+    setLogSyncInterval(settings.logSyncInterval);
+    setLogAnnounceInterval(settings.logAnnounceInterval);
+    setLogMinDelayReqInterval(settings.logMinDelayReqInterval);
 }
 
 // The range 1588 gives a logMessageInterval. Every one of these three

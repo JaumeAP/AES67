@@ -552,16 +552,20 @@ static void testAProfileReachesTheWire()
 {
     struct Case
     {
-        PTPBase::Profile profile;
+        PTPBase::ProfileSettings profile;
         int8_t sync;
         int8_t announce;
         int8_t delayReq;
         uint8_t sdoId;
     };
+    // The three combinations this library used to hold its own table of. They
+    // live in packages/aes67-profiles now; the numbers are written out here so
+    // that this test still fails if applyProfile() stops applying what it is
+    // handed, which is the only thing left for it to get wrong.
     const Case cases[] = {
-        {PTPBase::Profile::Default1588, 0, 1, 0, 0},
-        {PTPBase::Profile::AES67Media, -3, 0, -3, 0},
-        {PTPBase::Profile::GPTP, -3, 0, 0, 1},
+        {{0, 0, 0, 1, 0}, 0, 1, 0, 0},    // IEEE 1588-2008 default
+        {{0, 0, -3, 0, -3}, -3, 0, -3, 0}, // the AES67 media profile
+        {{0, 1, -3, 0, 0}, -3, 0, 0, 1},   // 802.1AS
     };
 
     for (const Case &c : cases)

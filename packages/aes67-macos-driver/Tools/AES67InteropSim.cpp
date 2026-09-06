@@ -10,7 +10,8 @@
 // ts-refclk form (now fixed; regression-pinned in TestSDPParser).
 //
 #include "Driver/SDPParser.h"
-#include "NetworkEngine/Profiles/CompatibilityProfile.h"
+#include "Profiles/CompatibilityProfile.h"
+#include "NetworkEngine/ProfileAdapter.h"
 #include "NetworkEngine/RTP/PCMCodec.h"
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include <cmath>
@@ -55,10 +56,10 @@ int main(){
         ok("PTP domain", s.ptpDomain==0, "domain "+std::to_string(s.ptpDomain));
         std::string err;
         auto aes67=CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
-        ok("profile AES67", aes67.validate(s,false,&err), err.empty()?"accepted":err);
+        ok("profile AES67", aes67.validate(describeStream(s),false,&err), err.empty()?"accepted":err);
         auto rav=CompatibilityProfile::forKind(CompatibilityProfileKind::RAVENNA);
         err.clear();
-        ok("profile RAVENNA", rav.validate(s,false,&err), err.empty()?"accepted":err);
+        ok("profile RAVENNA", rav.validate(describeStream(s),false,&err), err.empty()?"accepted":err);
     }
     printf("\n[2] AUDIO / RTP+PCM -- daemon sends L24, we decode\n");
     const size_t frames=48, ch=8, total=frames*ch;
