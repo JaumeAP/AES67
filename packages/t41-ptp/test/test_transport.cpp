@@ -744,7 +744,7 @@ static void testL2GptpKeepsEverythingOnThePeerAddress()
 {
     ptptest::state().reset();
     l2PTP ptp(true, false, true);
-    ptp.applyProfile(PTPBase::Profile::GPTP);
+    ptp.applyProfile(PTPBase::ProfileSettings{0, 1, -3, 0, 0});  // 802.1AS
     ptp.begin();
 
     setTxTimestamp(3000000000LL);

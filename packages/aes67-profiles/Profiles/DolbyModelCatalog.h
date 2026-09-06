@@ -3,7 +3,7 @@
 
 //
 // DolbyModelCatalog
-// AES67 macOS Driver
+// AES67 profiles
 //
 // The fixed facts PTP detection can't supply. Passive PTP observation
 // (PTPPeerObserver) tells us a Dolby element is present, its vendor OUI, and
@@ -20,7 +20,7 @@
 //
 // Channel counts are aligned with the same gear's CompatibilityProfile
 // (DAC3202 32, DMA 16/24/32 per single unit, CP850/CP950A 64, CP950 16) —
-// see NetworkEngine/Profiles/CompatibilityProfile.cpp. Directions are from THIS
+// see Profiles/CompatibilityProfile.cpp. Directions are from THIS
 // driver's own side: an amplifier is a sink we feed (Output), a cinema
 // processor is a source that feeds us (Input) — matching those profiles'
 // TransmitOnly / ReceiveOnly directions.

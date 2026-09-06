@@ -86,6 +86,12 @@ qindesign::network::EthernetUDP *l3PTP::openSocket(const IPAddress &group, uint1
     socket->setOutgoingDiffServ(dscp);
     // A group this port could not join is a port that hears nothing, and
     // the result used to be dropped on the floor.
+    //
+    // The socket is kept rather than destroyed, deliberately: a failed join
+    // stops this port receiving on that group and does not stop it sending,
+    // and a master whose Announce and Sync still go out while it hears nothing
+    // is more useful than a port that has silently stopped being a port. The
+    // failure is in getBindFailureCount() for anyone who wants to act on it.
     if (!socket->beginMulticast(group, port, true))
     {
         bindFailureCount++;

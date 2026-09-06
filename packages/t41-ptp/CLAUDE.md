@@ -53,13 +53,23 @@ too, byte-identical and consumed by nobody; it is gone, and this is the only cop
 
 ## Architecture
 
-**`PTPBase`** (`src/ptp/ptp-base.h`/`.cpp`, ~1700 lines) holds essentially all protocol logic:
+**`PTPBase`** (`src/ptp/ptp-base.h`, with its implementation split across five `.cpp` files)
+holds essentially all protocol logic:
 message parsing/building, the best master clock algorithm (BMCA) and port state machine, the T1–T6
 timestamp bookkeeping for both the two-way (`Delay_Req`/`Delay_Resp`) and peer-delay
 (`Pdelay_Req`/`Pdelay_Resp`) exchanges, and the minimum-of-*N* delay filter. It is
 transport-agnostic: it calls three protected
 virtuals (`initSockets`, `closeSockets`, `updateSockets`, plus `sendPTPMessage`) that the concrete
 transport implements.
+
+The implementation is one class in five files, split by what each part does: `ptp-base.cpp` (the
+port, its state machine, `update()` and the BMCA decision), `ptp-config.cpp` (every setter and the
+profiles), `ptp-discipline.cpp` (the delay filter, the servo call and the PPS reference),
+`ptp-parse.cpp` (everything that reads the wire, with the length guard on each message type) and
+`ptp-send.cpp` (everything that writes it). `ptp-internal.h` declares the handful of helpers they
+share and nothing outside them needs. `update()` is six `service*()` phases called in the order
+they have to happen in; the order is not obvious and each phase carries the comment saying what
+went wrong when it was elsewhere.
 
 **`src/ptp/ptp-bmca.h`** holds the 1588 §9.3 dataset comparison and the `MasterDataset` it
 compares, split out of `ptp-base.h` and included back into it. It is consumed off the board as
@@ -88,6 +98,12 @@ A sketch owns one `l2PTP`/`l3PTP` instance, calls `begin()`/`update()`/`end()`, 
 it only answers what arrives and emits what the sketch asks it to. `ppsInterruptTriggered()` feeds
 an external PPS reference in from an ISR. See README.md's "Using the library" section for the full
 API surface (state getters, Announce dataset setters, servo gains, rate/identity setters).
+
+`applyProfile()` takes a `ProfileSettings` and applies it through the setters that clamp and
+validate each value. It holds no table: the three profiles it used to carry in a switch are in
+`packages/aes67-profiles/Profiles/PtpProfiles.h`, freestanding headers this firmware includes
+(`ci/platformio.ini` adds the include path) and the macOS core reads too. A sketch with only this
+library writes the five numbers itself.
 
 This library is IEEE 1588 and nothing else. Anything that carries or describes a media stream --
 the RTP paths, SDP, SAP, the discovery around them, an IS-04 registration -- belongs to the sketch

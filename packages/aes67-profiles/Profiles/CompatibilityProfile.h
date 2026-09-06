@@ -1,6 +1,6 @@
 //
 // CompatibilityProfile.h
-// AES67 macOS Driver
+// AES67 profiles
 // Which flavour of AoIP gear this driver is being pointed at, and the
 // constraints that flavour imposes.
 //
@@ -17,7 +17,7 @@
 //
 #pragma once
 
-#include "../../Driver/SDPParser.h"
+#include "Profiles/StreamDescription.h"
 
 #include <cstdint>
 #include <string>
@@ -282,7 +282,7 @@ struct CompatibilityProfile {
     /// Returns true if acceptable; otherwise false with a reason in
     /// `errorOut` (if given). Does NOT check maxTotalChannels — that needs
     /// to see every stream at once, which only StreamManager can.
-    bool validate(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const;
+    bool validate(const StreamDescription& stream, bool isTransmit, std::string* errorOut) const;
 
     static CompatibilityProfile forKind(CompatibilityProfileKind kind);
 

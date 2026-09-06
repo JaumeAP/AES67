@@ -19,7 +19,6 @@ add_library(aes67_core
     NetworkEngine/StreamConfig.cpp
     NetworkEngine/DeviceChannelSettings.cpp
     NetworkEngine/AmplifierUnitSettings.cpp
-    NetworkEngine/Profiles/CompatibilityProfile.cpp
     NetworkEngine/NetworkErrorHandler.cpp
     NetworkEngine/DoPDecoder.cpp
     NetworkEngine/RTP/LockFreeCircularJitterBuffer.cpp
@@ -37,6 +36,13 @@ add_library(aes67_core
     NetworkEngine/Resampling/SampleRateAdapter.cpp
 )
 
+# Two packages this one reads rather than copies.
+#
+# The profiles -- compatibility, Dolby per-model, PTP -- are their own package:
+# they are tables of numbers that both this core and the Teensy firmware have
+# to agree on, and a table living inside one implementation is a table the
+# other one copies. See packages/aes67-profiles.
+#
 # The 1588 dataset comparison comes from the Teensy PTP library rather than
 # being written twice; see NetworkEngine/PTP/PTPProtocolTypes.h. Only that one
 # header is reached, and it is plain data plus a pure function -- the
@@ -44,11 +50,19 @@ add_library(aes67_core
 # include to prove it.
 set(AES67_T41_PTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../t41-ptp/src"
     CACHE PATH "Directory holding the Teensy PTP library's headers")
+set(AES67_PROFILES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../aes67-profiles"
+    CACHE PATH "Directory holding the profiles package")
+
+if(NOT TARGET aes67_profiles)
+    add_subdirectory(${AES67_PROFILES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/aes67-profiles)
+endif()
 
 target_include_directories(aes67_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${AES67_T41_PTP_DIR}
 )
+
+target_link_libraries(aes67_core PUBLIC aes67_profiles)
 target_compile_options(aes67_core PRIVATE -Wall -Wextra -Wpedantic
     -Wno-unused-parameter -Wno-missing-field-initializers)
 
@@ -75,7 +89,7 @@ if(AES67_CORE_TESTS)
     # the README -- so it, and only it, links the test double that fills it.
     set(AES67_SEAM_STUB Tests/support/NetworkUtilsStub.cpp)
 
-    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper CompatibilityProfile DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable DolbyModelCatalog RTCPReceiverTable)
+    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable)
         set(extra_sources "")
         if(suite STREQUAL "StreamConfig")
             set(extra_sources ${AES67_SEAM_STUB})

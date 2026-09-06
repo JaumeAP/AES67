@@ -409,33 +409,47 @@ public:
     NanoTime getPeerOffsetCorrection() const { return peerOffsetCorrection; }
     NanoTime getPpsOffset() const { return ppsOffset; }
 
-    // The parameter sets a profile fixes.
+    // The numbers a PTP profile fixes.
     //
-    // Every value below can already be set one at a time; a profile is the
-    // combination a given ecosystem expects, in one call, so that pointing
-    // this port at RAVENNA gear or at an 802.1AS segment is a decision
-    // rather than six numbers to remember. It sets ONLY the numbers: the
-    // delay mechanism is chosen when the object is built (`p2p`), and the
-    // transport by which class is used -- l3PTP for AES67, l2PTP for
-    // 802.1AS.
-    enum class Profile
+    // Every one of them can be set on its own below; this is the combination
+    // a given ecosystem expects, handed over in one call, so that pointing
+    // this port at RAVENNA gear or at an 802.1AS segment is one decision
+    // rather than five numbers to remember in the right order.
+    //
+    // This library carries no table of profiles. It used to, in an
+    // applyProfile() switch holding what AES67 and 802.1AS expect, and that
+    // was a list of somebody else's numbers living inside a port.
+    //
+    // The tables are their own package, packages/aes67-profiles, which is
+    // freestanding on purpose: Profiles/PtpProfiles.h has no std::string, no
+    // allocation and no operating system, so this firmware includes it as
+    // readily as the macOS driver does. Both sides then agree by construction
+    // rather than by two copies that match today.
+    //
+    // A sketch that has only this library and not that package writes the five
+    // numbers itself. They are five numbers.
+    //
+    // It sets ONLY these: the delay mechanism is chosen when the object is
+    // built (`p2p`), the transport by which class is used -- l3PTP for AES67,
+    // l2PTP for 802.1AS -- and priority1, priority2 and the clock quality
+    // describe THIS clock rather than the ecosystem, so a profile leaves them
+    // alone.
+    struct ProfileSettings
     {
-        // IEEE 1588-2008 default profile: Sync every second, Announce
-        // every two, Delay_Req every second.
-        Default1588,
-        // The media profile AES67 and RAVENNA gear runs: Sync eight times
-        // a second, Announce once, Delay_Req eight times, domain 0.
-        AES67Media,
-        // 802.1AS: Sync eight times a second, Announce once, Pdelay_Req
-        // once, and majorSdoId 1, which is what makes a receiver that
-        // follows that profile accept the traffic at all.
-        GPTP,
+        uint8_t domainNumber = 0;
+        // The top nibble of octet 0. Zero is the default profile AES67 builds
+        // on; 1 is 802.1AS, and a receiver following that profile drops
+        // everything that does not carry it.
+        uint8_t majorSdoId = 0;
+        // log2 seconds, as the wire carries them: 0 is one per second, -3 is
+        // eight per second, 1 is one every two seconds.
+        int8_t logSyncInterval = 0;
+        int8_t logAnnounceInterval = 1;
+        int8_t logMinDelayReqInterval = 0;
     };
 
-    // Applies a profile's numbers. Priority1, priority2 and the clock
-    // quality are left alone: they describe THIS clock, not the ecosystem
-    // it is speaking to.
-    void applyProfile(Profile profile);
+    // Applies them, each through the setter that clamps and validates it.
+    void applyProfile(const ProfileSettings &settings);
 
     // logMessageInterval as advertised in the PTP header. These only set what
     // is announced -- the caller still has to send at the matching rate, or
@@ -521,6 +535,16 @@ private:
     void parseAnnounceMessage(const uint8_t *buf);
     MasterDataset ownDataset() const;
     void updatePortState();
+
+    // The phases of update(), in the order it calls them. Split out of a
+    // hundred-and-forty-line function: the order matters and the reasons are
+    // on each one.
+    void serviceDelayExchange();
+    void serviceDelayRequestPacing();
+    void serviceSyncPair();
+    void serviceAnnounceTimeout();
+    void serviceSyncReceipt();
+    void serviceExternalReference();
     bool fromSelectedMaster(const uint8_t *buf) const;
     void parseSyncMessage(const uint8_t *buf, const timespec &recv_ts);
     void parseFollowUpMessage(const uint8_t *buf);

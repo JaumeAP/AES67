@@ -1255,7 +1255,7 @@ class DriverManager: ObservableObject {
     // MARK: - Compatibility Profile
     //
     // Which flavour of AoIP gear the driver is being pointed at. Mirrors
-    // NetworkEngine/Profiles/CompatibilityProfile.h — same file both processes
+    // Profiles/CompatibilityProfile.h — same file both processes
     // read/write (compatibility_profile.json). The driver reads it when
     // Core Audio constructs the device and applies it to every stream added
     // from then on, so a change takes effect on the next start.

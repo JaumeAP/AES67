@@ -12,7 +12,7 @@ CXX ?= c++
 # board's compiler sees narrowings this one does not: long is 32 bits there
 # and 64 here. Keeping the host build clean under them is what stops a
 # truncation from reaching the Teensy unnoticed.
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src -I ../../aes67-profiles
 
 # Set by CI to -Werror. A warning that only appears on another compiler
 # should fail there, not be argued about later.
@@ -22,7 +22,9 @@ EXTRA_CXXFLAGS ?=
 PIO ?= pio
 
 BIN = t41-ptp-test
-SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-servo.cpp ../src/ptp/l2ptp.cpp ../src/ptp/l3ptp.cpp \
+SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-config.cpp ../src/ptp/ptp-discipline.cpp \
+      ../src/ptp/ptp-parse.cpp ../src/ptp/ptp-send.cpp \
+      ../src/ptp/ptp-servo.cpp ../src/ptp/l2ptp.cpp ../src/ptp/l3ptp.cpp \
       stubs/stubs.cpp ptp_messages.cpp test_ptp_base.cpp test_transport.cpp \
       test_servo.cpp test_main.cpp
 

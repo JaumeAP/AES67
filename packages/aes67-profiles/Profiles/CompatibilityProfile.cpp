@@ -1,5 +1,5 @@
-#include "CompatibilityProfile.h"
-#include "../../Driver/DebugLog.h"
+#include "Profiles/CompatibilityProfile.h"
+#include "Profiles/ProfileLog.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -404,7 +404,7 @@ bool addressHasPrefix(const std::string& address, const std::string& prefix) {
 
 } // namespace
 
-bool CompatibilityProfile::validate(const SDPSession& sdp, bool isTransmit, std::string* errorOut) const {
+bool CompatibilityProfile::validate(const StreamDescription& stream, bool isTransmit, std::string* errorOut) const {
     auto fail = [&](const std::string& reason) {
         if (errorOut) *errorOut = displayName + ": " + reason;
         return false;
@@ -422,49 +422,49 @@ bool CompatibilityProfile::validate(const SDPSession& sdp, bool isTransmit, std:
             [&](double rate) {
                 // SDP rates are integers in practice; compare with a
                 // tolerance rather than exact double equality.
-                return std::abs(rate - sdp.sampleRate) < 1.0;
+                return std::abs(rate - stream.sampleRate) < 1.0;
             });
         if (!ok) {
-            return fail("sample rate " + std::to_string(static_cast<long>(sdp.sampleRate)) +
+            return fail("sample rate " + std::to_string(static_cast<long>(stream.sampleRate)) +
                         " Hz not permitted (allowed: " + joinRates(allowedSampleRates) + ")");
         }
     }
 
-    if (!allowedPtimesUs.empty() && sdp.ptimeUs > 0) {
+    if (!allowedPtimesUs.empty() && stream.ptimeUs > 0) {
         const bool ok = std::find(allowedPtimesUs.begin(), allowedPtimesUs.end(),
-                                   sdp.ptimeUs) != allowedPtimesUs.end();
+                                   stream.ptimeUs) != allowedPtimesUs.end();
         if (!ok) {
-            return fail("packet time " + std::to_string(sdp.ptimeUs) +
+            return fail("packet time " + std::to_string(stream.ptimeUs) +
                         " us not permitted");
         }
     }
 
-    if (!allowedEncodings.empty() && !sdp.encoding.empty()) {
+    if (!allowedEncodings.empty() && !stream.encoding.empty()) {
         const bool ok = std::find(allowedEncodings.begin(), allowedEncodings.end(),
-                                   sdp.encoding) != allowedEncodings.end();
+                                   stream.encoding) != allowedEncodings.end();
         if (!ok) {
-            return fail("encoding " + sdp.encoding + " not permitted (allowed: " +
+            return fail("encoding " + stream.encoding + " not permitted (allowed: " +
                         joinStrings(allowedEncodings) + ")");
         }
     }
 
-    if (sdp.numChannels > maxChannelsPerFlow) {
-        return fail(std::to_string(sdp.numChannels) + " channels exceeds the " +
+    if (stream.numChannels > maxChannelsPerFlow) {
+        return fail(std::to_string(stream.numChannels) + " channels exceeds the " +
                     std::to_string(maxChannelsPerFlow) +
                     "-channel flow limit — split it across multiple flows");
     }
 
-    if (!requiredMulticastPrefix.empty() && !sdp.connectionAddress.empty()) {
-        if (!addressHasPrefix(sdp.connectionAddress, requiredMulticastPrefix)) {
-            return fail("multicast address " + sdp.connectionAddress +
+    if (!requiredMulticastPrefix.empty() && !stream.connectionAddress.empty()) {
+        if (!addressHasPrefix(stream.connectionAddress, requiredMulticastPrefix)) {
+            return fail("multicast address " + stream.connectionAddress +
                         " outside the required " + requiredMulticastPrefix + ".0.0/16 range");
         }
     }
 
     // -1 means "no PTP for this stream" — not a domain choice at all, so it
     // isn't subject to a fixed-domain requirement.
-    if (domainIsFixed && sdp.ptpDomain != -1 && sdp.ptpDomain != static_cast<int>(fixedDomain)) {
-        return fail("PTP domain " + std::to_string(sdp.ptpDomain) + " not permitted — "
+    if (domainIsFixed && stream.ptpDomain != -1 && stream.ptpDomain != static_cast<int>(fixedDomain)) {
+        return fail("PTP domain " + std::to_string(stream.ptpDomain) + " not permitted — "
                     "fixed at " + std::to_string(fixedDomain));
     }
 

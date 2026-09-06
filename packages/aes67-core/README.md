@@ -2,14 +2,22 @@
 
 The parts of an AES67 implementation that are not about any operating system:
 SDP parsing and generation, the RTP wire header, a lock-free jitter buffer and
-packet pool, the media-clock PLL, the resampling chain, channel mapping,
-compatibility profiles and stream configuration. Also the pieces that describe
+packet pool, the media-clock PLL, the resampling chain, channel mapping and
+stream configuration. Also the pieces that describe
 rather than do: the single-producer ring buffer and the real-time view over it,
 the PTP time types and the clock-source interface a platform implements, the
 IEEE 1588 message and configuration types, and the PTP peer, RTCP receiver and
 Dolby model tables.
 
-One header comes from outside: the 1588 dataset comparison of §9.3 and the
+Two things come from outside. The profiles -- compatibility, Dolby per-model,
+PTP -- are `packages/aes67-profiles`, a package of their own: they are tables
+both this core and the Teensy firmware have to agree on, and a table living
+inside one implementation is a table the other copies. `NetworkEngine/
+ProfileAdapter.h` is the one function that fills a profile's
+`StreamDescription` from an `SDPSession`, because SDP is this core's business
+and not theirs.
+
+The other: the 1588 dataset comparison of §9.3 and the
 dataset it compares are `packages/t41-ptp/src/ptp/ptp-bmca.h`. That
 implementation came first and this one was written from it, so rather than keep
 a second copy that can drift, `NetworkEngine/PTP/PTPProtocolTypes.h` includes

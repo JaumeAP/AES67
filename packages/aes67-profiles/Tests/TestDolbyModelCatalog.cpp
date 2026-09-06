@@ -8,7 +8,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "NetworkEngine/Profiles/DolbyModelCatalog.h"
+#include "Profiles/DolbyModelCatalog.h"
 
 #include <iostream>
 

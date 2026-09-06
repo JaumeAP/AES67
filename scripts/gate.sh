@@ -6,6 +6,7 @@
 # knows which packages there are and nothing about what any of them does, so a
 # package can change how it verifies itself without this file changing.
 #
+#   packages/aes67-profiles/scripts/gate.sh      build, test, self-containment
 #   packages/aes67-core/scripts/gate.sh          build, test, platform contract
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
 #   packages/t41-ptp/scripts/gate.sh             host tests
@@ -39,6 +40,7 @@ run() {
   fi
 }
 
+run "aes67-profiles"     packages/aes67-profiles/scripts/gate.sh
 run "aes67-core"         packages/aes67-core/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
 run "t41-ptp"            packages/t41-ptp/scripts/gate.sh

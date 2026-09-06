@@ -1,7 +1,7 @@
 # AES67
 
 AES67 audio-over-IP: a macOS driver, the platform-free core it is built on,
-and the Teensy PTP library a grandmaster box uses. Three packages that came
+and the Teensy PTP library a grandmaster box uses. Four packages, three of which came
 from three repositories and are kept together because they are read together,
 not because they build together.
 
@@ -9,7 +9,8 @@ not because they build together.
 
 | Package | What it is | Built with |
 |---------|------------|------------|
-| [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, compatibility profiles, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
+| [`packages/aes67-profiles`](packages/aes67-profiles) | The tables every implementation here has to agree on: the AoIP compatibility profiles, the Dolby per-model data and the PTP profiles. Freestanding headers -- no platform, no operating system, no other package -- so the macOS core and the Teensy firmware read the same numbers instead of keeping two copies | CMake, C++20 |
+| [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
 | [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app and the tools | CMake, C++20 and Objective-C++ |
 | [`packages/t41-ptp`](packages/t41-ptp) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
 

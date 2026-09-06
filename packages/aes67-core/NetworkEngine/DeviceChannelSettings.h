@@ -6,7 +6,7 @@
 // / output), read by the driver at startup.
 //
 // Two selectors, not one, because direction isn't symmetric once a
-// compatibility profile restricts it: CP850 (NetworkEngine/Profiles/CompatibilityProfile.h)
+// compatibility profile restricts it: CP850 (Profiles/CompatibilityProfile.h)
 // is receive-only from this driver's own point of view, DAC3202 is
 // transmit-only. The input selector is meaningless under a transmit-only
 // profile and vice versa — ManagerApp disables whichever side the active
