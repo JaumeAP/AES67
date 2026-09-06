@@ -28,6 +28,8 @@
 #include <atomic>
 #include <cstring>
 #include <numeric>
+#include <cerrno>
+#include <cstdio>
 #include <unistd.h>
 
 using namespace AES67;
@@ -56,6 +58,15 @@ namespace {
 
     constexpr size_t kNumChannels = 128;
     constexpr size_t kRingBufferSize = 4096;
+
+    // Every socket in this file, sending and receiving, is pinned to the
+    // loopback interface. Left to the routing table, the multicast egress is
+    // whatever interface 224.0.0.0/4 happens to resolve to, and the receiver
+    // joins the group on its own; a machine with two interfaces on the same
+    // subnet can put the two on different ones, and the packets never arrive.
+    // lo0 is always present, always up and always multicast-capable, so the
+    // path under test does not depend on the host's network configuration.
+    constexpr const char* kTestInterfaceIP = "127.0.0.1";
 }
 
 // ============================================================================
@@ -133,6 +144,16 @@ static bool sendRawRTPPacket(
     uint8_t loopback = 1;
     setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_LOOP, &loopback, sizeof(loopback));
 
+    // Pin the egress interface rather than letting the routing table pick it.
+    struct in_addr ifaceAddr;
+    ifaceAddr.s_addr = inet_addr(kTestInterfaceIP);
+    if (setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &ifaceAddr, sizeof(ifaceAddr)) < 0) {
+        fprintf(stderr, "sendRawRTPPacket: IP_MULTICAST_IF %s failed (errno=%d: %s)\n",
+                kTestInterfaceIP, errno, strerror(errno));
+        ::close(sockfd);
+        return false;
+    }
+
     // Build destination address
     struct sockaddr_in destAddr;
     std::memset(&destAddr, 0, sizeof(destAddr));
@@ -168,6 +189,12 @@ static bool sendRawRTPPacket(
     msg.msg_iovlen = 2;
 
     ssize_t sent = sendmsg(sockfd, &msg, 0);
+    if (sent <= 0) {
+        // A bare false says nothing about why. EHOSTUNREACH means the pinned
+        // interface cannot carry the group; ENOBUFS means the send queue is full.
+        fprintf(stderr, "sendRawRTPPacket: sendmsg to %s:%u via %s returned %zd (errno=%d: %s)\n",
+                multicastIP, port, kTestInterfaceIP, sent, errno, strerror(errno));
+    }
     ::close(sockfd);
 
     return sent > 0;
@@ -193,7 +220,7 @@ TEST_CASE("RTP Receive To Ring Buffer") {
     ChannelMapping rxMapping = createTestMapping(rxID, "RX Test", rxChannels, 0);
 
     // Create receiver
-    RTPReceiver receiver(rxSDP, rxMapping, deviceBuffers);
+    RTPReceiver receiver(rxSDP, rxMapping, deviceBuffers, 0, kTestInterfaceIP);
     CHECK(!receiver.isRunning());
 
     bool started = receiver.start();
@@ -324,7 +351,7 @@ TEST_CASE("Ring Buffer To RTP Transmit") {
     CHECK(written9 == prefillFrames);
 
     // Create transmitter
-    RTPTransmitter transmitter(txSDP, txMapping, deviceBuffers);
+    RTPTransmitter transmitter(txSDP, txMapping, deviceBuffers, kTestInterfaceIP);
     CHECK(!transmitter.isRunning());
 
     bool started = transmitter.start();
@@ -385,7 +412,7 @@ TEST_CASE("Full Loopback") {
     txBuffers[1].write(txCh1.data(), prefillFrames);
 
     // Start receiver first so it binds to the multicast group
-    RTPReceiver receiver(rxSDP, rxMapping, rxBuffers);
+    RTPReceiver receiver(rxSDP, rxMapping, rxBuffers, 0, kTestInterfaceIP);
     bool rxStarted = receiver.start();
     CHECK(rxStarted);
 
@@ -393,7 +420,7 @@ TEST_CASE("Full Loopback") {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Start transmitter
-    RTPTransmitter transmitter(txSDP, txMapping, txBuffers);
+    RTPTransmitter transmitter(txSDP, txMapping, txBuffers, kTestInterfaceIP);
     bool txStarted = transmitter.start();
     CHECK(txStarted);
 
@@ -508,7 +535,7 @@ TEST_CASE("Underrun Behavior") {
     StreamID id = StreamID::generate();
     ChannelMapping mapping = createTestMapping(id, "Underrun RX", 2, 0);
 
-    RTPReceiver receiver(sdp, mapping, deviceBuffers);
+    RTPReceiver receiver(sdp, mapping, deviceBuffers, 0, kTestInterfaceIP);
     bool started = receiver.start();
     CHECK(started);
 
@@ -624,8 +651,8 @@ TEST_CASE("Multi Stream Channel Isolation") {
     ChannelMapping mappingB = createTestMapping(idB, "Stream B", channels, 4);
 
     // Create two receivers
-    RTPReceiver receiverA(sdpA, mappingA, deviceBuffers);
-    RTPReceiver receiverB(sdpB, mappingB, deviceBuffers);
+    RTPReceiver receiverA(sdpA, mappingA, deviceBuffers, 0, kTestInterfaceIP);
+    RTPReceiver receiverB(sdpB, mappingB, deviceBuffers, 0, kTestInterfaceIP);
 
     bool startedA = receiverA.start();
     bool startedB = receiverB.start();
@@ -800,7 +827,7 @@ TEST_CASE("Channel Mapping Through Receiver") {
     StreamID id = StreamID::generate();
     ChannelMapping mapping = createTestMapping(id, "Mapped RX", rxChannels, 16);
 
-    RTPReceiver receiver(sdp, mapping, deviceBuffers);
+    RTPReceiver receiver(sdp, mapping, deviceBuffers, 0, kTestInterfaceIP);
     bool started = receiver.start();
     CHECK(started);
 
@@ -880,7 +907,7 @@ TEST_CASE("Receiver Statistics") {
     StreamID id = StreamID::generate();
     ChannelMapping mapping = createTestMapping(id, "Stats RX", 2, 0);
 
-    RTPReceiver receiver(sdp, mapping, deviceBuffers);
+    RTPReceiver receiver(sdp, mapping, deviceBuffers, 0, kTestInterfaceIP);
     receiver.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -945,7 +972,7 @@ TEST_CASE("Transmitter Continuous Flow") {
     StreamID id = StreamID::generate();
     ChannelMapping mapping = createTestMapping(id, "Continuous TX", 2, 0);
 
-    RTPTransmitter transmitter(sdp, mapping, deviceBuffers);
+    RTPTransmitter transmitter(sdp, mapping, deviceBuffers, kTestInterfaceIP);
     bool started = transmitter.start();
     CHECK(started);
 
