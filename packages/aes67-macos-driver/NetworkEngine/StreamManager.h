@@ -6,7 +6,7 @@
 #include "Shared/Types.h"
 #include "Shared/RingBuffer.hpp"
 #include "Driver/SDPParser.h"
-#include "NetworkEngine/CompatibilityProfile.h"
+#include "NetworkEngine/Profiles/CompatibilityProfile.h"
 #include "NetworkEngine/StreamChannelMapper.h"
 #include "NetworkEngine/StreamConfig.h"
 #include "RTP/RTPReceiver.h"
