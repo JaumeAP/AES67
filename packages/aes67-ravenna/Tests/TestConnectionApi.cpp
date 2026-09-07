@@ -249,3 +249,47 @@ TEST_CASE("Decoding a path leaves the path alone") {
     REQUIRE(parseHttpRequest("GET /100%/%zz/% HTTP/1.1\r\n\r\n", method, decoded, body));
     CHECK(decoded == "/100%/%zz/%");
 }
+
+TEST_CASE("A receiver reports which sender it was connected to") {
+    // IS-05 sec 6: a receiver's staged and active carry sender_id, and it is
+    // the only place a controller can read back what a crosspoint was set to.
+    // Accepting it in the PATCH and never reporting it leaves every route
+    // looking unmade.
+    ConnectionApi api = apiWithOne();
+
+    JsonObject file;
+    file["data"] = JsonValue(kSdp);
+    file["type"] = JsonValue("application/sdp");
+    JsonObject connect;
+    connect["sender_id"] = JsonValue("5cd71600-d803-50aa-a55c-d2489b9545e9");
+    connect["master_enable"] = JsonValue(true);
+    connect["transport_file"] = JsonValue(file);
+    connect["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+
+    const ApiResponse staged = api.handle(
+        "PATCH", path("/single/receivers/receiver-1/staged/"), JsonValue(connect).serialise());
+    REQUIRE(staged.status == 200);
+
+    const JsonValue active = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/active/"), ""));
+    CHECK(active["master_enable"].asBool() == true);
+    CHECK(active["sender_id"].asString() == "5cd71600-d803-50aa-a55c-d2489b9545e9");
+
+    // Disconnecting clears it, so nothing reads as routed to a sender it no
+    // longer takes.
+    JsonObject disconnect;
+    disconnect["sender_id"] = JsonValue();
+    disconnect["master_enable"] = JsonValue(false);
+    disconnect["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+    REQUIRE(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                       JsonValue(disconnect).serialise())
+                .status == 200);
+
+    const JsonValue cleared = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/active/"), ""));
+    CHECK(cleared["master_enable"].asBool() == false);
+    CHECK(cleared["sender_id"].isNull());
+
+    // A sender_id that is neither a string nor null is a controller in error.
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     R"({"sender_id":7})")
+              .status == 400);
+}

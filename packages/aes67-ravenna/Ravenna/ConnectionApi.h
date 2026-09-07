@@ -41,6 +41,11 @@ struct ConnectionState {
     /// The SDP. A sender's is its own; a receiver's is the one a controller
     /// gave it, and is empty until then.
     std::string transportFile;
+    /// Which sender a receiver was pointed at, empty for none. IS-05 sec 6
+    /// carries it alongside the transport file, and it is the only place a
+    /// controller reads back what a crosspoint was set to: a receiver that
+    /// takes a stream and does not say whose looks unrouted.
+    std::string senderId;
     /// activation.mode of the last change, "null" when it was never activated.
     std::string activationMode = "null";
     /// activation.activation_time, as IS-05 reports it: the time the change
@@ -113,6 +118,9 @@ private:
 /// The state as IS-05 reports it, which is not how it is held: the
 /// specification's staged object carries an activation sub-object and a
 /// transport file wrapper, and a controller reads exactly those names.
-JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile);
+/// `includeSenderId` is what makes this a receiver's state: a sender is the
+/// far end of somebody else's subscription and carries a receiver_id instead.
+JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile,
+                      bool includeSenderId = false);
 
 }  // namespace AES67::Ravenna
