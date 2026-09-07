@@ -17,6 +17,7 @@
 
 #include "NetworkEngine/PTP/PTPClockSource.h"
 
+#include <ctime>
 #include <string>
 
 namespace AES67::LinuxPtpd {
@@ -41,6 +42,14 @@ public:
 
     /// The device actually opened, for the log line that says which.
     const std::string& devicePath() const { return devicePath_; }
+
+    /// The open descriptor, for the ioctls that ask the clock for things
+    /// clock_gettime does not cover -- its capabilities, and its external
+    /// timestamp channels.
+    int descriptor() const { return fd_; }
+
+    /// The same clock as a clockid_t, which is what clock_adjtime steers.
+    clockid_t clockId() const;
 
     // PTPClockSource.
     uint64_t currentTimeNs() const override;

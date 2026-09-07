@@ -11,6 +11,17 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+// What to announce, and what it means. The box that does this against a word
+// clock announces the same two, for the same reason: a reference that gives
+// frequency and an edge per second carries no traceable absolute time, so
+// clockClass 6 -- locked to a primary reference such as GPS -- would be a
+// lie. 13 is synchronised to an application-specific source, which is what
+// this is.
+constexpr uint8_t kClockClassLocked = 13;
+constexpr uint8_t kClockClassFree = 248;
+constexpr uint8_t kTimeSourceLocked = 0x90;  // OTHER
+constexpr uint8_t kTimeSourceFree = 0xA0;    // INTERNAL_OSCILLATOR
+
 /// A log2-second interval as a duration. The conversion itself is the shared
 /// one (Profiles/PtpIntervals.h): two implementations here already disagreed
 /// about it once, and a third rule was not going to help.
@@ -47,7 +58,8 @@ bool Grandmaster::start(std::string& error) {
     dataset_.clockIdentity = port_.clockIdentity;
     dataset_.priority1 = config_.priority1;
     dataset_.priority2 = config_.priority2;
-    dataset_.clockClass = clock_.clockClass();
+    dataset_.clockClass = kClockClassFree;
+    dataset_.timeSource = kTimeSourceFree;
     dataset_.clockAccuracy = static_cast<uint8_t>(clock_.clockAccuracy());
     dataset_.currentUtcOffset = config_.currentUtcOffset;
     // The offset is a number this machine was told, not one it derived, so it
@@ -169,6 +181,27 @@ void Grandmaster::servicePort(int fd) {
     }
 }
 
+void Grandmaster::followTheReference() {
+    if (reference_ == nullptr) return;
+
+    reference_->service();
+    const ReferenceStatus& status = reference_->status();
+    if (status.locked == announcedLocked_) return;
+
+    // The dataset changes between one Announce and the next, which is exactly
+    // when it should: a clock that has stopped being locked has to stop
+    // saying so before the next device decides to follow it.
+    announcedLocked_ = status.locked;
+    dataset_.clockClass = status.locked ? kClockClassLocked : kClockClassFree;
+    dataset_.timeSource = status.locked ? kTimeSourceLocked : kTimeSourceFree;
+
+    std::printf("[ptpd] reference %s: offset %lld ns, drift %.1f ns/s, "
+                "announcing clockClass %u\n",
+                status.locked ? "locked" : "lost",
+                static_cast<long long>(status.offsetNs), status.driftNsps,
+                static_cast<unsigned>(dataset_.clockClass));
+}
+
 void Grandmaster::run(const std::atomic<bool>& running) {
     const auto announcePeriod = intervalFrom(profile_->settings.logAnnounceInterval);
     const auto syncPeriod = intervalFrom(profile_->settings.logSyncInterval);
@@ -193,6 +226,7 @@ void Grandmaster::run(const std::atomic<bool>& running) {
             if (nextSync < now) nextSync = now + syncPeriod;
         }
 
+        followTheReference();
         servicePort(sockets_.eventFd());
         servicePort(sockets_.generalFd());
 

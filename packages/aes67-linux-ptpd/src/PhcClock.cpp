@@ -90,10 +90,13 @@ bool PhcClock::open(const std::string& interfaceName, const std::string& device,
     return true;
 }
 
+clockid_t PhcClock::clockId() const {
+    return fd_ >= 0 ? clockIdFor(fd_) : CLOCK_REALTIME;
+}
+
 uint64_t PhcClock::currentTimeNs() const {
     struct timespec now {};
-    const clockid_t clock = fd_ >= 0 ? clockIdFor(fd_) : CLOCK_REALTIME;
-    if (::clock_gettime(clock, &now) != 0) return 0;
+    if (::clock_gettime(clockId(), &now) != 0) return 0;
     return static_cast<uint64_t>(now.tv_sec) * 1000000000ULL +
            static_cast<uint64_t>(now.tv_nsec);
 }
