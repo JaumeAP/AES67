@@ -51,4 +51,6 @@ WarningsAsErrors: >
   clang-analyzer-core.*,
   clang-analyzer-cplusplus.*
 
-HeaderFilterRegex: '(Driver|NetworkEngine|Shared)/.*'
+# The package's own headers. Driver/, NetworkEngine/ and Shared/ are the
+# macOS driver's directory names and match nothing here.
+HeaderFilterRegex: 'Profiles/.*'

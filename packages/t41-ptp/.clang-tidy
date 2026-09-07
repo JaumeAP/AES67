@@ -51,4 +51,7 @@ WarningsAsErrors: >
   clang-analyzer-core.*,
   clang-analyzer-cplusplus.*
 
-HeaderFilterRegex: '(Driver|NetworkEngine|Shared)/.*'
+# The package's own headers. Driver/, NetworkEngine/ and Shared/ are the
+# macOS driver's directory names and match nothing here, so this file used
+# to filter the library's own headers out and let the SDK's in.
+HeaderFilterRegex: '(src/ptp|test)/.*'
