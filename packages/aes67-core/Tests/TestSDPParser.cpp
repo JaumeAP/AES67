@@ -214,6 +214,13 @@ TEST_CASE("SDP Generation") {
     std::string generated = SDPParser::generate(session);
     CHECK(!generated.empty());;
 
+    // The origin line in RFC 4566's order: nettype "IN" before addrtype
+    // "IP4", then the address. The defaults were the other way round, and
+    // only a session built here rather than parsed showed it.
+    CHECK((generated.rfind("o=- ", 0) == 0 || generated.find("\no=- ") != std::string::npos));
+    CHECK(generated.find(" IN IP4 192.168.1.200\n") != std::string::npos);
+    CHECK(generated.find("IP4 IN") == std::string::npos);
+
     // Verify it can be parsed back
     auto reparsed = SDPParser::parseString(generated);
     CHECK(reparsed.has_value());;
@@ -318,6 +325,21 @@ a=ts-refclk:ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:domain-nmbr=3
 )";
     auto sN = SDPParser::parseString(sdpN);
     CHECK((sN.has_value() && sN->ptpDomain == 3));
+
+    // And what we write is the bare form: Dante Controller reads the domain
+    // with Integer.parseInt, and "domain-nmbr=0" is not a number to it.
+    SDPSession ours;
+    ours.sessionName = "ours";
+    ours.originAddress = "192.168.1.60";
+    ours.connectionAddress = "239.69.83.20";
+    ours.port = 5004;
+    ours.ptpMasterMAC = "00-60-2B-FF-FE-11-22-33";
+    ours.ptpDomain = 0;
+    const std::string gen = SDPParser::generate(ours);
+    CHECK(gen.find("a=ts-refclk:ptp=IEEE1588-2008:00-60-2B-FF-FE-11-22-33:0\n") != std::string::npos);
+    CHECK(gen.find("domain-nmbr=") == std::string::npos);
+    auto back = SDPParser::parseString(gen);
+    CHECK((back.has_value() && back->ptpDomain == 0 && back->ptpMasterMAC == ours.ptpMasterMAC));
 
     std::cout << "\u2713 PASSED\n";
 }

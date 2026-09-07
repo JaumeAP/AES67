@@ -48,6 +48,13 @@ target_link_libraries(AES67InteropSim PRIVATE aes67_net)
 target_compile_features(AES67InteropSim PRIVATE cxx_std_17)
 target_link_libraries(AES67InteropSim PRIVATE "-framework Accelerate")
 
+# Dante Interop Simulation: dry-run against Dante Controller 4.18's own SAP
+# and SDP handling, in both directions, under every profile.
+add_executable(DanteInteropSim DanteInteropSim.cpp)
+target_include_directories(DanteInteropSim PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(DanteInteropSim PRIVATE aes67_net)
+target_compile_features(DanteInteropSim PRIVATE cxx_std_17)
+
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against
 # no driver code, so it validates what is installed, not this build tree.
