@@ -330,3 +330,21 @@ TEST_CASE("The same answers come back over a real socket") {
     fixture.server.stop();
     CHECK_FALSE(fixture.server.isRunning());
 }
+
+TEST_CASE("paths outside the connection API go to the fallback router") {
+    ConnectionAPIServer server(0);
+    CHECK(server.route("GET", "/x-nmos/node/v1.3/self", "").status == 404);
+    CHECK(server.route("GET", "/x-nmos/", "").body == "[\"connection/\"]");
+
+    server.setFallbackRouter([](const std::string& method, const std::string& path,
+                                const std::string&) {
+        return ConnectionAPIServer::Reply{200, "text/plain", method + " " + path};
+    });
+    const auto reply = server.route("GET", "/x-nmos/node/v1.3/self", "");
+    CHECK(reply.status == 200);
+    CHECK(reply.body == "GET /x-nmos/node/v1.3/self");
+    CHECK(server.route("GET", "/x-nmos/", "").body == "[\"connection/\", \"node/\"]");
+    CHECK(server.route("GET", "/x-nmos", "").body == "[\"connection/\", \"node/\"]");
+    // The Connection API itself is untouched.
+    CHECK(server.route("GET", "/x-nmos/connection/v1.1/", "").body == "[\"single/\", \"bulk/\"]");
+}

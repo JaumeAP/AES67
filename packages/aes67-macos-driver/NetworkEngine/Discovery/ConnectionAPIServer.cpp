@@ -356,6 +356,10 @@ public:
     ConnectionAPIServer::Reply route(const std::string& method, const std::string& path,
                                      const std::string& body) const;
 
+    // Set directly by ConnectionAPIServer::setFallbackRouter(); the serving
+    // thread only ever reads it from route(), so no lock guards it.
+    ConnectionAPIServer::FallbackRouter fallback_;
+
 private:
     /// The five leaves every sender and receiver carries.
     static std::vector<std::string> leaves(bool isSender) {
@@ -421,10 +425,18 @@ ConnectionAPIServer::Reply ConnectionAPIServer::Impl::route(const std::string& m
                                                             const std::string& body) const {
     const std::vector<std::string> pieces = pathPieces(path);
 
-    // /x-nmos/connection/v1.1/...
-    if (pieces.size() < 3 || pieces[0] != "x-nmos" || pieces[1] != "connection") {
+    if (pieces.empty() || pieces[0] != "x-nmos") return {404, "application/json", "[]"};
+    if (pieces.size() == 1) {
+        // The APIs this port serves. The Node API is only listed when
+        // something answers for it.
+        return {200, "application/json",
+                fallback_ ? jsonList({"connection/", "node/"}) : jsonList({"connection/"})};
+    }
+    if (pieces[1] != "connection") {
+        if (fallback_) return fallback_(method, path, body);
         return {404, "application/json", "[]"};
     }
+    if (pieces.size() < 3) return {404, "application/json", "[]"};
     if (pieces[2] != ConnectionAPIServer::kApiVersion) {
         // A version this does not serve is a 404 rather than a guess: a
         // controller that asked for v1.0 semantics must not be answered
@@ -625,6 +637,10 @@ bool ConnectionAPIServer::start(ConnectionSenderLister senders, ConnectionReceiv
 void ConnectionAPIServer::stop() { impl_->stop(); }
 bool ConnectionAPIServer::isRunning() const { return impl_->isRunning(); }
 uint16_t ConnectionAPIServer::boundPort() const { return impl_->boundPort(); }
+
+void ConnectionAPIServer::setFallbackRouter(FallbackRouter router) {
+    impl_->fallback_ = std::move(router);
+}
 
 std::string ConnectionAPIServer::controlHref(const std::string& host) const {
     return "http://" + host + ":" + std::to_string(impl_->boundPort()) + "/x-nmos/connection/" +
