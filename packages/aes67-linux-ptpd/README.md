@@ -99,21 +99,13 @@ the ecosystem: `--priority1`, `--priority2` and the announced quality.
 
 ## Getting it onto the Pi without building it
 
-Every push builds it on native arm64 runners -- the Pi 5's own architecture,
-no cross toolchain and no emulation -- and leaves a `.deb` on the run. Open the
-`linux-ptpd` workflow on GitHub, take the newest green run, and download one of
-two artifacts:
+Every push builds it on a native arm64 runner -- the Pi 5's own architecture,
+no cross toolchain and no emulation -- inside Debian 12, so the binary starts
+on both Raspberry Pi OS Bookworm and Trixie. Open the `linux-ptpd` workflow on
+GitHub, take the newest green run, download the `aes67-ptpd-arm64` artifact,
+and on the Pi:
 
-- `aes67-ptpd-arm64-bookworm` runs on **both** Raspberry Pi OS versions. It is
-  built inside Debian 12, against glibc 2.36 and GCC 12's libstdc++, and a
-  newer system carries those symbols.
-- `aes67-ptpd-arm64-trixie` is built on Ubuntu 24.04 and needs glibc 2.39 and
-  GCC 13's libstdc++, so it runs on Raspberry Pi OS Trixie (Debian 13) and
-  not on Bookworm.
-
-Take the bookworm one unless you have a reason not to. Then, on the Pi:
-
-    unzip aes67-ptpd-arm64-bookworm.zip
+    unzip aes67-ptpd-arm64.zip
     sudo dpkg -i aes67-ptpd-*.deb
     sudo systemctl enable --now aes67-ptpd
 
