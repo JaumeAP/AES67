@@ -29,14 +29,14 @@ public:
         // Create UDP socket
         sockFd_ = socket(AF_INET, SOCK_DGRAM, 0);
         if (sockFd_ < 0) {
-            std::cerr << "Failed to create SAP socket" << std::endl;
+            std::cerr << "Failed to create SAP socket" << '\n';
             return false;
         }
         
         // Enable SO_REUSEADDR to allow reusing the port
         int opt = 1;
         if (setsockopt(sockFd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-            std::cerr << "Failed to set socket options" << std::endl;
+            std::cerr << "Failed to set socket options" << '\n';
             close(sockFd_);
             return false;
         }
@@ -59,7 +59,7 @@ public:
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
         if (bind(sockFd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            std::cerr << "Failed to bind SAP socket" << std::endl;
+            std::cerr << "Failed to bind SAP socket" << '\n';
             close(sockFd_);
             return false;
         }
@@ -83,11 +83,11 @@ public:
             if (setsockopt(sockFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == 0) {
                 ++joined;
             } else {
-                std::cerr << "SAP: could not join multicast group " << group << std::endl;
+                std::cerr << "SAP: could not join multicast group " << group << '\n';
             }
         }
         if (joined == 0) {
-            std::cerr << "Failed to join any SAP multicast group" << std::endl;
+            std::cerr << "Failed to join any SAP multicast group" << '\n';
             close(sockFd_);
             return false;
         }

@@ -208,7 +208,7 @@ std::optional<RTSPResponse> RTSPClient::sendRequest(
     // Send request
     ssize_t sent = send(socket_, requestStr.c_str(), requestStr.length(), 0);
     if (sent < 0) {
-        std::cerr << "RTSPClient: Failed to send request" << std::endl;
+        std::cerr << "RTSPClient: Failed to send request" << '\n';
         return std::nullopt;
     }
 
@@ -362,14 +362,14 @@ bool RTSPClient::connect() {
     // Resolve hostname
     struct hostent* he = gethostbyname(host_.c_str());
     if (!he) {
-        std::cerr << "RTSPClient: Failed to resolve host " << host_ << std::endl;
+        std::cerr << "RTSPClient: Failed to resolve host " << host_ << '\n';
         return false;
     }
 
     // Create socket
     socket_ = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_ < 0) {
-        std::cerr << "RTSPClient: Failed to create socket" << std::endl;
+        std::cerr << "RTSPClient: Failed to create socket" << '\n';
         return false;
     }
 
@@ -387,13 +387,13 @@ bool RTSPClient::connect() {
     memcpy(&serverAddr.sin_addr, he->h_addr_list[0], he->h_length);
 
     if (::connect(socket_, (sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        std::cerr << "RTSPClient: Failed to connect to " << host_ << ":" << port_ << std::endl;
+        std::cerr << "RTSPClient: Failed to connect to " << host_ << ":" << port_ << '\n';
         close(socket_);
         socket_ = -1;
         return false;
     }
 
-    std::cout << "RTSPClient: Connected to " << host_ << ":" << port_ << std::endl;
+    std::cout << "RTSPClient: Connected to " << host_ << ":" << port_ << '\n';
     return true;
 }
 

@@ -33,21 +33,27 @@ NonBlockingLogger::NonBlockingLogger(const std::string& filename) {
 }
 
 NonBlockingLogger::~NonBlockingLogger() {
-    // Signal the writer thread to stop
-    shouldStop_ = true;
-    
-    // Wake up the writer thread if it's sleeping
-    // In a real implementation, we might use a condition variable
-    
-    if (writerThread_.joinable()) {
-        writerThread_.join();
-    }
-    
-    // Flush any remaining messages
-    flush();
-    
-    if (logFile_.is_open()) {
-        logFile_.close();
+    // A destructor that throws during stack unwinding is terminate(). What
+    // can throw here is joining the writer thread or closing the file, and
+    // neither failure is worth more than being swallowed on the way out.
+    try {
+        // Signal the writer thread to stop
+        shouldStop_ = true;
+        
+        // Wake up the writer thread if it's sleeping
+        // In a real implementation, we might use a condition variable
+        
+        if (writerThread_.joinable()) {
+            writerThread_.join();
+        }
+        
+        // Flush any remaining messages
+        flush();
+        
+        if (logFile_.is_open()) {
+            logFile_.close();
+        }
+    } catch (...) {
     }
 }
 
@@ -105,7 +111,7 @@ void NonBlockingLogger::flush() {
         const auto& entry = localQueue.front();
         logFile_ << "[" << entry.timestamp << "] [" 
                  << levelToString(entry.level) << "] " 
-                 << entry.message << std::endl;
+                 << entry.message << '\n';
         localQueue.pop();
     }
     
@@ -129,7 +135,7 @@ void NonBlockingLogger::writerThreadFunc() {
             const auto& entry = localQueue.front();
             logFile_ << "[" << entry.timestamp << "] [" 
                      << levelToString(entry.level) << "] " 
-                     << entry.message << std::endl;
+                     << entry.message << '\n';
             localQueue.pop();
         }
         

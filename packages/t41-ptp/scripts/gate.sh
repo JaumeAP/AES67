@@ -37,6 +37,17 @@ if ! EXTRA_CXXFLAGS="-Werror" make -s -C test; then
 fi
 make -s -C test clean > /dev/null 2>&1
 
+# Static analysis, opt-in like the other packages' (AES67_ANALYSE=1).
+if [ "${AES67_ANALYSE:-0}" = "1" ]; then
+  echo "==> Static analysis"
+  if ! make -s -C test tidy; then
+    echo "FAIL: clang-tidy" >&2
+    exit 1
+  fi
+else
+  echo "==> Static analysis skipped (AES67_ANALYSE=1 to run it)"
+fi
+
 if [ "$board" = "1" ]; then
   if command -v pio > /dev/null 2>&1; then
     echo "==> Board build (Teensy 4.1)"

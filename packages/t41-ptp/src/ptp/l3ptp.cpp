@@ -34,7 +34,8 @@ PTPBase(master_,slave_,p2p_)
 
 l3PTP::~l3PTP()
 {
-    closeSockets();
+    // Qualified, for the reason given in l2PTP's destructor.
+    l3PTP::closeSockets();
 }
 
 void l3PTP::setMulticastTTL(uint8_t val)

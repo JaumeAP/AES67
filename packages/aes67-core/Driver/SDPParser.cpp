@@ -23,7 +23,7 @@ namespace {
 /// the common case stays the plain "1" every other implementation writes.
 std::string formatPTimeMs(uint32_t ptimeUs) {
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(ptimeUs) / 1000.0);
+    (void)std::snprintf(buf, sizeof(buf), "%.3f", static_cast<double>(ptimeUs) / 1000.0);
     std::string out(buf);
     if (out.find('.') != std::string::npos) {
         out.erase(out.find_last_not_of('0') + 1);
@@ -211,7 +211,7 @@ bool SDPParser::parseConnectionLine(const std::string& line, SDPSession& session
     session.connectionType = parts[0];
     session.connectionNetwork = parts[1];
 
-    std::string addrPart = parts[2];
+    const std::string& addrPart = parts[2];
 
     // Handle multicast with TTL: address/ttl
     auto slashPos = addrPart.find('/');
@@ -575,7 +575,11 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
         if (value.empty()) {
             attributes.push_back("a=" + key);
         } else {
-            attributes.push_back("a=" + key + ":" + value);
+            std::string attribute = "a=";
+            attribute += key;
+            attribute += ':';
+            attribute += value;
+            attributes.push_back(std::move(attribute));
         }
     }
 

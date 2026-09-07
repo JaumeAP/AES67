@@ -24,7 +24,7 @@ bool FillAddress(const std::string& path, sockaddr_un* address) {
     std::memset(address, 0, sizeof(*address));
     address->sun_family = AF_UNIX;
     if (path.size() >= sizeof(address->sun_path)) return false;
-    std::snprintf(address->sun_path, sizeof(address->sun_path), "%s",
+    (void)std::snprintf(address->sun_path, sizeof(address->sun_path), "%s",
                   path.c_str());
     return true;
 }
@@ -46,14 +46,14 @@ bool PTPServiceServer::start() {
     sockaddr_un address;
     if (!FillAddress(socketPath_, &address)) {
         std::cerr << "[PTPService] Socket path too long: " << socketPath_
-                  << std::endl;
+                  << '\n';
         return false;
     }
 
     listenFd_ = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (listenFd_ < 0) {
         std::cerr << "[PTPService] socket(): " << std::strerror(errno)
-                  << std::endl;
+                  << '\n';
         return false;
     }
 
@@ -64,7 +64,7 @@ bool PTPServiceServer::start() {
     if (::bind(listenFd_, reinterpret_cast<sockaddr*>(&address),
                sizeof(address)) != 0) {
         std::cerr << "[PTPService] bind(" << socketPath_
-                  << "): " << std::strerror(errno) << std::endl;
+                  << "): " << std::strerror(errno) << '\n';
         ::close(listenFd_);
         listenFd_ = -1;
         return false;
@@ -76,7 +76,7 @@ bool PTPServiceServer::start() {
 
     if (::listen(listenFd_, 8) != 0) {
         std::cerr << "[PTPService] listen(): " << std::strerror(errno)
-                  << std::endl;
+                  << '\n';
         ::close(listenFd_);
         listenFd_ = -1;
         ::unlink(socketPath_.c_str());
@@ -128,7 +128,7 @@ void PTPServiceServer::acceptLoop() {
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
             std::cerr << "[PTPService] accept(): " << std::strerror(errno)
-                      << std::endl;
+                      << '\n';
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
@@ -311,7 +311,7 @@ std::string PTPServiceClient::getGrandmasterID() const {
     std::lock_guard<std::mutex> lock(statusMutex_);
     if (!haveStatus_) return "";
     char text[32];
-    std::snprintf(text, sizeof(text), "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+    (void)std::snprintf(text, sizeof(text), "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
                   status_.grandmasterIdentity[0], status_.grandmasterIdentity[1],
                   status_.grandmasterIdentity[2], status_.grandmasterIdentity[3],
                   status_.grandmasterIdentity[4], status_.grandmasterIdentity[5],

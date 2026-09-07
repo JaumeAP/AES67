@@ -76,6 +76,10 @@ void PTPBase::parsePTPMessage(const uint8_t *buf, int size, const timespec &recv
         }
         else if(followingMaster() && messageType == 8 && size >= PTP_SYNC_LEN && fromSelectedMaster(buf)){
             parseFollowUpMessage(buf);
+        // Two branches call the same parser on purpose: Pdelay_Resp (3) and
+        // Delay_Resp (9) carry the same fields and differ in who may send
+        // them, which is what the two guards say. Merging them would hide
+        // that. NOLINTNEXTLINE(bugprone-branch-clone)
         }else if(p2p && messageType==3 && size >= PTP_DELAY_RESP_LEN){
             // Pdelay_Resp comes from the peer on the wire, which is not
             // the master and is not compared against it -- which is why

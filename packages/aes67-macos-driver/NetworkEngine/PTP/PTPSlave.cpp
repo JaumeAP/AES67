@@ -14,6 +14,7 @@
 //
 
 #include "PTPSlave.h"
+#include "Profiles/PtpIntervals.h"
 #include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "NetworkEngine/NetworkUtils.h"
 
@@ -154,7 +155,7 @@ bool PTPSlave::start() {
     } else {
         // Fallback: use random-ish identity
         std::cerr << "[PTPSlave] Warning: Could not get MAC for "
-                  << config_.interfaceName << ", using fallback identity" << std::endl;
+                  << config_.interfaceName << ", using fallback identity" << '\n';
         auto now = std::chrono::steady_clock::now().time_since_epoch().count();
         for (int i = 0; i < 8; ++i) {
             selfPortId_.clockIdentity.id[i] = static_cast<uint8_t>((now >> (i * 8)) & 0xFF);
@@ -165,7 +166,7 @@ bool PTPSlave::start() {
     // Create multicast sockets
     if (!createSockets()) {
         std::cerr << "[PTPSlave] Failed to create PTP sockets on "
-                  << config_.interfaceName << std::endl;
+                  << config_.interfaceName << '\n';
         return false;
     }
 
@@ -193,7 +194,7 @@ bool PTPSlave::start() {
     std::cout << "[PTPSlave] Starting PTP slave on " << config_.interfaceName
               << " domain " << config_.domain
               << " (identity: " << selfPortId_.clockIdentity.toString() << ")"
-              << std::endl;
+              << '\n';
 
     // Start receive thread
     receiveThread_ = std::thread(&PTPSlave::receiveThread, this);
@@ -228,7 +229,7 @@ void PTPSlave::stop() {
               << " delayReq=" << delayReqSentCount_.load()
               << " delayResp=" << delayRespCount_.load()
               << " announce=" << announceCount_.load()
-              << std::endl;
+              << '\n';
 }
 
 // ============================================================================
@@ -284,7 +285,7 @@ bool PTPSlave::createSockets() {
     eventSocket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (eventSocket_ < 0) {
         std::cerr << "[PTPSlave] Failed to create event socket: "
-                  << strerror(errno) << std::endl;
+                  << strerror(errno) << '\n';
         return false;
     }
 
@@ -312,7 +313,7 @@ bool PTPSlave::createSockets() {
 
     if (bind(eventSocket_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
         std::cerr << "[PTPSlave] Failed to bind event socket to port "
-                  << config_.eventPort << ": " << strerror(errno) << std::endl;
+                  << config_.eventPort << ": " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -338,7 +339,7 @@ bool PTPSlave::createSockets() {
 
     if (setsockopt(eventSocket_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         std::cerr << "[PTPSlave] Failed to join multicast " << kPTPPrimaryMulticast
-                  << " on event socket: " << strerror(errno) << std::endl;
+                  << " on event socket: " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -352,7 +353,7 @@ bool PTPSlave::createSockets() {
                        sizeof(peerMreq)) < 0) {
             std::cerr << "[PTPSlave] Failed to join multicast "
                       << kPTPPeerDelayMulticast << " on event socket: "
-                      << strerror(errno) << std::endl;
+                      << strerror(errno) << '\n';
             closeSockets();
             return false;
         }
@@ -381,7 +382,7 @@ bool PTPSlave::createSockets() {
     generalSocket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (generalSocket_ < 0) {
         std::cerr << "[PTPSlave] Failed to create general socket: "
-                  << strerror(errno) << std::endl;
+                  << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -405,7 +406,7 @@ bool PTPSlave::createSockets() {
 
     if (bind(generalSocket_, reinterpret_cast<struct sockaddr*>(&gaddr), sizeof(gaddr)) < 0) {
         std::cerr << "[PTPSlave] Failed to bind general socket to port "
-                  << config_.generalPort << ": " << strerror(errno) << std::endl;
+                  << config_.generalPort << ": " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -413,7 +414,7 @@ bool PTPSlave::createSockets() {
     // Join multicast on general socket too
     if (setsockopt(generalSocket_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         std::cerr << "[PTPSlave] Failed to join multicast " << kPTPPrimaryMulticast
-                  << " on general socket: " << strerror(errno) << std::endl;
+                  << " on general socket: " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -427,7 +428,7 @@ bool PTPSlave::createSockets() {
                        sizeof(peerMreq)) < 0) {
             std::cerr << "[PTPSlave] Failed to join multicast "
                       << kPTPPeerDelayMulticast << " on general socket: "
-                      << strerror(errno) << std::endl;
+                      << strerror(errno) << '\n';
             closeSockets();
             return false;
         }
@@ -443,7 +444,7 @@ bool PTPSlave::createSockets() {
 
     std::cout << "[PTPSlave] Sockets created: event=" << config_.eventPort
               << " general=" << config_.generalPort
-              << " multicast=" << kPTPPrimaryMulticast << std::endl;
+              << " multicast=" << kPTPPrimaryMulticast << '\n';
 
     return true;
 }
@@ -560,7 +561,7 @@ void PTPSlave::receiveThread() {
                 int timeoutMs = announceIntervalMs * config_.announceTimeoutMultiplier;
                 if (elapsed > timeoutMs) {
                     std::cerr << "[PTPSlave] Announce timeout — master lost after "
-                              << elapsed << "ms" << std::endl;
+                              << elapsed << "ms" << '\n';
                     hasMaster_ = false;
                     locked_.store(false, std::memory_order_release);
                     consecutiveGoodMeasurements_ = 0;
@@ -716,7 +717,7 @@ bool PTPSlave::sendPdelayReq() {
                                 sizeof(dest));
     if (sent < 0) {
         std::cerr << "[PTPSlave] Failed to send Pdelay_Req: " << strerror(errno)
-                  << std::endl;
+                  << '\n';
         return false;
     }
 
@@ -753,7 +754,7 @@ bool PTPSlave::sendPdelayResp(const PTPHeader& request, uint64_t receiptTimeNs) 
     if (sendto(eventSocket_, resp, sizeof(resp), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
         std::cerr << "[PTPSlave] Failed to send Pdelay_Resp: " << strerror(errno)
-                  << std::endl;
+                  << '\n';
         return false;
     }
 
@@ -772,7 +773,7 @@ bool PTPSlave::sendPdelayResp(const PTPHeader& request, uint64_t receiptTimeNs) 
     if (sendto(generalSocket_, followUp, sizeof(followUp), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
         std::cerr << "[PTPSlave] Failed to send Pdelay_Resp_Follow_Up: "
-                  << strerror(errno) << std::endl;
+                  << strerror(errno) << '\n';
         return false;
     }
 
@@ -884,9 +885,9 @@ int PTPSlave::logIntervalToMs(int8_t logInterval) const {
         || logInterval > config_.maxLogInterval) {
         return 0;
     }
-    const double seconds = std::pow(2.0, static_cast<double>(logInterval));
-    const int milliseconds = static_cast<int>(std::lround(seconds * 1000.0));
-    return milliseconds > 0 ? milliseconds : 0;
+    // The arithmetic is the profiles package's, shared with the Teensy
+    // firmware so the two never disagree by a millisecond again.
+    return static_cast<int>(ptpLogIntervalToMilliseconds(logInterval));
 }
 
 bool PTPSlave::parseHeader(const uint8_t* data, size_t len, PTPHeader& header) {
@@ -1209,13 +1210,13 @@ void PTPSlave::handleAnnounce(const PTPHeader& header, const uint8_t* data, size
                   << announcedGrandmaster.toString()
                   << " class=" << static_cast<int>(announce.dataset.clockClass)
                   << " accuracy=0x" << std::hex << static_cast<int>(announce.dataset.clockAccuracy)
-                  << std::dec << std::endl;
+                  << std::dec << '\n';
     } else {
         const bool isBetter = isBetterMaster(announce.dataset, currentMaster_.dataset);
 
         if (isBetter) {
             std::cout << "[PTPSlave] Switching to better master: "
-                      << announcedGrandmaster.toString() << std::endl;
+                      << announcedGrandmaster.toString() << '\n';
             currentMaster_ = announce;
             grandmasterIdentity_ = announcedGrandmaster;
             clockClass_.store(announce.dataset.clockClass, std::memory_order_release);
@@ -1299,7 +1300,7 @@ bool PTPSlave::sendDelayReq() {
                           reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest));
     if (sent < 0) {
         std::cerr << "[PTPSlave] Failed to send Delay_Req: "
-                  << strerror(errno) << std::endl;
+                  << strerror(errno) << '\n';
         return false;
     }
 
@@ -1428,10 +1429,10 @@ void PTPSlave::calculateOffsetAndDelay() {
         if (nowLocked) {
             std::cout << "[PTPSlave] LOCKED to master — offset="
                       << filteredOffset << "ns delay="
-                      << pathDelayNs_.load(std::memory_order_acquire) << "ns" << std::endl;
+                      << pathDelayNs_.load(std::memory_order_acquire) << "ns" << '\n';
         } else {
             std::cout << "[PTPSlave] Lock LOST — offset="
-                      << filteredOffset << "ns" << std::endl;
+                      << filteredOffset << "ns" << '\n';
         }
     }
 

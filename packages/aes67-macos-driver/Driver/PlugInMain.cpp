@@ -47,12 +47,12 @@ void* Create() {
     }
     catch (const std::exception& e) {
         AES67_LOGF("EXCEPTION in Create(): %s", e.what());
-        fprintf(stderr, "AES67 Driver: Failed to create plugin: %s\n", e.what());
+        (void)fprintf(stderr, "AES67 Driver: Failed to create plugin: %s\n", e.what());
         return nullptr;
     }
     catch (...) {
         AES67_LOG("UNKNOWN EXCEPTION in Create()");
-        fprintf(stderr, "AES67 Driver: Unknown error during plugin creation\n");
+        (void)fprintf(stderr, "AES67 Driver: Unknown error during plugin creation\n");
         return nullptr;
     }
 }

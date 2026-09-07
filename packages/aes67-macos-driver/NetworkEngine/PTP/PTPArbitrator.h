@@ -69,7 +69,7 @@ public:
     /// Forwarded to the underlying PTPSlave when it's the active side —
     /// no-op while we're Master (there's nothing to measure against
     /// ourselves).
-    void setMeasurementCallback(PTPMeasurementCallback cb);
+    void setMeasurementCallback(const PTPMeasurementCallback& cb);
 
     void updateDiagnostics(PTPDiagnostics& diag) const;
 
