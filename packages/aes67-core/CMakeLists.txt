@@ -90,7 +90,7 @@ if(AES67_CORE_TESTS)
     # the README -- so it, and only it, links the test double that fills it.
     set(AES67_SEAM_STUB Tests/support/NetworkUtilsStub.cpp)
 
-    foreach(suite SDPParser RTPHeader PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable)
+    foreach(suite SDPParser RTPHeader PacketBudget PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable)
         set(extra_sources "")
         if(suite STREQUAL "StreamConfig")
             set(extra_sources ${AES67_SEAM_STUB})

@@ -1371,17 +1371,17 @@ class DriverManager: ObservableObject {
         .init(id: "ravenna",
               name: "RAVENNA",
               caveats: "A true AES67 superset on receive: accepts RAVENNA's full sample-rate "
-                     + "set (44.1–192 kHz) and any packet time, so a RAVENNA source is not "
-                     + "rejected for using a rate or ptime AES67 doesn't name. Two honest edges "
-                     + "remain, both receiver-architecture limits, not RAVENNA ones: a single "
-                     + "stream is still capped at 8 channels per flow (wider RAVENNA streams "
-                     + "must be split), and only L16/L24 are decoded (RAVENNA's L32 is not). "
-                     + "Transmit still emits 1 ms L24. RAVENNA's Bonjour discovery and stream "
-                     + "redundancy are not implemented.",
-              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
+                     + "set (44.1–384 kHz) and any packet time, so a RAVENNA source is not "
+                     + "rejected for using a rate or ptime AES67 doesn't name. Up to 64 "
+                     + "channels in one flow, as far as they fit in a 1500-byte frame: 64 "
+                     + "channels of L24 need a packet time of 125 µs, and at 1 ms ten fit. "
+                     + "Only L16/L24 are decoded (RAVENNA's L32 is not). Transmit still emits "
+                     + "1 ms L24, so its own flows carry up to ten channels at 48 kHz. "
+                     + "RAVENNA's Bonjour discovery and stream redundancy are not implemented.",
+              domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: 0,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
-              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
-              allowedSampleRates: [44100, 48000, 88200, 96000, 176400, 192000], allowedPtimesUs: [],
+              maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: 46,
+              allowedSampleRates: [44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000], allowedPtimesUs: [],
               allowedEncodings: ["L16", "L24"],
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "st2110-30",
@@ -1404,10 +1404,9 @@ class DriverManager: ObservableObject {
                      + "Level B — a Level A device must not be sent 125 µs packets, and Level A "
                      + "is what everything supports. This driver's transmitter emits whatever "
                      + "packet time the stream asks for, so 125 µs is reachable, but it has "
-                     + "never been tested against real Level B gear. Levels C (64 channels in "
-                     + "one stream, more than this driver's 8-channel flow limit) and AX/BX/CX "
-                     + "(96 kHz) are not offered. Same PTP caveat as Level A. Not a conformance "
-                     + "claim.",
+                     + "never been tested against real Level B gear. Level C (64 channels in "
+                     + "one stream) and AX/BX/CX (96 kHz) are not offered. Same PTP caveat as "
+                     + "Level A. Not a conformance claim.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,

@@ -28,10 +28,16 @@ struct SDPSession {
     uint64_t sessionVersion{0};     // o= (version)
 
     // Origin
+    // o=<username> <sess-id> <sess-version> <nettype> <addrtype> <unicast-address>
+    // (RFC 4566 §5.2). The two type fields used to default the other way
+    // round -- nettype "IP4", addrtype "IN" -- which the parser never showed,
+    // since it fills both from the line it reads, and every generated session
+    // that was not first parsed went out as "o=- 1 1 IP4 IN ". Dante Controller
+    // keys a flow on this line's address and session id (RtpFlowIdentity).
     std::string originUsername{"-"};       // o= (username, usually "-")
     std::string originAddress;             // o= (unicast address)
-    std::string originAddressType{"IN"};   // o= (usually "IN")
-    std::string originNetworkType{"IP4"};  // o= (usually "IP4")
+    std::string originNetworkType{"IN"};   // o= <nettype>, "IN"
+    std::string originAddressType{"IP4"};  // o= <addrtype>, "IP4"
 
     // Connection (c=)
     std::string connectionAddress;   // Usually multicast IP

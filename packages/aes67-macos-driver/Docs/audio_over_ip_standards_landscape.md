@@ -36,7 +36,10 @@ is the common subset they meet on.
 
 Practical consequence: the 8-channel flow splitting added for Dante
 compatibility is not Dante-specific. It applies identically to Livewire+,
-Q-LAN, WheatNet-IP and RAVENNA, because the limit belongs to AES67 itself.
+Q-LAN and WheatNet-IP, because the limit belongs to AES67 itself. RAVENNA
+is the exception: its flows go to 64 channels, and the driver's RAVENNA
+profile takes them, as far as they fit in one frame at the packet time
+the stream uses.
 
 ## SMPTE ST 2110-30 — a constrained subset, not a separate target
 

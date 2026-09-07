@@ -437,6 +437,28 @@ SAPAnnouncement SAPListener::parseAnnouncement(const char* data, size_t length,
         return announcement;
     }
 
+    // RFC 2974 §3: the payload may start with its MIME type as a
+    // NUL-terminated string, "application/sdp". Optional, and absent from
+    // most AES67 gear, but Dante Controller's SapMessages writes it in every
+    // packet it builds. It used to be kept as the first line of the session
+    // description, which only worked because the SDP parser skips what it
+    // does not recognise; the description a UI shows, or a file writes,
+    // began with "application/sdp". An SDP starts with "v=", so a payload
+    // that does not is looked at for a type first.
+    if (payloadLen >= 2 && !(data[payloadStart] == 'v' && data[payloadStart + 1] == '=')) {
+        const size_t probe = std::min<size_t>(payloadLen, 64);
+        const char* nul = static_cast<const char*>(
+            std::memchr(data + payloadStart, '\0', probe));
+        if (nul != nullptr) {
+            const size_t typeLen = static_cast<size_t>(nul - (data + payloadStart));
+            payloadStart += typeLen + 1;
+            payloadLen = length - payloadStart;
+            if (payloadLen < 5) {
+                return announcement;
+            }
+        }
+    }
+
     // The payload should be an SDP description
     std::string sdpContent(data + payloadStart, payloadLen);
 

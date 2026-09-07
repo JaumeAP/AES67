@@ -391,11 +391,13 @@ bool SDPParser::parsePTPRefClockAttribute(const std::string& value, SDPSession& 
     }
 
     // Two grandmaster forms exist in the wild:
-    //   ptp=IEEE1588-2008:<gmid>:<domain>            (RFC 7273, bare number —
-    //                                                 what the AES67 Linux
-    //                                                 daemon and most standard
-    //                                                 senders emit)
-    //   ptp=IEEE1588-2008:<gmid>:domain-nmbr=<n>     (a variant some tools use)
+    //   ptp=IEEE1588-2008:<gmid>:<domain>            (RFC 7273's example, bare
+    //                                                 number — what Dante,
+    //                                                 RAVENNA, ST 2110 and the
+    //                                                 AES67 Linux daemon emit,
+    //                                                 and what generate() writes)
+    //   ptp=IEEE1588-2008:<gmid>:domain-nmbr=<n>     (RFC 7273's ABNF, which
+    //                                                 some tools follow)
     // and the domain may be absent entirely. Accept all of them. The gmid is
     // an EUI-64, usually hyphen-separated; the field separator is ':'.
     const std::string prefix = "ptp=IEEE1588-2008:";
@@ -555,13 +557,20 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
 
     // PTP reference clock. The traceable form omits gmid and domain (RFC
     // 7273) and takes precedence over a named grandmaster.
+    //
+    // The domain goes out as a bare number -- ":0" -- and not as RFC 7273's
+    // ABNF "domain-nmbr=0". The bare form is the RFC's own example, AES67's
+    // example, what ST 2110-10 requires, and what Dante, RAVENNA and the
+    // AES67 Linux daemon all write; Dante Controller reads the field with
+    // Integer.parseInt and takes nothing else (DanteInteropSim). The parser
+    // above still accepts both.
     if (session.ptpTraceable) {
         attributes.push_back("a=ts-refclk:ptp=IEEE1588-2008:traceable");
     } else if (session.ptpDomain >= 0 && !session.ptpMasterMAC.empty()) {
         std::ostringstream ptpRefclk;
         ptpRefclk << "a=ts-refclk:ptp=IEEE1588-2008:"
                   << session.ptpMasterMAC
-                  << ":domain-nmbr=" << session.ptpDomain;
+                  << ":" << session.ptpDomain;
         attributes.push_back(ptpRefclk.str());
     }
 

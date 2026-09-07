@@ -125,9 +125,12 @@ struct CompatibilityProfile {
     /// Encodings accepted, as they appear in SDP ("L16", "L24", "AM824").
     std::vector<std::string> allowedEncodings;
 
-    /// Hard ceiling on channels in a single flow. AES67's own limit is 8,
-    /// and no profile here raises it — StreamManager::createTxStreamFlows()
-    /// splits anything wider regardless.
+    /// Hard ceiling on channels in a single flow. AES67's own limit is 8;
+    /// RAVENNA's is 64, the most the driver's RTP path carries
+    /// (StreamChannelMapper::kMaxChannelsPerFlow), and no profile goes past
+    /// that. Whether a flow that wide fits in a frame is a matter of packet
+    /// time, and the driver checks that separately (PacketBudget): a
+    /// profile filters, it does not grant.
     uint16_t maxChannelsPerFlow{8};
 
     /// True for the Dolby Atmos Connect wire scheme, confirmed by two

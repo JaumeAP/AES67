@@ -13,6 +13,7 @@
 #include "NetworkEngine/AmplifierUnitSettings.h"
 #include "NetworkEngine/NMOSSettings.h"
 #include "NetworkEngine/PTP/PTPMasterSettings.h"
+#include "NetworkEngine/NetworkInterfaceDetection.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <algorithm>
 #include <utility>
@@ -283,12 +284,25 @@ void AES67Device::Initialize() {
     // Listening (above) lets us find others; announcing lets others find us.
     // Like discovery, a failure here is not fatal - audio still flows, only
     // auto-discovery of our sources is lost.
+    //
+    // Announced from the address of the interface the audio leaves by: the
+    // SAP header's originating source, and the SDP's o= address, which is
+    // half of the identity a receiver keys the flow on (Dante Controller's
+    // RtpFlowIdentity is that address plus the session id). Both went out
+    // empty -- 0.0.0.0 in the header, "o=- <id> 1 IN IP4 " in the body --
+    // because createTxStream() sets no origin and the announcer was
+    // initialised without an interface (DanteInteropSim, 2026-09-07).
+    const std::string sapInterface = NetworkInterfaceDetection::detectPTPInterface();
+    const std::string sapAddress = sapInterface.empty()
+        ? std::string{}
+        : NetworkInterfaceDetection::getInterfaceIPAddress(sapInterface);
     sapAnnouncer_ = std::make_unique<SAPAnnouncer>();
-    if (sapAnnouncer_->initialize() &&
-        sapAnnouncer_->start([this]() {
+    if (sapAnnouncer_->initialize(sapAddress) &&
+        sapAnnouncer_->start([this, sapAddress]() {
             std::vector<std::string> sdps;
             if (!streamManager_) return sdps;
-            for (const auto& session : streamManager_->getTransmitSessions()) {
+            for (SDPSession session : streamManager_->getTransmitSessions()) {
+                if (session.originAddress.empty()) session.originAddress = sapAddress;
                 std::string sdp = SDPParser::generate(session);
                 if (!sdp.empty()) sdps.push_back(std::move(sdp));
             }
