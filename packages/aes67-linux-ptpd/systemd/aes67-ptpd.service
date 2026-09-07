@@ -1,0 +1,31 @@
+[Unit]
+Description=AES67 PTP grandmaster
+Documentation=https://github.com/JaumeAP/AES67
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/aes67-ptpd --interface eth0 --profile aes67
+Restart=on-failure
+RestartSec=2
+
+# Two capabilities and no more: CAP_NET_ADMIN turns the NIC's timestamping on
+# through SIOCSHWTSTAMP, CAP_NET_BIND_SERVICE opens UDP 319 and 320. The
+# daemon needs no filesystem, no other network administration and no root.
+User=root
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=no
+DeviceAllow=/dev/ptp0 rw
+DeviceAllow=/dev/ptp1 rw
+RestrictAddressFamilies=AF_INET AF_PACKET AF_NETLINK
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

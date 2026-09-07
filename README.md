@@ -12,6 +12,7 @@ not because they build together.
 | [`packages/aes67-profiles`](packages/aes67-profiles) | The tables every implementation here has to agree on: the AoIP compatibility profiles, the Dolby per-model data and the PTP profiles. Freestanding headers -- no platform, no operating system, no other package -- so the macOS core and the Teensy firmware read the same numbers instead of keeping two copies | CMake, C++20 |
 | [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
 | [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app and the tools | CMake, C++20 and Objective-C++ |
+| [`packages/aes67-linux-ptpd`](packages/aes67-linux-ptpd) | A PTP grandmaster for Linux, written for a Raspberry Pi 5: it announces the NIC's own hardware clock, stamps its Sync messages with it and reads its rates from `aes67-profiles`. Announce, Sync/Follow_Up and Delay_Resp; no BMCA and no slave side | CMake, C++20 |
 | [`packages/t41-ptp`](packages/t41-ptp) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
 
 The grandmaster firmware that consumes `t41-ptp` is not here: it is
@@ -40,6 +41,7 @@ Each package's gate can be run on its own, from anywhere:
 ```bash
 packages/aes67-core/scripts/gate.sh
 packages/aes67-macos-driver/scripts/gate.sh
+packages/aes67-linux-ptpd/scripts/gate.sh
 packages/t41-ptp/scripts/gate.sh
 ```
 
