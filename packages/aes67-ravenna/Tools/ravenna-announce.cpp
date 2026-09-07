@@ -12,7 +12,16 @@
 //                    [--channels 2] [--rtsp-port 8554] [--host box.local]
 //                    [--device-channel 0] [--ptime-us 1000]
 //                    [--ptp-gmid 00-1D-C1-FF-FE-00-00-01] [--ptp-domain 0]
+//                    [--nmos-port 8080]
 //
+// It serves NMOS IS-05 as well as RAVENNA's own discovery, which is what a
+// controller uses to hand this device somebody else's stream: PATCH the SDP
+// onto the receiver's staged endpoint, activate it, and the channels are
+// assigned through aes67-core's StreamChannelMapper.
+//
+#include "NetworkEngine/StreamChannelMapper.h"
+#include "Ravenna/ConnectionApi.h"
+#include "Ravenna/HttpServer.h"
 #include "Ravenna/MdnsResponder.h"
 #include "Ravenna/RtspServer.h"
 #include "Ravenna/SessionCatalogue.h"
@@ -20,6 +29,7 @@
 #include <arpa/inet.h>
 
 #include <atomic>
+#include <map>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
@@ -39,7 +49,8 @@ void usage() {
                  "                        [--name TEXT] [--group A.B.C.D] [--port N]\n"
                  "                        [--channels N] [--rtsp-port N] [--host NAME]\n"
                  "                        [--device-channel N] [--ptime-us N]\n"
-                 "                        [--ptp-gmid ID] [--ptp-domain N]\n");
+                 "                        [--ptp-gmid ID] [--ptp-domain N]\n"
+                 "                        [--nmos-port N]\n");
 }
 
 const char* valueFor(int argc, char** argv, int& index) {
@@ -75,6 +86,7 @@ int main(int argc, char** argv) {
     uint32_t ptimeUs = 1000;
     std::string ptpGrandmaster;
     int ptpDomain = 0;
+    uint16_t nmosPort = 8080;
 
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
@@ -94,6 +106,7 @@ int main(int argc, char** argv) {
         else if (option == "--ptime-us") { if (!need()) { usage(); return 2; } ptimeUs = static_cast<uint32_t>(std::atoi(value)); }
         else if (option == "--ptp-gmid") { if (!need()) { usage(); return 2; } ptpGrandmaster = value; }
         else if (option == "--ptp-domain") { if (!need()) { usage(); return 2; } ptpDomain = std::atoi(value); }
+        else if (option == "--nmos-port") { if (!need()) { usage(); return 2; } nmosPort = static_cast<uint16_t>(std::atoi(value)); }
         else { std::fprintf(stderr, "unknown option: %s\n", option.c_str()); usage(); return 2; }
     }
 
@@ -140,6 +153,93 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // IS-05. The sender is what this machine offers; the receiver is what a
+    // controller can point at somebody else's stream, and activating it is
+    // where the channels get assigned.
+    StreamChannelMapper mapper;
+    ConnectionApi connections;
+
+    ConnectionSender nmosSender;
+    nmosSender.id = "sender-" + sessionName;
+    nmosSender.label = sessionName;
+    nmosSender.sdp = SDPParser::generate(session.sdp);
+    connections.addSender(nmosSender);
+
+    ConnectionReceiver nmosReceiver;
+    nmosReceiver.id = "receiver-1";
+    nmosReceiver.label = "Device channels " + std::to_string(deviceChannel) + " and up";
+    connections.addReceiver(nmosReceiver);
+
+    // A receiver's name is not a StreamID: the matrix keys on a UUID, and one
+    // has to be kept per receiver so that disabling frees the channels the
+    // same receiver took.
+    std::map<std::string, StreamID> streamIdOf;
+
+    connections.onReceiverActivation([&mapper, &streamIdOf](const std::string& id,
+                                                           const std::string& sdp, bool enable,
+                                                           std::string& why) {
+        const auto known = streamIdOf.find(id);
+
+        if (!enable) {
+            // Disabling is what a controller does to break a connection, and
+            // it has to free the channels or the next one finds them taken.
+            if (known != streamIdOf.end()) {
+                mapper.removeMapping(known->second);
+                streamIdOf.erase(known);
+            }
+            std::printf("[ravenna] receiver %s disabled, channels freed\n", id.c_str());
+            return true;
+        }
+
+        const auto parsed = SDPParser::parseString(sdp);
+        if (!parsed) {
+            why = "the transport file is not an SDP this device can read";
+            return false;
+        }
+
+        // Whatever this receiver held before: a controller pointing it at
+        // another stream is one connection replacing another, not two.
+        if (known != streamIdOf.end()) {
+            mapper.removeMapping(known->second);
+            streamIdOf.erase(known);
+        }
+
+        // The routing matrix decides where they land, and refuses if they do
+        // not fit: this is aes67-core's, the same one the driver uses.
+        auto mapping = mapper.createDefaultMapping(*parsed);
+        if (!mapping) {
+            why = "no free device channels for " + std::to_string(parsed->numChannels) +
+                  " channels";
+            return false;
+        }
+        mapping->streamID = StreamID::generate();
+
+        // Asked before adding, because addMapping() answers false to a
+        // mapping that does not validate and to one that overlaps alike, and
+        // the two are not the same thing to tell a controller.
+        if (!mapper.validateMapping(*mapping, &why)) return false;
+        if (!mapper.addMapping(*mapping)) {
+            why = "the mapping overlaps one already in place";
+            return false;
+        }
+        streamIdOf[id] = mapping->streamID;
+
+        std::printf("[ravenna] receiver %s: %u channels of \"%s\" onto device channels "
+                    "%u..%u\n",
+                    id.c_str(), static_cast<unsigned>(parsed->numChannels),
+                    parsed->sessionName.c_str(),
+                    static_cast<unsigned>(mapping->deviceChannelStart),
+                    static_cast<unsigned>(mapping->deviceChannelStart +
+                                          mapping->deviceChannelCount - 1));
+        return true;
+    });
+
+    HttpServer nmos(connections);
+    if (!nmos.start(nmosPort, error)) {
+        std::fprintf(stderr, "nmos: %s\n", error.c_str());
+        return 1;
+    }
+
     MdnsResponder mdns(catalogue);
     if (!mdns.start(interfaceName, hostName, address, rtsp.port(), error)) {
         std::fprintf(stderr, "mdns: %s\n", error.c_str());
@@ -168,17 +268,23 @@ int main(int argc, char** argv) {
                      "receiver that requires one will not lock to this stream\n");
     }
 
+    std::printf("[ravenna] IS-05 on port %u, at %s/single/\n",
+                static_cast<unsigned>(nmos.port()), kConnectionApiRoot);
+
     size_t queries = 0;
     size_t describes = 0;
+    size_t requests = 0;
     auto nextReport = std::chrono::steady_clock::now() + std::chrono::seconds(1);
 
     while (g_running.load(std::memory_order_acquire)) {
         queries += mdns.service();
         describes += rtsp.service();
+        requests += nmos.service();
 
         const auto now = std::chrono::steady_clock::now();
         if (now >= nextReport) {
-            std::printf("[ravenna] answered %zu queries, %zu describes\n", queries, describes);
+            std::printf("[ravenna] answered %zu queries, %zu describes, %zu IS-05 requests\n",
+                        queries, describes, requests);
             nextReport = now + std::chrono::seconds(1);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));

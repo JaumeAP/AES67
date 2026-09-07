@@ -19,7 +19,8 @@ echo "==> Build"
 cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
-ctest --test-dir build --output-on-failure -R "RtspMessages|DnsSd|SessionCatalogue" || {
+ctest --test-dir build --output-on-failure \
+    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 echo "==> A DESCRIBE over the loopback"
@@ -27,22 +28,46 @@ echo "==> A DESCRIBE over the loopback"
 # answers, not to advertise a session that does not exist onto somebody's
 # network.
 port=18999
+nmos_port=18998
 ./build/ravenna-announce --interface lo0 --address 127.0.0.1 --name GateSession \
-    --rtsp-port "$port" --ptp-gmid 00-1D-C1-FF-FE-00-00-01 > /dev/null 2>&1 &
+    --rtsp-port "$port" --nmos-port "$nmos_port" \
+    --ptp-gmid 00-1D-C1-FF-FE-00-00-01 > /dev/null 2>&1 &
 announcer=$!
 sleep 2
 
 answer=$(printf 'DESCRIBE rtsp://127.0.0.1:%s/by-name/GateSession RTSP/1.0\r\nCSeq: 1\r\n\r\n' \
     "$port" | nc -w 2 127.0.0.1 "$port")
+
+echo "==> An IS-05 connection over the loopback"
+# The whole exchange a controller performs to assign one device's stream to
+# another's channels: read the sender's transport file, stage it on the
+# receiver, activate it. Passing it means the SDP went through the API, the
+# receiver accepted it and the routing matrix found room.
+base="http://127.0.0.1:$nmos_port/x-nmos/connection/v1.1/single"
+sdp=$(curl -s "$base/senders/sender-GateSession/transportfile/" \
+    | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+activated=$(curl -s -X PATCH -H 'Content-Type: application/json' \
+    -d "{\"master_enable\":true,\"transport_file\":{\"data\":$sdp,\"type\":\"application/sdp\"},\"activation\":{\"mode\":\"activate_immediate\"}}" \
+    "$base/receivers/receiver-1/staged/")
+
 kill "$announcer" 2> /dev/null
 wait "$announcer" 2> /dev/null
 
 case "$answer" in
   *"RTSP/1.0 200 OK"*"application/sdp"*"s=GateSession"*"ts-refclk"*)
-    echo "answered with the session's SDP" ;;
+    echo "the DESCRIBE answered with the session's SDP" ;;
   *)
     echo "FAIL: the announcer did not describe its own session" >&2
     echo "$answer" >&2
+    exit 1 ;;
+esac
+
+case "$activated" in
+  *'"mode":"activate_immediate"'*'"master_enable":true'*)
+    echo "the receiver took the stream and the channels were assigned" ;;
+  *)
+    echo "FAIL: the IS-05 activation did not go through" >&2
+    echo "$activated" >&2
     exit 1 ;;
 esac
 
