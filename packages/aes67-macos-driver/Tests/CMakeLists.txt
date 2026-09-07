@@ -283,6 +283,14 @@ target_link_libraries(TestConnectionAPI PRIVATE aes67_net)
 target_link_libraries(TestConnectionAPI PRIVATE doctest_headers)
 target_compile_features(TestConnectionAPI PRIVATE cxx_std_17)
 
+add_executable(TestNodeAPI
+    TestNodeAPI.cpp
+)
+target_include_directories(TestNodeAPI PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(TestNodeAPI PRIVATE aes67_net)
+target_link_libraries(TestNodeAPI PRIVATE doctest_headers)
+target_compile_features(TestNodeAPI PRIVATE cxx_std_17)
+
 # Test: registering as an IS-04 node, against a registry made of a socket.
 add_executable(TestNMOSRegistration
     TestNMOSRegistration.cpp
@@ -582,6 +590,7 @@ add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
+add_test(NAME NodeAPI COMMAND TestNodeAPI)
 add_test(NAME SAPListener COMMAND TestSAPListener)
 add_test(NAME RTCPMonitor COMMAND TestRTCPMonitor)
 add_test(NAME HTTPClient COMMAND TestHTTPClient)
@@ -628,6 +637,7 @@ set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPMasterBoxInterop PROPERTIES LABELS "unit;interop" TIMEOUT 60)
 set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(ConnectionAPI PROPERTIES LABELS "unit;network" TIMEOUT 60)
+set_tests_properties(NodeAPI PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SAPListener PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTCPMonitor PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(HTTPClient PROPERTIES LABELS "unit;network" TIMEOUT 60)
