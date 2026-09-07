@@ -192,6 +192,14 @@ set(DRIVER_SOURCES
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../aes67-core
                  ${CMAKE_CURRENT_BINARY_DIR}/aes67-core)
 
+# RAVENNA's session layer, for the mDNS responder that advertises the NMOS
+# node. Library only: its tool and tests run in its own gate.
+set(AES67_RAVENNA_TOOLS_AND_TESTS OFF CACHE BOOL "" FORCE)
+if(NOT TARGET aes67_ravenna)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../aes67-ravenna
+                     ${CMAKE_CURRENT_BINARY_DIR}/aes67-ravenna)
+endif()
+
 # Includes are written relative to the repository root now, not to the file
 # doing the including. That became necessary when the core moved out: a header
 # that says "Shared/Types.h" resolves the same whether Shared/ is here or in
@@ -218,13 +226,15 @@ set(AES67_NET_SOURCES
     NetworkEngine/Discovery/RTCPMonitor.cpp
     NetworkEngine/Discovery/RTSPClient.cpp
     NetworkEngine/Discovery/ConnectionAPIServer.cpp
+    NetworkEngine/Discovery/NodeAPIRouter.cpp
+    NetworkEngine/Discovery/NodeAdvertiser.cpp
     NetworkEngine/Discovery/HTTPClient.cpp
     NetworkEngine/Discovery/NMOSRegistrationClient.cpp
     NetworkEngine/Discovery/SDPFetcher.cpp
 )
 
 add_library(aes67_net STATIC ${AES67_NET_SOURCES})
-target_link_libraries(aes67_net PUBLIC aes67_core)
+target_link_libraries(aes67_net PUBLIC aes67_core aes67_ravenna)
 # The driver is a bundle, so everything linked into it has to be relocatable.
 set_target_properties(aes67_net PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

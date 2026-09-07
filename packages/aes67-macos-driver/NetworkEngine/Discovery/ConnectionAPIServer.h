@@ -122,6 +122,14 @@ public:
     /// worth pinning down on its own.
     static ConnectionPatch parsePatch(const std::string& json);
 
+    using FallbackRouter = std::function<Reply(const std::string& method,
+                                               const std::string& path,
+                                               const std::string& body)>;
+    /// Answers requests under /x-nmos/ that are not the Connection API:
+    /// the Node API shares this port. Set before start(); the serving
+    /// thread reads it without a lock.
+    void setFallbackRouter(FallbackRouter router);
+
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;

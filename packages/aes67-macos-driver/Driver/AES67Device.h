@@ -14,6 +14,8 @@
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
+#include "NetworkEngine/Discovery/NodeAPIRouter.h"
+#include "NetworkEngine/Discovery/NodeAdvertiser.h"
 #include "NetworkEngine/Discovery/RTSPServer.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/PTP/PTPPeerObserver.h"
@@ -26,6 +28,7 @@
 #include <array>
 #include <atomic>
 #include <condition_variable>
+#include <map>
 #include <thread>
 #include <mutex>
 
@@ -242,16 +245,24 @@ private:
     /// about the audio path depends on it: a plant with a registry gets
     /// this driver in its inventory, a plant without one is unaffected.
     std::unique_ptr<NMOSRegistrationClient> nmosClient_;
-    /// The registry is told about the streams from here, and never from a
-    /// stream callback: those run with StreamManager's own mutex held, and
-    /// describing the streams means asking StreamManager for them, which
-    /// would take that mutex again. The callbacks set a flag; this thread
-    /// does the work once they have let go.
     /// The IS-05 Connection API, which is what turns the registry entry
     /// from something a controller can look at into something it can
     /// patch. Bound to an ephemeral port and advertised in the device's
     /// controls.
     std::unique_ptr<ConnectionAPIServer> connectionServer_;
+    /// The IS-04 Node API, on the Connection API's port, and the mDNS
+    /// advertisement that lets a controller find it. Both run whenever the
+    /// device does; registering with a registry (nmosClient_) is separate.
+    std::unique_ptr<NodeAPIRouter> nodeRouter_;
+    std::unique_ptr<NodeAdvertiser> nodeAdvertiser_;
+    /// The registry is told about the streams from here, on a thread of
+    /// its own, and never from a stream callback: describing the streams
+    /// means asking StreamManager for them, which takes StreamManager's
+    /// mutex, and a registry PUT is a network round trip to hold it
+    /// across. The callbacks only set a flag. They do run with that mutex
+    /// released -- StreamManager unlocks before it notifies -- so the
+    /// thread is about not blocking the stream that just changed, not
+    /// about re-entering a lock.
     std::thread nmosSyncThread_;
     std::mutex nmosSyncMutex_;
     std::condition_variable nmosSyncSignal_;
@@ -272,6 +283,27 @@ private:
     /// one and patches the other has to be talking about the same things.
     std::vector<ConnectionSender> connectionSenders();
     std::vector<ConnectionReceiver> connectionReceivers();
+
+    /// Which sender each receiver was patched onto, keyed by the receiver
+    /// id IS-05 uses. A receive stream knows the address it listens to and
+    /// nothing about whose id that address belonged to, so the answer to
+    /// `active`'s sender_id exists nowhere else -- and a controller that
+    /// reads null there can never show the receiver connected, nor offer
+    /// the disconnect that hangs off being connected.
+    ///
+    /// Its own mutex rather than nmosSyncMutex_: that one guards the sync
+    /// thread's wakeup and nothing here waits on a condition. The
+    /// Connection API serves one client at a time, so today the writer in
+    /// applyConnectionPatch and the reader in connectionReceivers() are
+    /// the same thread; the mutex is what keeps that from being an
+    /// assumption the next caller has to know about.
+    std::map<std::string, std::string> receiverSenderIds_;
+    std::mutex receiverSenderIdsMutex_;
+
+    /// The streams as IS-04 describes them, for the registry and the Node
+    /// API alike.
+    std::vector<NMOSSenderResource> nmosSenderResources();
+    std::vector<NMOSReceiverResource> nmosReceiverResources();
 
     /// The NMOS id for a stream of this name, or empty when NMOS is off.
     std::string nmosIdFor(const std::string& prefix, const std::string& name) const;

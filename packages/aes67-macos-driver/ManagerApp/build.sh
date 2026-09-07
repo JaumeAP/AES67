@@ -37,6 +37,8 @@ swiftc -o AES67Manager \
   Models/PrivilegedScript.swift \
   Models/DolbyModelCatalog.swift \
   Models/MenuBarManager.swift \
+  Models/NmosResources.swift \
+  Models/NmosController.swift \
   Views/ContentView.swift \
   Views/StreamListView.swift \
   Views/StreamDetailView.swift \
@@ -49,6 +51,7 @@ swiftc -o AES67Manager \
   Views/ProfileParametersView.swift \
   Views/DiscoveredSessionsView.swift \
   Views/AudioStatusView.swift \
+  Views/RoutingMatrixView.swift \
   AES67ManagerApp.swift
 
 # Create app bundle structure

@@ -63,7 +63,8 @@ std::vector<std::string> segmentsOf(const std::string& path) {
 
 }  // namespace
 
-JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile) {
+JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile,
+                      bool includeSenderId) {
     JsonObject activation;
     activation["mode"] = state.activationMode == "null" ? JsonValue()
                                                         : JsonValue(state.activationMode);
@@ -78,6 +79,10 @@ JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile) {
     // with a redundant pair can describe both, and saying two when there is
     // one is how a controller ends up waiting for a stream nobody sends.
     object["transport_params"] = JsonValue(JsonArray{JsonValue(JsonObject{})});
+
+    if (includeSenderId) {
+        object["sender_id"] = state.senderId.empty() ? JsonValue() : JsonValue(state.senderId);
+    }
 
     if (includeTransportFile) {
         JsonObject file;
@@ -147,6 +152,19 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
         staged.masterEnable = enable.asBool();
     }
 
+    if (patch.has("sender_id")) {
+        // Null is how a controller says "take nothing", which is what a
+        // crosspoint being cleared sends.
+        const JsonValue& senderId = patch["sender_id"];
+        if (senderId.isNull()) {
+            staged.senderId.clear();
+        } else if (senderId.isString()) {
+            staged.senderId = senderId.asString();
+        } else {
+            return errorResponse(400, "sender_id has to be a string or null");
+        }
+    }
+
     if (patch.has("transport_file")) {
         const JsonValue& file = patch["transport_file"];
         if (!file.isObject()) return errorResponse(400, "transport_file has to be an object");
@@ -191,7 +209,7 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
     if (activationMode.empty()) {
         // Staged and not activated, which is the normal first half of the
         // exchange: a controller stages, checks, then activates.
-        return jsonResponse(200, stateAsJson(found->second.staged, true));
+        return jsonResponse(200, stateAsJson(found->second.staged, true, true));
     }
 
     if (staged.masterEnable && staged.transportFile.empty()) {
@@ -216,7 +234,7 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
     found->second.staged.activationMode = "null";
     found->second.staged.activationTime.clear();
 
-    return jsonResponse(200, stateAsJson(found->second.active, true));
+    return jsonResponse(200, stateAsJson(found->second.active, true, true));
 }
 
 ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::string& body) {
@@ -363,8 +381,8 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
                                                      true));
             }
             const ConnectionReceiver& receiver = receivers_[id];
-            return jsonResponse(200,
-                                stateAsJson(wantStaged ? receiver.staged : receiver.active, true));
+            return jsonResponse(
+                200, stateAsJson(wantStaged ? receiver.staged : receiver.active, true, true));
         }
 
         if (method == "PATCH") {

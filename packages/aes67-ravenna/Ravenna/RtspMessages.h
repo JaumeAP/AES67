@@ -56,6 +56,13 @@ bool parseRtspRequest(const std::string& text, RtspRequest& out);
 ///
 /// Anything that is not a valid escape is left as it stands: this reads text
 /// off a socket, and a stray % is a malformed path, not a reason to throw.
+///
+/// This decodes %2F to a slash, which HttpServer.cpp's decodePath does not.
+/// The difference is what happens next: an RTSP URL is decoded whole and
+/// compared against a session name, so a slash in it is a character like any
+/// other, while an HTTP path is decoded and then re-split on its separators,
+/// so an escaped slash that became a real one would silently name a different
+/// resource. Two rules, two functions, on purpose.
 std::string percentDecode(const std::string& text);
 
 /// True once the text holds a complete header block, which is what tells a

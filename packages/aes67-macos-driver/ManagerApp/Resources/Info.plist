@@ -35,5 +35,11 @@
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>AES67 Manager looks for NMOS audio devices on the local network so you can route streams between them.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_nmos-node._tcp</string>
+    </array>
 </dict>
 </plist>

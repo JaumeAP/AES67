@@ -23,7 +23,9 @@ swiftc -o "$BIN" \
     -swift-version 5 \
     -warnings-as-errors \
     Models/PrivilegedScript.swift \
+    Models/NmosResources.swift \
     Tests/PrivilegedScriptTests.swift \
+    Tests/NmosResourcesTests.swift \
     Tests/main.swift
 
 "$BIN"

@@ -48,17 +48,25 @@ std::string NMOSRegistrationClient::healthPath(const std::string& apiVersion,
     return "/x-nmos/registration/" + apiVersion + "/health/nodes/" + nodeId;
 }
 
+std::string NMOSRegistrationClient::wrapResource(const std::string& type, const std::string& data) {
+    return "{\n  \"type\": \"" + type + "\",\n  \"data\": " + data + "\n}\n";
+}
+
 std::string NMOSRegistrationClient::buildRegistrationBody(const NMOSNodeInfo& node,
                                                           int64_t versionSeconds,
                                                           int32_t versionNanos) {
+    return wrapResource("node", buildNodeData(node, versionSeconds, versionNanos));
+}
+
+std::string NMOSRegistrationClient::buildNodeData(const NMOSNodeInfo& node,
+                                                  int64_t versionSeconds,
+                                                  int32_t versionNanos) {
     // IS-04's version is "<seconds>:<nanoseconds>" and orders updates to a
     // resource. It is TAI in the specification; the registry compares it
     // against what it already holds rather than against its own clock, so
     // what matters here is that it never goes backwards.
     std::ostringstream json;
     json << "{\n"
-         << "  \"type\": \"node\",\n"
-         << "  \"data\": {\n"
          << "    \"id\": \"" << jsonEscape(node.id) << "\",\n"
          << "    \"version\": \"" << versionSeconds << ":" << versionNanos << "\",\n"
          << "    \"label\": \"" << jsonEscape(node.label) << "\",\n"
@@ -69,7 +77,12 @@ std::string NMOSRegistrationClient::buildRegistrationBody(const NMOSNodeInfo& no
          << "    \"caps\": {},\n"
          << "    \"api\": {\n"
          << "      \"versions\": [\"v1.3\"],\n"
-         << "      \"endpoints\": []\n"
+         << "      \"endpoints\": "
+         << (node.apiPort == 0
+                 ? std::string("[]")
+                 : "[{ \"host\": \"" + jsonEscape(node.apiHost) + "\", \"port\": " +
+                       std::to_string(node.apiPort) + ", \"protocol\": \"http\" }]")
+         << "\n"
          << "    },\n"
          << "    \"services\": [],\n"
          // The clock this node offers. "internal" is the honest answer
@@ -78,8 +91,7 @@ std::string NMOSRegistrationClient::buildRegistrationBody(const NMOSNodeInfo& no
          // controller will try to slave things to.
          << "    \"clocks\": [{ \"name\": \"clk0\", \"ref_type\": \"internal\" }],\n"
          << "    \"interfaces\": []\n"
-         << "  }\n"
-         << "}\n";
+         << "  }";
     return json.str();
 }
 
@@ -163,8 +175,19 @@ std::string NMOSRegistrationClient::buildDeviceBody(const std::string& deviceId,
                                                     const std::vector<std::string>& receiverIds,
                                                     const std::string& controlHref,
                                                     int64_t versionSeconds, int32_t versionNanos) {
+    return wrapResource("device", buildDeviceData(deviceId, nodeId, label, senderIds, receiverIds,
+                                                   controlHref, versionSeconds, versionNanos));
+}
+
+std::string NMOSRegistrationClient::buildDeviceData(const std::string& deviceId,
+                                                    const std::string& nodeId,
+                                                    const std::string& label,
+                                                    const std::vector<std::string>& senderIds,
+                                                    const std::vector<std::string>& receiverIds,
+                                                    const std::string& controlHref,
+                                                    int64_t versionSeconds, int32_t versionNanos) {
     std::ostringstream json;
-    json << "{\n  \"type\": \"device\",\n  \"data\": {\n"
+    json << "{\n"
          << "    \"id\": \"" << deviceId << "\",\n"
          << "    \"version\": \"" << versionText(versionSeconds, versionNanos) << "\",\n"
          << "    \"label\": \"" << jsonEscape(label) << "\",\n"
@@ -184,7 +207,7 @@ std::string NMOSRegistrationClient::buildDeviceBody(const std::string& deviceId,
                  : "[{ \"href\": \"" + jsonEscape(controlHref) +
                        "\", \"type\": \"urn:x-nmos:control:sr-ctrl/v1.1\" }]")
          << "\n"
-         << "  }\n}\n";
+         << "  }";
     return json.str();
 }
 
@@ -192,8 +215,16 @@ std::string NMOSRegistrationClient::buildSourceBody(const std::string& sourceId,
                                                     const std::string& deviceId,
                                                     const NMOSSenderResource& sender,
                                                     int64_t versionSeconds, int32_t versionNanos) {
+    return wrapResource("source", buildSourceData(sourceId, deviceId, sender, versionSeconds,
+                                                   versionNanos));
+}
+
+std::string NMOSRegistrationClient::buildSourceData(const std::string& sourceId,
+                                                    const std::string& deviceId,
+                                                    const NMOSSenderResource& sender,
+                                                    int64_t versionSeconds, int32_t versionNanos) {
     std::ostringstream json;
-    json << "{\n  \"type\": \"source\",\n  \"data\": {\n"
+    json << "{\n"
          << "    \"id\": \"" << sourceId << "\",\n"
          << "    \"version\": \"" << versionText(versionSeconds, versionNanos) << "\",\n"
          << "    \"label\": \"" << jsonEscape(sender.name) << "\",\n"
@@ -209,7 +240,7 @@ std::string NMOSRegistrationClient::buildSourceBody(const std::string& sourceId,
         if (c > 0) json << ", ";
         json << "{ \"label\": \"Channel " << (c + 1) << "\" }";
     }
-    json << "]\n  }\n}\n";
+    json << "]\n  }";
     return json.str();
 }
 
@@ -218,9 +249,18 @@ std::string NMOSRegistrationClient::buildFlowBody(const std::string& flowId,
                                                   const std::string& deviceId,
                                                   const NMOSSenderResource& sender,
                                                   int64_t versionSeconds, int32_t versionNanos) {
+    return wrapResource("flow", buildFlowData(flowId, sourceId, deviceId, sender, versionSeconds,
+                                               versionNanos));
+}
+
+std::string NMOSRegistrationClient::buildFlowData(const std::string& flowId,
+                                                  const std::string& sourceId,
+                                                  const std::string& deviceId,
+                                                  const NMOSSenderResource& sender,
+                                                  int64_t versionSeconds, int32_t versionNanos) {
     const int bitDepth = (sender.encoding == "L16") ? 16 : 24;
     std::ostringstream json;
-    json << "{\n  \"type\": \"flow\",\n  \"data\": {\n"
+    json << "{\n"
          << "    \"id\": \"" << flowId << "\",\n"
          << "    \"version\": \"" << versionText(versionSeconds, versionNanos) << "\",\n"
          << "    \"label\": \"" << jsonEscape(sender.name) << "\",\n"
@@ -234,7 +274,7 @@ std::string NMOSRegistrationClient::buildFlowBody(const std::string& flowId,
          << "    \"sample_rate\": { \"numerator\": " << sender.sampleRate
          << ", \"denominator\": 1 },\n"
          << "    \"bit_depth\": " << bitDepth << "\n"
-         << "  }\n}\n";
+         << "  }";
     return json.str();
 }
 
@@ -243,8 +283,17 @@ std::string NMOSRegistrationClient::buildSenderBody(const std::string& senderId,
                                                     const std::string& deviceId,
                                                     const NMOSSenderResource& sender,
                                                     int64_t versionSeconds, int32_t versionNanos) {
+    return wrapResource("sender", buildSenderData(senderId, flowId, deviceId, sender,
+                                                   versionSeconds, versionNanos));
+}
+
+std::string NMOSRegistrationClient::buildSenderData(const std::string& senderId,
+                                                    const std::string& flowId,
+                                                    const std::string& deviceId,
+                                                    const NMOSSenderResource& sender,
+                                                    int64_t versionSeconds, int32_t versionNanos) {
     std::ostringstream json;
-    json << "{\n  \"type\": \"sender\",\n  \"data\": {\n"
+    json << "{\n"
          << "    \"id\": \"" << senderId << "\",\n"
          << "    \"version\": \"" << versionText(versionSeconds, versionNanos) << "\",\n"
          << "    \"label\": \"" << jsonEscape(sender.name) << "\",\n"
@@ -259,7 +308,7 @@ std::string NMOSRegistrationClient::buildSenderBody(const std::string& senderId,
          // another way" instead of pointing at something that will 404.
          << "    \"manifest_href\": null,\n"
          << "    \"subscription\": { \"receiver_id\": null, \"active\": true }\n"
-         << "  }\n}\n";
+         << "  }";
     return json.str();
 }
 
@@ -268,8 +317,17 @@ std::string NMOSRegistrationClient::buildReceiverBody(const std::string& receive
                                                       const NMOSReceiverResource& receiver,
                                                       int64_t versionSeconds,
                                                       int32_t versionNanos) {
+    return wrapResource("receiver", buildReceiverData(receiverId, deviceId, receiver,
+                                                       versionSeconds, versionNanos));
+}
+
+std::string NMOSRegistrationClient::buildReceiverData(const std::string& receiverId,
+                                                      const std::string& deviceId,
+                                                      const NMOSReceiverResource& receiver,
+                                                      int64_t versionSeconds,
+                                                      int32_t versionNanos) {
     std::ostringstream json;
-    json << "{\n  \"type\": \"receiver\",\n  \"data\": {\n"
+    json << "{\n"
          << "    \"id\": \"" << receiverId << "\",\n"
          << "    \"version\": \"" << versionText(versionSeconds, versionNanos) << "\",\n"
          << "    \"label\": \"" << jsonEscape(receiver.name) << "\",\n"
@@ -285,7 +343,7 @@ std::string NMOSRegistrationClient::buildReceiverBody(const std::string& receive
          << "    \"caps\": { \"media_types\": [\"audio/L16\", \"audio/L24\"] },\n"
          << "    \"subscription\": { \"sender_id\": null, \"active\": "
          << (receiver.active ? "true" : "false") << " }\n"
-         << "  }\n}\n";
+         << "  }";
     return json.str();
 }
 
