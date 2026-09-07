@@ -28,6 +28,18 @@ SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-config.cpp ../src/ptp/ptp-disciplin
       stubs/stubs.cpp ptp_messages.cpp test_ptp_base.cpp test_transport.cpp \
       test_servo.cpp test_main.cpp
 
+.PHONY: tidy all run board clean
+
+# First target in the file, and it has to stay first: make takes the first
+# rule as the default goal, and .PHONY does not change that. When the tidy
+# rule sat above this one, a plain `make` ran clang-tidy and never built the
+# tests -- and the gate's host-test step ran no test at all while reporting
+# that it had.
+all: run
+
+run: $(BIN)
+	./$(BIN)
+
 # clang-tidy over the library sources, with the same flags and stubs the host
 # build uses, so no compile database is needed. The checks are the .clang-tidy
 # at the package root, shared with the other packages here. Opt-in through the
@@ -37,13 +49,6 @@ TIDY ?= $(firstword $(wildcard $(HOME)/.local/venvs/cpptools/bin/clang-tidy) $(s
 tidy:
 	@test -n "$(TIDY)" || { echo "SKIP: no clang-tidy found"; exit 0; }
 	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) -isysroot $$(xcrun --show-sdk-path) -I ../../aes67-profiles
-
-.PHONY: tidy all run board clean
-
-all: run
-
-run: $(BIN)
-	./$(BIN)
 
 HDR = stubs/Arduino.h stubs/QNEthernet.h stubs/TimeLib.h stubs/stub_state.h \
       ptp_messages.h test_harness.h \

@@ -55,7 +55,10 @@ inline TvSec clampToTvSec(NanoTime s)
     return clampSeconds<TvSec>(s);
 }
 
-constexpr NanoTime NS_PER_S = 1000*1000*1000;
+// Multiplied in NanoTime rather than in int: the product fits in an int
+// today, but a constant of this type computed in a narrower one is a
+// truncation waiting for somebody to change a factor.
+constexpr NanoTime NS_PER_S = NanoTime{1000} * 1000 * 1000;
 
 // Minimum lengths of a PTPv2 message, in bytes.
 //
