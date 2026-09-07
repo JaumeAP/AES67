@@ -106,9 +106,9 @@ struct AES67ManagerApp: App {
 // AppDelegate to handle menu bar and app lifecycle
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hide dock icon if user prefers menu bar only mode
-        // Comment this out to keep dock icon visible
-        // NSApp.setActivationPolicy(.accessory)
+        // No Dock icon: the app is a resident of the menu bar. That is
+        // Info.plist's LSUIElement, not an activation policy set here, so the
+        // Dock never shows it, not even for the instant before this runs.
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

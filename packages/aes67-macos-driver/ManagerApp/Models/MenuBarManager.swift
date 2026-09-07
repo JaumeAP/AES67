@@ -7,7 +7,6 @@
 
 import SwiftUI
 import AppKit
-import ServiceManagement
 
 class MenuBarManager: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
@@ -110,7 +109,7 @@ class MenuBarManager: NSObject, ObservableObject {
             action: #selector(toggleLaunchAtLogin),
             keyEquivalent: ""
         )
-        launchAtLoginItem.state = isLaunchAtLoginEnabled() ? .on : .off
+        launchAtLoginItem.state = driverManager.isLaunchAtLoginEnabled ? .on : .off
         menu.addItem(launchAtLoginItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -149,37 +148,12 @@ class MenuBarManager: NSObject, ObservableObject {
     }
 
     @objc func toggleLaunchAtLogin() {
-        if isLaunchAtLoginEnabled() {
-            disableLaunchAtLogin()
-        } else {
-            enableLaunchAtLogin()
-        }
+        guard let driverManager = driverManager else { return }
+        driverManager.setLaunchAtLogin(!driverManager.isLaunchAtLoginEnabled)
         updateMenu()
     }
 
     @objc func quit() {
         NSApp.terminate(nil)
-    }
-
-    // MARK: - Launch at Login (SMAppService, macOS 13+)
-
-    func isLaunchAtLoginEnabled() -> Bool {
-        return SMAppService.mainApp.status == .enabled
-    }
-
-    func enableLaunchAtLogin() {
-        do {
-            try SMAppService.mainApp.register()
-        } catch {
-            print("Failed to enable launch at login: \(error)")
-        }
-    }
-
-    func disableLaunchAtLogin() {
-        do {
-            try SMAppService.mainApp.unregister()
-        } catch {
-            print("Failed to disable launch at login: \(error)")
-        }
     }
 }

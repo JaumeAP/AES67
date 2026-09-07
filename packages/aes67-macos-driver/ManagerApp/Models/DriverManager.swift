@@ -329,6 +329,7 @@ class DriverManager: ObservableObject {
         // user rather than the administrator.
         if error == nil {
             registerDaemon()
+            setLaunchAtLogin(true)
         }
 
         // Refresh either way: the switch should reflect what's actually
@@ -344,6 +345,7 @@ class DriverManager: ObservableObject {
         // The daemon goes first, while the app that owns it is still the one
         // asking: unregistering is launchd's business and needs no password.
         unregisterDaemon()
+        setLaunchAtLogin(false)
 
         let q = PrivilegedScript.shellQuoted
         guard let source = PrivilegedScript.adminShell([
@@ -365,6 +367,32 @@ class DriverManager: ObservableObject {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.checkDriverStatus()
+        }
+    }
+
+    // MARK: - Launch at Login
+    //
+    // The app is a menu bar resident: with the driver installed it has to be
+    // running to show the icon, so installing the driver registers it as a
+    // login item and uninstalling takes it out again. The menu's "Launch at
+    // Login" is the manual override of the same registration.
+
+    var isLaunchAtLoginEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    /// Registers or unregisters this app as a login item. Unregistering one
+    /// that was never registered is not an error.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        let service = SMAppService.mainApp
+        do {
+            if enabled {
+                try service.register()
+            } else if service.status != .notRegistered {
+                try service.unregister()
+            }
+        } catch {
+            print("Failed to \(enabled ? "enable" : "disable") launch at login: \(error)")
         }
     }
 
