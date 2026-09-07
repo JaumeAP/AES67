@@ -159,6 +159,13 @@ rather than leaving it to be discovered on site.
 RTSP's own port is 554 and needs privilege; anything above 1024 does not, and
 discovery still works because the SRV record carries whichever port was bound.
 
+The controller for this is the macOS Manager app's Network Routing sheet
+(`packages/aes67-macos-driver`, ManagerApp): it browses `_nmos-node._tcp`, reads
+IS-04 from every node it finds — this announcer among them — and draws senders
+against receivers as a matrix, so a crosspoint click is the IS-05 PATCH that
+this tool's `[ravenna] receiver ...` lines report. Nothing has to be typed at
+the API by hand.
+
 ## Against Dante Controller
 
 `Docs/dante-controller-parity.md` sets out, part by part, what Dante

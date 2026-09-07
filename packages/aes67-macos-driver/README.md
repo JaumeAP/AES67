@@ -121,6 +121,8 @@ The RTP receiver/transmitter, jitter buffer, IO handler, and ring buffers have b
 ### Manager App — UI Only
 The SwiftUI Manager app renders its interface but has not been tested controlling actual streams. The UI includes screens for stream management, channel mapping, and PTP diagnostics, but whether these function beyond displaying placeholder data is unknown.
 
+- Network Routing: an NMOS IS-04/IS-05 controller across every node on the link, this Mac included.
+
 ## Architecture
 
 ```
