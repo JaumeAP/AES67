@@ -29,6 +29,46 @@ std::string statusTextFor(int status) {
     }
 }
 
+/// The value of one hexadecimal digit, or -1 for anything else.
+int hexValue(char digit) {
+    if (digit >= '0' && digit <= '9') return digit - '0';
+    if (digit >= 'a' && digit <= 'f') return digit - 'a' + 10;
+    if (digit >= 'A' && digit <= 'F') return digit - 'A' + 10;
+    return -1;
+}
+
+/// Percent-decoding, as RFC 3986 sec 2.1 says a path is written: a client may
+/// escape any character of a segment, and several do. A device that compares
+/// the raw text answers 404 for a resource that is sitting right there.
+///
+/// An escaped slash is left escaped on purpose. The path is routed as one
+/// string and split on slashes by whichever API answers it, so decoding %2F
+/// would turn one segment into two and fetch a resource nobody asked for.
+/// An escape that is not one -- a bare percent, a bad digit -- stays as it is
+/// rather than eating what follows: these paths come off the network.
+std::string decodePath(const std::string& path) {
+    std::string decoded;
+    decoded.reserve(path.size());
+
+    for (size_t i = 0; i < path.size(); ++i) {
+        const int high = (path[i] == '%' && i + 2 < path.size()) ? hexValue(path[i + 1]) : -1;
+        const int low = high >= 0 ? hexValue(path[i + 2]) : -1;
+        if (low < 0) {
+            decoded.push_back(path[i]);
+            continue;
+        }
+
+        const char character = static_cast<char>(high * 16 + low);
+        if (character == '/') {
+            decoded.append(path, i, 3);
+        } else {
+            decoded.push_back(character);
+        }
+        i += 2;
+    }
+    return decoded;
+}
+
 std::string trimmed(const std::string& text) {
     const auto first = text.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) return {};
@@ -59,6 +99,8 @@ bool parseHttpRequest(const std::string& text, std::string& method, std::string&
 
     const auto query = path.find('?');
     if (query != std::string::npos) path = path.substr(0, query);
+    // After the query is gone, so an escaped '?' cannot cut the path short.
+    path = decodePath(path);
 
     body = text.substr(headerEnd);
     return true;

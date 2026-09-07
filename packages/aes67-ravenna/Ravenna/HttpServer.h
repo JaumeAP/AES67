@@ -54,7 +54,9 @@ private:
 
 /// Splits a request into its method, its path and its body. False when the
 /// text is not an HTTP request. The query string is dropped: nothing in this
-/// API reads one, and leaving it on the path would fail every match.
+/// API reads one, and leaving it on the path would fail every match. What is
+/// left is percent-decoded, because that is how a client is entitled to write
+/// a path and the APIs behind this compare it literally.
 bool parseHttpRequest(const std::string& text, std::string& method, std::string& path,
                       std::string& body);
 

@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 #include "Ravenna/ConnectionApi.h"
+#include "Ravenna/HttpServer.h"
 
 using namespace AES67::Ravenna;
 
@@ -206,4 +207,45 @@ TEST_CASE("A body that is not JSON is refused with the reason") {
         api.handle("PATCH", path("/single/receivers/receiver-1/staged/"), "{not json");
     CHECK(response.status == 400);
     CHECK(response.body.find("not JSON") != std::string::npos);
+}
+
+TEST_CASE("A percent-encoded path segment reaches the resource it names") {
+    // A client is entitled to escape any character of a path segment, and
+    // several do. Comparing the raw segment makes every one of those a 404 for
+    // a resource that is right there.
+    ConnectionApi api = apiWithOne();
+
+    std::string method;
+    std::string decoded;
+    std::string body;
+    REQUIRE(parseHttpRequest(
+        "GET /x-nmos/connection/v1.1/single/senders/sender%2D1/transportfile/ HTTP/1.1\r\n"
+        "Host: box.local\r\n\r\n",
+        method, decoded, body));
+    CHECK(decoded == path("/single/senders/sender-1/transportfile/"));
+
+    const ApiResponse answer = api.handle(method, decoded, body);
+    CHECK(answer.status == 200);
+    CHECK(answer.contentType == "application/sdp");
+}
+
+TEST_CASE("Decoding a path leaves the path alone") {
+    std::string method;
+    std::string decoded;
+    std::string body;
+
+    // A space, which is the escape a two-word name produces.
+    REQUIRE(parseHttpRequest("GET /single/senders/Mix%20A/ HTTP/1.1\r\n\r\n", method, decoded,
+                             body));
+    CHECK(decoded == "/single/senders/Mix A/");
+
+    // Lower case hex is the same escape.
+    REQUIRE(parseHttpRequest("GET /single/senders/Mix%2fA/ HTTP/1.1\r\n\r\n", method, decoded,
+                             body));
+    CHECK(decoded == "/single/senders/Mix%2fA/");
+
+    // A percent that is not an escape stays a percent rather than eating what
+    // follows it: this reads paths off the network.
+    REQUIRE(parseHttpRequest("GET /100%/%zz/% HTTP/1.1\r\n\r\n", method, decoded, body));
+    CHECK(decoded == "/100%/%zz/%");
 }
