@@ -37,6 +37,7 @@ swiftc -o AES67Manager \
   Models/PrivilegedScript.swift \
   Models/DolbyModelCatalog.swift \
   Models/MenuBarManager.swift \
+  Models/NmosResources.swift \
   Views/ContentView.swift \
   Views/StreamListView.swift \
   Views/StreamDetailView.swift \
