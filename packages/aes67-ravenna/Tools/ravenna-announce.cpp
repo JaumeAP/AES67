@@ -20,6 +20,7 @@
 // assigned through aes67-core's StreamChannelMapper.
 //
 #include "NetworkEngine/StreamChannelMapper.h"
+#include "Ravenna/ChannelMappingApi.h"
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/HttpServer.h"
 #include "Ravenna/MdnsResponder.h"
@@ -194,7 +195,17 @@ int main(int argc, char** argv) {
         return true;
     });
 
-    HttpServer nmos(connections);
+    // The grid, channel by channel: IS-08 over the same matrix.
+    ChannelMappingApi channelMapping(mapper, routing);
+
+    HttpServer nmos([&connections, &channelMapping](const std::string& method,
+                                                    const std::string& path,
+                                                    const std::string& body) {
+        if (path.rfind(kChannelMappingApiRoot, 0) == 0) {
+            return channelMapping.handle(method, path, body);
+        }
+        return connections.handle(method, path, body);
+    });
     if (!nmos.start(nmosPort, error)) {
         std::fprintf(stderr, "nmos: %s\n", error.c_str());
         return 1;
@@ -228,8 +239,9 @@ int main(int argc, char** argv) {
                      "receiver that requires one will not lock to this stream\n");
     }
 
-    std::printf("[ravenna] IS-05 on port %u, at %s/single/\n",
-                static_cast<unsigned>(nmos.port()), kConnectionApiRoot);
+    std::printf("[ravenna] IS-05 at %s/single/ and IS-08 at %s/map/, on port %u\n",
+                kConnectionApiRoot, kChannelMappingApiRoot,
+                static_cast<unsigned>(nmos.port()));
 
     size_t queries = 0;
     size_t describes = 0;

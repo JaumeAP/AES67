@@ -134,7 +134,7 @@ void HttpServer::answer(int client, const std::string& text) {
         // The preflight a browser-based controller sends before a PATCH.
         response = buildHttpResponse(200, "text/plain", {});
     } else {
-        const ApiResponse answer = api_.handle(method, path, body);
+        const ApiResponse answer = handler_(method, path, body);
         response = buildHttpResponse(answer.status, answer.contentType, answer.body);
     }
 

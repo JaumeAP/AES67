@@ -19,6 +19,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace AES67::Ravenna {
 
@@ -47,6 +48,15 @@ public:
 
     /// What this receiver holds now, if anything.
     std::optional<ChannelMapping> mappingFor(const std::string& receiverId) const;
+
+    /// The receivers that hold a mapping, in name order. This is what the
+    /// channel mapping API lists as its inputs: an input is a stream some
+    /// receiver took.
+    std::vector<std::string> connectedReceivers() const;
+
+    /// Which stream in the matrix a receiver's mapping is, so a caller that
+    /// rewrites the matrix can find it again.
+    std::optional<StreamID> streamIdFor(const std::string& receiverId) const;
 
     /// The same thing shaped for ConnectionApi::onReceiverActivation, so the
     /// wiring is one line and not a lambda in every caller.

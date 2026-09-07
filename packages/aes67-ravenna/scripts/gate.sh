@@ -20,7 +20,7 @@ cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
 ctest --test-dir build --output-on-failure \
-    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi|ReceiverRouting" || {
+    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi|ReceiverRouting|ChannelMappingApi" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 echo "==> A DESCRIBE over the loopback"
@@ -50,6 +50,15 @@ activated=$(curl -s -X PATCH -H 'Content-Type: application/json' \
     -d "{\"master_enable\":true,\"transport_file\":{\"data\":$sdp,\"type\":\"application/sdp\"},\"activation\":{\"mode\":\"activate_immediate\"}}" \
     "$base/receivers/receiver-1/staged/")
 
+echo "==> An IS-08 cell moved over the loopback"
+# The grid, after the connection: move one channel of the stream the receiver
+# just took onto device channel 64. Passing it means the API reached the same
+# matrix the connection wrote to.
+grid_base="http://127.0.0.1:$nmos_port/x-nmos/channelmapping/v1.0"
+moved=$(curl -s -X POST -H 'Content-Type: application/json' \
+    -d '{"activation":{"mode":"activate_immediate"},"action":{"device":{"64":{"input":"receiver-1","channel_index":1}}}}' \
+    "$grid_base/map/activate")
+
 kill "$announcer" 2> /dev/null
 wait "$announcer" 2> /dev/null
 
@@ -68,6 +77,15 @@ case "$activated" in
   *)
     echo "FAIL: the IS-05 activation did not go through" >&2
     echo "$activated" >&2
+    exit 1 ;;
+esac
+
+case "$moved" in
+  *'"64":{"channel_index":1,"input":"receiver-1"}'*)
+    echo "the channel moved to device channel 64" ;;
+  *)
+    echo "FAIL: the IS-08 activation did not move the channel" >&2
+    echo "$moved" >&2
     exit 1 ;;
 esac
 
