@@ -51,6 +51,7 @@ swiftc -o AES67Manager \
   Views/ProfileParametersView.swift \
   Views/DiscoveredSessionsView.swift \
   Views/AudioStatusView.swift \
+  Views/RoutingMatrixView.swift \
   AES67ManagerApp.swift
 
 # Create app bundle structure

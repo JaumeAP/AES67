@@ -13,6 +13,7 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedStream: StreamInfo?
     @State private var showChannelMapping = false
+    @State private var showNetworkRouting = false
     @State private var showChannelDiagnostic = false
     @State private var showProfileCaveats = false
     @State private var showProfileParameters = false
@@ -299,6 +300,11 @@ struct ContentView: View {
                 }
                 .help("Configure stream channel mappings")
 
+                Button(action: { showNetworkRouting = true }) {
+                    Label("Network Routing", systemImage: "point.3.connected.trianglepath.dotted")
+                }
+                .help("Connect receivers to senders on every NMOS node on this network")
+
                 Button(action: { showChannelDiagnostic = true }) {
                     Label("Diagnostic", systemImage: "chart.bar.doc.horizontal")
                 }
@@ -345,6 +351,9 @@ struct ContentView: View {
         .sheet(isPresented: $showChannelMapping) {
             ChannelMappingView(driverManager: driverManager)
                 .frame(minWidth: 1200, minHeight: 800)
+        }
+        .sheet(isPresented: $showNetworkRouting) {
+            RoutingMatrixView()
         }
         .sheet(isPresented: $showChannelDiagnostic) {
             ChannelMapDiagnosticView()
