@@ -103,6 +103,12 @@ int main(int argc, char** argv) {
         }
     }
 
+    // The status line is one a second and has to arrive as it is written: on
+    // a pipe -- which is what systemd hands a service -- stdout is block
+    // buffered by default, and a daemon that says nothing for a minute and
+    // then says sixty things is not reporting, it is confessing.
+    ::setvbuf(stdout, nullptr, _IOLBF, 0);
+
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
     // A slave that goes away mid-send must not take the daemon with it.
