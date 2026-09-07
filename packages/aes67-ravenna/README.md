@@ -67,8 +67,10 @@ The exchange is three requests:
     # 3. what actually happened
     curl $base/receivers/receiver-1/active/
 
-Activating is where the channels are assigned, and it is `aes67-core`'s
-`StreamChannelMapper` that assigns them: the SDP's channel count goes to the
+Activating is where the channels are assigned. `Ravenna/ReceiverRouting.h` is
+what joins the two -- a receiver, named by the connection API, holding a
+mapping the matrix keys by a `StreamID` -- and `aes67-core`'s
+`StreamChannelMapper` is what assigns them: the SDP's channel count goes to the
 matrix, the matrix finds a contiguous block on the 128-channel device, and a
 receiver that does not fit is refused with the reason rather than left half
 connected. Disabling frees the block, and pointing a receiver at another

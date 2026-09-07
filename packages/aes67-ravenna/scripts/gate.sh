@@ -20,7 +20,7 @@ cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
 ctest --test-dir build --output-on-failure \
-    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi" || {
+    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi|ReceiverRouting" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 echo "==> A DESCRIBE over the loopback"
