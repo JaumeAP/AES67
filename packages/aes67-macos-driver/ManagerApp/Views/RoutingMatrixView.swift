@@ -15,7 +15,7 @@ struct RoutingMatrixView: View {
     @StateObject private var controller = NmosController()
     @Environment(\.dismiss) private var dismiss
 
-    private let cellSize: CGFloat = 28
+    private let cellSize: CGFloat = 32
     private let rowHeaderWidth: CGFloat = 220
     private let columnHeaderHeight: CGFloat = 140
 
@@ -95,15 +95,15 @@ struct RoutingMatrixView: View {
             Spacer()
             Text(column.nodeLabel).font(.caption2).foregroundColor(.secondary).lineLimit(1)
             Text(column.sender.channels.map { "\(column.label) (\($0))" } ?? column.label)
-                .font(.caption).lineLimit(1)
-            if !column.reachable {
-                Text("unreachable").font(.caption2).foregroundColor(.red)
-            }
+                .font(.caption)
+                .foregroundColor(column.reachable ? .primary : .red)
+                .lineLimit(1)
         }
         .fixedSize()
-        .rotationEffect(.degrees(-60), anchor: .bottomLeading)
+        .rotationEffect(.degrees(-90), anchor: .bottomLeading)
         .frame(width: cellSize, height: columnHeaderHeight, alignment: .bottomLeading)
         .opacity(column.reachable ? 1 : 0.5)
+        .help(column.reachable ? "" : "unreachable")
     }
 
     private func rowHeader(_ row: RoutingMatrix.Row) -> some View {
