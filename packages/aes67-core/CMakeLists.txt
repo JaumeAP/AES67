@@ -15,6 +15,7 @@ add_library(aes67_core
     Shared/NonBlockingLogger.cpp
     Shared/ErrorRecoveryManager.cpp
     Driver/SDPParser.cpp
+    NetworkEngine/PTP/PTPProtocolTypes.cpp
     NetworkEngine/StreamChannelMapper.cpp
     NetworkEngine/StreamConfig.cpp
     NetworkEngine/DeviceChannelSettings.cpp

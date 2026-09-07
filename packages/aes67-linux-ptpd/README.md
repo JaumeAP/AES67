@@ -41,7 +41,7 @@ the ecosystem: `--priority1`, `--priority2` and the announced quality.
 
 ## Building on the Pi
 
-    sudo apt install build-essential cmake git
+    sudo apt install build-essential cmake git uuid-dev
     git clone --recursive https://github.com/JaumeAP/AES67.git
     cd AES67/packages/aes67-linux-ptpd
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
