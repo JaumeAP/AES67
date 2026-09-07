@@ -96,10 +96,24 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // Encodings stay L16/L24: those are what PCMCodec can actually
         // decode. RAVENNA also defines L32, but accepting an SDP we can't
         // decode would be a false claim, so it is deliberately excluded.
-        p.allowedSampleRates = {44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0};
+        // Up to 384 kHz: what Merging's RAVENNA gear offers, and what the
+        // installed Merging plugin's own device list carries.
+        p.allowedSampleRates = {44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0,
+                                352800.0, 384000.0};
         p.allowedPtimesUs = {}; // empty = accept any packet time (RAVENNA is unrestricted here)
         p.allowedEncodings = {"L16", "L24"};
+        // Still 8, and not RAVENNA's 64, on purpose. A profile is a filter and
+        // never a capability grant: the driver's transmit path splits into
+        // eight-channel flows and its receive path decodes no wider, so a
+        // profile saying 64 would accept a stream the code cannot carry. And
+        // 64 channels of L24 at 1 ms is a 9256 byte packet, which no Ethernet
+        // MTU takes. The day the RTP path carries wider flows, this is the
+        // number to raise; until then it would be a lie the validator tells.
         p.maxChannelsPerFlow = 8;
+        // Merging's defaults: EF for the audio, PTP domain 0. Recommendations,
+        // not requirements -- a stream on another domain is still accepted.
+        p.recommendedDscp = 46;
+        p.recommendedPtpDomain = 0;
         p.requiresZeroRtpTimestampOffset = false;
         p.caveats =
             "A true AES67 superset on receive: accepts RAVENNA's full sample-"
