@@ -119,8 +119,11 @@ The PTP subsystem has two layers:
 The RTP receiver/transmitter, jitter buffer, IO handler, and ring buffers have been exercised with test sender/receiver tools over loopback, but never with real audio content or real AES67 network traffic. Codec paths (L16/L24) are covered by unit tests but not verified for audible correctness.
 
 ### Manager App — UI Only
-The SwiftUI Manager app renders its interface but has not been tested controlling actual streams. The UI includes screens for stream management, channel mapping, and PTP diagnostics, but whether these function beyond displaying placeholder data is unknown.
+The SwiftUI Manager app renders its interface but has not been tested controlling actual streams. Whether any of it functions beyond displaying placeholder data is unknown. The UI includes screens for:
 
+- Stream management
+- Channel mapping
+- PTP diagnostics
 - Network Routing: an NMOS IS-04/IS-05 controller across every node on the link, this Mac included.
 
 ## Architecture
@@ -247,6 +250,27 @@ accepts connection management over IS-05.
 Both are exercised by `TestNMOSRegistration` and `TestConnectionAPI` against a
 registry and a controller made of loopback sockets. Neither has been tested
 against a commercial NMOS registry or controller.
+
+#### The control plane is always on
+
+Whenever the AES67 device is active, the driver serves an IS-04 Node API
+(`NodeAPIRouter`) and an IS-05 Connection API (`ConnectionAPIServer`) over
+plain HTTP on an ephemeral port bound to all interfaces, and advertises itself
+as `_nmos-node._tcp` over mDNS (`NodeAdvertiser`). Neither is opt-in and
+neither has authentication: any peer on the segment can read the node and
+re-route its receivers. That is what a RAVENNA card on the same link does, and
+it is the point — a Mac nobody can route is not a device on the network — but
+it is worth knowing before putting this on a link you do not control.
+
+The server is deliberately small: a request is bounded to 64 KiB, the client
+socket carries a 2 s timeout, and one client is served at a time. A stalled
+peer therefore delays the control plane and nothing else; the audio path never
+waits on it. GETs answer with `Access-Control-Allow-Origin: *`, so a browser
+controller can read the node cross-origin; activations are not answered
+cross-origin.
+
+Registering with a registry is the separate, opt-in half, and stays off until
+`nmos.json` turns it on.
 
 The endpoint has no authentication — IS-05 does not define one at this level —
 so it is only as safe as the network it is on. It answers cross-origin reads
