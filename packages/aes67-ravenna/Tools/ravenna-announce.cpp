@@ -23,6 +23,7 @@
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/HttpServer.h"
 #include "Ravenna/MdnsResponder.h"
+#include "Ravenna/ReceiverRouting.h"
 #include "Ravenna/RtspServer.h"
 #include "Ravenna/SessionCatalogue.h"
 
@@ -170,67 +171,26 @@ int main(int argc, char** argv) {
     nmosReceiver.label = "Device channels " + std::to_string(deviceChannel) + " and up";
     connections.addReceiver(nmosReceiver);
 
-    // A receiver's name is not a StreamID: the matrix keys on a UUID, and one
-    // has to be kept per receiver so that disabling frees the channels the
-    // same receiver took.
-    std::map<std::string, StreamID> streamIdOf;
+    // What an activation does to the channels is ReceiverRouting's, not this
+    // tool's: it is behaviour, and behaviour written inside a demonstration
+    // binary is behaviour nothing tests.
+    ReceiverRouting routing(mapper);
+    connections.onReceiverActivation([&routing](const std::string& id, const std::string& sdp,
+                                                bool enable, std::string& why) {
+        RoutingOutcome outcome;
+        if (!routing.apply(id, sdp, enable, outcome, why)) return false;
 
-    connections.onReceiverActivation([&mapper, &streamIdOf](const std::string& id,
-                                                           const std::string& sdp, bool enable,
-                                                           std::string& why) {
-        const auto known = streamIdOf.find(id);
-
-        if (!enable) {
-            // Disabling is what a controller does to break a connection, and
-            // it has to free the channels or the next one finds them taken.
-            if (known != streamIdOf.end()) {
-                mapper.removeMapping(known->second);
-                streamIdOf.erase(known);
-            }
+        if (!outcome.connected) {
             std::printf("[ravenna] receiver %s disabled, channels freed\n", id.c_str());
-            return true;
+        } else {
+            std::printf("[ravenna] receiver %s: %u channels of \"%s\" onto device channels "
+                        "%u..%u\n",
+                        id.c_str(), static_cast<unsigned>(outcome.channelCount),
+                        outcome.streamName.c_str(),
+                        static_cast<unsigned>(outcome.deviceChannelStart),
+                        static_cast<unsigned>(outcome.deviceChannelStart +
+                                              outcome.channelCount - 1));
         }
-
-        const auto parsed = SDPParser::parseString(sdp);
-        if (!parsed) {
-            why = "the transport file is not an SDP this device can read";
-            return false;
-        }
-
-        // Whatever this receiver held before: a controller pointing it at
-        // another stream is one connection replacing another, not two.
-        if (known != streamIdOf.end()) {
-            mapper.removeMapping(known->second);
-            streamIdOf.erase(known);
-        }
-
-        // The routing matrix decides where they land, and refuses if they do
-        // not fit: this is aes67-core's, the same one the driver uses.
-        auto mapping = mapper.createDefaultMapping(*parsed);
-        if (!mapping) {
-            why = "no free device channels for " + std::to_string(parsed->numChannels) +
-                  " channels";
-            return false;
-        }
-        mapping->streamID = StreamID::generate();
-
-        // Asked before adding, because addMapping() answers false to a
-        // mapping that does not validate and to one that overlaps alike, and
-        // the two are not the same thing to tell a controller.
-        if (!mapper.validateMapping(*mapping, &why)) return false;
-        if (!mapper.addMapping(*mapping)) {
-            why = "the mapping overlaps one already in place";
-            return false;
-        }
-        streamIdOf[id] = mapping->streamID;
-
-        std::printf("[ravenna] receiver %s: %u channels of \"%s\" onto device channels "
-                    "%u..%u\n",
-                    id.c_str(), static_cast<unsigned>(parsed->numChannels),
-                    parsed->sessionName.c_str(),
-                    static_cast<unsigned>(mapping->deviceChannelStart),
-                    static_cast<unsigned>(mapping->deviceChannelStart +
-                                          mapping->deviceChannelCount - 1));
         return true;
     });
 
