@@ -47,6 +47,23 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     install(TARGETS aes67-ptpd RUNTIME DESTINATION bin)
     install(FILES systemd/aes67-ptpd.service
             DESTINATION lib/systemd/system)
+    install(FILES README.md
+            DESTINATION share/doc/aes67-ptpd)
+
+    # A .deb, so the thing that reaches the Pi is one file and dpkg owns what
+    # it puts where. The architecture is whatever this is being built on:
+    # cpack asks dpkg, and a package built on an arm64 runner says arm64.
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGE_NAME "aes67-ptpd")
+    set(CPACK_PACKAGE_VENDOR "JaumeAP")
+    set(CPACK_PACKAGE_VERSION "0.1.0")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "PTP grandmaster announcing the NIC's own hardware clock")
+    set(CPACK_PACKAGE_CONTACT "https://github.com/JaumeAP/AES67")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    include(CPack)
 else()
     message(STATUS
         "aes67-linux-ptpd: not Linux, building the wire library and its tests only")
