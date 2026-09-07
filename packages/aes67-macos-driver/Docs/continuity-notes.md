@@ -2,7 +2,7 @@
 
 ## Evergreen state
 
-Active branch: `claude/auditoria-m5jumq`, merged into `main` at session close.
+Active branch: none. Every session's branch is merged into `main` with `--no-ff` and deleted at close; `main` is clean.
 
 Configuration: CLAUDE.md in repo; workflow skills at user scope as the `session-rules@jaumeap` plugin (repo `JaumeAP/claude-plugins`), not vendored here. `.claude/` no longer carries skills or settings.
 
@@ -24,19 +24,17 @@ Manager app previews: `#Preview` blocks live in `ManagerApp/Views/Previews/`, ke
 
 Related repositories, and where they stand: `aes67-core` and `t41-ptp` are packages of this monorepo now, not separate repositories -- their GitHub originals are archived and read-only, and so is `JaumeAP/QNEthernet`, which arrives inside t41-ptp as `libraries/QNEthernet` and had a duplicate top-level package here until 2026-09-05. `JaumeAP/AES67-master-box-` (the grandmaster firmware) is the exception: it was a package here and is standalone again, `main` at 2f66e20, carrying t41-ptp as the `lib/t41-ptp` submodule at `bc9cd69`. The box does NOT consume `aes67-core`, and after weighing it on 2026-09-03 it stays that way.
 
-## Session summary — Full-repo audit, and closing it (2026-09-04)
+Profiles: `packages/aes67-profiles` holds the compatibility profiles, the Dolby model catalog and the PTP profiles as dependency-free tables read by this core and by the Teensy firmware. A profile is a filter, never a capability grant. The flow limit is bytes, not channels: `aes67-core/NetworkEngine/RTP/PacketBudget.h` (1500-byte frame, 1472 RTP bytes) decides what fits at a packet time, `StreamManager::canAddStream()` refuses what does not in both directions, and the transmit splitter takes min(profile cap, `StreamChannelMapper::kMaxChannelsPerFlow` = 64, budget at the device rate and 1 ms). RAVENNA's profile permits 64 channels a flow; AES67, Dante, Dolby and ST 2110-30 keep 8.
 
-A full audit of this repository produced 23 findings; 22 are fixed and the 23rd is closed for everything that can be tested off a Mac.
+Interop simulations: `Tools/AES67InteropSim` (the RAVENNA Linux daemon's wire formats) and `Tools/DanteInteropSim` (Dante Controller 4.18.1.1's SAP/SDP handling, both directions, every profile). Both build in the gate; run them after touching SDP generation, SAP or the profiles. The Eines repository carries `packages/dante-device-emulator`, a Dante device in AES67 mode for live tests, and `packages/aoip-stress-lab`.
 
-The security half: auto sink-follow matched a SAP announcement on session name alone (its source-address guard could never fire, because no SDP parse fills that field), so any host could re-point a live receiver — it now needs the SDP origin, known on both sides, and `SAPListener` refuses an announcement whose origin disagrees with its sender. The IS-05 server got a receive timeout, a `select`-based accept loop, looped writes, cross-origin reads but not activations, and JSON fields read from the object they belong to. Six `select()` loops had three different reactions to a negative return; `NetworkEngine/SelectWait.h` gives them one. `aes67ptpd` drops to `nobody` once its sockets exist.
+## Session summary — Merging and Dante, virtually (2026-09-07)
 
-The correctness half: `StreamManager` no longer raises callbacks or writes its config under `streamsMutex_`; RTP framing skips the CSRC list and extension header and strips padding, as `RTPSocket::parseFrame`; two `std::stoi`/`std::stoul` throw paths inside coreaudiod are bounded.
-
-Coverage went from 18 suites to 28. Ten components that had none now have one, four of them through a new bytes-in/state-out seam. Two more defects fell out of writing them: `isValidMulticastAddress` accepted the classful shorthands, and `RTSPClient::parseResponse` padded a short body with NULs.
+The RAVENNA profile was aligned with the installed Merging plug-in (x86_64 only, so analysed rather than run): 352.8/384 kHz, DSCP 46, domain 0, and 64 channels a flow, which forced the byte-budget design above. Dante Controller 4.18.1.1 was taken apart (Java classes plus `libDanteController.dylib`) and found three defects here: the announced `o=` line had its type fields swapped and no address; `a=ts-refclk` wrote RFC 7273's `domain-nmbr=0`, which Dante's `Integer.parseInt` refuses, and now writes the bare `:0`; `SAPListener` kept the optional `application/sdp` payload type. Both simulations report THEY CONNECT. The whole monorepo gate ran on the Mac for every push.
 
 ## Open items
 
-1. **Nothing from 2026-09-03 or 2026-09-04 has been through the macOS gate.** Run `scripts/gate.sh` on the Mac before trusting any of it. Two changes there are structural and unverified off a Mac: the driver now links `aes67_net` instead of recompiling those translation units, and the gate builds `Tools/` and `Examples/`, which had been excluded long enough to rot.
+1. Dante live test needs a Dante device, or the Eines emulator on another host and this driver installed: whether Dante Controller lists a SAP announcement without the MIME type, what it does with a flow that has no `ts-refclk`, DSCP CS7 on PTP (`aes67ptpd --dscp 56`). Reception of a real 64-channel 125 us RAVENNA stream from Merging gear is untested too. The driver is not installed on this Mac.
 2. `ManagerApp` builds and is signed, but remains unverified against a live driver, per README.
 3. Still at zero coverage, and not by oversight: `AES67Device`, `AES67IOHandler`, `PTPArbitrator` and the CoreAudio clock sources. Each needs CoreAudio or libASPL, so a suite for them cannot be run from a remote session; writing one is a job for a session on the Mac. `BenchmarkIOHandler` exercises the IO handler but is not a CTest.
 4. The `t41-ptp` servo split has not been through the Teensy toolchain. `pio run` on the box before flashing anything.
