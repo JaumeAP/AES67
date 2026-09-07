@@ -76,7 +76,48 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: aes67-ptpd-arm64
+          name: aes67-ptpd-arm64-trixie
+          path: |
+            build/packages/*.deb
+            build/aes67-ptpd
+          if-no-files-found: error
+          retention-days: 90
+
+  # The same package, built inside Debian 12. A binary built on Ubuntu 24.04
+  # wants glibc 2.39 and GCC 13's libstdc++; Raspberry Pi OS Bookworm has
+  # glibc 2.36 and GCC 12's, and refuses to start it. Building against the
+  # older pair gives a package that runs on both, because the newer system
+  # carries the older symbols and not the other way round.
+  package-bookworm:
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    steps:
+      # Before the checkout: without git the action falls back to the REST
+      # API, which does not bring the submodules.
+      - name: Dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential cmake git uuid-dev
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -S packages/aes67-linux-ptpd -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: cpack --config build/CPackConfig.cmake -B build/packages
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aes67-ptpd-arm64-bookworm
           path: |
             build/packages/*.deb
             build/aes67-ptpd
