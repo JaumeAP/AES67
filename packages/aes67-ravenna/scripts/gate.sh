@@ -44,11 +44,22 @@ echo "==> An IS-05 connection over the loopback"
 # receiver, activate it. Passing it means the SDP went through the API, the
 # receiver accepted it and the routing matrix found room.
 base="http://127.0.0.1:$nmos_port/x-nmos/connection/v1.1/single"
-sdp=$(curl -s "$base/senders/sender-GateSession/transportfile/" \
+node_base="http://127.0.0.1:$nmos_port/x-nmos/node/v1.3"
+
+# The ids come from IS-04, which is where a controller reads them and which
+# publishes exactly what IS-05 answers to. A gate that knew how they were made
+# would still pass on the day the two APIs stopped agreeing, which is the one
+# thing this part is here to catch.
+sender_id=$(curl -s "$node_base/senders/" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+receiver_id=$(curl -s "$node_base/receivers/" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+
+sdp=$(curl -s "$base/senders/$sender_id/transportfile/" \
     | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
 activated=$(curl -s -X PATCH -H 'Content-Type: application/json' \
     -d "{\"master_enable\":true,\"transport_file\":{\"data\":$sdp,\"type\":\"application/sdp\"},\"activation\":{\"mode\":\"activate_immediate\"}}" \
-    "$base/receivers/receiver-1/staged/")
+    "$base/receivers/$receiver_id/staged/")
 
 echo "==> An IS-08 cell moved over the loopback"
 # The grid, after the connection: move one channel of the stream the receiver
@@ -56,7 +67,7 @@ echo "==> An IS-08 cell moved over the loopback"
 # matrix the connection wrote to.
 grid_base="http://127.0.0.1:$nmos_port/x-nmos/channelmapping/v1.0"
 moved=$(curl -s -X POST -H 'Content-Type: application/json' \
-    -d '{"activation":{"mode":"activate_immediate"},"action":{"device":{"64":{"input":"receiver-1","channel_index":1}}}}' \
+    -d "{\"activation\":{\"mode\":\"activate_immediate\"},\"action\":{\"device\":{\"64\":{\"input\":\"$receiver_id\",\"channel_index\":1}}}}" \
     "$grid_base/map/activate")
 
 echo "==> The node describing itself over the loopback"
@@ -86,7 +97,7 @@ case "$activated" in
 esac
 
 case "$moved" in
-  *'"64":{"channel_index":1,"input":"receiver-1"}'*)
+  *"\"64\":{\"channel_index\":1,\"input\":\"$receiver_id\"}"*)
     echo "the channel moved to device channel 64" ;;
   *)
     echo "FAIL: the IS-08 activation did not move the channel" >&2

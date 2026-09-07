@@ -46,6 +46,13 @@ int hexValue(char digit) {
 /// would turn one segment into two and fetch a resource nobody asked for.
 /// An escape that is not one -- a bare percent, a bad digit -- stays as it is
 /// rather than eating what follows: these paths come off the network.
+///
+/// RtspMessages.h has a percentDecode that does resolve %2F, and the two are
+/// deliberately not one function. An RTSP request line is decoded whole and
+/// the result compared against a session name, where a slash is just a
+/// character; an HTTP path is decoded and then re-split on its separators,
+/// where a slash is the separator. Merging them would have to break one of
+/// those two, so they stay apart and say why.
 std::string decodePath(const std::string& path) {
     std::string decoded;
     decoded.reserve(path.size());
