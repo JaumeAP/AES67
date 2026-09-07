@@ -43,6 +43,43 @@ There is no SETUP, no PLAY and no session state, because a multicast stream
 does not need any: the device DESCRIBEs, reads the group out of the SDP, and
 joins it.
 
+## Assigning one device's stream to another's channels
+
+Advertising a session says what exists; it does not connect anything. What
+tells a receiver to take a particular stream is NMOS **IS-05**, served here at
+`/x-nmos/connection/v1.1/`, and it is the standard version of what a
+controller does when you drag one device onto another.
+
+The exchange is three requests:
+
+    base=http://192.168.1.50:8080/x-nmos/connection/v1.1/single
+
+    # 1. what the sender offers
+    curl $base/senders/sender-Mix%20A/transportfile/
+
+    # 2. stage it on the receiver, and activate
+    curl -X PATCH -H 'Content-Type: application/json' -d '{
+      "master_enable": true,
+      "transport_file": {"data": "<the SDP>", "type": "application/sdp"},
+      "activation": {"mode": "activate_immediate"}
+    }' $base/receivers/receiver-1/staged/
+
+    # 3. what actually happened
+    curl $base/receivers/receiver-1/active/
+
+Activating is where the channels are assigned, and it is `aes67-core`'s
+`StreamChannelMapper` that assigns them: the SDP's channel count goes to the
+matrix, the matrix finds a contiguous block on the 128-channel device, and a
+receiver that does not fit is refused with the reason rather than left half
+connected. Disabling frees the block, and pointing a receiver at another
+stream replaces its connection instead of holding two.
+
+What is implemented is single senders and receivers with immediate
+activation. Scheduled activation answers 501 and says so: accepting one and
+never acting on it is a connection a controller believes it has made and
+nobody is carrying. Bulk answers 501 too, which sends a controller to the
+single endpoints.
+
 ## Trying it
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
