@@ -109,4 +109,17 @@ TEST_CASE("One interval conversion, exact where the two used to disagree") {
     // Beyond what a shift can hold is not an interval anyone sends.
     CHECK(ptpLogIntervalToMilliseconds(22) == 0);
     static_assert(ptpLogIntervalToMilliseconds(-3) == 125, "usable at compile time");
+
+    // Nanoseconds, where the rounding the millisecond form has to do does not
+    // arise: -4 is 62.5 ms exactly, and a sender pacing itself by this one
+    // sends at the rate it announces.
+    CHECK(ptpLogIntervalToNanoseconds(0) == 1000000000ull);
+    CHECK(ptpLogIntervalToNanoseconds(1) == 2000000000ull);
+    CHECK(ptpLogIntervalToNanoseconds(-3) == 125000000ull);
+    CHECK(ptpLogIntervalToNanoseconds(-4) == 62500000ull);
+    CHECK(ptpLogIntervalToNanoseconds(-9) == 1953125ull);
+    CHECK(ptpLogIntervalToNanoseconds(-10) == 0ull);
+    CHECK(ptpLogIntervalToNanoseconds(22) == 0ull);
+    static_assert(ptpLogIntervalToNanoseconds(-4) == 62500000ull,
+                  "usable at compile time too");
 }

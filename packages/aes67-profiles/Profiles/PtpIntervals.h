@@ -32,4 +32,18 @@ constexpr uint32_t ptpLogIntervalToMilliseconds(int8_t logInterval) {
     return (1000u + divisor / 2u) / divisor;
 }
 
+/// Nanoseconds for the same interval, exact rather than rounded. A sender
+/// pacing itself in milliseconds sends a -4 interval every 63 ms and
+/// announces 62.5, which is a rate that does not match what it says; at
+/// nanoseconds the two agree. Zero outside -9..21, the same "not an interval
+/// to follow" the millisecond form returns.
+constexpr uint64_t ptpLogIntervalToNanoseconds(int8_t logInterval) {
+    if (logInterval >= 0) {
+        return logInterval > 21 ? 0ull
+                                : (1000000000ull << static_cast<unsigned>(logInterval));
+    }
+    if (logInterval < -9) return 0ull;
+    return 1000000000ull >> static_cast<unsigned>(-logInterval);
+}
+
 } // namespace AES67
