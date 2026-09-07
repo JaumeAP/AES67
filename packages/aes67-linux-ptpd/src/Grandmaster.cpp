@@ -1,5 +1,7 @@
 #include "Grandmaster.h"
 
+#include "Profiles/PtpIntervals.h"
+
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -9,13 +11,11 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-/// A log2-second interval as a duration. IEEE 1588 carries the intervals as
-/// exponents, and every rate in this daemon comes from one.
+/// A log2-second interval as a duration. The conversion itself is the shared
+/// one (Profiles/PtpIntervals.h): two implementations here already disagreed
+/// about it once, and a third rule was not going to help.
 std::chrono::nanoseconds intervalFrom(int8_t logSeconds) {
-    if (logSeconds >= 0) {
-        return std::chrono::seconds(1LL << logSeconds);
-    }
-    return std::chrono::nanoseconds(1000000000LL >> (-logSeconds));
+    return std::chrono::nanoseconds(ptpLogIntervalToNanoseconds(logSeconds));
 }
 
 }  // namespace
@@ -25,6 +25,17 @@ bool Grandmaster::start(std::string& error) {
     if (profile_ == nullptr) {
         error = "no profile called " + config_.profileName +
                 " (the table is packages/aes67-profiles)";
+        return false;
+    }
+
+    // Zero is what the shared conversion returns for an exponent outside the
+    // range 1588 allows. Pacing a send loop by it would mean sending as fast
+    // as the loop turns, so it is refused here rather than discovered on the
+    // wire.
+    if (ptpLogIntervalToNanoseconds(profile_->settings.logSyncInterval) == 0 ||
+        ptpLogIntervalToNanoseconds(profile_->settings.logAnnounceInterval) == 0) {
+        error = std::string("profile ") + profile_->name +
+                " carries an interval outside the range this daemon can send at";
         return false;
     }
 
