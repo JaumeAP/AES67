@@ -159,6 +159,13 @@ rather than leaving it to be discovered on site.
 RTSP's own port is 554 and needs privilege; anything above 1024 does not, and
 discovery still works because the SRV record carries whichever port was bound.
 
+## Against Dante Controller
+
+`Docs/dante-controller-parity.md` sets out, part by part, what Dante
+Controller does, which standard covers it and what is implemented here. The
+short version is that everything which is routing has an answer, because NMOS
+defines one, and everything which is Audinate's own does not.
+
 ## What is checked
 
 `scripts/gate.sh` builds the package, runs three suites -- the RTSP messages,
