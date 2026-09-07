@@ -102,14 +102,13 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
                                 352800.0, 384000.0};
         p.allowedPtimesUs = {}; // empty = accept any packet time (RAVENNA is unrestricted here)
         p.allowedEncodings = {"L16", "L24"};
-        // Still 8, and not RAVENNA's 64, on purpose. A profile is a filter and
-        // never a capability grant: the driver's transmit path splits into
-        // eight-channel flows and its receive path decodes no wider, so a
-        // profile saying 64 would accept a stream the code cannot carry. And
-        // 64 channels of L24 at 1 ms is a 9256 byte packet, which no Ethernet
-        // MTU takes. The day the RTP path carries wider flows, this is the
-        // number to raise; until then it would be a lie the validator tells.
-        p.maxChannelsPerFlow = 8;
+        // RAVENNA's 64, which is what Merging's gear sends and what the
+        // driver's RTP path carries. Whether 64 channels fit in a frame is a
+        // question of packet time, not of the profile: 64 of L24 at 1 ms are
+        // 9228 bytes and fit nothing, at 125 us they are 1164 and fit a plain
+        // Ethernet frame. The driver checks that (PacketBudget) for every
+        // stream, whatever the profile says.
+        p.maxChannelsPerFlow = 64;
         // Merging's defaults: EF for the audio, PTP domain 0. Recommendations,
         // not requirements -- a stream on another domain is still accepted.
         p.recommendedDscp = 46;
@@ -119,12 +118,12 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "A true AES67 superset on receive: accepts RAVENNA's full sample-"
             "rate set (44.1-192 kHz) and any packet time, so a RAVENNA source "
             "is not rejected for using a rate or ptime AES67 doesn't name. "
-            "Two honest edges remain, both receiver-architecture limits, not "
-            "RAVENNA ones: a single stream is still capped at 8 channels per "
-            "flow (wider RAVENNA streams must be split), and only L16/L24 are "
-            "decoded (RAVENNA's L32 is not). Transmit still emits 1 ms L24. "
-            "RAVENNA's Bonjour discovery and stream redundancy are not "
-            "implemented.";
+            "Up to 64 channels in one flow, as far as they fit in a 1500-byte "
+            "frame: 64 channels of L24 need a packet time of 125 us, and at "
+            "1 ms ten fit. Only L16/L24 are decoded (RAVENNA's L32 is not). "
+            "Transmit still emits 1 ms L24, so its own flows carry up to ten "
+            "channels at 48 kHz. RAVENNA's Bonjour discovery and stream "
+            "redundancy are not implemented.";
         break;
 
     case CompatibilityProfileKind::ST2110_30:
@@ -155,13 +154,12 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // honoured on transmit at all.
         //
         // Levels C, AX, BX and CX are deliberately absent:
-        //  - C is Level B with up to 64 channels in ONE stream, which this
-        //    driver can't do — StreamChannelMapper::kMaxChannelsPerFlow
-        //    caps a flow at 8 and the flow splitter divides anything wider.
-        //    Offering it would be a claim this driver can't honour.
+        //  - C is Level B with up to 64 channels in ONE stream. The RTP path
+        //    carries that width now (the RAVENNA profile uses it), so a
+        //    Level C profile is possible; it is not added speculatively,
+        //    since nothing has asked for it.
         //  - AX/BX/CX are the 96 kHz variants with the channel counts
-        //    halved (4, 4, 32). Supportable in principle; not added
-        //    speculatively, since nothing has asked for them.
+        //    halved (4, 4, 32). Same: supportable, not asked for.
         p.allowedSampleRates = {48000.0};
         p.allowedPtimesUs = {125};
         p.allowedEncodings = {"L16", "L24"}; // AM824 is ST 2110-31, not -30
@@ -174,7 +172,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "125 us packets, and Level A is what everything supports. This "
             "driver's transmitter emits whatever packet time the stream "
             "asks for, so 125 us is reachable, but it has never been tested "
-            "against real Level B gear. Levels C (64 channels in one "
+            "against real Level B gear. Level C (64 channels in one "
             "stream) and AX/BX/CX (96 kHz) are not offered — see the code "
             "comment for why. Same PTP caveat as Level A: ST 2110-30 "
             "requires stricter PTP than AES67 and this driver's has never "

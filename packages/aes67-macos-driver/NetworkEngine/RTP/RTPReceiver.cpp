@@ -60,7 +60,8 @@ RTPReceiver::RTPReceiver(
     stats_.reset();
 
     // Pre-allocate audio buffer to avoid allocations in receiveLoop()
-    // Max kMaxFramesPerPacket frames × stream channels (512 × 8 = 4096 floats)
+    // Max kMaxFramesPerPacket frames × stream channels (512 × 64 = 32768 floats
+    // for the widest flow)
     const size_t maxFrames = kMaxFramesPerPacket;
     const size_t maxSamples = maxFrames * sdp_.numChannels;
     audioBuffer_.resize(maxSamples);
