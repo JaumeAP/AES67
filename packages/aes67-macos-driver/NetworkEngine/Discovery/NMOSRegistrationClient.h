@@ -60,6 +60,10 @@ struct NMOSNodeInfo {
     /// driver serves no IS-04 Node API yet, and a registry that cannot
     /// reach one simply does not.
     std::string href;
+    /// Where the node's own IS-04 Node API answers, for `api.endpoints`.
+    /// Port 0 means none is served and the list stays empty.
+    std::string apiHost;
+    uint16_t apiPort{0};
 };
 
 /// One transmit stream, as IS-04 sees it: a source (what the audio IS), a
@@ -191,6 +195,38 @@ public:
                                          const std::string& deviceId,
                                          const NMOSReceiverResource& receiver,
                                          int64_t versionSeconds, int32_t versionNanos);
+
+    /// The bare resource objects. A registry takes them wrapped by
+    /// wrapResource(); the Node API serves them as they are.
+    static std::string buildNodeData(const NMOSNodeInfo& node,
+                                     int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildDeviceData(const std::string& deviceId,
+                                       const std::string& nodeId,
+                                       const std::string& label,
+                                       const std::vector<std::string>& senderIds,
+                                       const std::vector<std::string>& receiverIds,
+                                       const std::string& controlHref,
+                                       int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildSourceData(const std::string& sourceId,
+                                       const std::string& deviceId,
+                                       const NMOSSenderResource& sender,
+                                       int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildFlowData(const std::string& flowId,
+                                     const std::string& sourceId,
+                                     const std::string& deviceId,
+                                     const NMOSSenderResource& sender,
+                                     int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildSenderData(const std::string& senderId,
+                                       const std::string& flowId,
+                                       const std::string& deviceId,
+                                       const NMOSSenderResource& sender,
+                                       int64_t versionSeconds, int32_t versionNanos);
+    static std::string buildReceiverData(const std::string& receiverId,
+                                         const std::string& deviceId,
+                                         const NMOSReceiverResource& receiver,
+                                         int64_t versionSeconds, int32_t versionNanos);
+    /// `{"type": <type>, "data": <data>}`, the shape a registration POST takes.
+    static std::string wrapResource(const std::string& type, const std::string& data);
 
 private:
     bool postNode();

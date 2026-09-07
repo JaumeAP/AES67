@@ -424,3 +424,51 @@ TEST_CASE("Unregistering takes the tree down before the node") {
     CHECK(senderDelete > 0);
     CHECK(senderDelete < nodeDelete);
 }
+
+TEST_CASE("a registration body is the bare resource wrapped in type and data") {
+    NMOSNodeInfo node;
+    node.id = "0f1e2d3c-4b5a-4697-8877-665544332211";
+    node.hostname = "studio-mac";
+    const std::string data = NMOSRegistrationClient::buildNodeData(node, 10, 20);
+    CHECK(NMOSRegistrationClient::buildRegistrationBody(node, 10, 20) ==
+          NMOSRegistrationClient::wrapResource("node", data));
+    CHECK(data.front() == '{');
+    CHECK(data.find("\"type\": \"node\"") == std::string::npos);
+    CHECK(data.find("\"id\": \"0f1e2d3c-4b5a-4697-8877-665544332211\"") != std::string::npos);
+}
+
+TEST_CASE("a node with an API port lists it as an endpoint") {
+    NMOSNodeInfo node;
+    node.id = "0f1e2d3c-4b5a-4697-8877-665544332211";
+    node.hostname = "studio-mac";
+    CHECK(NMOSRegistrationClient::buildNodeData(node, 1, 0).find("\"endpoints\": []") !=
+          std::string::npos);
+    node.apiHost = "192.168.1.50";
+    node.apiPort = 51234;
+    const std::string data = NMOSRegistrationClient::buildNodeData(node, 1, 0);
+    CHECK(data.find("\"endpoints\": [{ \"host\": \"192.168.1.50\", \"port\": 51234, "
+                    "\"protocol\": \"http\" }]") != std::string::npos);
+}
+
+TEST_CASE("device, source, flow, sender and receiver bodies wrap their data") {
+    NMOSSenderResource sender;
+    sender.name = "Mix A";
+    NMOSReceiverResource receiver;
+    receiver.name = "Return 1";
+    const std::vector<std::string> none;
+    CHECK(NMOSRegistrationClient::buildDeviceBody("d", "n", "L", none, none, "", 1, 0) ==
+          NMOSRegistrationClient::wrapResource(
+              "device", NMOSRegistrationClient::buildDeviceData("d", "n", "L", none, none, "", 1, 0)));
+    CHECK(NMOSRegistrationClient::buildSourceBody("s", "d", sender, 1, 0) ==
+          NMOSRegistrationClient::wrapResource(
+              "source", NMOSRegistrationClient::buildSourceData("s", "d", sender, 1, 0)));
+    CHECK(NMOSRegistrationClient::buildFlowBody("f", "s", "d", sender, 1, 0) ==
+          NMOSRegistrationClient::wrapResource(
+              "flow", NMOSRegistrationClient::buildFlowData("f", "s", "d", sender, 1, 0)));
+    CHECK(NMOSRegistrationClient::buildSenderBody("x", "f", "d", sender, 1, 0) ==
+          NMOSRegistrationClient::wrapResource(
+              "sender", NMOSRegistrationClient::buildSenderData("x", "f", "d", sender, 1, 0)));
+    CHECK(NMOSRegistrationClient::buildReceiverBody("r", "d", receiver, 1, 0) ==
+          NMOSRegistrationClient::wrapResource(
+              "receiver", NMOSRegistrationClient::buildReceiverData("r", "d", receiver, 1, 0)));
+}
