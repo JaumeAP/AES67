@@ -63,6 +63,11 @@ public:
                                                      uint32_t addressV4) const;
 
     std::vector<std::string> names() const;
+
+    /// One session whole, for whoever needs more than its SDP: IS-04
+    /// describes a stream's channel count and its multicast group, and both
+    /// live here.
+    std::optional<RavennaSession> session(const std::string& name) const;
     size_t size() const { return sessions_.size(); }
 
 private:

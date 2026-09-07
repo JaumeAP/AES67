@@ -82,6 +82,64 @@ never acting on it is a connection a controller believes it has made and
 nobody is carrying. Bulk answers 501 too, which sends a controller to the
 single endpoints.
 
+## Being on the list at all
+
+A controller has to find the device and know what it is made of before it can
+route anything. That is **IS-04**, served at `/x-nmos/node/v1.3/`: the node,
+its device, and for each session a source, a flow and a sender, with a receiver
+for what it can take.
+
+    node=http://192.168.1.50:8080/x-nmos/node/v1.3
+
+    curl $node/self/       # the node, its clock, where its APIs are
+    curl $node/senders/    # one per session, with the SDP's address
+    curl $node/receivers/  # what it can be given
+
+Served, not registered. IS-04 has two modes and this is the peer-to-peer one:
+the node advertises itself over mDNS as `_nmos-node._tcp` and a controller
+browsing the link reads it here. Registering with a registry is an HTTP client
+and a heartbeat, and it is not pretended at.
+
+The ids are derived from the names rather than drawn at random, so a restart
+does not renumber a plant: a controller keys everything on them, and ids that
+moved would make every route point at something that no longer exists.
+
+The resources are built from what the device holds -- the session catalogue,
+the connection API's receivers -- rather than kept beside it. Two descriptions
+of one device disagree the moment one of them changes.
+
+## The grid, channel by channel
+
+IS-05 says which stream a receiver takes. **IS-08**, served at
+`/x-nmos/channelmapping/v1.0/`, says where each of that stream's channels
+lands -- one cell at a time, which is the part of a routing controller that
+looks like a grid.
+
+    grid=http://192.168.1.50:8080/x-nmos/channelmapping/v1.0
+
+    # what there is to route: inputs are the streams receivers took,
+    # the output is this device's channels
+    curl $grid/io/
+
+    # the grid as it stands
+    curl $grid/map/active/
+
+    # move one cell: channel 2 of receiver-1 onto device channel 64
+    curl -X POST -H 'Content-Type: application/json' -d '{
+      "activation": {"mode": "activate_immediate"},
+      "action": {"device": {"64": {"input": "receiver-1", "channel_index": 1}}}
+    }' $grid/map/activate
+
+The grid is not a second copy of anything: it is read from and written to
+`StreamChannelMapper`'s per-channel routing, which has been there all along
+with no way to reach it from outside the machine. Whatever fed a device
+channel stops feeding it when a cell is rewritten -- two inputs on one output
+channel is not a mix, it is a fault -- and a grid the matrix refuses leaves the
+device carrying exactly what it was carrying.
+
+One output block, called `device`, because this device's channels are one
+array. Saying two would be describing hardware that is not there.
+
 ## Trying it
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -100,6 +158,13 @@ rather than leaving it to be discovered on site.
 
 RTSP's own port is 554 and needs privilege; anything above 1024 does not, and
 discovery still works because the SRV record carries whichever port was bound.
+
+## Against Dante Controller
+
+`Docs/dante-controller-parity.md` sets out, part by part, what Dante
+Controller does, which standard covers it and what is implemented here. The
+short version is that everything which is routing has an answer, because NMOS
+defines one, and everything which is Audinate's own does not.
 
 ## What is checked
 

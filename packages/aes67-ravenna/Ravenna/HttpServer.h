@@ -16,13 +16,21 @@
 #include "Ravenna/ConnectionApi.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace AES67::Ravenna {
 
 class HttpServer {
 public:
-    explicit HttpServer(ConnectionApi& api) : api_(api) {}
+    /// What answers a request. The server does not know which API it is
+    /// serving: this device serves two -- connection and channel mapping --
+    /// and a server that knew about either would have to know about both.
+    using Handler = std::function<ApiResponse(const std::string& method,
+                                              const std::string& path,
+                                              const std::string& body)>;
+
+    explicit HttpServer(Handler handler) : handler_(std::move(handler)) {}
     ~HttpServer();
 
     HttpServer(const HttpServer&) = delete;
@@ -39,7 +47,7 @@ public:
 private:
     void answer(int client, const std::string& request);
 
-    ConnectionApi& api_;
+    Handler handler_;
     int listener_ = -1;
     uint16_t port_ = 0;
 };

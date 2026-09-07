@@ -76,6 +76,12 @@ std::vector<SessionAdvertisement> SessionCatalogue::advertisements(
     return advertised;
 }
 
+std::optional<RavennaSession> SessionCatalogue::session(const std::string& name) const {
+    const auto found = sessions_.find(name);
+    if (found == sessions_.end()) return std::nullopt;
+    return found->second;
+}
+
 std::vector<std::string> SessionCatalogue::names() const {
     std::vector<std::string> found;
     found.reserve(sessions_.size());

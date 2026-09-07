@@ -20,9 +20,11 @@
 // assigned through aes67-core's StreamChannelMapper.
 //
 #include "NetworkEngine/StreamChannelMapper.h"
+#include "Ravenna/ChannelMappingApi.h"
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/HttpServer.h"
 #include "Ravenna/MdnsResponder.h"
+#include "Ravenna/NodeApi.h"
 #include "Ravenna/ReceiverRouting.h"
 #include "Ravenna/RtspServer.h"
 #include "Ravenna/SessionCatalogue.h"
@@ -194,13 +196,40 @@ int main(int argc, char** argv) {
         return true;
     });
 
-    HttpServer nmos(connections);
+    // The grid, channel by channel: IS-08 over the same matrix.
+    ChannelMappingApi channelMapping(mapper, routing);
+
+    // IS-04, so a controller browsing the link finds this device at all and
+    // knows what it is made of before it routes anything.
+    NodeIdentity identity;
+    identity.nodeId = stableUuidFrom(hostName + "/node");
+    identity.deviceId = stableUuidFrom(hostName + "/device");
+    identity.label = hostName;
+    identity.description = "AES67 sender over RAVENNA discovery";
+    identity.hostName = hostName;
+    identity.addressV4 = address;
+    identity.apiPort = nmosPort;
+    identity.ptpGrandmaster = ptpGrandmaster;
+    NodeApi nodeApi(identity, catalogue, connections);
+
+    HttpServer nmos([&connections, &channelMapping, &nodeApi](const std::string& method,
+                                                              const std::string& path,
+                                                              const std::string& body) {
+        if (path.rfind(kChannelMappingApiRoot, 0) == 0) {
+            return channelMapping.handle(method, path, body);
+        }
+        if (path.rfind(kNodeApiRoot, 0) == 0) {
+            return nodeApi.handle(method, path, body);
+        }
+        return connections.handle(method, path, body);
+    });
     if (!nmos.start(nmosPort, error)) {
         std::fprintf(stderr, "nmos: %s\n", error.c_str());
         return 1;
     }
 
     MdnsResponder mdns(catalogue);
+    mdns.alsoAdvertise(nodeApi.advertisement());
     if (!mdns.start(interfaceName, hostName, address, rtsp.port(), error)) {
         std::fprintf(stderr, "mdns: %s\n", error.c_str());
         return 1;
@@ -228,8 +257,10 @@ int main(int argc, char** argv) {
                      "receiver that requires one will not lock to this stream\n");
     }
 
-    std::printf("[ravenna] IS-05 on port %u, at %s/single/\n",
-                static_cast<unsigned>(nmos.port()), kConnectionApiRoot);
+    std::printf("[ravenna] on port %u: IS-04 at %s/, IS-05 at %s/single/, "
+                "IS-08 at %s/map/\n",
+                static_cast<unsigned>(nmos.port()), kNodeApiRoot, kConnectionApiRoot,
+                kChannelMappingApiRoot);
 
     size_t queries = 0;
     size_t describes = 0;

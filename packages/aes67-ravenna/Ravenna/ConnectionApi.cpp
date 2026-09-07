@@ -116,6 +116,20 @@ std::optional<ConnectionReceiver> ConnectionApi::receiver(const std::string& id)
     return found->second;
 }
 
+std::vector<std::string> ConnectionApi::senderIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(senders_.size());
+    for (const auto& [id, sender] : senders_) ids.push_back(id);
+    return ids;
+}
+
+std::vector<std::string> ConnectionApi::receiverIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(receivers_.size());
+    for (const auto& [id, receiver] : receivers_) ids.push_back(id);
+    return ids;
+}
+
 ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std::string& body) {
     const auto found = receivers_.find(id);
     if (found == receivers_.end()) return errorResponse(404, "no receiver called " + id);

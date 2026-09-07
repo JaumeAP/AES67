@@ -64,6 +64,19 @@ std::optional<ChannelMapping> ReceiverRouting::mappingFor(const std::string& rec
     return mapper_.getMapping(known->second);
 }
 
+std::vector<std::string> ReceiverRouting::connectedReceivers() const {
+    std::vector<std::string> receivers;
+    receivers.reserve(streamIdOf_.size());
+    for (const auto& [receiverId, streamId] : streamIdOf_) receivers.push_back(receiverId);
+    return receivers;
+}
+
+std::optional<StreamID> ReceiverRouting::streamIdFor(const std::string& receiverId) const {
+    const auto known = streamIdOf_.find(receiverId);
+    if (known == streamIdOf_.end()) return std::nullopt;
+    return known->second;
+}
+
 ConnectionApi::ReceiverActivation ReceiverRouting::callback() {
     return [this](const std::string& receiverId, const std::string& sdp, bool enable,
                   std::string& why) {
