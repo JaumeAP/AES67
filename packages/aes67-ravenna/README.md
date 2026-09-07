@@ -52,20 +52,27 @@ controller does when you drag one device onto another.
 
 The exchange is three requests:
 
+    node=http://192.168.1.50:8080/x-nmos/node/v1.3
     base=http://192.168.1.50:8080/x-nmos/connection/v1.1/single
 
+    # the ids are IS-04's: one sender and one receiver are one resource each,
+    # whichever API you address them through
+    sender=$(curl -s $node/senders/ | jq -r '.[0].id')
+    receiver=$(curl -s $node/receivers/ | jq -r '.[0].id')
+
     # 1. what the sender offers
-    curl $base/senders/sender-Mix%20A/transportfile/
+    curl $base/senders/$sender/transportfile/
 
     # 2. stage it on the receiver, and activate
     curl -X PATCH -H 'Content-Type: application/json' -d '{
+      "sender_id": "'$sender'",
       "master_enable": true,
       "transport_file": {"data": "<the SDP>", "type": "application/sdp"},
       "activation": {"mode": "activate_immediate"}
-    }' $base/receivers/receiver-1/staged/
+    }' $base/receivers/$receiver/staged/
 
     # 3. what actually happened
-    curl $base/receivers/receiver-1/active/
+    curl $base/receivers/$receiver/active/
 
 Activating is where the channels are assigned. `Ravenna/ReceiverRouting.h` is
 what joins the two -- a receiver, named by the connection API, holding a
@@ -100,9 +107,18 @@ the node advertises itself over mDNS as `_nmos-node._tcp` and a controller
 browsing the link reads it here. Registering with a registry is an HTTP client
 and a heartbeat, and it is not pretended at.
 
-The ids are derived from the names rather than drawn at random, so a restart
-does not renumber a plant: a controller keys everything on them, and ids that
-moved would make every route point at something that no longer exists.
+A sender and a receiver have one id each, and it is the connection API's: a
+controller reads it here and addresses IS-05 with it, so a second id derived
+for IS-04 would be a route nothing can follow. Source and flow ids are derived
+from the session's name -- IS-05 addresses neither -- rather than drawn at
+random, so a restart does not renumber a plant: a controller keys everything on
+them, and ids that moved would make every route point at something that no
+longer exists.
+
+The advertised instance name is one DNS-SD label. A dot in it makes two, and a
+responder discards the record rather than correcting it, which leaves the node
+served, reachable, and invisible: the node's label is used, with any dot
+replaced by a space, and the host name keeps its own.
 
 The resources are built from what the device holds -- the session catalogue,
 the connection API's receivers -- rather than kept beside it. Two descriptions
@@ -124,10 +140,10 @@ looks like a grid.
     # the grid as it stands
     curl $grid/map/active/
 
-    # move one cell: channel 2 of receiver-1 onto device channel 64
+    # move one cell: channel 2 of that receiver onto device channel 64
     curl -X POST -H 'Content-Type: application/json' -d '{
       "activation": {"mode": "activate_immediate"},
-      "action": {"device": {"64": {"input": "receiver-1", "channel_index": 1}}}
+      "action": {"device": {"64": {"input": "'$receiver'", "channel_index": 1}}}
     }' $grid/map/activate
 
 The grid is not a second copy of anything: it is read from and written to
