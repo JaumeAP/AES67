@@ -9,6 +9,7 @@
 #   packages/aes67-profiles/scripts/gate.sh      build, test, self-containment
 #   packages/aes67-core/scripts/gate.sh          build, test, platform contract
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
+#   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
 #   packages/t41-ptp/scripts/gate.sh             host tests
 #
 # aes67-core runs before the driver on purpose: the driver builds the core in
@@ -43,6 +44,7 @@ run() {
 run "aes67-profiles"     packages/aes67-profiles/scripts/gate.sh
 run "aes67-core"         packages/aes67-core/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
+run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 run "t41-ptp"            packages/t41-ptp/scripts/gate.sh
 
 echo

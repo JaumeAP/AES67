@@ -1,0 +1,45 @@
+# Compiles the Linux PTP daemon on Linux.
+#
+# It is here because the machine this package is written on is a Mac, where
+# SO_TIMESTAMPING, SIOCSHWTSTAMP and /dev/ptpN do not exist: the package builds
+# its wire library and its tests there and skips the daemon, so without this
+# job the half that talks to the kernel would never be compiled by anybody
+# until it reached a Pi.
+#
+# It compiles; it does not run. A grandmaster needs a NIC with a PTP hardware
+# clock and a network with slaves on it, and a runner has neither.
+name: linux-ptpd
+
+on:
+  push:
+    paths:
+      - 'packages/aes67-linux-ptpd/**'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-profiles/**'
+      - 'packages/t41-ptp/src/ptp/ptp-bmca.h'
+      - '.github/workflows/linux-ptpd.yml'
+  pull_request:
+    paths:
+      - 'packages/aes67-linux-ptpd/**'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-profiles/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -S packages/aes67-linux-ptpd -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: The daemon has to exist on Linux
+        run: test -x build/aes67-ptpd
+
+      - name: Wire tests
+        run: ctest --test-dir build --output-on-failure -R PtpWire
