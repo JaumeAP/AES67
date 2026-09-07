@@ -33,6 +33,12 @@ final class NmosController: NSObject, ObservableObject {
     private var endpoints: [String: (host: String, port: Int)] = [:]
     private var refreshTimer: Timer?
     private var started = false
+    /// One pass at a time: a pass is serial over every node, so it can outlast
+    /// the timer's interval. A refresh asked for while one is running is
+    /// coalesced into a single re-run, so an older snapshot can never finish
+    /// last and overwrite a newer one.
+    private var refreshing = false
+    private var refreshAgain = false
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 3
@@ -62,6 +68,11 @@ final class NmosController: NSObject, ObservableObject {
     }
 
     func refresh() {
+        guard !refreshing else {
+            refreshAgain = true
+            return
+        }
+        refreshing = true
         let targets = endpoints
         Task { [weak self] in
             guard let self else { return }
@@ -70,6 +81,11 @@ final class NmosController: NSObject, ObservableObject {
                 read.append(await self.readNode(name: name, host: endpoint.host, port: endpoint.port))
             }
             self.publish(read)
+            self.refreshing = false
+            if self.refreshAgain {
+                self.refreshAgain = false
+                self.refresh()
+            }
         }
     }
 
