@@ -14,6 +14,8 @@
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
+#include "NetworkEngine/Discovery/NodeAPIRouter.h"
+#include "NetworkEngine/Discovery/NodeAdvertiser.h"
 #include "NetworkEngine/Discovery/RTSPServer.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/PTP/PTPPeerObserver.h"
@@ -252,6 +254,11 @@ private:
     /// patch. Bound to an ephemeral port and advertised in the device's
     /// controls.
     std::unique_ptr<ConnectionAPIServer> connectionServer_;
+    /// The IS-04 Node API, on the Connection API's port, and the mDNS
+    /// advertisement that lets a controller find it. Both run whenever the
+    /// device does; registering with a registry (nmosClient_) is separate.
+    std::unique_ptr<NodeAPIRouter> nodeRouter_;
+    std::unique_ptr<NodeAdvertiser> nodeAdvertiser_;
     std::thread nmosSyncThread_;
     std::mutex nmosSyncMutex_;
     std::condition_variable nmosSyncSignal_;
@@ -272,6 +279,11 @@ private:
     /// one and patches the other has to be talking about the same things.
     std::vector<ConnectionSender> connectionSenders();
     std::vector<ConnectionReceiver> connectionReceivers();
+
+    /// The streams as IS-04 describes them, for the registry and the Node
+    /// API alike.
+    std::vector<NMOSSenderResource> nmosSenderResources();
+    std::vector<NMOSReceiverResource> nmosReceiverResources();
 
     /// The NMOS id for a stream of this name, or empty when NMOS is off.
     std::string nmosIdFor(const std::string& prefix, const std::string& name) const;
