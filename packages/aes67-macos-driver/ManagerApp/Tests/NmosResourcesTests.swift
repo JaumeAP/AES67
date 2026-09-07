@@ -107,7 +107,19 @@ func runNmosResourcesTests() {
     check(matrix.cell(row: macRow, column: mixColumn) == .off, "other sender is off")
     check(matrix.cell(row: cardRow, column: mixColumn) == .unavailable, "a node without IS-05 is not writable")
     check(!cardRow.writable, "writable follows connectionRoot")
-    checkEqual(matrix.node(forSender: "c1")?.id, "n2", "sender to node")
+
+    // Two nodes with the same id. Node ids come off the network, and two
+    // ravenna-announce instances left on the default --host announce the
+    // same one, so a uniqueKeysWithValues here takes the whole app down
+    // over somebody else's duplicate.
+    var twin = NmosNode(id: "n1", label: "Twin", host: "10.0.0.7", port: 80, connectionRoot: nil)
+    twin.senders = [NmosSender(id: "t1", label: "Twin Out", nodeId: "n1", channels: nil)]
+    twin.receivers = [NmosReceiver(id: "tr", label: "Twin In", nodeId: "n1")]
+    let duplicated = RoutingMatrix.build(from: [mac, twin])
+    check(duplicated.columns.contains { $0.id == "s1" }, "the first of two nodes sharing an id keeps its column")
+    check(duplicated.columns.contains { $0.id == "t1" }, "the second keeps its column too")
+    check(duplicated.rows.contains { $0.id == "r1" }, "the first keeps its row")
+    check(duplicated.rows.contains { $0.id == "tr" }, "the second keeps its row")
 
     card.reachable = false
     let withDown = RoutingMatrix.build(from: [mac, card])

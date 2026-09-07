@@ -36,8 +36,6 @@ struct NmosNode: Identifiable, Equatable {
     var senders: [NmosSender] = []
     var receivers: [NmosReceiver] = []
     var reachable: Bool = true
-
-    var nodeRoot: URL { URL(string: "http://\(host):\(port)/x-nmos/node/v1.3/")! }
 }
 
 enum NmosDecodingError: Error {
@@ -192,18 +190,20 @@ struct RoutingMatrix: Equatable {
                                 receiver: receiver, node: node))
             }
         }
+        // Node ids come off the network and nothing on the link guarantees
+        // they are unique: two ravenna-announce instances left on the
+        // default --host announce the same one. uniqueKeysWithValues traps
+        // on that, which would take the whole app down over somebody
+        // else's duplicate; the first one seen wins instead.
         return RoutingMatrix(columns: columns, rows: rows,
-                             nodesById: Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) }))
+                             nodesById: Dictionary(nodes.map { ($0.id, $0) },
+                                                   uniquingKeysWith: { first, _ in first }))
     }
 
     func cell(row: Row, column: Column) -> Cell {
         if !row.reachable || !column.reachable || !row.writable { return .unavailable }
         if row.receiver.masterEnable && row.receiver.activeSenderId == column.id { return .on }
         return .off
-    }
-
-    func node(forSender id: String) -> NmosNode? {
-        return nodesById[columns.first { $0.id == id }?.sender.nodeId ?? ""]
     }
 
     static func == (lhs: RoutingMatrix, rhs: RoutingMatrix) -> Bool {
