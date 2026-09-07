@@ -97,6 +97,21 @@ too, so what this announces and what they expect cannot drift apart.
 What this package decides for itself is what describes the clock rather than
 the ecosystem: `--priority1`, `--priority2` and the announced quality.
 
+## Getting it onto the Pi without building it
+
+Every push builds it on a native arm64 runner -- the Pi 5's own architecture,
+no cross toolchain and no emulation -- and leaves a `.deb` on the run. Open the
+`linux-ptpd` workflow on GitHub, take the newest green run, download the
+`aes67-ptpd-arm64` artifact, and on the Pi:
+
+    unzip aes67-ptpd-arm64.zip
+    sudo dpkg -i aes67-ptpd-*.deb
+    sudo systemctl enable --now aes67-ptpd
+
+The package puts the binary in `/usr/local/bin` and the unit in
+`/usr/local/lib/systemd/system`. Building it yourself is below, and is what to
+do if you are changing anything.
+
 ## Building on the Pi
 
     sudo apt install build-essential cmake git uuid-dev

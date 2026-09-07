@@ -46,5 +46,39 @@ jobs:
       - name: The daemon has to exist on Linux
         run: test -x build/aes67-ptpd
 
-      - name: Wire tests
-        run: ctest --test-dir build --output-on-failure -R PtpWire
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+  # The build that produces something to install. arm64 is the Pi 5's own
+  # architecture, and these runners are native: no cross toolchain, no
+  # emulation, and the binary that comes out is the one the board runs.
+  package:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y uuid-dev
+
+      - name: Configure
+        run: cmake -S packages/aes67-linux-ptpd -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: cpack --config build/CPackConfig.cmake -B build/packages
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aes67-ptpd-arm64
+          path: |
+            build/packages/*.deb
+            build/aes67-ptpd
+          if-no-files-found: error
+          retention-days: 90
