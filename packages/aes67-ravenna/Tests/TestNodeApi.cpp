@@ -119,9 +119,10 @@ TEST_CASE("Every session becomes a source, a flow and a sender") {
     CHECK(senders.asArray()[0]["flow_id"].asString() == flows.asArray()[0]["id"].asString());
     CHECK(senders.asArray()[0]["transport"].asString() == kTransportRtpMulticast);
     // Where the SDP is, which is the one thing a controller has to fetch to
-    // connect anything.
+    // connect anything, addressed by the id the sender was published under.
     CHECK(senders.asArray()[0]["manifest_href"].asString().find(
-              "/single/senders/sender-Mix A/transportfile/") != std::string::npos);
+              "/single/senders/" + senders.asArray()[0]["id"].asString() +
+              "/transportfile/") != std::string::npos);
 }
 
 TEST_CASE("The device points at the APIs that route it") {
@@ -209,4 +210,57 @@ TEST_CASE("The node advertises itself for a controller with no registry") {
     }
     CHECK(hasVersion);
     CHECK(hasProtocol);
+}
+
+TEST_CASE("IS-04 publishes the ids IS-05 answers to") {
+    // The two APIs are one device. A controller reads an id from the node API
+    // and then addresses the connection API with it, so an id that only one of
+    // them knows is a route that cannot be made.
+    SessionCatalogue catalogue;
+    std::string error;
+    REQUIRE(catalogue.add(sessionNamed("Mix A"), error));
+
+    ConnectionApi connections;
+    ConnectionSender sender;
+    sender.id = stableUuidFrom("sender:Mix A");
+    sender.label = "Mix A";
+    sender.sdp = "v=0\r\ns=Mix A\r\n";
+    connections.addSender(sender);
+
+    ConnectionReceiver receiver;
+    receiver.id = stableUuidFrom("receiver:1");
+    receiver.label = "Inputs 1-2";
+    connections.addReceiver(receiver);
+
+    NodeApi node(identity(), catalogue, connections);
+    const std::string connectionRoot = kConnectionApiRoot;
+
+    const JsonValue senders = bodyOf(node.handle("GET", path("/senders/"), ""));
+    REQUIRE(senders.asArray().size() == 1);
+    const std::string senderId = senders.asArray()[0]["id"].asString();
+    CHECK(senderId == sender.id);
+    CHECK(connections
+              .handle("GET", connectionRoot + "/single/senders/" + senderId + "/transportfile/", "")
+              .status == 200);
+
+    const JsonValue receivers = bodyOf(node.handle("GET", path("/receivers/"), ""));
+    REQUIRE(receivers.asArray().size() == 1);
+    const std::string receiverId = receivers.asArray()[0]["id"].asString();
+    CHECK(receiverId == receiver.id);
+    CHECK(connections
+              .handle("GET", connectionRoot + "/single/receivers/" + receiverId + "/active/", "")
+              .status == 200);
+
+    // The device lists those same ids, which is where a controller finds them.
+    const JsonValue device = bodyOf(node.handle("GET", path("/devices/"), "")).asArray()[0];
+    CHECK(device["senders"].asArray()[0].asString() == senderId);
+    CHECK(device["receivers"].asArray()[0].asString() == receiverId);
+
+    // And the SDP is offered at the address that id makes, not at a second one.
+    CHECK(senders.asArray()[0]["manifest_href"].asString().find(
+              "/single/senders/" + senderId + "/transportfile/") != std::string::npos);
+
+    // Source and flow ids stay derived: IS-05 never addresses either.
+    const JsonValue flows = bodyOf(node.handle("GET", path("/flows/"), ""));
+    CHECK(flows.asArray()[0]["id"].asString() != senderId);
 }

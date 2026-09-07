@@ -69,9 +69,15 @@ private:
     JsonValue senders() const;
     JsonValue receivers() const;
 
-    /// The ids are derived from the session's name rather than random, so a
-    /// restart does not renumber a plant's routing.
+    /// A sender's id is the connection API's, found by the session's name.
+    /// IS-05 addresses a sender by the id IS-04 published, so a second id
+    /// derived here would be a route a controller cannot follow. Receivers
+    /// are the connection API's ids outright, with nothing to match on.
     std::string senderIdFor(const std::string& sessionName) const;
+
+    /// Sources and flows are derived from the session's name rather than
+    /// random, so a restart does not renumber a plant's routing. IS-05 never
+    /// addresses either, so nothing else has to agree on them.
     std::string sourceIdFor(const std::string& sessionName) const;
     std::string flowIdFor(const std::string& sessionName) const;
 

@@ -163,13 +163,15 @@ int main(int argc, char** argv) {
     ConnectionApi connections;
 
     ConnectionSender nmosSender;
-    nmosSender.id = "sender-" + sessionName;
+    // UUID-shaped, because a controller that validates an IS-04 id rejects
+    // anything else, and it is the same id IS-04 publishes for this sender.
+    nmosSender.id = stableUuidFrom("sender:" + sessionName);
     nmosSender.label = sessionName;
     nmosSender.sdp = SDPParser::generate(session.sdp);
     connections.addSender(nmosSender);
 
     ConnectionReceiver nmosReceiver;
-    nmosReceiver.id = "receiver-1";
+    nmosReceiver.id = stableUuidFrom("receiver:1");
     nmosReceiver.label = "Device channels " + std::to_string(deviceChannel) + " and up";
     connections.addReceiver(nmosReceiver);
 

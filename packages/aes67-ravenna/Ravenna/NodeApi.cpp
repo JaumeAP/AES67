@@ -77,6 +77,14 @@ std::string stableUuidFrom(const std::string& name) {
 }
 
 std::string NodeApi::senderIdFor(const std::string& sessionName) const {
+    // The connection API holds the id this sender is routed by; the session
+    // catalogue holds the name it is known by. The label is what joins them.
+    for (const std::string& id : connections_.senderIds()) {
+        const auto sender = connections_.sender(id);
+        if (sender && sender->label == sessionName) return id;
+    }
+    // Nothing offers this session over IS-05, so nobody can address it and a
+    // derived id is as good as any: it still has to be stable and unique.
     return stableUuidFrom(identity_.nodeId + "/sender/" + sessionName);
 }
 
@@ -142,7 +150,7 @@ JsonValue NodeApi::devices() const {
 
     JsonArray receiverIds;
     for (const std::string& id : connections_.receiverIds()) {
-        receiverIds.push_back(JsonValue(stableUuidFrom(identity_.nodeId + "/receiver/" + id)));
+        receiverIds.push_back(JsonValue(id));
     }
 
     const std::string base = "http://" + addressText(identity_.addressV4) + ":" +
@@ -251,7 +259,7 @@ JsonValue NodeApi::senders() const {
         // controller takes it from here and gives it to a receiver.
         sender["manifest_href"] =
             JsonValue(base + std::string(kConnectionApiRoot) + "/single/senders/" +
-                      ("sender-" + name) + "/transportfile/");
+                      senderIdFor(name) + "/transportfile/");
         sender["subscription"] = JsonValue(JsonObject{
             {"receiver_id", JsonValue()}, {"active", JsonValue(true)}});
         items.push_back(JsonValue(sender));
@@ -268,7 +276,7 @@ JsonValue NodeApi::receivers() const {
         const bool active = connection->active.masterEnable;
 
         JsonObject receiver;
-        receiver["id"] = JsonValue(stableUuidFrom(identity_.nodeId + "/receiver/" + id));
+        receiver["id"] = JsonValue(id);
         receiver["version"] = JsonValue(versionNow());
         receiver["label"] = JsonValue(connection->label.empty() ? id : connection->label);
         receiver["description"] = JsonValue("");
