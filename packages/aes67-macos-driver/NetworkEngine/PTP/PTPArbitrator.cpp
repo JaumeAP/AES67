@@ -38,7 +38,7 @@ bool PTPArbitrator::start() {
     }
 
     if (!master_->start()) {
-        std::cerr << "[PTPArbitrator] Failed to start PTPMaster" << std::endl;
+        std::cerr << "[PTPArbitrator] Failed to start PTPMaster" << '\n';
         return false;
     }
 
@@ -61,7 +61,7 @@ PTPRole PTPArbitrator::role() const {
     return master_->isActive() ? PTPRole::Master : PTPRole::Slave;
 }
 
-void PTPArbitrator::setMeasurementCallback(PTPMeasurementCallback cb) {
+void PTPArbitrator::setMeasurementCallback(const PTPMeasurementCallback& cb) {
     std::lock_guard<std::mutex> lock(callbackMutex_);
     pendingCallback_ = cb;
     if (slave_) slave_->setMeasurementCallback(cb);

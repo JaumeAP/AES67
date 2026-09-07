@@ -59,7 +59,7 @@ public:
     bool initialize(const std::string& interfaceIp) {
         sockFd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
         if (sockFd_ < 0) {
-            std::cerr << "SAPAnnouncer: failed to create socket" << std::endl;
+            std::cerr << "SAPAnnouncer: failed to create socket" << '\n';
             return false;
         }
 
@@ -74,7 +74,7 @@ public:
                                  sizeof(ifa)) < 0) {
                     // Non-fatal: kernel picks a default route interface.
                     std::cerr << "SAPAnnouncer: IP_MULTICAST_IF failed, using default"
-                              << std::endl;
+                              << '\n';
                 }
             }
         }

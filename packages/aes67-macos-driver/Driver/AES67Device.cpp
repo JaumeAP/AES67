@@ -66,7 +66,7 @@ namespace {
     }
 }
 
-AES67Device::AES67Device(std::shared_ptr<aspl::Context> context)
+AES67Device::AES67Device(const std::shared_ptr<aspl::Context>& context)
     : aspl::Device(context, aspl::DeviceParameters{
         .Name = "AES67 Device",
         .Manufacturer = "AES67 Driver",
@@ -874,7 +874,8 @@ OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
 
 std::vector<AudioValueRange> AES67Device::GetAvailableSampleRates() const {
     std::vector<AudioValueRange> ranges;
-    for (auto rate : kSupportedSampleRates) {
+    ranges.reserve(kSupportedSampleRates.size());
+for (auto rate : kSupportedSampleRates) {
         ranges.push_back({rate, rate});
     }
     return ranges;
@@ -1078,13 +1079,18 @@ CFPropertyListRef AES67Device::GetPtpPeersProperty() const {
             kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         if (!dict) continue;
 
-        const char* roleStr = "unknown";
-        switch (peer.role()) {
-            case PTPPeerRole::Master: roleStr = "master"; break;
-            case PTPPeerRole::Slave:  roleStr = "slave";  break;
-            case PTPPeerRole::Mixed:  roleStr = "mixed";  break;
-            case PTPPeerRole::Unknown: roleStr = "unknown"; break;
-        }
+        // A function rather than a switch into a variable: every role is
+        // named, and a value that was assigned before the switch and never
+        // read was the analyser's way of saying so.
+        const char* roleStr = [&]() -> const char* {
+            switch (peer.role()) {
+                case PTPPeerRole::Master: return "master";
+                case PTPPeerRole::Slave:  return "slave";
+                case PTPPeerRole::Mixed:  return "mixed";
+                case PTPPeerRole::Unknown: break;
+            }
+            return "unknown";
+        }();
 
         SetCFString(dict, kPeerKeyClockId, peer.clockIdString());
         SetCFString(dict, kPeerKeyOui, peer.ouiString());

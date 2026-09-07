@@ -38,7 +38,7 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // Create UDP socket
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
-        fprintf(stderr, "AES67 RTP openReceiver: socket() failed for %s:%u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openReceiver: socket() failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         return false;
     }
@@ -47,14 +47,14 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // macOS/BSD requires both SO_REUSEADDR and SO_REUSEPORT for UDP port sharing
     int reuse = 1;
     if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        fprintf(stderr, "AES67 RTP openReceiver: SO_REUSEADDR failed for %s:%u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openReceiver: SO_REUSEADDR failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
         return false;
     }
     if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
-        fprintf(stderr, "AES67 RTP openReceiver: SO_REUSEPORT failed for %s:%u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openReceiver: SO_REUSEPORT failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
@@ -69,7 +69,7 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     bindAddr.sin_port = htons(port);
 
     if (bind(sockfd_, (struct sockaddr*)&bindAddr, sizeof(bindAddr)) < 0) {
-        fprintf(stderr, "AES67 RTP openReceiver: bind() failed on port %u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openReceiver: bind() failed on port %u (errno=%d: %s)\n",
                 port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
@@ -91,13 +91,13 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // packets on machines with multiple NICs, common in pro audio setups)
     if (interfaceIP) {
         if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_IF, &ifaceAddr, sizeof(ifaceAddr)) < 0) {
-            fprintf(stderr, "AES67 RTP openReceiver: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
+            (void)fprintf(stderr, "AES67 RTP openReceiver: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
                     multicastIP, port, interfaceIP, errno, strerror(errno));
             ::close(sockfd_);
             sockfd_ = -1;
             return false;
         }
-        fprintf(stderr, "AES67 RTP openReceiver: bound multicast to interface %s for %s:%u\n",
+        (void)fprintf(stderr, "AES67 RTP openReceiver: bound multicast to interface %s for %s:%u\n",
                 interfaceIP, multicastIP, port);
     }
 
@@ -108,7 +108,7 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     multicastGroupAddr_.s_addr = mreq.imr_multiaddr.s_addr; // remember for rejoinMulticast()
 
     if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-        fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
@@ -130,7 +130,9 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
 
     // Increase receive buffer size (4 MB for high channel counts)
     int rcvbuf = 4 * 1024 * 1024;
-    setsockopt(sockfd_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+    // Best effort: a kernel that refuses the size keeps its default, and
+    // the stream still runs.
+    (void)setsockopt(sockfd_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
     isReceiver_ = true;
 
@@ -147,7 +149,7 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
     // Create UDP socket
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
-        fprintf(stderr, "AES67 RTP openTransmitter: socket() failed for %s:%u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openTransmitter: socket() failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         return false;
     }
@@ -160,7 +162,8 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
     // socket from a just-stopped stream doesn't block the rebind.
     if (sourcePort != 0) {
         int reuse = 1;
-        setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+        // Best effort: the bind below is what says whether the port was free.
+        (void)setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
         struct sockaddr_in localAddr;
         memset(&localAddr, 0, sizeof(localAddr));
@@ -168,7 +171,7 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
         localAddr.sin_addr.s_addr = INADDR_ANY;
         localAddr.sin_port = htons(sourcePort);
         if (bind(sockfd_, reinterpret_cast<struct sockaddr*>(&localAddr), sizeof(localAddr)) < 0) {
-            fprintf(stderr, "AES67 RTP openTransmitter: bind() to source port %u failed for %s:%u (errno=%d: %s)\n",
+            (void)fprintf(stderr, "AES67 RTP openTransmitter: bind() to source port %u failed for %s:%u (errno=%d: %s)\n",
                     sourcePort, multicastIP, port, errno, strerror(errno));
             ::close(sockfd_);
             sockfd_ = -1;
@@ -179,7 +182,7 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
     // Set multicast TTL
     uint8_t ttl = 32;
     if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl)) < 0) {
-        fprintf(stderr, "AES67 RTP openTransmitter: IP_MULTICAST_TTL failed for %s:%u (errno=%d: %s)\n",
+        (void)fprintf(stderr, "AES67 RTP openTransmitter: IP_MULTICAST_TTL failed for %s:%u (errno=%d: %s)\n",
                 multicastIP, port, errno, strerror(errno));
         ::close(sockfd_);
         sockfd_ = -1;
@@ -191,7 +194,7 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
         struct in_addr ifaddr;
         ifaddr.s_addr = inet_addr(interfaceIP);
         if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_IF, &ifaddr, sizeof(ifaddr)) < 0) {
-            fprintf(stderr, "AES67 RTP openTransmitter: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
+            (void)fprintf(stderr, "AES67 RTP openTransmitter: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
                     multicastIP, port, interfaceIP, errno, strerror(errno));
             ::close(sockfd_);
             sockfd_ = -1;
@@ -201,14 +204,14 @@ bool RTPSocket::openTransmitter(const char* multicastIP, uint16_t port, const ch
 
     // Increase send buffer size
     int sndbuf = 4 * 1024 * 1024;
-    setsockopt(sockfd_, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+    (void)setsockopt(sockfd_, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
     // Mark the traffic if the active profile documents a codepoint. Not
     // fatal on failure: a stream that plays unmarked is better than no
     // stream, and the switch may well be classifying by port anyway.
     if (dscp >= 0) {
         if (!NetworkUtils::setQoSTrafficClass(sockfd_, dscp)) {
-            fprintf(stderr, "AES67 RTP openTransmitter: DSCP %d not applied for %s:%u "
+            (void)fprintf(stderr, "AES67 RTP openTransmitter: DSCP %d not applied for %s:%u "
                             "— continuing unmarked\n", dscp, multicastIP, port);
         }
     }
@@ -321,7 +324,12 @@ void RTPSocket::rejoinMulticast() {
     mreq.imr_interface = boundInterfaceAddr_;
     // Ignore the result: EADDRINUSE means still joined; a failure while the
     // link is down is retried on the next call.
-    setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+    // This one is not best effort: a rejoin that fails leaves the socket
+    // deaf, and nothing else reports it.
+    if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        (void)fprintf(stderr, "AES67 RTP: IP_ADD_MEMBERSHIP on rejoin failed (errno=%d: %s)\n",
+                      errno, strerror(errno));
+    }
 }
 
 void RTPSocket::close() {
@@ -335,7 +343,7 @@ void RTPSocket::close() {
             if (setsockopt(sockfd_, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
                 // Log but don't fail — socket is closing anyway.
                 // Repeated failures here could indicate multicast membership leak on macOS.
-                fprintf(stderr, "AES67 RTP: IP_DROP_MEMBERSHIP failed (errno=%d: %s)\n",
+                (void)fprintf(stderr, "AES67 RTP: IP_DROP_MEMBERSHIP failed (errno=%d: %s)\n",
                         errno, strerror(errno));
             }
         }

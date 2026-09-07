@@ -59,7 +59,7 @@ bool AudioThreadPriority::configureThreadForRealTime(pthread_t thread, double pe
     );
 
     if (result != KERN_SUCCESS) {
-        fprintf(stderr, "AES67 AudioThreadPriority: THREAD_TIME_CONSTRAINT_POLICY failed "
+        (void)fprintf(stderr, "AES67 AudioThreadPriority: THREAD_TIME_CONSTRAINT_POLICY failed "
                 "(kern_return=%d: %s), falling back to nice -20\n",
                 result, mach_error_string(result));
         setpriority(PRIO_PROCESS, 0, -20);

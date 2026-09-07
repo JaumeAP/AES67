@@ -18,6 +18,7 @@
 #include <atomic>
 #include <mutex>
 #include <functional>
+#include <utility>
 
 namespace AES67 {
 
@@ -411,17 +412,17 @@ public:
 
     // Register callback for stream added
     void setStreamAddedCallback(StreamCallback callback) {
-        streamAddedCallback_ = callback;
+        streamAddedCallback_ = std::move(callback);
     }
 
     // Register callback for stream removed
     void setStreamRemovedCallback(StreamCallback callback) {
-        streamRemovedCallback_ = callback;
+        streamRemovedCallback_ = std::move(callback);
     }
 
     // Register callback for stream status changed
     void setStreamStatusCallback(StreamCallback callback) {
-        streamStatusCallback_ = callback;
+        streamStatusCallback_ = std::move(callback);
     }
 
 private:

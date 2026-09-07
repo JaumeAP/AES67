@@ -94,3 +94,19 @@ TEST_CASE("The lookup works in a constant expression") {
     static_assert(!ptpProfileNameEquals("aes67", "aes6"), "");
     CHECK(true);
 }
+
+#include "Profiles/PtpIntervals.h"
+
+TEST_CASE("One interval conversion, exact where the two used to disagree") {
+    CHECK(ptpLogIntervalToMilliseconds(0) == 1000);
+    CHECK(ptpLogIntervalToMilliseconds(1) == 2000);
+    CHECK(ptpLogIntervalToMilliseconds(-3) == 125);
+    // 2^-7 s is 7.8125 ms: the driver rounded it to 8, the Teensy truncated
+    // to 7. Rounded is the answer.
+    CHECK(ptpLogIntervalToMilliseconds(-7) == 8);
+    CHECK(ptpLogIntervalToMilliseconds(-4) == 63);   // 62.5, rounded up
+    CHECK(ptpLogIntervalToMilliseconds(4) == 16000);
+    // Beyond what a shift can hold is not an interval anyone sends.
+    CHECK(ptpLogIntervalToMilliseconds(22) == 0);
+    static_assert(ptpLogIntervalToMilliseconds(-3) == 125, "usable at compile time");
+}

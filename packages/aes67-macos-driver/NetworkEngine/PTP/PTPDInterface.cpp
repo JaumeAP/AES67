@@ -50,9 +50,9 @@ bool PTPDInterface::init(const std::string& interfaceName) {
 
     if (stubMode_) {
         std::cout << "[PTPDInterface] Stub initialization for interface: "
-                  << interfaceName << std::endl;
+                  << interfaceName << '\n';
         std::cout << "[PTPDInterface] NOTE: PTP synchronization not available - using local clock"
-                  << std::endl;
+                  << '\n';
         return true;
     }
 
@@ -86,7 +86,7 @@ bool PTPDInterface::init(const std::string& interfaceName) {
 
         std::cout << "[PTPDInterface] Master-capable PTP initialization for interface: "
                   << interfaceName << " domain=" << domain_
-                  << " clockSource=" << ptpArbitrator_->clockSource().name() << std::endl;
+                  << " clockSource=" << ptpArbitrator_->clockSource().name() << '\n';
         return true;
     }
 
@@ -100,7 +100,7 @@ bool PTPDInterface::init(const std::string& interfaceName) {
             serviceClient_ = std::make_unique<PTPServiceClient>(servicePath_);
             std::cout << "[PTPDInterface] Using the privileged PTP daemon at "
                       << servicePath_ << " for interface " << interfaceName
-                      << " domain=" << domain_ << std::endl;
+                      << " domain=" << domain_ << '\n';
             return true;
         }
     }
@@ -117,7 +117,7 @@ bool PTPDInterface::init(const std::string& interfaceName) {
     ptpSlave_->setMeasurementCallback(onMeasurement);
 
     std::cout << "[PTPDInterface] Real PTP initialization for interface: "
-              << interfaceName << " domain=" << domain_ << std::endl;
+              << interfaceName << " domain=" << domain_ << '\n';
 
     return true;
 }
@@ -140,7 +140,7 @@ void PTPDInterface::start() {
 
         std::cerr << "[PTPDInterface] WARNING: PTP STUB MODE - clock is NOT synchronized. "
                   << "Using local clock fallback for media clock recovery. "
-                  << "Multi-device sync will not work." << std::endl;
+                  << "Multi-device sync will not work." << '\n';
         return;
     }
 
@@ -150,14 +150,14 @@ void PTPDInterface::start() {
         serviceRunning_.store(true);
         serviceThread_ = std::thread(&PTPDInterface::serviceLoop, this);
         std::cout << "[PTPDInterface] Reading PTP status from "
-                  << servicePath_ << std::endl;
+                  << servicePath_ << '\n';
         return;
     }
 
     if (ptpArbitrator_) {
         if (!ptpArbitrator_->start()) {
             std::cerr << "[PTPDInterface] Failed to start PTPArbitrator on "
-                      << interfaceName_ << " — falling back to stub mode" << std::endl;
+                      << interfaceName_ << " — falling back to stub mode" << '\n';
             stubMode_ = true;
             state_.isLocked.store(false);
             state_.clockClass.store(255);
@@ -166,12 +166,12 @@ void PTPDInterface::start() {
             return;
         }
         std::cout << "[PTPDInterface] PTPArbitrator started on "
-                  << interfaceName_ << " domain=" << domain_ << std::endl;
+                  << interfaceName_ << " domain=" << domain_ << '\n';
     } else if (ptpSlave_) {
         if (!ptpSlave_->start()) {
             // Failed to start real PTP — fall back to stub mode
             std::cerr << "[PTPDInterface] Failed to start PTP slave on "
-                      << interfaceName_ << " — falling back to stub mode" << std::endl;
+                      << interfaceName_ << " — falling back to stub mode" << '\n';
             stubMode_ = true;
             state_.isLocked.store(false);
             state_.clockClass.store(255);
@@ -181,7 +181,7 @@ void PTPDInterface::start() {
         }
 
         std::cout << "[PTPDInterface] PTP slave started on "
-                  << interfaceName_ << " domain=" << domain_ << std::endl;
+                  << interfaceName_ << " domain=" << domain_ << '\n';
     }
 }
 
@@ -231,7 +231,7 @@ void PTPDInterface::stop() {
     diagnostics_.isConnected = false;
     diagnostics_.isLocked = false;
 
-    std::cout << "[PTPDInterface] Stopped" << std::endl;
+    std::cout << "[PTPDInterface] Stopped" << '\n';
 }
 
 PTPState& PTPDInterface::getState() {

@@ -148,7 +148,7 @@ bool PTPMaster::start() {
         selfPortId_.clockIdentity = PTPClockIdentity::fromMAC(mac);
     } else {
         std::cerr << "[PTPMaster] Warning: could not get MAC for "
-                  << config_.interfaceName << ", using fallback identity" << std::endl;
+                  << config_.interfaceName << ", using fallback identity" << '\n';
         auto now = std::chrono::steady_clock::now().time_since_epoch().count();
         for (int i = 0; i < 8; ++i)
             selfPortId_.clockIdentity.id[i] = static_cast<uint8_t>((now >> (i * 8)) & 0xFF);
@@ -158,7 +158,7 @@ bool PTPMaster::start() {
 
     if (!createSockets()) {
         std::cerr << "[PTPMaster] Failed to create PTP sockets on "
-                  << config_.interfaceName << std::endl;
+                  << config_.interfaceName << '\n';
         return false;
     }
 
@@ -192,7 +192,7 @@ bool PTPMaster::createSockets() {
     eventSocket_ = socket(AF_INET, SOCK_DGRAM, 0);
     generalSocket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (eventSocket_ < 0 || generalSocket_ < 0) {
-        std::cerr << "[PTPMaster] Failed to create sockets: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to create sockets: " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -218,7 +218,7 @@ bool PTPMaster::createSockets() {
     genAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     genAddr.sin_port = htons(config_.generalPort);
     if (bind(generalSocket_, reinterpret_cast<struct sockaddr*>(&genAddr), sizeof(genAddr)) < 0) {
-        std::cerr << "[PTPMaster] Failed to bind general socket: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to bind general socket: " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -227,7 +227,7 @@ bool PTPMaster::createSockets() {
     evtAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     evtAddr.sin_port = htons(config_.eventPort);
     if (bind(eventSocket_, reinterpret_cast<struct sockaddr*>(&evtAddr), sizeof(evtAddr)) < 0) {
-        std::cerr << "[PTPMaster] Failed to bind event socket: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to bind event socket: " << strerror(errno) << '\n';
         closeSockets();
         return false;
     }
@@ -250,7 +250,7 @@ bool PTPMaster::createSockets() {
     for (int sock : {generalSocket_, eventSocket_}) {
         if (setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
             std::cerr << "[PTPMaster] Failed to join multicast: "
-                      << strerror(errno) << std::endl;
+                      << strerror(errno) << '\n';
             closeSockets();
             return false;
         }
@@ -509,7 +509,7 @@ bool PTPMaster::sendAnnounce() {
     ssize_t sent = sendto(generalSocket_, msg, sizeof(msg), 0,
                           reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest));
     if (sent < 0) {
-        std::cerr << "[PTPMaster] Failed to send Announce: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to send Announce: " << strerror(errno) << '\n';
         return false;
     }
     announceSentCount_.fetch_add(1, std::memory_order_relaxed);
@@ -550,7 +550,7 @@ bool PTPMaster::sendSyncAndFollowUp() {
     dest.sin_port = htons(config_.eventPort);
     if (sendto(eventSocket_, sync, sizeof(sync), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
-        std::cerr << "[PTPMaster] Failed to send Sync: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to send Sync: " << strerror(errno) << '\n';
         return false;
     }
 
@@ -584,7 +584,7 @@ bool PTPMaster::sendSyncAndFollowUp() {
     dest.sin_port = htons(config_.generalPort);
     if (sendto(generalSocket_, followUp, sizeof(followUp), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
-        std::cerr << "[PTPMaster] Failed to send Follow_Up: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to send Follow_Up: " << strerror(errno) << '\n';
         return false;
     }
 
@@ -639,7 +639,7 @@ void PTPMaster::handleDelayReq(const PTPHeader& header, uint16_t sequenceId, uin
 
     if (sendto(generalSocket_, msg, sizeof(msg), 0,
                reinterpret_cast<struct sockaddr*>(&dest), sizeof(dest)) < 0) {
-        std::cerr << "[PTPMaster] Failed to send Delay_Resp: " << strerror(errno) << std::endl;
+        std::cerr << "[PTPMaster] Failed to send Delay_Resp: " << strerror(errno) << '\n';
         return;
     }
     delayRespSentCount_.fetch_add(1, std::memory_order_relaxed);
