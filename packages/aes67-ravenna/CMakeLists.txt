@@ -40,34 +40,41 @@ target_include_directories(aes67_ravenna PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(aes67_ravenna PUBLIC aes67_core)
 target_compile_options(aes67_ravenna PRIVATE -Wall -Wextra -Wpedantic)
 
-# One session, advertised, so the package can be pointed at real gear rather
-# than only at its own tests.
-add_executable(ravenna-announce Tools/ravenna-announce.cpp)
-target_link_libraries(ravenna-announce PRIVATE aes67_ravenna)
-target_compile_options(ravenna-announce PRIVATE -Wall -Wextra -Wpedantic)
+# The tool and the tests are what the package builds on its own. Another
+# package that links the library (the macOS driver, for the mDNS responder)
+# turns them off: it has a gate of its own and this package has one too.
+option(AES67_RAVENNA_TOOLS_AND_TESTS "Build ravenna-announce and the test suites" ON)
 
-option(BUILD_TESTS "Build the tests" ON)
+if(AES67_RAVENNA_TOOLS_AND_TESTS)
+    # One session, advertised, so the package can be pointed at real gear
+    # rather than only at its own tests.
+    add_executable(ravenna-announce Tools/ravenna-announce.cpp)
+    target_link_libraries(ravenna-announce PRIVATE aes67_ravenna)
+    target_compile_options(ravenna-announce PRIVATE -Wall -Wextra -Wpedantic)
 
-if(BUILD_TESTS)
-    if(NOT DEFINED AES67_DOCTEST_DIR)
-        set(AES67_DOCTEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../external/doctest/doctest"
-            CACHE PATH "Directory holding doctest.h")
-    endif()
-    if(EXISTS "${AES67_DOCTEST_DIR}/doctest.h")
-        if(NOT TARGET doctest_headers)
-            add_library(doctest_headers INTERFACE)
-            target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
+    option(BUILD_TESTS "Build the tests" ON)
+
+    if(BUILD_TESTS)
+        if(NOT DEFINED AES67_DOCTEST_DIR)
+            set(AES67_DOCTEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../external/doctest/doctest"
+                CACHE PATH "Directory holding doctest.h")
         endif()
+        if(EXISTS "${AES67_DOCTEST_DIR}/doctest.h")
+            if(NOT TARGET doctest_headers)
+                add_library(doctest_headers INTERFACE)
+                target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
+            endif()
 
-        enable_testing()
-        foreach(suite RtspMessages DnsSd SessionCatalogue Json ConnectionApi ReceiverRouting
-                 ChannelMappingApi NodeApi)
-            add_executable(Test${suite} Tests/Test${suite}.cpp)
-            target_link_libraries(Test${suite} PRIVATE aes67_ravenna doctest_headers)
-            add_test(NAME ${suite} COMMAND Test${suite})
-            set_tests_properties(${suite} PROPERTIES LABELS "unit" TIMEOUT 60)
-        endforeach()
-    else()
-        message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
+            enable_testing()
+            foreach(suite RtspMessages DnsSd SessionCatalogue Json ConnectionApi ReceiverRouting
+                     ChannelMappingApi NodeApi)
+                add_executable(Test${suite} Tests/Test${suite}.cpp)
+                target_link_libraries(Test${suite} PRIVATE aes67_ravenna doctest_headers)
+                add_test(NAME ${suite} COMMAND Test${suite})
+                set_tests_properties(${suite} PROPERTIES LABELS "unit" TIMEOUT 60)
+            endforeach()
+        else()
+            message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
+        endif()
     endif()
 endif()

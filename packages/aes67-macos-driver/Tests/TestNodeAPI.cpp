@@ -11,6 +11,7 @@
 #include "doctest.h"
 
 #include "NetworkEngine/Discovery/NodeAPIRouter.h"
+#include "NetworkEngine/Discovery/NodeAdvertiser.h"
 
 #include <string>
 #include <vector>
@@ -167,4 +168,17 @@ TEST_CASE("touch moves every version forward") {
     // The version is seconds:nanoseconds of the touch; two touches in a row
     // still differ in nanoseconds on any real clock.
     CHECK(router.route("GET", "/x-nmos/node/v1.3/self").body != before);
+}
+
+TEST_CASE("the node advertisement is an _nmos-node._tcp service with IS-04's TXT") {
+    const Ravenna::SessionAdvertisement ad =
+        nodeAdvertisement("Studio Mac", "studio-mac.local", 0xC0A80132u, 51234);
+    CHECK(ad.instanceName == "Studio Mac");
+    CHECK(ad.hostName == "studio-mac.local");
+    CHECK(ad.port == 51234);
+    CHECK(ad.addressV4 == 0xC0A80132u);
+    CHECK(ad.serviceType == std::string(Ravenna::kNmosNodeService));
+    CHECK(ad.subtype.empty());
+    CHECK(ad.txtEntries == std::vector<std::string>{"api_ver=v1.3", "api_proto=http",
+                                                    "api_auth=false", "ver_slf=0"});
 }
