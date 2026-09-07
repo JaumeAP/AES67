@@ -28,7 +28,17 @@ SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-config.cpp ../src/ptp/ptp-disciplin
       stubs/stubs.cpp ptp_messages.cpp test_ptp_base.cpp test_transport.cpp \
       test_servo.cpp test_main.cpp
 
-.PHONY: all run board clean
+# clang-tidy over the library sources, with the same flags and stubs the host
+# build uses, so no compile database is needed. The checks are the .clang-tidy
+# at the package root, shared with the other packages here. Opt-in through the
+# gate (AES67_ANALYSE=1); it wants a clang-tidy the Command Line Tools do not
+# ship, found the way the other packages find it.
+TIDY ?= $(firstword $(wildcard $(HOME)/.local/venvs/cpptools/bin/clang-tidy) $(shell command -v clang-tidy))
+tidy:
+	@test -n "$(TIDY)" || { echo "SKIP: no clang-tidy found"; exit 0; }
+	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) -isysroot $$(xcrun --show-sdk-path) -I ../../aes67-profiles
+
+.PHONY: tidy all run board clean
 
 all: run
 

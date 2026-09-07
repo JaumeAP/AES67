@@ -29,11 +29,12 @@ inline void Log(const char* message) {
         char timestamp[64];
         time_t nowtime = tv.tv_sec;
         struct tm* nowtm = localtime(&nowtime);
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", nowtm);
+        (void)strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", nowtm);
 
-        fprintf(f, "[%s.%06d] %s\n", timestamp, (int)tv.tv_usec, message);
-        fflush(f);
-        fclose(f);
+        // A debug line that could not be written is not worth failing over.
+        (void)fprintf(f, "[%s.%06d] %s\n", timestamp, (int)tv.tv_usec, message);
+        (void)fflush(f);
+        (void)fclose(f);
     }
 }
 
@@ -42,7 +43,7 @@ inline void LogF(const char* format, ...) {
     char buffer[512];
     va_list args;
     va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
+    (void)vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     Log(buffer);
 }
@@ -51,8 +52,8 @@ inline void LogF(const char* format, ...) {
 inline void ClearLog() {
     FILE* f = fopen(GetLogPath(), "w");
     if (f) {
-        fprintf(f, "=== AES67 Driver Debug Log ===\n");
-        fclose(f);
+        (void)fprintf(f, "=== AES67 Driver Debug Log ===\n");
+        (void)fclose(f);
     }
 }
 

@@ -68,7 +68,7 @@ public:
     //
     // Constructor
     //
-    explicit AES67Device(std::shared_ptr<aspl::Context> context);
+    explicit AES67Device(const std::shared_ptr<aspl::Context>& context);
     ~AES67Device();
 
     // Initialize device (must be called after construction)

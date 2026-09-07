@@ -390,7 +390,7 @@ std::optional<PersistedStreamConfig> StreamConfigManager::configFromJSON(const s
 
     if (auto iface = extractStringField(json, "networkInterface")) {
         // Resolve interface name or "auto" to IP address
-        std::string ifaceSpec = *iface;
+        const std::string& ifaceSpec = *iface;
 
         if (ifaceSpec == "auto" || ifaceSpec.empty()) {
             // Auto-detect best interface

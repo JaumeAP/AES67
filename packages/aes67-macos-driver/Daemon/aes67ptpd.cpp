@@ -59,25 +59,25 @@ bool DropPrivileges(const char* user) {
     const struct passwd* account = ::getpwnam(user);
     if (account == nullptr) {
         std::cerr << "[aes67ptpd] no account '" << user
-                  << "' to drop to; refusing to run as root" << std::endl;
+                  << "' to drop to; refusing to run as root" << '\n';
         return false;
     }
     if (::setgid(account->pw_gid) != 0 || ::setuid(account->pw_uid) != 0) {
         std::cerr << "[aes67ptpd] could not drop to '" << user
-                  << "': " << std::strerror(errno) << std::endl;
+                  << "': " << std::strerror(errno) << '\n';
         return false;
     }
     // setuid() is silently a no-op in some failure modes; check rather than
     // assume, since the whole point is not being root any more.
     if (::geteuid() == 0 || ::getuid() == 0) {
-        std::cerr << "[aes67ptpd] still root after dropping privileges" << std::endl;
+        std::cerr << "[aes67ptpd] still root after dropping privileges" << '\n';
         return false;
     }
     return true;
 }
 
 void Usage() {
-    std::printf(
+    (void)std::printf(
         "Usage: aes67ptpd [options]\n"
         "  --interface <name>   network interface (default en0)\n"
         "  --domain <n>         PTP domain (default 0, per AES67)\n"
@@ -92,7 +92,9 @@ void Usage() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+namespace {
+
+int run(int argc, char** argv) {
     AES67::PTPSlaveConfig config;
     std::string socketPath = AES67::kPTPServiceSocketPath;
     bool verbose = false;
@@ -101,7 +103,7 @@ int main(int argc, char** argv) {
         const std::string flag = argv[i];
         auto next = [&]() -> std::string {
             if (i + 1 >= argc) {
-                std::fprintf(stderr, "%s needs a value\n", flag.c_str());
+                (void)std::fprintf(stderr, "%s needs a value\n", flag.c_str());
                 std::exit(2);
             }
             return argv[++i];
@@ -117,7 +119,7 @@ int main(int argc, char** argv) {
             if (mechanism == "p2p") {
                 config.delayMechanism = AES67::DelayMechanism::PeerToPeer;
             } else if (mechanism != "e2e") {
-                std::fprintf(stderr, "--mechanism takes e2e or p2p\n");
+                (void)std::fprintf(stderr, "--mechanism takes e2e or p2p\n");
                 return 2;
             }
         } else if (flag == "--delay-req-ms") {
@@ -138,22 +140,23 @@ int main(int argc, char** argv) {
             Usage();
             return 0;
         } else {
-            std::fprintf(stderr, "unknown option: %s\n", flag.c_str());
+            (void)std::fprintf(stderr, "unknown option: %s\n", flag.c_str());
             Usage();
             return 2;
         }
     }
 
-    std::signal(SIGINT, HandleSignal);
-    std::signal(SIGTERM, HandleSignal);
+    // signal() returns the previous handler, which nothing here wants.
+    (void)std::signal(SIGINT, HandleSignal);
+    (void)std::signal(SIGTERM, HandleSignal);
     // A reader that disappears mid-write must not take the daemon with it.
-    std::signal(SIGPIPE, SIG_IGN);
+    (void)std::signal(SIGPIPE, SIG_IGN);
 
     AES67::PTPServiceServer server(socketPath);
     if (!server.start()) {
         std::cerr << "[aes67ptpd] could not create " << socketPath
                   << " -- another instance running, or not enough privilege"
-                  << std::endl;
+                  << '\n';
         return 1;
     }
 
@@ -164,7 +167,7 @@ int main(int argc, char** argv) {
         std::cerr << "[aes67ptpd] PTP slave failed to start on "
                   << config.interfaceName
                   << ". Check the interface name, and that nothing else already"
-                     " holds UDP 319/320 on it." << std::endl;
+                     " holds UDP 319/320 on it." << '\n';
         server.stop();
         return 1;
     }
@@ -179,7 +182,7 @@ int main(int argc, char** argv) {
 
     std::cout << "[aes67ptpd] publishing on " << socketPath << " (interface "
               << config.interfaceName << ", domain " << config.domain << ")"
-              << std::endl;
+              << '\n';
 
     while (g_running.load()) {
         AES67::PTPServiceStatus status;
@@ -193,10 +196,30 @@ int main(int argc, char** argv) {
 
         const std::string grandmaster = slave.getGrandmasterID();
         unsigned int octets[8] = {0};
-        if (std::sscanf(grandmaster.c_str(),
-                        "%x:%x:%x:%x:%x:%x:%x:%x", &octets[0], &octets[1],
-                        &octets[2], &octets[3], &octets[4], &octets[5],
-                        &octets[6], &octets[7]) == 8) {
+        // Parsed by hand rather than with sscanf's %x, which reports neither
+        // overflow nor a field that is not hex. Eight colon-separated bytes.
+        bool parsed = true;
+        {
+            std::size_t at = 0;
+            for (int i = 0; i < 8 && parsed; ++i) {
+                std::size_t used = 0;
+                unsigned long value = 0;
+                try {
+                    value = std::stoul(grandmaster.substr(at), &used, 16);
+                } catch (const std::exception&) {
+                    parsed = false;
+                    break;
+                }
+                if (used == 0 || value > 0xFF) { parsed = false; break; }
+                octets[i] = static_cast<unsigned int>(value);
+                at += used;
+                if (i < 7) {
+                    if (at >= grandmaster.size() || grandmaster[at] != ':') { parsed = false; break; }
+                    ++at;
+                }
+            }
+        }
+        if (parsed) {
             for (int i = 0; i < 8; ++i) {
                 status.grandmasterIdentity[i] =
                     static_cast<uint8_t>(octets[i] & 0xFF);
@@ -208,14 +231,32 @@ int main(int argc, char** argv) {
             std::cout << "[aes67ptpd] locked=" << static_cast<int>(status.locked)
                       << " offset=" << status.offsetNs
                       << "ns delay=" << status.pathDelayNs
-                      << "ns readers=" << server.clientCount() << std::endl;
+                      << "ns readers=" << server.clientCount() << '\n';
         }
         std::this_thread::sleep_for(
             std::chrono::milliseconds(AES67::kPTPServiceHeartbeatMs));
     }
 
-    std::cout << "[aes67ptpd] stopping" << std::endl;
+    std::cout << "[aes67ptpd] stopping" << '\n';
     slave.stop();
     server.stop();
     return 0;
 }
+
+}  // namespace
+
+// Nothing above is allowed to end the process through an uncaught exception:
+// that is terminate() with no message and no exit code anyone can act on. A
+// daemon that dies says why.
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        (void)std::fprintf(stderr, "aes67ptpd: %s\n", e.what());
+        return 1;
+    } catch (...) {
+        (void)std::fprintf(stderr, "aes67ptpd: unknown exception\n");
+        return 1;
+    }
+}
+

@@ -56,7 +56,10 @@ void l2PTP::initSockets()
 
 l2PTP::~l2PTP()
 {
-    closeSockets();
+    // Qualified: in a destructor a virtual call resolves to this class's own
+    // override anyway, and saying so is what stops a reader (and the
+    // analyser) expecting dispatch that cannot happen here.
+    l2PTP::closeSockets();
 }
 
 // The two multicast MAC addresses opened in initSockets() are handed
@@ -224,7 +227,6 @@ void l2PTP::sendPTPMessage(const uint8_t *buf, int size, bool /*generalMessage*/
             txFailureCount++;
             return;
         }
-        w += padded;
     }
     // The result is checked. It used to be collected into a variable
     // nobody read, with the check commented out just below, so a Sync or

@@ -68,12 +68,12 @@ PTPClock::PTPClock(int domain)
     networkInterface_ = NetworkInterfaceDetection::detectPTPInterface();
 
     std::cout << "[PTPClock] Domain " << domain << " - Auto-detected network interface: "
-              << networkInterface_ << std::endl;
+              << networkInterface_ << '\n';
 
     // Verify the interface is valid
     if (networkInterface_.empty() || !NetworkInterfaceDetection::isInterfaceActive(networkInterface_)) {
         std::cerr << "[PTPClock] Warning: Detected interface '" << networkInterface_
-                  << "' is not active, falling back to en0" << std::endl;
+                  << "' is not active, falling back to en0" << '\n';
         networkInterface_ = "en0";
     }
 
@@ -103,7 +103,7 @@ PTPClock::PTPClock(int domain)
             if (lockToDevice == kAudioObjectUnknown) {
                 std::cerr << "[PTPClock] Configured clock source device (UID "
                           << masterSettings.lockToDeviceUID
-                          << ") not found — falling back to internal clock" << std::endl;
+                          << ") not found — falling back to internal clock" << '\n';
             } else {
                 kind = PTPClockSourceKind::LocalAudioDevice;
             }
@@ -112,7 +112,7 @@ PTPClock::PTPClock(int domain)
         ptpdInterface_->enableMasterCapability(kind, lockToDevice);
         std::cout << "[PTPClock] Master capability enabled, clock source kind="
                   << (kind == PTPClockSourceKind::Internal ? "internal" : "localAudioDevice")
-                  << std::endl;
+                  << '\n';
     }
 
     // Initialize the Phase-Locked Loop for audio clock recovery
@@ -121,14 +121,14 @@ PTPClock::PTPClock(int domain)
     // Initialize with the detected network interface
     if (!ptpdInterface_->init(networkInterface_)) {
         std::cerr << "[PTPClock] Failed to initialize PTPD interface on "
-                  << networkInterface_ << std::endl;
+                  << networkInterface_ << '\n';
         // Handle initialization failure
         ptpdInterface_.reset();
     } else {
         std::cout << "[PTPClock] Successfully initialized on interface "
                   << networkInterface_ << " (IP: "
                   << NetworkInterfaceDetection::getInterfaceIPAddress(networkInterface_)
-                  << ")" << std::endl;
+                  << ")" << '\n';
     }
 }
 
@@ -466,14 +466,14 @@ bool PTPClock::setNetworkInterface(const std::string& interfaceName) {
     // Validate interface exists and is active
     if (!NetworkInterfaceDetection::isInterfaceActive(interfaceName)) {
         std::cerr << "[PTPClock] Cannot set interface to '" << interfaceName
-                  << "' - interface not found or not active" << std::endl;
+                  << "' - interface not found or not active" << '\n';
         return false;
     }
 
     // Check if interface supports multicast
     if (!NetworkInterfaceDetection::supportsMulticast(interfaceName)) {
         std::cerr << "[PTPClock] Warning: Interface '" << interfaceName
-                  << "' may not support multicast, PTP may not work correctly" << std::endl;
+                  << "' may not support multicast, PTP may not work correctly" << '\n';
     }
 
     // Stop current PTP operation
@@ -489,7 +489,7 @@ bool PTPClock::setNetworkInterface(const std::string& interfaceName) {
     if (ptpdInterface_) {
         if (!ptpdInterface_->init(networkInterface_)) {
             std::cerr << "[PTPClock] Failed to reinitialize PTPD interface on "
-                      << networkInterface_ << std::endl;
+                      << networkInterface_ << '\n';
             return false;
         }
     }
@@ -501,7 +501,7 @@ bool PTPClock::setNetworkInterface(const std::string& interfaceName) {
 
     std::cout << "[PTPClock] Successfully switched to interface " << networkInterface_
               << " (IP: " << NetworkInterfaceDetection::getInterfaceIPAddress(networkInterface_)
-              << ")" << std::endl;
+              << ")" << '\n';
 
     return true;
 }
@@ -559,7 +559,8 @@ std::vector<int> PTPClockManager::getActiveDomains() const {
     std::lock_guard<std::mutex> lock(clocksMutex_);
 
     std::vector<int> domains;
-    for (const auto& pair : clocks_) {
+    domains.reserve(clocks_.size());
+for (const auto& pair : clocks_) {
         domains.push_back(pair.first);
     }
 

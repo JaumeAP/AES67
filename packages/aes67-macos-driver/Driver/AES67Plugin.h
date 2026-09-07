@@ -24,7 +24,7 @@ namespace AES67 {
 
 class AES67Plugin : public aspl::Plugin {
 public:
-    explicit AES67Plugin(std::shared_ptr<aspl::Context> context)
+    explicit AES67Plugin(const std::shared_ptr<aspl::Context>& context)
         : aspl::Plugin(context)
     {
         // Deactivated means installed but not published: no device is built

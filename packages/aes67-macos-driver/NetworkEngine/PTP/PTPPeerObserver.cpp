@@ -72,7 +72,7 @@ int openPTPSocket(uint16_t port, in_addr ifAddr) {
     if (::setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
         // A join failure isn't fatal on its own — some interfaces still
         // deliver the group — but log it.
-        std::cerr << "PTPPeerObserver: multicast join failed on port " << port << std::endl;
+        std::cerr << "PTPPeerObserver: multicast join failed on port " << port << '\n';
     }
     return fd;
 }

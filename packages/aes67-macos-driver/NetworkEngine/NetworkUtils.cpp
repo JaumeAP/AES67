@@ -191,6 +191,9 @@ bool NetworkUtils::isValidMulticastAddress(const std::string& addr) {
 bool NetworkUtils::hasMulticastRoute(const std::string& interfaceName) {
     // On macOS, check routing table for 239.0.0.0/8
     // Use netstat -rn to list routes, grep for 239 range
+    // A constant command, nothing from outside in it: the concern behind the
+    // cert-env33-c check is an argument someone else controls, and there is
+    // no argument. NOLINTNEXTLINE(cert-env33-c)
     FILE* fp = popen("netstat -rn 2>/dev/null | grep -E '^239'", "r");
     if (!fp) {
         return false;

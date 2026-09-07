@@ -33,4 +33,13 @@ if grep -rn '#include "\(\.\./\|Driver/\|NetworkEngine/\|Shared/\)' Profiles/ 2>
 fi
 echo "$(ls Profiles/*.h Profiles/*.cpp | wc -l | tr -d ' ') files, self-contained"
 
+# Static analysis, opt-in like the other packages: it is slow and it wants a
+# clang-tidy the Command Line Tools do not ship. AES67_ANALYSE=1 turns it on.
+if [ "${AES67_ANALYSE:-0}" = "1" ]; then
+    echo "==> Static analysis"
+    scripts/check-tidy.sh build || { echo "FAIL: clang-tidy" >&2; exit 1; }
+else
+    echo "==> Static analysis skipped (AES67_ANALYSE=1 to run it)"
+fi
+
 echo "==> PASS"

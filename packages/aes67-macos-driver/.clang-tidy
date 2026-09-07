@@ -22,12 +22,24 @@
 #     a uint8_t". True, and worth nothing: these enums live in configuration
 #     structs, not in packed wire formats, and narrowing them would change ABI
 #     across the submodule boundary for no measurable gain.
+#   clang-analyzer-optin.performance.Padding: reordering members would shave
+#     bytes off structs that are wire layouts, real-time-safe fixed layouts, or
+#     read by a second implementation. Layout here is behaviour, and the
+#     analyser cannot know which structs are which. Decided 2026-09-07, after
+#     an audit that counted 53 of these across the tree and found none it
+#     would be right to act on.
+#   cert-dcl50-cpp: C-style variadic functions. They are the printf-style
+#     logging macros, which are that way on purpose so that a switched-off
+#     level compiles to nothing.
+
 Checks: >
   -*,
   bugprone-*,
   cert-*,
   clang-analyzer-*,
   performance-*,
+  -clang-analyzer-optin.performance.Padding,
+  -cert-dcl50-cpp,
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
   -cert-err58-cpp,

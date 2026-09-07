@@ -1,5 +1,6 @@
 #include "ErrorRecoveryManager.h"
 #include <thread>
+#include <utility>
 
 namespace AES67 {
 
@@ -11,7 +12,7 @@ ErrorRecoveryManager::~ErrorRecoveryManager() = default;
 
 void ErrorRecoveryManager::registerRecoveryAction(ErrorType errorType, RecoveryAction action) {
     RecoveryState state;
-    state.action = action;
+    state.action = std::move(action);
     state.lastAttempt = std::chrono::steady_clock::time_point{};  // epoch
     state.attemptCount = 0;
     state.inProgress = false;
