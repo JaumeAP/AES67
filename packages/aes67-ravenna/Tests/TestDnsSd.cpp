@@ -159,3 +159,17 @@ TEST_CASE("A response is not read as a query, and rubbish is not read at all") {
     std::vector<uint8_t> truncated = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 40, 'x'};
     CHECK(parseQueryNames(truncated.data(), truncated.size()).empty());
 }
+
+TEST_CASE("An instance name is one label, and a dot in it makes two") {
+    // Why an advertised instance name must not carry a dot: the encoder reads
+    // one as a label separator, so the name arrives as two labels in front of
+    // the service type and a resolver lists nothing.
+    const std::vector<uint8_t> spaced = encodeName("aes67 local");
+    REQUIRE(spaced.size() == 13);
+    CHECK(spaced[0] == 11);
+
+    const std::vector<uint8_t> dotted = encodeName("aes67.local");
+    REQUIRE(dotted.size() == 13);
+    CHECK(dotted[0] == 5);
+    CHECK(dotted[6] == 5);
+}

@@ -198,6 +198,7 @@ TEST_CASE("The node advertises itself for a controller with no registry") {
     NodeApi node(identity(), catalogue, connections);
 
     const SessionAdvertisement advertised = node.advertisement();
+    CHECK(advertised.instanceName == "Master box");
     CHECK(advertised.serviceType == kNmosNodeService);
     CHECK(advertised.subtype.empty());
     CHECK(advertised.port == 8080);
@@ -263,4 +264,21 @@ TEST_CASE("IS-04 publishes the ids IS-05 answers to") {
     // Source and flow ids stay derived: IS-05 never addresses either.
     const JsonValue flows = bodyOf(node.handle("GET", path("/flows/"), ""));
     CHECK(flows.asArray()[0]["id"].asString() != senderId);
+}
+
+TEST_CASE("The instance name is one label, whatever the node is labelled") {
+    // DNS-SD puts exactly one instance label in front of the service type. A
+    // label with a dot in it makes two, and mDNSResponder throws the record
+    // away: the node is then served, reachable, and invisible.
+    SessionCatalogue catalogue;
+    ConnectionApi connections;
+    NodeIdentity dotted = identity();
+    dotted.label = "aes67.local";
+    NodeApi node(dotted, catalogue, connections);
+
+    const SessionAdvertisement advertised = node.advertisement();
+    CHECK(advertised.instanceName == "aes67 local");
+    CHECK(advertised.instanceName.find('.') == std::string::npos);
+    // The host name keeps its dots: that is the name the A record answers to.
+    CHECK(advertised.hostName == "box.local");
 }

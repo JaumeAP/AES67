@@ -57,6 +57,19 @@ std::string versionNow() {
 
 JsonValue tagsEmpty() { return JsonValue(JsonObject{}); }
 
+/// DNS-SD allows one instance label in front of the service type, and a dot
+/// is what separates labels rather than a character inside one. A name with a
+/// dot in it -- a host name used as a label -- becomes two, and a responder
+/// drops the record instead of correcting it. So the dot goes, and what is
+/// left is still the name a person picked.
+std::string oneLabel(const std::string& name) {
+    std::string label = name;
+    for (char& character : label) {
+        if (character == '.') character = ' ';
+    }
+    return label;
+}
+
 }  // namespace
 
 std::string stableUuidFrom(const std::string& name) {
@@ -296,7 +309,7 @@ JsonValue NodeApi::receivers() const {
 
 SessionAdvertisement NodeApi::advertisement() const {
     SessionAdvertisement node;
-    node.instanceName = identity_.label;
+    node.instanceName = oneLabel(identity_.label);
     node.hostName = identity_.hostName;
     node.port = identity_.apiPort;
     node.addressV4 = identity_.addressV4;

@@ -81,6 +81,7 @@ int main(int argc, char** argv) {
     std::string addressText;
     std::string hostName = "aes67.local";
     std::string sessionName = "AES67 Session";
+    bool nameGiven = false;
     std::string group = "239.69.1.10";
     uint16_t streamPort = 5004;
     uint16_t rtspPort = 8554;
@@ -100,7 +101,7 @@ int main(int argc, char** argv) {
         else if (option == "--interface") { if (!need()) { usage(); return 2; } interfaceName = value; }
         else if (option == "--address") { if (!need()) { usage(); return 2; } addressText = value; }
         else if (option == "--host") { if (!need()) { usage(); return 2; } hostName = value; }
-        else if (option == "--name") { if (!need()) { usage(); return 2; } sessionName = value; }
+        else if (option == "--name") { if (!need()) { usage(); return 2; } sessionName = value; nameGiven = true; }
         else if (option == "--group") { if (!need()) { usage(); return 2; } group = value; }
         else if (option == "--port") { if (!need()) { usage(); return 2; } streamPort = static_cast<uint16_t>(std::atoi(value)); }
         else if (option == "--rtsp-port") { if (!need()) { usage(); return 2; } rtspPort = static_cast<uint16_t>(std::atoi(value)); }
@@ -206,7 +207,11 @@ int main(int argc, char** argv) {
     NodeIdentity identity;
     identity.nodeId = stableUuidFrom(hostName + "/node");
     identity.deviceId = stableUuidFrom(hostName + "/device");
-    identity.label = hostName;
+    // What a person picks this node out by in a controller's list, and the
+    // single DNS-SD instance label it is browsed under. Not the host name:
+    // that names a machine, and it has a dot in it.
+    identity.label =
+        nameGiven ? sessionName : "AES67 " + hostName.substr(0, hostName.find('.'));
     identity.description = "AES67 sender over RAVENNA discovery";
     identity.hostName = hostName;
     identity.addressV4 = address;
