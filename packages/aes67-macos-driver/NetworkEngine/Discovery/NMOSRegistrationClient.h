@@ -56,9 +56,10 @@ struct NMOSNodeInfo {
     std::string label{"AES67 macOS Driver"};
     std::string description{"AES67 virtual audio device"};
     std::string hostname;
-    /// The node's own API root. Empty is legal and honest here: this
-    /// driver serves no IS-04 Node API yet, and a registry that cannot
-    /// reach one simply does not.
+    /// The node's own API root. The driver serves an IS-04 Node API on
+    /// the Connection API's port and fills this in with it. Empty stays
+    /// legal, for the runs where no port was bound: a registry that
+    /// cannot reach a Node API simply does not.
     std::string href;
     /// Where the node's own IS-04 Node API answers, for `api.endpoints`.
     /// Port 0 means none is served and the list stays empty.

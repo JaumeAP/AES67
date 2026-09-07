@@ -374,141 +374,160 @@ void AES67Device::Initialize() {
         // The node id has to be the same across restarts, or every restart
         // looks like a new device. First run has none: generate and persist.
         if (nmosSettings.nodeId.empty()) {
-            nmosSettingsManager.save(nmosSettings);
+            (void)nmosSettingsManager.save(nmosSettings);
         }
         nmosNodeId_ = nmosSettings.nodeId;
-
-        // The address the node is reached at: the interface the audio
-        // uses, as an IP rather than a hostname, so a controller on the
-        // segment needs no resolver to follow the hrefs.
-        const std::string nodeInterface = NetworkInterfaceDetection::detectPTPInterface();
-        const std::string nodeAddress = nodeInterface.empty()
-            ? std::string{}
-            : NetworkInterfaceDetection::getInterfaceIPAddress(nodeInterface);
-        const std::string apiHost = nodeAddress.empty() ? localHostname() : nodeAddress;
-
-        NMOSNodeInfo node;
-        node.id = nmosNodeId_;
-        node.hostname = localHostname();
-        node.label = nmosSettings.label.empty()
-                         ? ("AES67 macOS Driver on " + node.hostname)
-                         : nmosSettings.label;
-
-        // IS-05. Bound to an ephemeral port: this is a user-space driver
-        // and the port it gets is what it advertises.
-        connectionServer_ = std::make_unique<ConnectionAPIServer>(0);
-        std::string controlHref;
-        nodeRouter_ = std::make_unique<NodeAPIRouter>(
-            node, std::string{}, [this] { return nmosSenderResources(); },
-            [this] { return nmosReceiverResources(); });
-        connectionServer_->setFallbackRouter(
-            [this](const std::string& method, const std::string& path, const std::string&) {
-                return nodeRouter_->route(method, path);
-            });
-        const bool connectionStarted = connectionServer_->start(
-            [this] { return connectionSenders(); },
-            [this] { return connectionReceivers(); },
-            [this](const std::string& id, const ConnectionPatch& patch) {
-                return applyConnectionPatch(id, patch);
-            });
-        if (connectionStarted) {
-            controlHref = connectionServer_->controlHref(apiHost);
-            node.apiHost = apiHost;
-            node.apiPort = connectionServer_->boundPort();
-            node.href = "http://" + apiHost + ":" + std::to_string(node.apiPort) + "/";
-            // The router had to exist before start() so the first request
-            // finds it; the port it now names is the one the server got.
-            nodeRouter_->setEndpoint(apiHost, node.apiPort, controlHref);
-            AES67_LOGF("AES67Device: NMOS node API and IS-05 connection API on %s:%u",
-                       apiHost.c_str(), connectionServer_->boundPort());
-
-            // mDNS, so a controller browsing the link finds the node. The
-            // SRV name is <host>.local: whatever gethostname() returns,
-            // minus any domain it carries.
-            std::string shortHost = node.hostname.substr(0, node.hostname.find('.'));
-            if (shortHost.empty()) shortHost = "aes67";
-            uint32_t addressV4 = 0;
-            {
-                struct in_addr parsed{};
-                if (!nodeAddress.empty() && ::inet_aton(nodeAddress.c_str(), &parsed) == 1) {
-                    addressV4 = ntohl(parsed.s_addr);
-                }
-            }
-            if (!nodeInterface.empty() && addressV4 != 0) {
-                nodeAdvertiser_ = std::make_unique<NodeAdvertiser>();
-                std::string error;
-                if (!nodeAdvertiser_->start(nodeInterface,
-                                            nodeAdvertisement(node.label, shortHost + ".local",
-                                                              addressV4,
-                                                              connectionServer_->boundPort()),
-                                            error)) {
-                    AES67_LOGF("AES67Device: NMOS node not advertised over mDNS: %s",
-                               error.c_str());
-                    nodeAdvertiser_.reset();
-                } else {
-                    AES67_LOGF("AES67Device: NMOS node advertised as \"%s\" on %s",
-                               node.label.c_str(), nodeInterface.c_str());
-                }
-            } else {
-                AES67_LOG("AES67Device: no interface address - NMOS node not advertised");
-            }
+        if (nmosNodeId_.empty()) {
+            // save() generates the id and leaves it in the settings; an
+            // empty one here means it never got that far, the config
+            // directory being unwritable. Serving a node under an empty
+            // id is worse than serving none: nmosIdFor() answers "" for
+            // every IS-05 resource while the Node API derives its own ids
+            // from the same empty string, so a controller sees a node
+            // whose senders and receivers it cannot address.
+            AES67_LOG("AES67Device: no NMOS node id could be persisted - node not served");
         } else {
-            AES67_LOG("AES67Device: IS-05 connection API unavailable - node not served");
-            connectionServer_.reset();
-            nodeRouter_.reset();
-        }
+            // The address the node is reached at: the interface the audio
+            // uses, as an IP rather than a hostname, so a controller on the
+            // segment needs no resolver to follow the hrefs.
+            const std::string nodeInterface = NetworkInterfaceDetection::detectPTPInterface();
+            const std::string nodeAddress = nodeInterface.empty()
+                ? std::string{}
+                : NetworkInterfaceDetection::getInterfaceIPAddress(nodeInterface);
+            const std::string apiHost = nodeAddress.empty() ? localHostname() : nodeAddress;
 
-        // A stream added or removed changes what the node describes: the
-        // Node API's versions move, and the registry, when there is one,
-        // is told from its own thread.
-        streamManager_->setStreamAddedCallback([this](const StreamInfo&) {
-            if (nodeRouter_) nodeRouter_->touch();
-            requestNMOSSync();
-        });
-        streamManager_->setStreamRemovedCallback([this](const StreamInfo&) {
-            if (nodeRouter_) nodeRouter_->touch();
-            requestNMOSSync();
-        });
+            NMOSNodeInfo node;
+            node.id = nmosNodeId_;
+            node.hostname = localHostname();
+            node.label = nmosSettings.label.empty()
+                             ? ("AES67 macOS Driver on " + node.hostname)
+                             : nmosSettings.label;
 
-        if (nmosSettings.enabled) {
-            nmosClient_ = std::make_unique<NMOSRegistrationClient>(node);
+            // IS-05. Bound to an ephemeral port: this is a user-space driver
+            // and the port it gets is what it advertises.
+            connectionServer_ = std::make_unique<ConnectionAPIServer>(0);
+            std::string controlHref;
+            nodeRouter_ = std::make_unique<NodeAPIRouter>(
+                node, std::string{}, [this] { return nmosSenderResources(); },
+                [this] { return nmosReceiverResources(); });
+            connectionServer_->setFallbackRouter(
+                [this](const std::string& method, const std::string& path, const std::string&) {
+                    return nodeRouter_->route(method, path);
+                });
+            const bool connectionStarted = connectionServer_->start(
+                [this] { return connectionSenders(); },
+                [this] { return connectionReceivers(); },
+                [this](const std::string& id, const ConnectionPatch& patch) {
+                    return applyConnectionPatch(id, patch);
+                });
+            if (connectionStarted) {
+                controlHref = connectionServer_->controlHref(apiHost);
+                node.apiHost = apiHost;
+                node.apiPort = connectionServer_->boundPort();
+                node.href = "http://" + apiHost + ":" + std::to_string(node.apiPort) + "/";
+                // The router had to exist before start() so the first request
+                // finds it; the port it now names is the one the server got.
+                nodeRouter_->setEndpoint(apiHost, node.apiPort, controlHref);
+                AES67_LOGF("AES67Device: NMOS node API and IS-05 connection API on %s:%u",
+                           apiHost.c_str(), connectionServer_->boundPort());
 
-            std::optional<NMOSRegistry> registry;
-            if (!nmosSettings.registryOverride.empty()) {
-                registry = parseRegistryOverride(nmosSettings.registryOverride);
-                if (!registry.has_value()) {
-                    AES67_LOGF("AES67Device: NMOS registry override '%s' is not host:port",
-                               nmosSettings.registryOverride.c_str());
+                // mDNS, so a controller browsing the link finds the node. The
+                // SRV name is <host>.local: whatever gethostname() returns,
+                // minus any domain it carries.
+                std::string shortHost = node.hostname.substr(0, node.hostname.find('.'));
+                if (shortHost.empty()) shortHost = "aes67";
+                uint32_t addressV4 = 0;
+                {
+                    struct in_addr parsed{};
+                    if (!nodeAddress.empty() && ::inet_aton(nodeAddress.c_str(), &parsed) == 1) {
+                        addressV4 = ntohl(parsed.s_addr);
+                    }
+                }
+                if (!nodeInterface.empty() && addressV4 != 0) {
+                    nodeAdvertiser_ = std::make_unique<NodeAdvertiser>();
+                    std::string error;
+                    if (!nodeAdvertiser_->start(nodeInterface,
+                                                nodeAdvertisement(node.label, shortHost + ".local",
+                                                                  addressV4,
+                                                                  connectionServer_->boundPort()),
+                                                error)) {
+                        AES67_LOGF("AES67Device: NMOS node not advertised over mDNS: %s",
+                                   error.c_str());
+                        nodeAdvertiser_.reset();
+                    } else {
+                        AES67_LOGF("AES67Device: NMOS node advertised as \"%s\" on %s",
+                                   node.label.c_str(), nodeInterface.c_str());
+                    }
+                } else {
+                    AES67_LOG("AES67Device: no interface address - NMOS node not advertised");
                 }
             } else {
-                registry = NMOSRegistrationClient::discoverRegistry();
+                AES67_LOG("AES67Device: IS-05 connection API unavailable - node not served");
+                connectionServer_.reset();
+                nodeRouter_.reset();
             }
 
-            if (registry.has_value() && nmosClient_->registerWith(*registry)) {
-                nmosClient_->startHeartbeats();
-                AES67_LOGF("AES67Device: registered with the NMOS registry at %s:%u as %s",
-                           registry->host.c_str(), registry->port, node.id.c_str());
-                {
-                    std::lock_guard<std::mutex> lock(nmosSyncMutex_);
-                    nmosSyncRunning_ = true;
-                }
-                nmosSyncThread_ = std::thread([this] {
-                    for (;;) {
-                        {
-                            std::unique_lock<std::mutex> lock(nmosSyncMutex_);
-                            nmosSyncSignal_.wait(lock, [this] {
-                                return nmosSyncRequested_ || !nmosSyncRunning_;
-                            });
-                            if (!nmosSyncRunning_) return;
-                            nmosSyncRequested_ = false;
-                        }
-                        syncNMOSResources();
-                    }
-                });
+            // A stream added or removed changes what the node describes: the
+            // Node API's versions move, and the registry, when there is one,
+            // is told from its own thread.
+            //
+            // Lock order. These callbacks call NodeAPIRouter::touch(), which
+            // takes the router's mutex, and route() holds that same mutex
+            // while its listers ask StreamManager for the streams and so
+            // take StreamManager's. Two mutexes taken in opposite orders is
+            // a deadlock everywhere except here: StreamManager releases its
+            // own mutex before it invokes these callbacks (StreamManager.cpp),
+            // so the router mutex is never taken with StreamManager's held.
+            // Anything that starts notifying under that lock breaks this.
+            streamManager_->setStreamAddedCallback([this](const StreamInfo&) {
+                if (nodeRouter_) nodeRouter_->touch();
                 requestNMOSSync();
-            } else {
-                AES67_LOG("AES67Device: no NMOS registry registered with - continuing without it");
-                nmosClient_.reset();
+            });
+            streamManager_->setStreamRemovedCallback([this](const StreamInfo&) {
+                if (nodeRouter_) nodeRouter_->touch();
+                requestNMOSSync();
+            });
+
+            if (nmosSettings.enabled) {
+                nmosClient_ = std::make_unique<NMOSRegistrationClient>(node);
+
+                std::optional<NMOSRegistry> registry;
+                if (!nmosSettings.registryOverride.empty()) {
+                    registry = parseRegistryOverride(nmosSettings.registryOverride);
+                    if (!registry.has_value()) {
+                        AES67_LOGF("AES67Device: NMOS registry override '%s' is not host:port",
+                                   nmosSettings.registryOverride.c_str());
+                    }
+                } else {
+                    registry = NMOSRegistrationClient::discoverRegistry();
+                }
+
+                if (registry.has_value() && nmosClient_->registerWith(*registry)) {
+                    nmosClient_->startHeartbeats();
+                    AES67_LOGF("AES67Device: registered with the NMOS registry at %s:%u as %s",
+                               registry->host.c_str(), registry->port, node.id.c_str());
+                    {
+                        std::lock_guard<std::mutex> lock(nmosSyncMutex_);
+                        nmosSyncRunning_ = true;
+                    }
+                    nmosSyncThread_ = std::thread([this] {
+                        for (;;) {
+                            {
+                                std::unique_lock<std::mutex> lock(nmosSyncMutex_);
+                                nmosSyncSignal_.wait(lock, [this] {
+                                    return nmosSyncRequested_ || !nmosSyncRunning_;
+                                });
+                                if (!nmosSyncRunning_) return;
+                                nmosSyncRequested_ = false;
+                            }
+                            syncNMOSResources();
+                        }
+                    });
+                    requestNMOSSync();
+                } else {
+                    AES67_LOG("AES67Device: no NMOS registry registered with - continuing without it");
+                    nmosClient_.reset();
+                }
             }
         }
     }

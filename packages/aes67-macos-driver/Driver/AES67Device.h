@@ -245,11 +245,6 @@ private:
     /// about the audio path depends on it: a plant with a registry gets
     /// this driver in its inventory, a plant without one is unaffected.
     std::unique_ptr<NMOSRegistrationClient> nmosClient_;
-    /// The registry is told about the streams from here, and never from a
-    /// stream callback: those run with StreamManager's own mutex held, and
-    /// describing the streams means asking StreamManager for them, which
-    /// would take that mutex again. The callbacks set a flag; this thread
-    /// does the work once they have let go.
     /// The IS-05 Connection API, which is what turns the registry entry
     /// from something a controller can look at into something it can
     /// patch. Bound to an ephemeral port and advertised in the device's
@@ -260,6 +255,14 @@ private:
     /// device does; registering with a registry (nmosClient_) is separate.
     std::unique_ptr<NodeAPIRouter> nodeRouter_;
     std::unique_ptr<NodeAdvertiser> nodeAdvertiser_;
+    /// The registry is told about the streams from here, on a thread of
+    /// its own, and never from a stream callback: describing the streams
+    /// means asking StreamManager for them, which takes StreamManager's
+    /// mutex, and a registry PUT is a network round trip to hold it
+    /// across. The callbacks only set a flag. They do run with that mutex
+    /// released -- StreamManager unlocks before it notifies -- so the
+    /// thread is about not blocking the stream that just changed, not
+    /// about re-entering a lock.
     std::thread nmosSyncThread_;
     std::mutex nmosSyncMutex_;
     std::condition_variable nmosSyncSignal_;

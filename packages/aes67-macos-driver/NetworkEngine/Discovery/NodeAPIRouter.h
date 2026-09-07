@@ -45,6 +45,13 @@ public:
     /// api.endpoints and href, and the device's control.
     void setEndpoint(const std::string& apiHost, uint16_t apiPort, const std::string& controlHref);
 
+    /// Lock order: this holds mutex_ for the whole call, and the listers
+    /// it calls under it ask StreamManager for the streams, so they take
+    /// StreamManager's mutex second. The reverse order exists too -- a
+    /// stream appearing calls touch(), which takes mutex_ -- and is only
+    /// safe because StreamManager releases its own mutex before invoking
+    /// those callbacks (StreamManager.cpp). Notifying under that lock
+    /// would make this pair a deadlock.
     ConnectionAPIServer::Reply route(const std::string& method, const std::string& path) const;
 
     std::string deviceId() const;

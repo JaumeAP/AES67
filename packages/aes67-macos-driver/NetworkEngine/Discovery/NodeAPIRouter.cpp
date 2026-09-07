@@ -6,7 +6,6 @@
 #include "NetworkEngine/Discovery/NodeAPIRouter.h"
 
 #include <chrono>
-#include <sstream>
 
 namespace AES67 {
 
