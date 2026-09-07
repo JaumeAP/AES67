@@ -28,6 +28,7 @@
 #include <array>
 #include <atomic>
 #include <condition_variable>
+#include <map>
 #include <thread>
 #include <mutex>
 
@@ -279,6 +280,22 @@ private:
     /// one and patches the other has to be talking about the same things.
     std::vector<ConnectionSender> connectionSenders();
     std::vector<ConnectionReceiver> connectionReceivers();
+
+    /// Which sender each receiver was patched onto, keyed by the receiver
+    /// id IS-05 uses. A receive stream knows the address it listens to and
+    /// nothing about whose id that address belonged to, so the answer to
+    /// `active`'s sender_id exists nowhere else -- and a controller that
+    /// reads null there can never show the receiver connected, nor offer
+    /// the disconnect that hangs off being connected.
+    ///
+    /// Its own mutex rather than nmosSyncMutex_: that one guards the sync
+    /// thread's wakeup and nothing here waits on a condition. The
+    /// Connection API serves one client at a time, so today the writer in
+    /// applyConnectionPatch and the reader in connectionReceivers() are
+    /// the same thread; the mutex is what keeps that from being an
+    /// assumption the next caller has to know about.
+    std::map<std::string, std::string> receiverSenderIds_;
+    std::mutex receiverSenderIdsMutex_;
 
     /// The streams as IS-04 describes them, for the registry and the Node
     /// API alike.

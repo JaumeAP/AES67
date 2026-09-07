@@ -192,6 +192,43 @@ TEST_CASE("A driver that refuses the patch is a 500, not a silent success") {
     CHECK(reply.status == 500);
 }
 
+TEST_CASE("active names the sender a receiver is connected to") {
+    // The Manager's matrix reads this field and nothing else to decide
+    // whether a cell is on, so a receiver that is connected but reports a
+    // null sender_id can never be shown connected -- and never
+    // disconnected, since the button that would do it hangs off that cell.
+    // The device's own map of receiver id to sender id is wiring inside
+    // coreaudiod; both of its branches reach the wire as this lister's two
+    // answers, which is what these two cases stand in for.
+    SUBCASE("a connected receiver names it") {
+        ConnectionAPIServer api{0};
+        REQUIRE(api.start([] { return std::vector<ConnectionSender>{testSender()}; },
+                          [] {
+                              ConnectionReceiver receiver = testReceiver();
+                              receiver.senderId = kSenderId;
+                              receiver.enabled = true;
+                              return std::vector<ConnectionReceiver>{receiver};
+                          },
+                          [](const std::string&, const ConnectionPatch&) { return true; }));
+        const auto active = api.route("GET", base() + "/single/receivers/" + kReceiverId + "/active", "");
+        CHECK(active.status == 200);
+        CHECK(active.body.find("\"sender_id\": \"" + kSenderId + "\"") != std::string::npos);
+        CHECK(active.body.find("\"master_enable\": true") != std::string::npos);
+        // staged reads the same, this driver staging nothing for later.
+        const auto staged = api.route("GET", base() + "/single/receivers/" + kReceiverId + "/staged", "");
+        CHECK(staged.body.find("\"sender_id\": \"" + kSenderId + "\"") != std::string::npos);
+    }
+
+    SUBCASE("a receiver connected to nothing says null") {
+        Fixture fixture;
+        REQUIRE(fixture.start());
+        const auto active = fixture.server.route(
+            "GET", base() + "/single/receivers/" + kReceiverId + "/active", "");
+        CHECK(active.status == 200);
+        CHECK(active.body.find("\"sender_id\": null") != std::string::npos);
+    }
+}
+
 TEST_CASE("active reports and is never written") {
     Fixture fixture;
     REQUIRE(fixture.start());

@@ -657,6 +657,14 @@ std::vector<ConnectionReceiver> AES67Device::connectionReceivers() {
         receiver.label = sdp.sessionName;
         receiver.multicastAddress = sdp.connectionAddress;
         receiver.port = sdp.port;
+        {
+            // Whose stream this is: kept from the patch that pointed the
+            // receiver here, because the stream itself carries an address
+            // and no sender id.
+            std::lock_guard<std::mutex> lock(receiverSenderIdsMutex_);
+            const auto known = receiverSenderIds_.find(receiver.id);
+            if (known != receiverSenderIds_.end()) receiver.senderId = known->second;
+        }
         receivers.push_back(std::move(receiver));
     }
     return receivers;
@@ -686,6 +694,10 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
 
     // master_enable false is a controller disconnecting the receiver.
     if (patch.masterEnable.has_value() && !*patch.masterEnable) {
+        {
+            std::lock_guard<std::mutex> lock(receiverSenderIdsMutex_);
+            receiverSenderIds_.erase(receiverId);
+        }
         for (const StreamInfo& info : streamManager_->getActiveStreams()) {
             if (info.name == target.sessionName) {
                 return streamManager_->removeStream(info.id);
@@ -720,7 +732,16 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
     // Re-pointing goes through the same path SAP's sink-follow uses, which
     // preserves the device-channel mapping and refuses a channel-count
     // change for the reason recorded there.
-    return streamManager_->updateReceiveStreamsFromAnnouncement(wanted) > 0;
+    const bool repointed = streamManager_->updateReceiveStreamsFromAnnouncement(wanted) > 0;
+
+    // Remember whose sender this is, so `active` can name it. Only once
+    // the re-point took: recording an id for a patch that failed would
+    // report a connection that was never made.
+    if (repointed && patch.senderId.has_value() && !patch.senderId->empty()) {
+        std::lock_guard<std::mutex> lock(receiverSenderIdsMutex_);
+        receiverSenderIds_[receiverId] = *patch.senderId;
+    }
+    return repointed;
 }
 
 void AES67Device::requestNMOSSync() {
