@@ -90,6 +90,12 @@ public:
     std::optional<ConnectionSender> sender(const std::string& id) const;
     std::optional<ConnectionReceiver> receiver(const std::string& id) const;
 
+    /// Everything this device offers and everything it can take, in id order.
+    /// IS-04 lists the same resources this API connects, and listing them
+    /// from two places is how the two come to disagree.
+    std::vector<std::string> senderIds() const;
+    std::vector<std::string> receiverIds() const;
+
     /// Answers one request. `method` is "GET" or "PATCH"; `path` is the whole
     /// path, root included; `body` is the payload of a PATCH.
     ApiResponse handle(const std::string& method, const std::string& path,

@@ -82,6 +82,32 @@ never acting on it is a connection a controller believes it has made and
 nobody is carrying. Bulk answers 501 too, which sends a controller to the
 single endpoints.
 
+## Being on the list at all
+
+A controller has to find the device and know what it is made of before it can
+route anything. That is **IS-04**, served at `/x-nmos/node/v1.3/`: the node,
+its device, and for each session a source, a flow and a sender, with a receiver
+for what it can take.
+
+    node=http://192.168.1.50:8080/x-nmos/node/v1.3
+
+    curl $node/self/       # the node, its clock, where its APIs are
+    curl $node/senders/    # one per session, with the SDP's address
+    curl $node/receivers/  # what it can be given
+
+Served, not registered. IS-04 has two modes and this is the peer-to-peer one:
+the node advertises itself over mDNS as `_nmos-node._tcp` and a controller
+browsing the link reads it here. Registering with a registry is an HTTP client
+and a heartbeat, and it is not pretended at.
+
+The ids are derived from the names rather than drawn at random, so a restart
+does not renumber a plant: a controller keys everything on them, and ids that
+moved would make every route point at something that no longer exists.
+
+The resources are built from what the device holds -- the session catalogue,
+the connection API's receivers -- rather than kept beside it. Two descriptions
+of one device disagree the moment one of them changes.
+
 ## The grid, channel by channel
 
 IS-05 says which stream a receiver takes. **IS-08**, served at

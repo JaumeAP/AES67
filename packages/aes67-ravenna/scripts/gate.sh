@@ -20,7 +20,7 @@ cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
 ctest --test-dir build --output-on-failure \
-    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi|ReceiverRouting|ChannelMappingApi" || {
+    -R "RtspMessages|DnsSd|SessionCatalogue|Json|ConnectionApi|ReceiverRouting|ChannelMappingApi|NodeApi" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 echo "==> A DESCRIBE over the loopback"
@@ -59,6 +59,11 @@ moved=$(curl -s -X POST -H 'Content-Type: application/json' \
     -d '{"activation":{"mode":"activate_immediate"},"action":{"device":{"64":{"input":"receiver-1","channel_index":1}}}}' \
     "$grid_base/map/activate")
 
+echo "==> The node describing itself over the loopback"
+# What a controller reads first. If this is wrong the device is not on the
+# list at all, and nothing else here matters.
+node=$(curl -s "http://127.0.0.1:$nmos_port/x-nmos/node/v1.3/senders/")
+
 kill "$announcer" 2> /dev/null
 wait "$announcer" 2> /dev/null
 
@@ -86,6 +91,15 @@ case "$moved" in
   *)
     echo "FAIL: the IS-08 activation did not move the channel" >&2
     echo "$moved" >&2
+    exit 1 ;;
+esac
+
+case "$node" in
+  *'"label":"GateSession"'*'"transport":"urn:x-nmos:transport:rtp.mcast"'*)
+    echo "the node lists its sender" ;;
+  *)
+    echo "FAIL: the node API did not list the session as a sender" >&2
+    echo "$node" >&2
     exit 1 ;;
 esac
 

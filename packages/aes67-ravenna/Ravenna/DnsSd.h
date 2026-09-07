@@ -45,13 +45,23 @@ inline constexpr uint16_t kCacheFlush = 0x8000;
 inline constexpr uint32_t kHostRecordTtl = 120;
 inline constexpr uint32_t kServiceRecordTtl = 4500;
 
-/// One advertised session.
+/// What an NMOS node registers itself as, for a controller browsing the link
+/// rather than a registry (IS-04 peer-to-peer discovery).
+inline constexpr char kNmosNodeService[] = "_nmos-node._tcp.local";
+
+/// One advertised service: a RAVENNA session, or the NMOS node itself.
 struct SessionAdvertisement {
     std::string instanceName;   ///< what a person sees in a session list
     std::string hostName;       ///< "box.local", the name the SRV points at
-    uint16_t port = 554;        ///< where the RTSP server answers
+    uint16_t port = 554;        ///< where the server answers
     uint32_t addressV4 = 0;     ///< host byte order
     std::vector<std::string> txtEntries;  ///< "key=value", RFC 6763 sec 6
+
+    /// The service this is advertised under, and the subtype if it has one.
+    /// A RAVENNA session is RTSP with RAVENNA's subtype; an NMOS node is its
+    /// own service with none.
+    std::string serviceType = kRtspService;
+    std::string subtype = kRavennaSessionSubtype;
 };
 
 /// A DNS name as length-prefixed labels ending in a zero byte. No compression
@@ -62,8 +72,9 @@ std::vector<uint8_t> encodeName(const std::string& name);
 /// The answer to a query for our service: PTR, SRV, TXT and A, in that order,
 /// as one mDNS response packet with the authoritative bit set.
 ///
-/// `includeSubtype` adds the second PTR, from RAVENNA's subtype to the same
-/// instance, which is what a RAVENNA device browses for.
+/// `includeSubtype` adds the second PTR, from the subtype to the same
+/// instance, which is what a RAVENNA device browses for. A service with no
+/// subtype gets one PTR whatever this says.
 std::vector<uint8_t> buildAnnouncement(const SessionAdvertisement& session,
                                        bool includeSubtype = true);
 
