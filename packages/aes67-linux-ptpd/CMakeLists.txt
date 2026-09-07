@@ -30,11 +30,16 @@ target_link_libraries(aes67_ptp_wire PUBLIC aes67_core)
 target_compile_options(aes67_ptp_wire PRIVATE -Wall -Wextra -Wpedantic)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # ptp-servo.cpp is the Teensy library's servo, compiled in rather than
+    # rewritten: it is platform-free on purpose, and a second PI loop against
+    # a one-per-second reference is a second thing to get wrong.
     add_executable(aes67-ptpd
         src/main.cpp
+        src/ExternalReference.cpp
         src/Grandmaster.cpp
         src/PhcClock.cpp
         src/PtpSockets.cpp
+        ${AES67_T41_PTP_DIR}/ptp/ptp-servo.cpp
     )
     target_link_libraries(aes67-ptpd PRIVATE aes67_ptp_wire)
     target_compile_options(aes67-ptpd PRIVATE -Wall -Wextra -Wpedantic)
@@ -61,10 +66,12 @@ if(BUILD_TESTS)
         endif()
 
         enable_testing()
-        add_executable(TestPtpWire Tests/TestPtpWire.cpp)
-        target_link_libraries(TestPtpWire PRIVATE aes67_ptp_wire doctest_headers)
-        add_test(NAME PtpWire COMMAND TestPtpWire)
-        set_tests_properties(PtpWire PROPERTIES LABELS "unit" TIMEOUT 60)
+        foreach(suite PtpWire ReferenceMath)
+            add_executable(Test${suite} Tests/Test${suite}.cpp)
+            target_link_libraries(Test${suite} PRIVATE aes67_ptp_wire doctest_headers)
+            add_test(NAME ${suite} COMMAND Test${suite})
+            set_tests_properties(${suite} PROPERTIES LABELS "unit" TIMEOUT 60)
+        endforeach()
     else()
         message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
     endif()

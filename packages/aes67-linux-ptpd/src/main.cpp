@@ -7,12 +7,14 @@
 // Usage:
 //   aes67-ptpd [--interface eth0] [--profile aes67] [--priority1 128]
 //              [--priority2 128] [--utc-offset 37] [--phc /dev/ptp0]
+//              [--reference] [--reference-channel 0]
 //              [--allow-software-timestamps] [--verbose]
 //
 // It needs CAP_NET_ADMIN to turn the NIC's timestamping on and CAP_NET_BIND_SERVICE
 // for ports 319 and 320. The systemd unit in systemd/ grants exactly those two
 // and nothing else.
 //
+#include "ExternalReference.h"
 #include "Grandmaster.h"
 #include "PhcClock.h"
 #include "PtpSockets.h"
@@ -33,8 +35,9 @@ void usage() {
     std::fprintf(stderr,
                  "usage: aes67-ptpd [--interface NAME] [--profile NAME]\n"
                  "                  [--priority1 N] [--priority2 N] [--utc-offset N]\n"
-                 "                  [--phc /dev/ptpN] [--allow-software-timestamps]\n"
-                 "                  [--verbose]\n"
+                 "                  [--phc /dev/ptpN] [--reference]\n"
+                 "                  [--reference-channel N]\n"
+                 "                  [--allow-software-timestamps] [--verbose]\n"
                  "\n"
                  "profiles: aes67, aes67-tight, default1588, gptp\n"
                  "          (packages/aes67-profiles holds the numbers)\n");
@@ -55,6 +58,8 @@ int main(int argc, char** argv) {
     GrandmasterConfig config;
     std::string phcDevice;
     bool allowSoftwareTimestamps = false;
+    bool useReference = false;
+    unsigned int referenceChannel = 0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
@@ -67,6 +72,12 @@ int main(int argc, char** argv) {
             allowSoftwareTimestamps = true;
         } else if (option == "--verbose" || option == "-v") {
             config.verbose = true;
+        } else if (option == "--reference") {
+            useReference = true;
+        } else if (option == "--reference-channel") {
+            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
+            useReference = true;
+            referenceChannel = static_cast<unsigned int>(std::atoi(value));
         } else if (option == "--interface") {
             if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
             config.interfaceName = value;
@@ -116,7 +127,25 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    Grandmaster grandmaster(sockets, clock, config);
+    // The reference is what turns a precise clock into a right one. Without
+    // it every device on the network agrees with this one and the whole
+    // network drifts together, away from the studio.
+    ExternalReference reference;
+    ExternalReference* referencePointer = nullptr;
+    if (useReference) {
+        if (!reference.enable(clock, referenceChannel, error)) {
+            std::fprintf(stderr, "[ptpd] %s\n", error.c_str());
+            std::fprintf(stderr,
+                         "[ptpd] refusing to run disciplined when the reference "
+                         "cannot be stamped by the clock that stamps the packets\n");
+            return 1;
+        }
+        referencePointer = &reference;
+        std::printf("[ptpd] reference on channel %u of %s, free-running until it locks\n",
+                    referenceChannel, clock.devicePath().c_str());
+    }
+
+    Grandmaster grandmaster(sockets, clock, config, referencePointer);
     if (!grandmaster.start(error)) {
         std::fprintf(stderr, "[ptpd] %s\n", error.c_str());
         return 1;

@@ -25,6 +25,40 @@ rather than negotiated with. What is not implemented is not half implemented.
 - **Delay_Resp**, to each Delay_Req, carrying the hardware receive timestamp
   and the requester's port identity.
 
+## Locking it to a reference
+
+A NIC clock left alone free-runs on its crystal. Every device on the network
+then agrees with it to the nanosecond and the whole network drifts together,
+away from the studio. `--reference` is what fixes that:
+
+    sudo ./build/aes67-ptpd --interface eth0 --profile aes67 --reference
+
+It asks the PHC for external timestamps (`PTP_EXTTS_REQUEST2`) and steers the
+clock to the edges it gets, through `clock_adjtime`. The servo is not a new
+one: it is `packages/t41-ptp`'s `ptp-servo`, the same loop the Teensy box runs
+against its word clock, with the same gains and the same 100 ppm bound.
+
+The edge has to be stamped by the PHC, not by the kernel. That is a separate
+capability from stamping packets -- a NIC can do one and not the other -- so
+check before wiring anything:
+
+    cat /sys/class/ptp/ptp0/n_ext_ts
+
+Zero means this path does not exist on that board, and the daemon says so and
+stops rather than falling back to `/dev/pps`, which stamps against
+`CLOCK_REALTIME`: disciplining one clock while announcing another is the error
+the whole design is trying to avoid.
+
+What it wants on that pin is one pulse per second. A word clock is 48 kHz and
+has to be divided down first, in hardware -- on a Pi 5 the RP1's PIO can do it
+with no CPU and no interrupts.
+
+While it is locked the daemon announces clockClass 13, "synchronised to an
+application-specific source", and timeSource OTHER. Not clockClass 6: that
+means a primary reference such as GPS, and a word clock gives frequency and a
+boundary, never traceable absolute time. Unlocked it goes back to 248, which
+is what the log line says when it changes.
+
 ## The numbers come from the shared table
 
 The domain, the sdoId and the three intervals are not in this package. They are
