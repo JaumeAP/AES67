@@ -24,12 +24,28 @@
 
 #include "ptp/ptp-servo.h"
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 
 namespace AES67::LinuxPtpd {
 
 class PhcClock;
+
+/// Where the clock's time is coming from, which is the first thing anyone
+/// looking at this daemon wants to know.
+enum class ClockSourceState {
+    /// No reference at all: the NIC's crystal, free-running. Precise, and
+    /// drifting away from everything that is not on this network.
+    Internal,
+    /// A reference is configured but the clock is not following it: no edge
+    /// has arrived yet, the servo has not settled, or the edges stopped.
+    Waiting,
+    /// Locked to the pulse arriving on the PHC's input.
+    External,
+};
+
+const char* nameOf(ClockSourceState state);
 
 struct ReferenceStatus {
     bool available = false;   ///< the PHC has an external timestamp channel
@@ -38,6 +54,14 @@ struct ReferenceStatus {
     double driftNsps = 0;     ///< what the servo is holding the clock at
     uint64_t edges = 0;       ///< edges seen since start
     uint64_t rejected = 0;    ///< edges dropped as not credible
+    /// Seconds since the last credible edge, so a line reporting a lock also
+    /// says how old the evidence for it is.
+    double secondsSinceEdge = 0;
+
+    ClockSourceState state() const {
+        if (!available) return ClockSourceState::Internal;
+        return locked ? ClockSourceState::External : ClockSourceState::Waiting;
+    }
 };
 
 class ExternalReference {
@@ -59,9 +83,12 @@ public:
 
     const ReferenceStatus& status() const { return status_; }
 
-    /// How many seconds without an edge before a locked clock stops calling
-    /// itself locked. Three missed edges: one is a glitch, three is a cable.
-    static constexpr uint64_t kHoldoverSeconds = 3;
+    /// How long without an edge before a locked clock stops calling itself
+    /// locked. Three missed edges: one is a glitch, three is a cable. Until
+    /// this expires the clock holds the frequency the servo last set, which
+    /// is the right thing to do for a gap and the wrong thing to keep
+    /// announcing for a disconnection.
+    static constexpr double kHoldoverSeconds = 3.0;
 
 private:
     void apply(const t41ptp::ServoOutcome& outcome);
@@ -75,6 +102,10 @@ private:
 
     uint64_t lastEdgeNs_ = 0;
     bool haveLastEdge_ = false;
+    /// When the last credible edge arrived, by a clock that does not move
+    /// when the servo steps the PHC underneath it.
+    std::chrono::steady_clock::time_point lastEdgeAt_{};
+    bool haveEdgeTime_ = false;
     uint64_t consecutiveInWindow_ = 0;
     ReferenceStatus status_{};
 };

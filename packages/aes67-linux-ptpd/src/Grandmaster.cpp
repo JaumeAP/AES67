@@ -88,7 +88,9 @@ void Grandmaster::sendAnnounce() {
     std::string error;
     if (!sockets_.sendGeneral(message, length, error)) {
         std::fprintf(stderr, "[ptpd] announce: %s\n", error.c_str());
+        return;
     }
+    ++announcesSent_;
 }
 
 void Grandmaster::sendSyncPair() {
@@ -126,7 +128,9 @@ void Grandmaster::sendSyncPair() {
                       profile_->settings.logSyncInterval, transmitTimeNs);
     if (!sockets_.sendGeneral(followUp, followUpLength, error)) {
         std::fprintf(stderr, "[ptpd] follow_up: %s\n", error.c_str());
+        return;
     }
+    ++syncsSent_;
 }
 
 void Grandmaster::handleDelayReq(const PTPHeader& header, uint64_t receiveTimeNs) {
@@ -139,7 +143,9 @@ void Grandmaster::handleDelayReq(const PTPHeader& header, uint64_t receiveTimeNs
     std::string error;
     if (!sockets_.sendGeneral(response, length, error)) {
         std::fprintf(stderr, "[ptpd] delay_resp: %s\n", error.c_str());
+        return;
     }
+    ++delayResponsesSent_;
 }
 
 void Grandmaster::servicePort(int fd) {
@@ -202,12 +208,45 @@ void Grandmaster::followTheReference() {
                 static_cast<unsigned>(dataset_.clockClass));
 }
 
+void Grandmaster::reportStatus() {
+    // One line a second, whatever is happening, because a daemon that only
+    // speaks when something is wrong is a daemon nobody can tell apart from a
+    // stopped one. Counters and not rates: a rate averages a gap away.
+    // Three states, and the first word of the line is which one: internal is
+    // the NIC's own crystal, external is the pulse arriving on the PHC's
+    // input, waiting is a reference that is configured and not being
+    // followed -- no edge yet, the servo still settling, or the edges gone.
+    const ReferenceStatus reference =
+        reference_ != nullptr ? reference_->status() : ReferenceStatus{};
+
+    std::printf("[ptpd] %s  clockClass %u  announce %llu  sync %llu  delay_resp %llu"
+                "  no-followup %llu  %s",
+                nameOf(reference.state()),
+                static_cast<unsigned>(dataset_.clockClass),
+                static_cast<unsigned long long>(announcesSent_),
+                static_cast<unsigned long long>(syncsSent_),
+                static_cast<unsigned long long>(delayResponsesSent_),
+                static_cast<unsigned long long>(droppedFollowUps_),
+                sockets_.hardwareTimestamps() ? "hw" : "sw");
+
+    if (reference.available) {
+        std::printf("  offset %+lld ns  drift %+.1f ns/s  edges %llu (%llu dropped,"
+                    " last %.1f s ago)",
+                    static_cast<long long>(reference.offsetNs), reference.driftNsps,
+                    static_cast<unsigned long long>(reference.edges),
+                    static_cast<unsigned long long>(reference.rejected),
+                    reference.secondsSinceEdge);
+    }
+    std::printf("\n");
+}
+
 void Grandmaster::run(const std::atomic<bool>& running) {
     const auto announcePeriod = intervalFrom(profile_->settings.logAnnounceInterval);
     const auto syncPeriod = intervalFrom(profile_->settings.logSyncInterval);
 
     auto nextAnnounce = Clock::now();
     auto nextSync = Clock::now();
+    auto nextStatus = Clock::now() + std::chrono::seconds(1);
 
     while (running.load(std::memory_order_acquire)) {
         const auto now = Clock::now();
@@ -229,6 +268,12 @@ void Grandmaster::run(const std::atomic<bool>& running) {
         followTheReference();
         servicePort(sockets_.eventFd());
         servicePort(sockets_.generalFd());
+
+        if (now >= nextStatus) {
+            reportStatus();
+            nextStatus += std::chrono::seconds(1);
+            if (nextStatus < now) nextStatus = now + std::chrono::seconds(1);
+        }
 
         std::this_thread::sleep_for(std::chrono::microseconds(500));
     }

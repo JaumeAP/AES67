@@ -59,6 +59,30 @@ means a primary reference such as GPS, and a word clock gives frequency and a
 boundary, never traceable absolute time. Unlocked it goes back to 248, which
 is what the log line says when it changes.
 
+## What it says while it runs
+
+One line a second, on stdout, which is the journal under systemd. A daemon
+that only speaks when something is wrong cannot be told apart from a stopped
+one.
+
+    [ptpd] external  clockClass 13  announce 42  sync 336  delay_resp 12  no-followup 0  hw  offset +37 ns  drift -1240.5 ns/s  edges 42 (0 dropped, last 0.3 s ago)
+
+The first word is where the time is coming from, and there are three:
+
+- `internal` -- the NIC's own crystal, free-running. No reference configured.
+- `waiting` -- a reference is configured and the clock is not following it:
+  no edge has arrived yet, the servo has not settled, or the edges stopped.
+- `external` -- locked to the pulse arriving on the PHC's input.
+
+`no-followup` counts the Syncs that went out with no transmit timestamp and so
+were never followed up. It should stay at zero; a number that climbs means the
+NIC is not returning stamps and the slaves are getting nothing to correct
+against.
+
+After three seconds with no edge a locked clock stops calling itself locked
+and goes back to announcing 248, while holding the frequency the servo last
+set. One missed edge is a glitch, three is a cable.
+
 ## The numbers come from the shared table
 
 The domain, the sdoId and the three intervals are not in this package. They are

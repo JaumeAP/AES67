@@ -56,6 +56,7 @@ public:
 private:
     void sendAnnounce();
     void followTheReference();
+    void reportStatus();
     void sendSyncPair();
     void servicePort(int fd);
     void handleDelayReq(const PTPHeader& header, uint64_t receiveTimeNs);
@@ -73,6 +74,12 @@ private:
     uint16_t announceSequence_ = 0;
     uint16_t syncSequence_ = 0;
     uint64_t droppedFollowUps_ = 0;
+
+    // What the once-a-second line reports. Counters rather than rates: a rate
+    // hides a gap, and a gap is the thing worth seeing.
+    uint64_t announcesSent_ = 0;
+    uint64_t syncsSent_ = 0;
+    uint64_t delayResponsesSent_ = 0;
 };
 
 }  // namespace AES67::LinuxPtpd

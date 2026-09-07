@@ -32,6 +32,15 @@ constexpr int64_t kCredibleOffsetNs = 500000;
 
 }  // namespace
 
+const char* nameOf(ClockSourceState state) {
+    switch (state) {
+        case ClockSourceState::Internal: return "internal";
+        case ClockSourceState::Waiting:  return "waiting ";
+        case ClockSourceState::External: return "external";
+    }
+    return "unknown ";
+}
+
 ExternalReference::~ExternalReference() {
     if (!enabled_ || clock_ == nullptr) return;
 
@@ -95,6 +104,24 @@ bool ExternalReference::enable(PhcClock& clock, unsigned int channel, std::strin
 void ExternalReference::service() {
     if (!enabled_ || clock_ == nullptr) return;
 
+    // Holdover first, and on every call rather than on every edge: the case
+    // this exists for is edges that have stopped arriving, and nothing that
+    // runs when one arrives will ever notice that.
+    if (haveEdgeTime_) {
+        const double idle = std::chrono::duration<double>(
+                                std::chrono::steady_clock::now() - lastEdgeAt_).count();
+        status_.secondsSinceEdge = idle;
+        if (idle > kHoldoverSeconds && status_.locked) {
+            status_.locked = false;
+            consecutiveInWindow_ = 0;
+            haveLastEdge_ = false;
+            std::fprintf(stderr,
+                         "[ptpd] no reference edge for %.1f s: holding the last "
+                         "frequency, no longer announcing a lock\n",
+                         idle);
+        }
+    }
+
     struct pollfd waiting {};
     waiting.fd = clock_->descriptor();
     waiting.events = POLLIN;
@@ -112,6 +139,9 @@ void ExternalReference::service() {
 
         const int64_t offsetNs = offsetFromSecondBoundary(edgeNs);
         status_.offsetNs = offsetNs;
+        lastEdgeAt_ = std::chrono::steady_clock::now();
+        haveEdgeTime_ = true;
+        status_.secondsSinceEdge = 0;
 
         if (offsetNs > kCredibleOffsetNs || offsetNs < -kCredibleOffsetNs) {
             // Not a reference edge. Counting it would let one glitch throw the
