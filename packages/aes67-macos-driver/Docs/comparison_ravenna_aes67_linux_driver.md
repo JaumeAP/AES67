@@ -177,10 +177,10 @@ be sent 125 µs packets just because this driver can emit them, so each
 profile rejects the other's packet time.
 
 Level C is deliberately absent — it allows 64 channels in a single
-stream, and `StreamChannelMapper::kMaxChannelsPerFlow` caps a flow at 8,
-so offering it would be a claim this driver can't honour. AX/BX/CX (the
-96 kHz variants, channel counts halved) are supportable in principle but
-weren't added speculatively.
+stream. The RTP path carries that width (the RAVENNA profile uses it, at
+the 125 µs packet time that makes 64 channels fit a frame), so a Level C
+profile is possible; it wasn't added speculatively. Neither were AX/BX/CX
+(the 96 kHz variants, channel counts halved).
 
 ### Playout delay as a user-facing setting — **now done**
 

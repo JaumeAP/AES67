@@ -6,6 +6,7 @@
 
 #include "StreamManager.h"
 #include "NetworkEngine/NetworkUtils.h"
+#include "NetworkEngine/RTP/PacketBudget.h"
 #include "NetworkEngine/Discovery/SDPFetcher.h"
 #include "Driver/DebugLog.h"
 #include <algorithm>
@@ -511,7 +512,18 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
         ? txFlowPortOffset_.load(std::memory_order_relaxed)
         : 0u;
 
-    constexpr uint16_t kPerFlow = StreamChannelMapper::kMaxChannelsPerFlow;
+    // A flow is as wide as one frame allows at the rate createTxStream()
+    // will send at -- L24, 1 ms, the device's sample rate -- and no wider
+    // than the profile permits. AES67 and Dante say 8; the byte budget says
+    // 10 at 48 kHz and 5 at 96 kHz, where eight channels of L24 at 1 ms are
+    // 2316 bytes and used to leave here as an IP-fragmented packet that
+    // RTPReceiver::validatePacket() drops on arrival.
+    const uint32_t framesAtOneMs = PacketBudget::framesPerPacket(
+        static_cast<uint32_t>(currentDeviceSampleRate_.load()), 1000, 0);
+    const uint16_t budgetPerFlow = PacketBudget::maxChannelsPerPacket(
+        PacketBudget::bytesPerSample("L24"), framesAtOneMs);
+    const uint16_t kPerFlow = std::max<uint16_t>(1, std::min<uint16_t>({
+        StreamChannelMapper::kMaxChannelsPerFlow, profile.maxChannelsPerFlow, budgetPerFlow}));
     const unsigned flowCount = (numChannels + kPerFlow - 1) / kPerFlow;
 
     for (unsigned flow = 0; flow < flowCount; ++flow) {
@@ -544,7 +556,7 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
             return {};
         }
 
-        // Last flow carries the remainder, which may be fewer than 8.
+        // Last flow carries the remainder, which may be fewer than a full flow.
         const uint16_t remaining = numChannels - static_cast<uint16_t>(flow * kPerFlow);
         const uint16_t flowChannels = std::min<uint16_t>(remaining, kPerFlow);
 
@@ -858,6 +870,10 @@ bool StreamManager::canAddStream(const SDPSession& sdp, bool isTransmit, std::st
         return false;
     }
 
+    if (!validatePacketBudget(sdp, errorOut)) {
+        return false;
+    }
+
     if (!validateNetworkConfig(sdp, errorOut)) {
         return false;
     }
@@ -1055,6 +1071,39 @@ bool StreamManager::validateChannelAvailability(uint16_t numChannels, std::strin
     }
 
     return true;
+}
+
+bool StreamManager::validatePacketBudget(const SDPSession& sdp, std::string* errorOut) const {
+    // An encoding the codec does not carry is rejected by the profile check
+    // with a better message than this one could give; a zero-length packet
+    // is clamped to one frame by the transmitter and receiver alike. Neither
+    // is a budget question.
+    const size_t bytesPerSample = PacketBudget::bytesPerSample(sdp.encoding);
+    const uint32_t frames = PacketBudget::framesPerPacket(sdp.sampleRate, sdp.ptimeUs, sdp.framecount);
+    if (bytesPerSample == 0 || frames == 0) return true;
+
+    if (PacketBudget::fits(sdp.numChannels, bytesPerSample, frames)) return true;
+
+    if (errorOut) {
+        // Say what would fit, in the terms the stream was described in: the
+        // channel count at this packet time, and the packet time at this
+        // channel count. A RAVENNA stream is usually fixed in channels and
+        // free in packet time, an AES67 one the other way round.
+        const uint16_t maxChannels = PacketBudget::maxChannelsPerPacket(bytesPerSample, frames);
+        const uint32_t maxFrames = PacketBudget::maxFramesPerPacket(sdp.numChannels, bytesPerSample);
+        const uint32_t maxPtimeUs = sdp.sampleRate > 0
+            ? static_cast<uint32_t>((static_cast<uint64_t>(maxFrames) * 1000000ULL) / sdp.sampleRate)
+            : 0;
+        *errorOut = std::to_string(sdp.numChannels) + " channels of " + sdp.encoding + " at " +
+                    std::to_string(frames) + " samples per packet is a " +
+                    std::to_string(PacketBudget::rtpPacketBytes(sdp.numChannels, bytesPerSample, frames)) +
+                    "-byte packet, over the " + std::to_string(PacketBudget::kMaxRtpPacketBytes) +
+                    " an Ethernet frame carries: at this packet time up to " +
+                    std::to_string(maxChannels) + " channels fit, and for " +
+                    std::to_string(sdp.numChannels) + " channels a packet time of at most " +
+                    std::to_string(maxPtimeUs) + " us (" + std::to_string(maxFrames) + " samples) does";
+    }
+    return false;
 }
 
 bool StreamManager::validateNetworkConfig(const SDPSession& sdp, std::string* errorOut) const {

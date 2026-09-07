@@ -207,10 +207,13 @@ public:
         int dscp = -1
     );
 
-    /// Creates a TX stream of any width as one or more AES67 flows, each
-    /// carrying at most StreamChannelMapper::kMaxChannelsPerFlow (8)
-    /// channels — the actual limit in the standard, and what Dante
-    /// Controller does when you tick more than 8 channels.
+    /// Creates a TX stream of any width as one or more flows. A flow
+    /// carries the most channels that fit in one Ethernet frame at the
+    /// device's sample rate and 1 ms (PacketBudget: 10 of L24 at 48 kHz,
+    /// 5 at 96 kHz), capped by the active profile's maxChannelsPerFlow --
+    /// 8 for AES67 and Dante, which is what Dante Controller does when
+    /// you tick more than 8 channels -- and by
+    /// StreamChannelMapper::kMaxChannelsPerFlow.
     ///
     /// Addressing depends on the active profile's
     /// CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort:
@@ -225,8 +228,8 @@ public:
     ///    port 6517 with 24 channels becomes source ports 6518, 6519,
     ///    6520 — matches the DMA's own documented defaults exactly when
     ///    the caller passes 6517).
-    /// Either way, each flow gets the next 8 device channels starting from
-    /// `mapping.deviceChannelStart`, and each is a normal stream created
+    /// Either way, each flow gets the next block of device channels
+    /// starting from `mapping.deviceChannelStart`, and each is a normal stream created
     /// through createTxStream(), so nothing downstream needs to know these
     /// were grouped.
     ///
@@ -439,6 +442,12 @@ private:
     // Validation helpers
     bool validateSampleRate(const SDPSession& sdp, std::string* errorOut) const;
     bool validateChannelAvailability(uint16_t numChannels, std::string* errorOut) const;
+    /// The channel count and the packet time have to fit in one Ethernet
+    /// frame together (NetworkEngine/RTP/PacketBudget.h). Checked before any
+    /// socket opens, in both directions: RTPReceiver drops a packet over
+    /// the frame size, so a stream that cannot be sent whole is one nobody
+    /// could receive either.
+    bool validatePacketBudget(const SDPSession& sdp, std::string* errorOut) const;
     bool validateNetworkConfig(const SDPSession& sdp, std::string* errorOut) const;
 
     // Stream creation helpers

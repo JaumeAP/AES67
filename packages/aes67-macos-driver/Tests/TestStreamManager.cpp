@@ -8,9 +8,11 @@
 #include "doctest.h"
 
 #include "NetworkEngine/StreamManager.h"
+#include "NetworkEngine/RTP/PacketBudget.h"
 #include "Driver/SDPParser.h"
 #include <iostream>
 #include <cassert>
+#include <utility>
 
 using namespace AES67;
 
@@ -523,6 +525,107 @@ TEST_CASE("Resolve Effective Dscp") {
     CHECK(StreamManager::resolveEffectiveDscp(34, 46) == 34);
     CHECK(StreamManager::resolveEffectiveDscp(0, 46) == 0);
 
+    std::cout << "PASS" << std::endl;
+}
+
+//
+// Packet budget: a channel count and a packet time have to fit in one
+// frame together, in both directions, before any socket opens.
+//
+
+namespace {
+
+// The ring buffers have no default constructor, so the array is built the
+// way AES67Device builds its own: one sized buffer per index.
+template<size_t... Is>
+auto makeRingBufferArray(size_t bufferSize, std::index_sequence<Is...>) {
+    return std::array<SPSCRingBuffer<float>, sizeof...(Is)>{
+        ((void)Is, SPSCRingBuffer<float>(bufferSize))...
+    };
+}
+
+/// A manager with nothing started: canAddStream() reads state and opens
+/// nothing, and the ring buffers behind it are only ever sized here.
+struct ManagerFixture {
+    // Initialised from the prvalue, since the buffers hold atomics and the
+    // array can be neither moved nor copied once it exists.
+    StreamManager::DeviceChannelBuffers in = makeRingBufferArray(64, std::make_index_sequence<128>{});
+    StreamManager::DeviceChannelBuffers out = makeRingBufferArray(64, std::make_index_sequence<128>{});
+    StreamManager manager{in, out};
+};
+
+} // namespace
+
+TEST_CASE("Sixty-Four Channels Are Accepted At 125 us Under RAVENNA") {
+    std::cout << "Test: 64 channels of L24 at 125 us pass validation under RAVENNA... ";
+    ManagerFixture fixture;
+    fixture.manager.setCompatibilityProfile(CompatibilityProfileKind::RAVENNA);
+
+    SDPSession wide = createTestSDP("Merging Horus", 5004, 64, 48000);
+    wide.ptimeUs = 125;
+    wide.framecount = 0; // derive from ptime, as an SDP without a=framecount does
+    std::string error;
+    CHECK(fixture.manager.canAddStream(wide, /*isTransmit=*/false, &error));
+    CHECK(error.empty());
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Sixty-Four Channels At A Millisecond Do Not Fit A Frame") {
+    std::cout << "Test: 64 channels of L24 at 1 ms are refused with the packet time that fits... ";
+    ManagerFixture fixture;
+    fixture.manager.setCompatibilityProfile(CompatibilityProfileKind::RAVENNA);
+
+    SDPSession wide = createTestSDP("Merging Horus", 5004, 64, 48000);
+    wide.ptimeUs = 1000;
+    wide.framecount = 0;
+    std::string error;
+    CHECK(!fixture.manager.canAddStream(wide, /*isTransmit=*/false, &error));
+    // The message names the packet, the frame, and both ways out.
+    CHECK(error.find("9228-byte packet") != std::string::npos);
+    CHECK(error.find("1472") != std::string::npos);
+    CHECK(error.find("up to 10 channels") != std::string::npos);
+    CHECK(error.find("at most 145 us (7 samples)") != std::string::npos);
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Eight Channels At 96 kHz And A Millisecond Do Not Fit Either") {
+    std::cout << "Test: 8 channels of L24 at 96 kHz and 1 ms are refused (2316 bytes)... ";
+    ManagerFixture fixture;
+    // The device runs at the stream's rate, or the rate check fires first.
+    CHECK(fixture.manager.setDeviceSampleRate(96000.0));
+    // The default AES67 profile permits 96 kHz and 8 channels; the frame
+    // does not permit both at 1 ms. The check is the driver's, not the
+    // profile's.
+    SDPSession sdp = createTestSDP("Hi-rate", 5004, 8, 96000);
+    sdp.framecount = 0;
+    std::string error;
+    CHECK(!fixture.manager.canAddStream(sdp, /*isTransmit=*/true, &error));
+    CHECK(error.find("2316-byte packet") != std::string::npos);
+    CHECK(error.find("up to 5 channels") != std::string::npos);
+    // Five channels at 1 ms fit, which is what AES67 -- 1 ms only -- gets
+    // at 96 kHz.
+    sdp.numChannels = 5;
+    error.clear();
+    CHECK(fixture.manager.canAddStream(sdp, /*isTransmit=*/true, &error));
+    // Or halve the packet time, which AES67's profile forbids and RAVENNA's
+    // allows: eight channels at 500 us are 1164 bytes.
+    sdp.numChannels = 8;
+    sdp.ptimeUs = 500;
+    fixture.manager.setCompatibilityProfile(CompatibilityProfileKind::RAVENNA);
+    error.clear();
+    CHECK(fixture.manager.canAddStream(sdp, /*isTransmit=*/true, &error));
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("An Explicit Framecount Is What The Budget Measures") {
+    std::cout << "Test: a RAVENNA framecount overrides ptime in the budget... ";
+    ManagerFixture fixture;
+    fixture.manager.setCompatibilityProfile(CompatibilityProfileKind::RAVENNA);
+    SDPSession sdp = createTestSDP("Framecount", 5004, 64, 48000);
+    sdp.ptimeUs = 1000;   // would not fit
+    sdp.framecount = 6;   // does: what the packets actually hold
+    std::string error;
+    CHECK(fixture.manager.canAddStream(sdp, /*isTransmit=*/false, &error));
     std::cout << "PASS" << std::endl;
 }
 

@@ -371,17 +371,43 @@ TEST_CASE("Only DMA And DAC3202 Use The Fixed Multicast Addressing Scheme") {
 // C. Limits shared by every profile
 // ============================================================================
 
-TEST_CASE("No Profile Raises The Flow Channel Limit") {
-    std::cout << "Test: C1 · no profile permits more than 8 channels in one flow... ";
+TEST_CASE("No Profile Raises The Flow Channel Limit Past The Transport") {
+    std::cout << "Test: C1 · no profile permits more than 64 channels in one flow... ";
     auto sdp = baselineSession();
-    sdp.numChannels = 16;
+    sdp.numChannels = 65;
 
     // A profile can only narrow what this driver accepts, never widen it
-    // past what the code implements — 8 is AES67's own limit.
+    // past what the code implements: 64 is the widest flow the RTP path
+    // carries (StreamChannelMapper::kMaxChannelsPerFlow), RAVENNA's and
+    // ST 2110-30 Level C's ceiling. Whether 64 fit in a frame depends on
+    // the packet time and is the driver's check, not a profile's.
     for (const auto& profile : CompatibilityProfile::all()) {
-        CHECK(profile.maxChannelsPerFlow <= 8);
+        CHECK(profile.maxChannelsPerFlow <= 64);
         CHECK(!profile.validate(sdp, transmitDirectionFor(profile), nullptr));
     }
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Only RAVENNA Takes A Flow Wider Than Eight") {
+    std::cout << "Test: C1b · RAVENNA accepts 64 channels in one flow, AES67 and Dante keep 8... ";
+    const auto ravenna = CompatibilityProfile::forKind(CompatibilityProfileKind::RAVENNA);
+    const auto aes67 = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
+    const auto dante = CompatibilityProfile::forKind(CompatibilityProfileKind::Dante);
+
+    // What Merging's gear sends: 64 channels of L24 at 125 us.
+    auto wide = baselineSession();
+    wide.numChannels = 64;
+    wide.ptimeUs = 125;
+    CHECK(ravenna.maxChannelsPerFlow == 64);
+    CHECK(ravenna.validate(wide, /*isTransmit=*/false, nullptr));
+
+    // AES67's own limit and Dante Controller's split stay at 8.
+    wide.connectionAddress = "239.69.1.10";
+    CHECK(aes67.maxChannelsPerFlow == 8);
+    CHECK(dante.maxChannelsPerFlow == 8);
+    wide.ptimeUs = 1000;
+    CHECK(!aes67.validate(wide, /*isTransmit=*/false, nullptr));
+    CHECK(!dante.validate(wide, /*isTransmit=*/false, nullptr));
     std::cout << "PASS" << std::endl;
 }
 

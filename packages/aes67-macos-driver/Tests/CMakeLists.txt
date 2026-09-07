@@ -396,12 +396,31 @@ target_link_libraries(TestPTPService PRIVATE
 target_link_libraries(TestPTPService PRIVATE doctest_headers)
 target_compile_features(TestPTPService PRIVATE cxx_std_17)
 
+# Instantiates a StreamManager (for canAddStream), so it links what the
+# engine pulls in -- the same list as TestMultiStream.
 add_executable(TestStreamManager
     TestStreamManager.cpp
+    ../NetworkEngine/PTP/PTPClock.cpp
+    ../NetworkEngine/PTP/PTPDInterface.cpp
+    ../NetworkEngine/PTP/PTPSlave.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+    ../NetworkEngine/NetworkInterfaceDetection.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../Driver/AudioThreadPriority.cpp
 )
 
 target_include_directories(TestStreamManager PRIVATE
     ${PROJECT_SOURCE_DIR}
+)
+
+target_link_libraries(TestStreamManager PRIVATE
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+    # PCMCodec converts samples with vDSP.
+    "-framework Accelerate"
 )
 
 target_link_libraries(TestStreamManager PRIVATE aes67_net)

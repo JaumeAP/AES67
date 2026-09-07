@@ -421,27 +421,17 @@ TEST_CASE("Usable Channel Count Never Exceeds Capacity") {
     std::cout << "✓ PASSED\n";
 }
 
-TEST_CASE("Max Channels Per Flow Matches AES67") {
-    std::cout << "Test: per-flow channel limit is 8 (AES67 / Dante)... ";
+TEST_CASE("Max Channels Per Flow Is The Transport Ceiling") {
+    std::cout << "Test: per-flow channel ceiling is 64 (RAVENNA / ST 2110-30 Level C)... ";
 
-    // Not a tunable: AES67 flows carry at most 8 channels, and Dante
-    // Controller splits anything wider into multiple flows.
-    // StreamManager::createTxStreamFlows() divides by exactly this.
-    static_assert(StreamChannelMapper::kMaxChannelsPerFlow == 8,
-                  "AES67 flows carry at most 8 channels");
-
-    // The split arithmetic createTxStreamFlows() performs, checked here
-    // because that function itself needs sockets to run.
-    constexpr uint16_t perFlow = StreamChannelMapper::kMaxChannelsPerFlow;
-    auto flowsFor = [](uint16_t channels) {
-        return (channels + perFlow - 1) / perFlow;
-    };
-    CHECK(flowsFor(1) == 1);
-    CHECK(flowsFor(8) == 1);    // exactly one full flow, no spill
-    CHECK(flowsFor(9) == 2);    // one full + one carrying a single channel
-    CHECK(flowsFor(16) == 2);
-    CHECK(flowsFor(24) == 3);
-    CHECK(flowsFor(128) == 16); // full device width
+    // The widest flow the RTP path carries. The AES67 and Dante profiles
+    // cap theirs at 8 through CompatibilityProfile::maxChannelsPerFlow, and
+    // the byte budget (PacketBudget) decides what fits at a packet time;
+    // StreamManager::createTxStreamFlows() takes the smallest of the three.
+    static_assert(StreamChannelMapper::kMaxChannelsPerFlow == 64,
+                  "the RTP path carries flows of up to 64 channels");
+    static_assert(StreamChannelMapper::kMaxChannelsPerFlow <= StreamChannelMapper::kMaxDeviceChannels,
+                  "a flow cannot be wider than the device");
 
     std::cout << "✓ PASSED\n";
 }

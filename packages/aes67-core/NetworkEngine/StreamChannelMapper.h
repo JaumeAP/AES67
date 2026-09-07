@@ -50,10 +50,15 @@ class StreamChannelMapper {
 public:
     static constexpr size_t kMaxDeviceChannels = 128;  ///< Device channel limit
 
-    /// AES67 flow limit: a single RTP stream carries at most 8 channels.
-    /// Not a convention — Dante Controller splits anything wider into
-    /// multiple flows, and interoperating with it depends on doing the same.
-    static constexpr uint16_t kMaxChannelsPerFlow = 8;
+    /// The widest flow this driver carries: 64 channels, RAVENNA's and
+    /// ST 2110-30 Level C's ceiling. Not what a flow gets by default -- the
+    /// AES67 and Dante profiles cap theirs at 8, and Dante Controller splits
+    /// anything wider, so interoperating with it depends on doing the same.
+    /// What fits on the wire is bytes, not channels: 64 channels of L24 need
+    /// a 125 us packet, and at 1 ms only 10 fit in a frame (see
+    /// NetworkEngine/RTP/PacketBudget.h). StreamManager::createTxStreamFlows()
+    /// takes the smaller of this, the profile's cap and the byte budget.
+    static constexpr uint16_t kMaxChannelsPerFlow = 64;
 
     StreamChannelMapper();
     ~StreamChannelMapper();

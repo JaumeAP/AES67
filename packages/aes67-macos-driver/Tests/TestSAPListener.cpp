@@ -72,6 +72,25 @@ TEST_CASE("An announcement yields the session it describes") {
     CHECK_FALSE(announced.isDeletion);
 }
 
+TEST_CASE("A MIME payload type in front of the SDP is stripped") {
+    // RFC 2974 lets the payload start with "application/sdp" and a NUL, and
+    // Dante Controller's SapMessages always writes it. The session
+    // description we keep has to begin at v=0 regardless.
+    std::string body("application/sdp");
+    body.push_back('\0');
+    body += kSDP;
+    const SAPAnnouncement announced = parse(buildSAP(body));
+    CHECK(announced.sessionDescription.rfind("v=0", 0) == 0);
+    CHECK(announced.sessionDescription.find("application/sdp") == std::string::npos);
+    CHECK(announced.sessionName == parse(buildSAP(kSDP)).sessionName);
+    CHECK(announced.multicastAddress == parse(buildSAP(kSDP)).multicastAddress);
+
+    // A type with nothing after it is not an announcement.
+    std::string bare("application/sdp");
+    bare.push_back('\0');
+    CHECK(parse(buildSAP(bare)).sessionDescription.empty());
+}
+
 TEST_CASE("Identity comes from the header, not from the body") {
     // The message id hash and originating source are what the listener
     // matches an announcement and its later deletion on, so they have to
