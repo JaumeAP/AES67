@@ -13,7 +13,14 @@ Ravenna::SessionAdvertisement nodeAdvertisement(const std::string& label,
                                                 const std::string& hostName,
                                                 uint32_t addressV4, uint16_t apiPort) {
     Ravenna::SessionAdvertisement node;
+    // An instance name is ONE DNS label: a dot inside it is a separator on
+    // the wire, so a label built from gethostname() ("... on macmini.local")
+    // would make a PTR of two labels and mDNSResponder drops the record.
+    // Same rule, and the same replacement, as aes67-ravenna's oneLabel().
     node.instanceName = label;
+    for (char& character : node.instanceName) {
+        if (character == '.') character = ' ';
+    }
     node.hostName = hostName;
     node.port = apiPort;
     node.addressV4 = addressV4;

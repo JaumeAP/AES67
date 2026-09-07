@@ -182,3 +182,16 @@ TEST_CASE("the node advertisement is an _nmos-node._tcp service with IS-04's TXT
     CHECK(ad.txtEntries == std::vector<std::string>{"api_ver=v1.3", "api_proto=http",
                                                     "api_auth=false", "ver_slf=0"});
 }
+
+TEST_CASE("a label carrying a domain still makes one mDNS instance label") {
+    // gethostname() answers "macmini.local" on a plain Mac, and the driver
+    // builds its label out of it. A dot inside an instance name is a label
+    // separator on the wire, so the PTR would carry two labels and
+    // mDNSResponder would drop the record: the node would serve its APIs
+    // and nothing would ever find them.
+    const Ravenna::SessionAdvertisement ad = nodeAdvertisement(
+        "AES67 macOS Driver on macmini.local", "macmini.local", 0xC0A80132u, 51234);
+    CHECK(ad.instanceName == "AES67 macOS Driver on macmini local");
+    // The host name is a real domain name and keeps its dots.
+    CHECK(ad.hostName == "macmini.local");
+}
