@@ -82,6 +82,38 @@ never acting on it is a connection a controller believes it has made and
 nobody is carrying. Bulk answers 501 too, which sends a controller to the
 single endpoints.
 
+## The grid, channel by channel
+
+IS-05 says which stream a receiver takes. **IS-08**, served at
+`/x-nmos/channelmapping/v1.0/`, says where each of that stream's channels
+lands -- one cell at a time, which is the part of a routing controller that
+looks like a grid.
+
+    grid=http://192.168.1.50:8080/x-nmos/channelmapping/v1.0
+
+    # what there is to route: inputs are the streams receivers took,
+    # the output is this device's channels
+    curl $grid/io/
+
+    # the grid as it stands
+    curl $grid/map/active/
+
+    # move one cell: channel 2 of receiver-1 onto device channel 64
+    curl -X POST -H 'Content-Type: application/json' -d '{
+      "activation": {"mode": "activate_immediate"},
+      "action": {"device": {"64": {"input": "receiver-1", "channel_index": 1}}}
+    }' $grid/map/activate
+
+The grid is not a second copy of anything: it is read from and written to
+`StreamChannelMapper`'s per-channel routing, which has been there all along
+with no way to reach it from outside the machine. Whatever fed a device
+channel stops feeding it when a cell is rewritten -- two inputs on one output
+channel is not a mix, it is a fault -- and a grid the matrix refuses leaves the
+device carrying exactly what it was carrying.
+
+One output block, called `device`, because this device's channels are one
+array. Saying two would be describing hardware that is not there.
+
 ## Trying it
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

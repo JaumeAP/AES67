@@ -24,6 +24,7 @@ if(NOT TARGET aes67_core)
 endif()
 
 add_library(aes67_ravenna
+    Ravenna/ChannelMappingApi.cpp
     Ravenna/ConnectionApi.cpp
     Ravenna/DnsSd.cpp
     Ravenna/HttpServer.cpp
@@ -58,7 +59,8 @@ if(BUILD_TESTS)
         endif()
 
         enable_testing()
-        foreach(suite RtspMessages DnsSd SessionCatalogue Json ConnectionApi ReceiverRouting)
+        foreach(suite RtspMessages DnsSd SessionCatalogue Json ConnectionApi ReceiverRouting
+                 ChannelMappingApi)
             add_executable(Test${suite} Tests/Test${suite}.cpp)
             target_link_libraries(Test${suite} PRIVATE aes67_ravenna doctest_headers)
             add_test(NAME ${suite} COMMAND Test${suite})
