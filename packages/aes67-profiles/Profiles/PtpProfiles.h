@@ -67,6 +67,18 @@ inline constexpr PtpProfile kPtpAes67MediaProfile{
     {0, 0, -3, 0, -3},
 };
 
+/// The media profile at twice the Sync rate: sixteen a second, Announce once,
+/// Delay_Req sixteen. Same ecosystem as `aes67` -- domain 0, majorSdoId 0 --
+/// for a network kept well enough that the extra traffic buys precision
+/// instead of jitter. A master announcing this has to send at the rate it
+/// announces, which is the reason the number lives here and not in a
+/// consumer's own table.
+inline constexpr PtpProfile kPtpAes67TightProfile{
+    "aes67-tight",
+    "The media profile at sixteen Sync a second, for well kept networks",
+    {0, 0, -4, 0, -4},
+};
+
 /// 802.1AS: Sync eight times a second, Announce once, Pdelay_Req once a
 /// second, and majorSdoId 1.
 inline constexpr PtpProfile kPtpGptpProfile{
@@ -80,6 +92,7 @@ inline constexpr PtpProfile kPtpGptpProfile{
 inline constexpr const PtpProfile* kPtpProfiles[] = {
     &kPtpDefaultProfile,
     &kPtpAes67MediaProfile,
+    &kPtpAes67TightProfile,
     &kPtpGptpProfile,
 };
 inline constexpr size_t kPtpProfileCount =

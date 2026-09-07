@@ -35,6 +35,19 @@ TEST_CASE("The AES67 media profile is what the gear runs") {
     CHECK(kPtpAes67MediaProfile.settings.majorSdoId == 0);
 }
 
+TEST_CASE("The tight media profile is the same ecosystem, sent faster") {
+    // Sixteen Sync a second and sixteen Delay_Req, one Announce. Domain and
+    // majorSdoId are the media profile's, because this is the same ecosystem:
+    // what changes is the rate, not who it talks to.
+    CHECK(kPtpAes67TightProfile.settings.domainNumber ==
+          kPtpAes67MediaProfile.settings.domainNumber);
+    CHECK(kPtpAes67TightProfile.settings.majorSdoId ==
+          kPtpAes67MediaProfile.settings.majorSdoId);
+    CHECK(kPtpAes67TightProfile.settings.logSyncInterval == -4);
+    CHECK(kPtpAes67TightProfile.settings.logAnnounceInterval == 0);
+    CHECK(kPtpAes67TightProfile.settings.logMinDelayReqInterval == -4);
+}
+
 TEST_CASE("gPTP is the one that takes an sdoId of its own") {
     // majorSdoId 1 is what makes an 802.1AS receiver accept the traffic at
     // all, and what makes everything else ignore it.
@@ -49,6 +62,7 @@ TEST_CASE("gPTP is the one that takes an sdoId of its own") {
 TEST_CASE("Profiles are found by the name a person types") {
     CHECK(ptpProfileByName("default1588") == &kPtpDefaultProfile);
     CHECK(ptpProfileByName("aes67") == &kPtpAes67MediaProfile);
+    CHECK(ptpProfileByName("aes67-tight") == &kPtpAes67TightProfile);
     CHECK(ptpProfileByName("gptp") == &kPtpGptpProfile);
 
     CHECK(ptpProfileByName("ravenna") == nullptr);
@@ -60,7 +74,7 @@ TEST_CASE("Profiles are found by the name a person types") {
 }
 
 TEST_CASE("Every profile is in the list, once") {
-    CHECK(kPtpProfileCount == 3);
+    CHECK(kPtpProfileCount == 4);
     for (size_t i = 0; i < kPtpProfileCount; ++i) {
         CHECK(kPtpProfiles[i] != nullptr);
         CHECK(ptpProfileByName(kPtpProfiles[i]->name) == kPtpProfiles[i]);
