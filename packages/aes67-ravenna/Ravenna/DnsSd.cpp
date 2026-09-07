@@ -35,7 +35,7 @@ void putRecordHeader(std::vector<uint8_t>& out, const std::string& name, uint16_
 }
 
 std::string instanceFqdn(const SessionAdvertisement& session) {
-    return session.instanceName + "." + kRtspService;
+    return session.instanceName + "." + session.serviceType;
 }
 
 /// PTR is a shared record: several sessions answer the same name, so it never
@@ -46,12 +46,12 @@ std::vector<uint8_t> buildRecords(const SessionAdvertisement& session, bool incl
     const std::string instance = instanceFqdn(session);
     const std::vector<uint8_t> instanceName = encodeName(instance);
 
-    putRecordHeader(records, kRtspService, kTypePTR, serviceTtl,
+    putRecordHeader(records, session.serviceType, kTypePTR, serviceTtl,
                     static_cast<uint16_t>(instanceName.size()), false);
     appendBytes(records, instanceName);
 
-    if (includeSubtype) {
-        putRecordHeader(records, kRavennaSessionSubtype, kTypePTR, serviceTtl,
+    if (includeSubtype && !session.subtype.empty()) {
+        putRecordHeader(records, session.subtype, kTypePTR, serviceTtl,
                         static_cast<uint16_t>(instanceName.size()), false);
         appendBytes(records, instanceName);
     }
@@ -99,9 +99,9 @@ std::vector<uint8_t> buildPacket(const std::vector<uint8_t>& records, uint16_t a
     return packet;
 }
 
-uint16_t answerCountFor(bool includeSubtype) {
+uint16_t answerCountFor(const SessionAdvertisement& session, bool includeSubtype) {
     // PTR, SRV, TXT, A, and the subtype PTR when there is one.
-    return static_cast<uint16_t>(includeSubtype ? 5 : 4);
+    return static_cast<uint16_t>(includeSubtype && !session.subtype.empty() ? 5 : 4);
 }
 
 }  // namespace
@@ -131,12 +131,12 @@ std::vector<uint8_t> buildAnnouncement(const SessionAdvertisement& session,
                                        bool includeSubtype) {
     return buildPacket(buildRecords(session, includeSubtype, kServiceRecordTtl,
                                     kHostRecordTtl),
-                       answerCountFor(includeSubtype));
+                       answerCountFor(session, includeSubtype));
 }
 
 std::vector<uint8_t> buildGoodbye(const SessionAdvertisement& session, bool includeSubtype) {
     return buildPacket(buildRecords(session, includeSubtype, 0, 0),
-                       answerCountFor(includeSubtype));
+                       answerCountFor(session, includeSubtype));
 }
 
 std::vector<std::string> parseQueryNames(const uint8_t* packet, size_t length) {

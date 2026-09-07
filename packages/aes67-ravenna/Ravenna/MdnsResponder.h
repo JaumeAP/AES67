@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace AES67::Ravenna {
 
@@ -36,6 +37,11 @@ public:
                uint32_t addressV4, uint16_t port, std::string& error);
     void stop();
 
+    /// Something else to advertise under the same responder: the NMOS node,
+    /// which is a service of its own rather than a session. Added before
+    /// start(), and announced and withdrawn with the sessions.
+    void alsoAdvertise(const SessionAdvertisement& service);
+
     /// Answers whatever queries are waiting. Returns how many it answered.
     size_t service();
 
@@ -50,8 +56,10 @@ public:
 
 private:
     bool sendPacket(const std::vector<uint8_t>& packet);
+    std::vector<SessionAdvertisement> everything() const;
 
     const SessionCatalogue& catalogue_;
+    std::vector<SessionAdvertisement> extras_;
     int socket_ = -1;
     std::string hostName_;
     uint32_t addressV4_ = 0;

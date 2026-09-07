@@ -26,11 +26,13 @@ std::string lowered(std::string text) {
     return text;
 }
 
-bool asksForUs(const std::vector<std::string>& names) {
-    const std::string service = lowered(kRtspService);
-    const std::string subtype = lowered(kRavennaSessionSubtype);
-    for (const std::string& name : names) {
-        if (name == service || name == subtype) return true;
+bool asksAbout(const std::vector<std::string>& asked,
+               const std::vector<SessionAdvertisement>& advertised) {
+    for (const std::string& name : asked) {
+        for (const SessionAdvertisement& service : advertised) {
+            if (name == lowered(service.serviceType)) return true;
+            if (!service.subtype.empty() && name == lowered(service.subtype)) return true;
+        }
     }
     return false;
 }
@@ -117,17 +119,26 @@ bool MdnsResponder::sendPacket(const std::vector<uint8_t>& packet) {
                     sizeof(destination)) >= 0;
 }
 
+void MdnsResponder::alsoAdvertise(const SessionAdvertisement& service) {
+    extras_.push_back(service);
+}
+
+std::vector<SessionAdvertisement> MdnsResponder::everything() const {
+    std::vector<SessionAdvertisement> all =
+        catalogue_.advertisements(hostName_, port_, addressV4_);
+    all.insert(all.end(), extras_.begin(), extras_.end());
+    return all;
+}
+
 void MdnsResponder::announce() {
-    for (const SessionAdvertisement& session :
-         catalogue_.advertisements(hostName_, port_, addressV4_)) {
-        sendPacket(buildAnnouncement(session));
+    for (const SessionAdvertisement& service : everything()) {
+        sendPacket(buildAnnouncement(service));
     }
 }
 
 void MdnsResponder::goodbye() {
-    for (const SessionAdvertisement& session :
-         catalogue_.advertisements(hostName_, port_, addressV4_)) {
-        sendPacket(buildGoodbye(session));
+    for (const SessionAdvertisement& service : everything()) {
+        sendPacket(buildGoodbye(service));
     }
 }
 
@@ -147,7 +158,7 @@ size_t MdnsResponder::service() {
 
         const std::vector<std::string> names =
             parseQueryNames(buffer, static_cast<size_t>(received));
-        if (!asksForUs(names)) continue;
+        if (!asksAbout(names, everything())) continue;
 
         // Answered to the group rather than to the asker: everything else on
         // the link gets to fill its cache from one packet, which is the whole
