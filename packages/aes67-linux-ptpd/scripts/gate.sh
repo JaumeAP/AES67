@@ -1,7 +1,7 @@
 #!/bin/bash
 # The gate for this package.
 #
-# On Linux it builds everything, the daemon included, and runs the wire suite.
+# On Linux it builds everything, the daemon included, and runs the wire suites.
 # On anything else it builds the wire library and its tests and says what it
 # skipped: the daemon is Linux by construction, and pretending otherwise would
 # mean a gate that passes without having compiled the half that talks to the
@@ -18,7 +18,7 @@ echo "==> Build"
 cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
-ctest --test-dir build --output-on-failure -R PtpWire || {
+ctest --test-dir build --output-on-failure -R "PtpWire|ReferenceMath|RavennaSlaveInterop" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 if [[ "$(uname -s)" == "Linux" ]]; then

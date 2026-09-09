@@ -89,6 +89,18 @@ if(BUILD_TESTS)
             add_test(NAME ${suite} COMMAND Test${suite})
             set_tests_properties(${suite} PROPERTIES LABELS "unit" TIMEOUT 60)
         endforeach()
+
+        # What this daemon sends, against the rules of a real slave: the
+        # RAVENNA ALSA kernel module vendored under packages/aes67-linux-driver,
+        # mirrored in Tests/support/RavennaSlave from its own PTP.c.
+        add_executable(TestRavennaSlaveInterop
+            Tests/TestRavennaSlaveInterop.cpp
+            Tests/support/RavennaSlave.cpp
+        )
+        target_include_directories(TestRavennaSlaveInterop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Tests)
+        target_link_libraries(TestRavennaSlaveInterop PRIVATE aes67_ptp_wire doctest_headers)
+        add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
+        set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)
     else()
         message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
     endif()
