@@ -574,6 +574,18 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
         attributes.push_back(ptpRefclk.str());
     }
 
+    // Clock domain. RAVENNA's attribute, and what the AES67 Linux daemon
+    // writes next to ts-refclk (session_manager.cpp): the PTPv2 domain the
+    // stream is clocked on, stated where a receiver reads the clock rather
+    // than only inside ts-refclk's traceable form, which pins no domain at
+    // all. Skipped when the session was parsed from an SDP that already
+    // carried the attribute -- it is in customAttributes then, and writing it
+    // here as well would double the line.
+    if (session.ptpDomain >= 0
+        && session.customAttributes.find("clock-domain") == session.customAttributes.end()) {
+        attributes.push_back("a=clock-domain:PTPv2 " + std::to_string(session.ptpDomain));
+    }
+
     // Media clock
     if (!session.mediaClockType.empty()) {
         attributes.push_back("a=mediaclk:" + session.mediaClockType);

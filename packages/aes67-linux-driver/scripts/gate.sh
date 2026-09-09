@@ -34,7 +34,7 @@ echo "==> Build"
 cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
-ctest --test-dir build --output-on-failure -R "ProfileConf|ConfCheck|SourceGen" || {
+ctest --test-dir build --output-on-failure -R "ProfileConf|ConfCheck|SourceGen|DaemonSdp" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 if [[ "$(uname -s)" != "Linux" ]]; then

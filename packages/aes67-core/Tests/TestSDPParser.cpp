@@ -396,3 +396,37 @@ a=rtpmap:96 L24/48000/8
 
 } // namespace Tests
 } // namespace AES67
+
+namespace AES67 {
+namespace Tests {
+TEST_CASE("Generated SDP states the PTP clock domain") {
+    // RAVENNA's a=clock-domain, which the AES67 Linux daemon writes and this
+    // generator used to leave out: with ts-refclk in its traceable form no
+    // domain is pinned anywhere else in the session.
+    SDPSession session;
+    session.sessionName = "Domain";
+    session.originAddress = "192.168.1.50";
+    session.connectionAddress = "239.1.0.1";
+    session.ptpDomain = 109;
+    session.ptpTraceable = true;
+
+    const std::string sdp = SDPParser::generate(session);
+    CHECK(sdp.find("a=clock-domain:PTPv2 109\n") != std::string::npos);
+
+    SUBCASE("and does not repeat one the parsed session already carried") {
+        const auto parsed = SDPParser::parseString(sdp);
+        REQUIRE(parsed.has_value());
+        const std::string again = SDPParser::generate(*parsed);
+        const auto first = again.find("a=clock-domain:");
+        REQUIRE(first != std::string::npos);
+        CHECK(again.find("a=clock-domain:", first + 1) == std::string::npos);
+    }
+
+    SUBCASE("and states none when the session has no PTP domain") {
+        session.ptpDomain = -1;
+        CHECK(SDPParser::generate(session).find("a=clock-domain:") == std::string::npos);
+    }
+}
+
+} // namespace Tests
+} // namespace AES67

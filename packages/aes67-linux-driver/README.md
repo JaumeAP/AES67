@@ -88,6 +88,35 @@ next, and the tool says so on standard error: ST 2110-30 Level B's 125 us at
 refuses outright when the profile forbids the rate, the packet time, the codec
 or the channel count, and when the ids would run past 63.
 
+### Comparing our SDP with the daemon's
+
+`Tools/DaemonSdp.{h,cpp}` writes the SDP the vendored daemon announces, line
+for line with `SessionManager::get_source_sdp_`
+(`daemon/session_manager.cpp:734`), which cannot be called from here: it is a
+private method of a class holding a netlink handle, a driver and a PTP state.
+`Tools/SdpCompare.{h,cpp}` puts that beside `SDPParser::generate` from
+`aes67-core` for the same stream and reports every field the two disagree on,
+saying which of them a receiver would act on.
+
+It is a mirror of somebody else's function, so it drifts when the submodule
+moves. `TestDaemonSdp` pins it to the SDP the daemon's own README prints,
+which is what catches the drift.
+
+It has already earned itself twice:
+
+- `a=clock-domain:PTPv2 <domain>`, RAVENNA's attribute for the PTP domain, was
+  written by the daemon and not by us. `SDPParser::generate` writes it now.
+  With `ts-refclk` in its traceable form no domain is pinned anywhere else in
+  the session, so a receiver had nothing to read.
+- `a=ptime` differs in precision -- the daemon prints twelve decimals of a
+  millisecond, we print three from an integer count of microseconds. Not a
+  difference of stream: `a=ptime` is a recommendation (RFC 4566 §6) and
+  `a=framecount` says the same packet exactly, in samples. The comparison
+  reports it as wording when the framecounts agree, and as breaking when they
+  do not.
+
+There is no binary for this: it is a library and its suite.
+
 ### Reading a configuration back
 
 ```bash
