@@ -186,13 +186,23 @@ std::vector<uint8_t> SAPAnnouncer::buildPacket(const std::string& sdp, uint16_t 
                                                uint32_t originatingSource, bool deletion) {
     // RFC 2974 header: V=1 (bits 5-7), A=0 IPv4, T=deletion bit (bit 2),
     // E=C=0. Auth length 0. Then Message ID Hash (2) + originating source
-    // (4). No "application/sdp" payload-type prefix: it is optional and
-    // defaults to SDP, and omitting it matches what this driver's own
-    // SAPListener parser expects. The full SDP body follows, in both
-    // announcement and deletion (RFC 2974 permits it in a deletion, and it
-    // lets stricter receivers identify the withdrawn session).
+    // (4), and the payload type "application/sdp" as a NUL-terminated string.
+    //
+    // That type used to be omitted here, on the grounds that RFC 2974 §3
+    // makes it optional and SDP is the default. It is optional to write and
+    // not optional to be heard: the AES67 Linux daemon accepts a packet only
+    // when the sixteen bytes at offset 8 are exactly "application/sdp\0"
+    // (external/aes67-linux-daemon/daemon/sap.cpp:115, in this repository
+    // under packages/aes67-linux-driver), so without it every announcement
+    // this driver made was dropped by the daemon without a word. Dante
+    // Controller writes it too. Our own SAPListener skips a NUL-terminated
+    // type before the body, so the round trip is unchanged.
+    //
+    // The full SDP body follows, in both announcement and deletion (RFC 2974
+    // permits it in a deletion, and it lets stricter receivers identify the
+    // withdrawn session).
     std::vector<uint8_t> pkt;
-    pkt.reserve(8 + sdp.size());
+    pkt.reserve(24 + sdp.size());
     uint8_t b0 = (1u << 5); // version 1
     if (deletion) b0 |= (1u << 2);
     pkt.push_back(b0);
@@ -201,6 +211,8 @@ std::vector<uint8_t> SAPAnnouncer::buildPacket(const std::string& sdp, uint16_t 
     pkt.push_back(static_cast<uint8_t>(msgIdHash & 0xFF));
     const uint8_t* src = reinterpret_cast<const uint8_t*>(&originatingSource);
     pkt.insert(pkt.end(), src, src + 4); // already network byte order
+    static constexpr char kPayloadType[] = "application/sdp"; // 15 chars + NUL
+    pkt.insert(pkt.end(), kPayloadType, kPayloadType + sizeof(kPayloadType));
     pkt.insert(pkt.end(), sdp.begin(), sdp.end());
     return pkt;
 }

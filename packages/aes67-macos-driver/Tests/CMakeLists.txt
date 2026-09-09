@@ -320,6 +320,25 @@ target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_net)
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
 
+# Test: this driver's SAP against the AES67 Linux daemon's rules for taking
+# it. The daemon is vendored under packages/aes67-linux-driver, so its receive
+# path is mirrored from source rather than guessed at; support/DaemonSap holds
+# the mirror.
+add_executable(TestDaemonSAPInterop
+    TestDaemonSAPInterop.cpp
+    support/DaemonSap.cpp
+)
+
+target_include_directories(TestDaemonSAPInterop PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(TestDaemonSAPInterop PRIVATE aes67_net)
+
+target_link_libraries(TestDaemonSAPInterop PRIVATE doctest_headers)
+target_compile_features(TestDaemonSAPInterop PRIVATE cxx_std_17)
+
 # Test: the DSCP marking, read back off a real socket.
 add_executable(TestNetworkQoS
     TestNetworkQoS.cpp
@@ -587,6 +606,7 @@ add_test(NAME MDNSBrowser COMMAND TestMDNSBrowser)
 add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
+add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)

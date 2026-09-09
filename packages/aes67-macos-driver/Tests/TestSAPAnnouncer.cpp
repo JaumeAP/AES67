@@ -95,8 +95,15 @@ TEST_CASE("The header is the one RFC 2974 describes") {
     CHECK(packet[6] == 2);
     CHECK(packet[7] == 3);
 
-    // The body follows the eight-byte header with no payload-type prefix.
-    const std::string body(packet.begin() + 8, packet.end());
+    // The payload type follows the eight-byte header, as sixteen bytes:
+    // "application/sdp" and its NUL. Optional to write (RFC 2974 section 3),
+    // and not optional to be heard -- the AES67 Linux daemon drops a packet
+    // whose offset 8 is anything else (daemon/sap.cpp:115).
+    const std::string type(packet.begin() + 8, packet.begin() + 23);
+    CHECK(type == "application/sdp");
+    CHECK(packet[23] == 0);
+
+    const std::string body(packet.begin() + 24, packet.end());
     CHECK(body == kSDP);
 
     std::vector<uint8_t> deletion =
