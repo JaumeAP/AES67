@@ -31,10 +31,22 @@ if(NOT TARGET aes67_profiles)
     add_subdirectory(${AES67_PROFILES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/aes67-profiles)
 endif()
 
+# The core, for its SDP writer: SdpCompare puts the daemon's SDP and this
+# project's side by side, and the second half of that comparison is
+# SDPParser::generate. The core is platform-free, so this costs the package
+# nothing on a system that is not Linux.
+set(AES67_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../aes67-core"
+    CACHE PATH "Directory holding the core package")
+if(NOT TARGET aes67_core)
+    set(AES67_CORE_TESTS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${AES67_CORE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/aes67-core)
+endif()
+
 add_library(aes67_profile_conf Tools/ProfileConf.cpp Tools/ConfCheck.cpp
-                            Tools/SourceGen.cpp)
+                            Tools/SourceGen.cpp Tools/DaemonSdp.cpp
+                            Tools/SdpCompare.cpp)
 target_include_directories(aes67_profile_conf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(aes67_profile_conf PUBLIC aes67_profiles)
+target_link_libraries(aes67_profile_conf PUBLIC aes67_profiles aes67_core)
 target_compile_options(aes67_profile_conf PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(aes67-profile-conf Tools/ProfileConfMain.cpp)
@@ -57,7 +69,7 @@ if(AES67_LINUX_DRIVER_TESTS)
         target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
     endif()
 
-    foreach(suite ProfileConf ConfCheck SourceGen)
+    foreach(suite ProfileConf ConfCheck SourceGen DaemonSdp)
         add_executable(Test${suite} Tests/Test${suite}.cpp)
         target_link_libraries(Test${suite} PRIVATE aes67_profile_conf doctest_headers)
         add_test(NAME ${suite} COMMAND Test${suite})
