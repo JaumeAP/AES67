@@ -65,6 +65,42 @@ Two things it deliberately does not write:
 The tool reads the profiles and a text file and nothing else, so it builds and
 is tested wherever this repository is read, Linux or not.
 
+### Reading a configuration back
+
+```bash
+./build/aes67-profile-conf --check /etc/daemon.conf --profile dante
+```
+
+`--check` reports what is wrong with a configuration instead of writing one.
+With a profile it also reports what that profile forbids. Errors exit 1,
+warnings alone exit 0.
+
+The daemon itself validates almost none of this: `daemon/json.cpp` hands each
+key to a setter, a value too big for the setter's type is truncated where
+nobody sees it, and a key it does not know is ignored in silence. So each
+check answers to something written down -- a field of the profile, a line of
+upstream's source, or a standard:
+
+| Check | On whose authority |
+|-------|--------------------|
+| Rate, packet time, PTP domain and multicast against the profile | `aes67-profiles` |
+| A value too big for the type the daemon reads it as | `daemon/config.hpp` |
+| A key the daemon never reads | `daemon/json.cpp` |
+| `rtp_mcast_base`, `rtp_mcast_base_sec`, `sap_mcast_addr` inside 224.0.0.0/4 | RFC 5771 |
+| A SAP address that is neither of SAP's own | RFC 2974 |
+| `rtp_port` even, so RTCP has the odd port above it | RFC 3550 §11 |
+| `ptp_domain` inside 0-127 | IEEE 1588-2008 |
+| `ptp_dscp` inside 0-63 | the six bits of the DS field |
+| `tic_frame_size_at_1fs` above zero and no more than `max_tic_frame_size` | the daemon's own pair |
+| `http_port`, `rtsp_port` and the two NMOS ports all different | four servers, one host |
+| A rate the project's own tests never drive | upstream `README.md` |
+| `syslog_proto` other than `none` or `udp` falling through to TCP | `daemon/log.cpp:50,54` |
+| `log_severity` above fatal | Boost.Log's levels |
+| `http_base_dir`, `status_file`, `ptp_status_script` that are not there | the disk, relative to the current directory |
+
+Anything merely unusual is a warning; only what the daemon, a profile or a
+standard rules out is an error.
+
 ## Building
 
 ```bash

@@ -4,9 +4,11 @@
 // aes67-profile-conf: write the daemon's configuration for a profile.
 //
 
+#include "Tools/ConfCheck.h"
 #include "Tools/ProfileConf.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -20,10 +22,15 @@ namespace {
 int usage(std::ostream& out, int code) {
     out << "usage: aes67-profile-conf --profile <id> [--rate Hz] [--ptime us]\n"
            "                         [--interface name] [--base file] [-o file]\n"
+           "       aes67-profile-conf --check <file> [--profile <id>]\n"
            "\n"
            "Rewrites the daemon's configuration for a compatibility profile.\n"
            "Every key the profile does not determine is left as the base file\n"
            "has it, which by default is the one the vendored daemon ships.\n"
+           "\n"
+           "--check reads a configuration back instead and reports what is\n"
+           "wrong with it: with a profile, what the profile forbids as well.\n"
+           "It exits 1 when anything is an error, 0 when only warnings are.\n"
            "\n"
            "Profiles:\n";
     for (const auto& profile : CompatibilityProfile::all()) {
@@ -52,6 +59,7 @@ int main(int argc, char** argv) {
     std::string profileName;
     std::string basePath = AES67_DEFAULT_DAEMON_CONF;
     std::string outPath;
+    std::string checkPath;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -69,6 +77,7 @@ int main(int argc, char** argv) {
                                            static_cast<uint32_t>(std::stoul(value("--ptime")));
         else if (arg == "--interface") request.interfaceName = value("--interface");
         else if (arg == "--base")      basePath = value("--base");
+        else if (arg == "--check")     checkPath = value("--check");
         else if (arg == "-o")          outPath = value("-o");
         else if (arg == "-h" || arg == "--help") return usage(std::cout, 0);
         else {
@@ -77,12 +86,36 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (profileName.empty()) return usage(std::cerr, 2);
-    if (!isKnownProfileName(profileName)) {
+    if (!profileName.empty() && !isKnownProfileName(profileName)) {
         std::cerr << "aes67-profile-conf: unknown profile " << profileName << "\n";
         return usage(std::cerr, 2);
     }
-    request.kind = CompatibilityProfile::kindFromString(profileName);
+    if (!profileName.empty()) request.kind = CompatibilityProfile::kindFromString(profileName);
+
+    if (!checkPath.empty()) {
+        std::string conf;
+        std::string readError;
+        if (!readFile(checkPath, conf, readError)) {
+            std::cerr << "aes67-profile-conf: " << readError << "\n";
+            return 1;
+        }
+
+        std::optional<CompatibilityProfileKind> kind;
+        if (!profileName.empty()) kind = request.kind;
+
+        const auto findings = checkConf(conf, kind, [](const std::string& path) {
+            return std::ifstream(path).good() || std::filesystem::exists(path);
+        });
+        for (const auto& finding : findings) {
+            std::cout << (finding.severity == Severity::Error ? "error" : "warning") << ": "
+                      << (finding.key.empty() ? checkPath : finding.key) << ": "
+                      << finding.message << "\n";
+        }
+        if (findings.empty()) std::cout << checkPath << ": nothing to report\n";
+        return hasError(findings) ? 1 : 0;
+    }
+
+    if (profileName.empty()) return usage(std::cerr, 2);
 
     std::string base;
     std::string error;
