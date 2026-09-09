@@ -13,6 +13,7 @@ not because they build together.
 | [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
 | [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app and the tools | CMake, C++20 and Objective-C++ |
 | [`packages/aes67-linux-ptpd`](packages/aes67-linux-ptpd) | A PTP grandmaster for Linux, written for a Raspberry Pi 5: it announces the NIC's own hardware clock, stamps its Sync messages with it and reads its rates from `aes67-profiles`. Announce, Sync/Follow_Up and Delay_Resp; no BMCA and no slave side | CMake, C++20 |
+| [`packages/aes67-linux-driver`](packages/aes67-linux-driver) | The Linux device: [`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon) vendored as a submodule, and the Merging RAVENNA/AES67 ALSA kernel module it drives. Nothing is written here -- the package is the build, the gate and the notes that put it next to the rest | CMake, C++17 |
 | [`packages/aes67-ravenna`](packages/aes67-ravenna) | RAVENNA's session layer and the NMOS APIs a controller routes with: DNS-SD over mDNS and the RTSP DESCRIBE that hands over the SDP, IS-04 so the device is on the list, IS-05 to give one device another's stream, IS-08 for the grid channel by channel. The SDP is the core's and the grid is the core's matrix | CMake, C++20 |
 | [`packages/t41-ptp`](packages/t41-ptp) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
 
@@ -43,6 +44,7 @@ Each package's gate can be run on its own, from anywhere:
 packages/aes67-core/scripts/gate.sh
 packages/aes67-macos-driver/scripts/gate.sh
 packages/aes67-linux-ptpd/scripts/gate.sh
+packages/aes67-linux-driver/scripts/gate.sh
 packages/aes67-ravenna/scripts/gate.sh
 packages/t41-ptp/scripts/gate.sh
 ```
@@ -70,8 +72,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 That builds the driver, which pulls the core in with it: 42 test suites, plus
-the core's 19. `external/doctest` is the one submodule in the tree, shared by
-both.
+the core's 19. `external/doctest` is the submodule those two share; the
+others are `aes67-linux-driver`'s, and nothing on macOS reads them.
 
 `t41-ptp` is cross-compiled for an ARM Cortex-M7 and is not wired into the
 CMake tree. Its host tests run on the Mac; its board build needs PlatformIO.

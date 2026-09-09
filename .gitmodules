@@ -1,3 +1,6 @@
 [submodule "external/doctest"]
 	path = external/doctest
 	url = https://github.com/doctest/doctest.git
+[submodule "packages/aes67-linux-driver/external/aes67-linux-daemon"]
+	path = packages/aes67-linux-driver/external/aes67-linux-daemon
+	url = https://github.com/bondagit/aes67-linux-daemon.git

@@ -10,6 +10,7 @@
 #   packages/aes67-core/scripts/gate.sh          build, test, platform contract
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
+#   packages/aes67-linux-driver/scripts/gate.sh  the vendored daemon, on Linux
 #   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
 #   packages/t41-ptp/scripts/gate.sh             host tests
 #
@@ -46,6 +47,7 @@ run "aes67-profiles"     packages/aes67-profiles/scripts/gate.sh
 run "aes67-core"         packages/aes67-core/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
+run "aes67-linux-driver" packages/aes67-linux-driver/scripts/gate.sh
 run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "t41-ptp"            packages/t41-ptp/scripts/gate.sh
 
