@@ -25,6 +25,29 @@ rather than negotiated with. What is not implemented is not half implemented.
 - **Delay_Resp**, to each Delay_Req, carrying the hardware receive timestamp
   and the requester's port identity.
 
+## Against a real slave
+
+`Tests/TestRavennaSlaveInterop.cpp` holds what this daemon sends against the
+rules of the slave it will actually face: the RAVENNA ALSA kernel module,
+vendored in this repository under `packages/aes67-linux-driver`.
+`Tests/support/RavennaSlave` mirrors `process_PTP_packet` from that module's
+own `driver/PTP.c`, which cannot be called from here -- kernel C, reading whole
+frames out of a netfilter hook.
+
+That slave is stricter than IEEE 1588 in three ways worth knowing:
+
+- It elects one master and drops every Sync that does not carry that clock's
+  identity.
+- It reads an Announce on another domain and puts it down: the domain has to
+  be the one it was configured with.
+- It drops its lock when Sync sequence numbers arrive more than four apart,
+  and it expects a Sync at least every two seconds and an Announce from its
+  master at least every five.
+
+The suite feeds it the bytes `PtpWire` really builds, at the profile rates,
+and checks all of that -- including that our Sync sets the two-step flag,
+which is the bit the module reads to decide whether to wait for the Follow_Up.
+
 ## Locking it to a reference
 
 A NIC clock left alone free-runs on its crystal. Every device on the network
