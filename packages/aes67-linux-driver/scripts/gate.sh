@@ -1,7 +1,7 @@
 #!/bin/bash
 # The gate for this package.
 #
-# Everywhere it builds aes67-profile-conf and runs its suite: that tool reads
+# Everywhere it builds aes67-profile-conf and runs its suites: that tool reads
 # the profiles and a base daemon.conf and nothing else, so it is the half of
 # this package a Mac can verify.
 #
@@ -34,7 +34,7 @@ echo "==> Build"
 cmake --build build -j > /dev/null || { echo "FAIL: build" >&2; exit 1; }
 
 echo "==> Tests"
-ctest --test-dir build --output-on-failure -R ProfileConf || {
+ctest --test-dir build --output-on-failure -R "ProfileConf|ConfCheck" || {
     echo "FAIL: tests" >&2; exit 1; }
 
 if [[ "$(uname -s)" != "Linux" ]]; then
