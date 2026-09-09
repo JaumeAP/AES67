@@ -31,7 +31,8 @@ if(NOT TARGET aes67_profiles)
     add_subdirectory(${AES67_PROFILES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/aes67-profiles)
 endif()
 
-add_library(aes67_profile_conf Tools/ProfileConf.cpp Tools/ConfCheck.cpp)
+add_library(aes67_profile_conf Tools/ProfileConf.cpp Tools/ConfCheck.cpp
+                            Tools/SourceGen.cpp)
 target_include_directories(aes67_profile_conf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(aes67_profile_conf PUBLIC aes67_profiles)
 target_compile_options(aes67_profile_conf PRIVATE -Wall -Wextra -Wpedantic)
@@ -56,7 +57,7 @@ if(AES67_LINUX_DRIVER_TESTS)
         target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
     endif()
 
-    foreach(suite ProfileConf ConfCheck)
+    foreach(suite ProfileConf ConfCheck SourceGen)
         add_executable(Test${suite} Tests/Test${suite}.cpp)
         target_link_libraries(Test${suite} PRIVATE aes67_profile_conf doctest_headers)
         add_test(NAME ${suite} COMMAND Test${suite})

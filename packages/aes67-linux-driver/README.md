@@ -65,6 +65,29 @@ Two things it deliberately does not write:
 The tool reads the profiles and a text file and nothing else, so it builds and
 is tested wherever this repository is read, Linux or not.
 
+### Writing the daemon's sources
+
+```bash
+./build/aes67-profile-conf --sources 4 --channels 2 --profile dante
+```
+
+Writes `{ "sources": [ ... ] }`, the body the daemon takes at
+`PUT /api/source/:id`, one entry per source, with the channel map running
+consecutively across them. Four fields come from the profile: `codec` (the
+first encoding it allows, or `--codec` checked against them),
+`max_samples_per_packet` (the packet time in samples), `dscp` -- the profile's
+`recommendedDscp` belongs here and not in `daemon.conf`, because this is the
+marking of the audio and `ptp_dscp` is the marking of PTP -- and `address`,
+where the profile documents one. The rest are upstream's own example values:
+`ttl` 15, `payload_type` 98, `io` "Audio Device", enabled and PTP-traceable.
+
+The daemon documents five sizes for `max_samples_per_packet` -- 12, 16, 48, 96
+and 192. A packet time that falls between two of them is rounded **up** to the
+next, and the tool says so on standard error: ST 2110-30 Level B's 125 us at
+48 kHz is six samples, so it writes 12 and reports a packet of 250 us. It
+refuses outright when the profile forbids the rate, the packet time, the codec
+or the channel count, and when the ids would run past 63.
+
 ### Reading a configuration back
 
 ```bash
