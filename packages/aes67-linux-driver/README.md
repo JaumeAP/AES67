@@ -31,6 +31,40 @@ part of `all`: building a module wants the running kernel's headers.
 Nothing here patches upstream. A change in behaviour belongs upstream, not in
 a copy kept beside it.
 
+## Writing the daemon's configuration from a profile
+
+`aes67-profile-conf` takes a compatibility profile from `aes67-profiles` and
+writes the daemon's `daemon.conf` for it:
+
+```bash
+./build/aes67-profile-conf --profile dolby --rate 96000 --interface eth0 -o daemon.conf
+```
+
+The base is the `daemon.conf` the vendored daemon ships, so every key the
+profile does not determine keeps upstream's value rather than a copy of it
+that ages. What a profile determines is five keys: `sample_rate`,
+`tic_frame_size_at_1fs` (the packet time, as frames per packet at 1FS: 48 for
+1 ms, 6 for 125 us), `ptp_domain`, `rtp_mcast_base` where the profile
+documents an address, and `interface_name` when `--interface` is given.
+
+It refuses rather than guessing: a rate or packet time the profile does not
+allow, a base file missing a key it has to write, or a profile id that is not
+one of ours -- `kindFromString` answers AES67 for anything it does not know,
+which would turn a typo into a silently different configuration.
+
+Two things it deliberately does not write:
+
+- The profile's `recommendedDscp` is the marking of the **media**, and
+  `daemon.conf`'s `ptp_dscp` is the marking of **PTP**. There is no media DSCP
+  key in that file, so the profile's value goes nowhere and `ptp_dscp` keeps
+  upstream's.
+- Dante requires multicast inside 239.69.0.0/16 and documents no address to
+  use. The tool says so and stops: upstream's base address is outside the
+  range, and picking one inside it would be choosing a site's address for it.
+
+The tool reads the profiles and a text file and nothing else, so it builds and
+is tested wherever this repository is read, Linux or not.
+
 ## Building
 
 ```bash
@@ -50,9 +84,9 @@ see the upstream `README.md` and `build.sh`.
 packages/aes67-linux-driver/scripts/gate.sh
 ```
 
-On Linux it configures, builds and runs the tests the daemon ships. On
-anything else there is nothing to compile, so it checks the submodule is there
-and pinned and says what it skipped.
+Everywhere it builds `aes67-profile-conf` and runs its suite. On Linux it also
+configures, builds and runs the tests the daemon ships; anywhere else that half
+is skipped and said to be skipped.
 
 ## What is not here
 
