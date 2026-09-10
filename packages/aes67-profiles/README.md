@@ -28,6 +28,25 @@ So the tables live here, and the implementations read them:
 - `Profiles/ProfileLog.h` — where the log lines go, which is nowhere unless the
   consumer says otherwise.
 
+## Discovery, per profile
+
+Three fields say which discovery and session surfaces a profile runs; the
+macOS driver starts only what they say.
+
+| Profile | SAP | DNS-SD + RTSP DESCRIBE | NMOS IS-04/05/08 |
+|---|---|---|---|
+| AES67 | yes | yes | no |
+| RAVENNA | yes | yes | yes |
+| ST 2110-30, Level B | yes | no | yes |
+| Dante | yes | no | no |
+| Dolby, all models | yes | no | no |
+
+SAP is AES67's own announcement and what Dante reads, so everyone keeps it.
+AES67 keeps DNS-SD too, because gear on a switch that filters SAP publishes
+`_rtsp._tcp` and is otherwise invisible. NMOS is ST 2110's control plane and
+RAVENNA's optional one. `Tests/TestCompatibilityProfile.cpp` holds the table
+as assertions, one row per kind.
+
 ## What it depends on
 
 Nothing. Not a platform, not an operating system, not another package in this

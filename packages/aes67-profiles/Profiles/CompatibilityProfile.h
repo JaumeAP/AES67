@@ -163,6 +163,22 @@ struct CompatibilityProfile {
     /// Purely a UI affordance; the PTP observer runs regardless.
     bool usesLanAutoDetection{false};
 
+    /// Which discovery and session surfaces this profile runs. Until these
+    /// existed every surface ran under every profile: a Dante room got an
+    /// RTSP server and an NMOS node it never asked for, and RAVENNA's
+    /// DNS-SD browsing ran under Dolby. The profile now says, and
+    /// AES67Device::Initialize() starts only what it says.
+    ///
+    /// SAP (RFC 2974) is AES67's own announcement and what Dante reads in
+    /// AES67 mode, so every profile keeps it. DNS-SD over mDNS with RTSP
+    /// DESCRIBE is RAVENNA's session layer; AES67 keeps it too, because
+    /// AES67 gear on a switch that filters SAP publishes `_rtsp._tcp` and is
+    /// otherwise invisible. NMOS IS-04/05/08 is ST 2110's control plane and
+    /// RAVENNA's optional one; nobody else speaks it.
+    bool usesSap{true};
+    bool usesDnsSdRtsp{false};
+    bool usesNmos{false};
+
     /// How many physical OUTPUT units (amplifiers this driver feeds) may be
     /// chained in one auditorium, each carrying its own consecutive "channel
     /// group". Output-side only - input sources that feed this driver are not

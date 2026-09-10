@@ -70,10 +70,12 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // PTPSlaveConfig's own "PTP domain 0 (default), per AES67" comment.
         p.domainIsFixed = true;
         p.fixedDomain = 0;
+        p.usesDnsSdRtsp = true; // for the gear that publishes _rtsp._tcp and no SAP
         p.caveats =
             "Baseline. Accepts the three sample rates AES67 names; the device "
             "itself declares more (up to 384 kHz), which other AES67 gear may "
-            "refuse. PTP domain fixed at 0.";
+            "refuse. PTP domain fixed at 0. Discovery over SAP and over "
+            "DNS-SD/RTSP, since AES67 devices are found either way; no NMOS.";
         break;
 
     case CompatibilityProfileKind::RAVENNA:
@@ -111,6 +113,8 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         p.recommendedDscp = 46;
         p.recommendedPtpDomain = 0;
         p.requiresZeroRtpTimestampOffset = false;
+        p.usesDnsSdRtsp = true;
+        p.usesNmos = true;
         p.caveats =
             "A true AES67 superset on receive: accepts RAVENNA's full sample-"
             "rate set (44.1-192 kHz) and any packet time, so a RAVENNA source "
@@ -119,11 +123,13 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
             "frame: 64 channels of L24 need a packet time of 125 us, and at "
             "1 ms ten fit. Only L16/L24 are decoded (RAVENNA's L32 is not). "
             "Transmit still emits 1 ms L24, so its own flows carry up to ten "
-            "channels at 48 kHz. RAVENNA's Bonjour discovery and stream "
-            "redundancy are not implemented.";
+            "channels at 48 kHz. Discovery over DNS-SD with RTSP DESCRIBE, "
+            "SAP alongside it, and an NMOS node; RAVENNA's stream redundancy "
+            "is not implemented.";
         break;
 
     case CompatibilityProfileKind::ST2110_30:
+        p.usesNmos = true; // IS-04/05 is how ST 2110 gear is routed
         p.displayName = "SMPTE ST 2110-30 (Level A)";
         // Level A: 48 kHz only, 1 ms packets, 1-8 channels, 16/24-bit.
         // See Docs/st2110_30_vs_aes67.md.
@@ -143,6 +149,7 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         break;
 
     case CompatibilityProfileKind::ST2110_30_LevelB:
+        p.usesNmos = true; // IS-04/05 is how ST 2110 gear is routed
         p.displayName = "SMPTE ST 2110-30 (Level B)";
         // Level B is Level A at 125 us instead of 1 ms — same 48 kHz, same
         // 16/24-bit, same 1-8 channels per stream. Emitting 125 us packets

@@ -187,10 +187,14 @@ void AES67Device::Initialize() {
     // Compatibility profile, likewise before loadSavedStreams(): restored
     // streams face the same profile limits new ones will. Defaults to AES67
     // (no extra restrictions) when nothing has been selected.
+    // Kept for the rest of this function: which discovery and session
+    // surfaces start below is the profile's to say.
+    CompatibilityProfile activeProfile = CompatibilityProfile::forKind(CompatibilityProfileKind::AES67);
     {
         CompatibilityProfileManager profileManager;
         const CompatibilityProfileKind profileKind = profileManager.load();
         streamManager_->setCompatibilityProfile(profileKind);
+        activeProfile = CompatibilityProfile::forKind(profileKind);
 
         // Which unit in a chained Dolby Atmos Connect installation this
         // driver is feeding, translated into the flow-port offset that's
@@ -202,7 +206,7 @@ void AES67Device::Initialize() {
         // has a single unit.
         AmplifierUnitSettingsManager unitSettingsManager;
         const AmplifierUnitSettings unitSettings = unitSettingsManager.load();
-        const auto profile = CompatibilityProfile::forKind(profileKind);
+        const auto& profile = activeProfile;
         const uint32_t unitIndex = std::min(unitSettings.unitIndex, profile.maxUnits);
 
         // The preceding units' source-port flows — the real sum of their
@@ -229,40 +233,44 @@ void AES67Device::Initialize() {
     // SAPAnnouncer. Failing to start is not fatal — discovery is a convenience,
     // and a driver that carries audio without it is far better than one
     // that refuses to load because a multicast join failed.
-    sapListener_ = std::make_unique<SAPListener>();
-    if (sapListener_) {
-        // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
-        // source re-announces with changed transport, re-point any receive
-        // stream bound to it. Parsing happens here, off the audio path; the
-        // match/re-subscribe is StreamManager's job.
-        sapListener_->registerAnnouncementCallback(
-            [this](const SAPAnnouncement& a) {
-                if (a.isDeletion || a.sessionDescription.empty()) return;
-                if (!streamManager_) return;
-                auto parsed = SDPParser::parseString(a.sessionDescription);
-                if (!parsed) return;
-                // The announcement has to come from the host it claims to
-                // describe. Without this, any machine on the network can
-                // re-point a live receiver at its own multicast group by
-                // announcing a session that borrows the name and origin of a
-                // real one (2026-09-04 audit). It does not survive a spoofed
-                // source IP, but it removes the case that needs nothing but a
-                // socket.
-                if (parsed->originAddress.empty() ||
-                    parsed->originAddress != a.sourceAddress) {
-                    AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
-                               "— ignored for sink-follow",
-                               a.sourceAddress.c_str(), parsed->originAddress.c_str());
-                    return;
-                }
-                streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
-            });
-    }
-    if (sapListener_->initialize() && sapListener_->start()) {
-        AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
+    if (activeProfile.usesSap) {
+        sapListener_ = std::make_unique<SAPListener>();
+        if (sapListener_) {
+            // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
+            // source re-announces with changed transport, re-point any receive
+            // stream bound to it. Parsing happens here, off the audio path; the
+            // match/re-subscribe is StreamManager's job.
+            sapListener_->registerAnnouncementCallback(
+                [this](const SAPAnnouncement& a) {
+                    if (a.isDeletion || a.sessionDescription.empty()) return;
+                    if (!streamManager_) return;
+                    auto parsed = SDPParser::parseString(a.sessionDescription);
+                    if (!parsed) return;
+                    // The announcement has to come from the host it claims to
+                    // describe. Without this, any machine on the network can
+                    // re-point a live receiver at its own multicast group by
+                    // announcing a session that borrows the name and origin of a
+                    // real one (2026-09-04 audit). It does not survive a spoofed
+                    // source IP, but it removes the case that needs nothing but a
+                    // socket.
+                    if (parsed->originAddress.empty() ||
+                        parsed->originAddress != a.sourceAddress) {
+                        AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
+                                   "— ignored for sink-follow",
+                                   a.sourceAddress.c_str(), parsed->originAddress.c_str());
+                        return;
+                    }
+                    streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
+                });
+        }
+        if (sapListener_->initialize() && sapListener_->start()) {
+            AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
+        } else {
+            AES67_LOG("AES67Device: SAP discovery unavailable — continuing without it");
+            sapListener_.reset();
+        }
     } else {
-        AES67_LOG("AES67Device: SAP discovery unavailable — continuing without it");
-        sapListener_.reset();
+        AES67_LOGF("AES67Device: SAP discovery not started: the %s profile does not use SAP", activeProfile.displayName.c_str());
     }
 
     // mDNS/DNS-SD browsing, alongside SAP rather than instead of it: the
@@ -272,12 +280,16 @@ void AES67Device::Initialize() {
     // driver publishes sessions, and it is what an AES67 device on a
     // switch with SAP filtered still offers. Same posture as SAP: a
     // failure to start costs discovery, never audio.
-    mdnsBrowser_ = std::make_unique<MDNSBrowser>(MDNSBrowser::kServiceTypeRTSP);
-    if (mdnsBrowser_->start()) {
-        AES67_LOG("AES67Device: mDNS discovery browsing _rtsp._tcp");
+    if (activeProfile.usesDnsSdRtsp) {
+        mdnsBrowser_ = std::make_unique<MDNSBrowser>(MDNSBrowser::kServiceTypeRTSP);
+        if (mdnsBrowser_->start()) {
+            AES67_LOG("AES67Device: mDNS discovery browsing _rtsp._tcp");
+        } else {
+            AES67_LOG("AES67Device: mDNS discovery unavailable — continuing without it");
+            mdnsBrowser_.reset();
+        }
     } else {
-        AES67_LOG("AES67Device: mDNS discovery unavailable — continuing without it");
-        mdnsBrowser_.reset();
+        AES67_LOGF("AES67Device: DNS-SD browsing not started: the %s profile does not use it", activeProfile.displayName.c_str());
     }
 
     // SAP announcement of our OWN transmit streams, so remote AES67/Dante
@@ -293,26 +305,30 @@ void AES67Device::Initialize() {
     // empty -- 0.0.0.0 in the header, "o=- <id> 1 IN IP4 " in the body --
     // because createTxStream() sets no origin and the announcer was
     // initialised without an interface (DanteInteropSim, 2026-09-07).
-    const std::string sapInterface = NetworkInterfaceDetection::detectPTPInterface();
-    const std::string sapAddress = sapInterface.empty()
-        ? std::string{}
-        : NetworkInterfaceDetection::getInterfaceIPAddress(sapInterface);
-    sapAnnouncer_ = std::make_unique<SAPAnnouncer>();
-    if (sapAnnouncer_->initialize(sapAddress) &&
-        sapAnnouncer_->start([this, sapAddress]() {
-            std::vector<std::string> sdps;
-            if (!streamManager_) return sdps;
-            for (SDPSession session : streamManager_->getTransmitSessions()) {
-                if (session.originAddress.empty()) session.originAddress = sapAddress;
-                std::string sdp = SDPParser::generate(session);
-                if (!sdp.empty()) sdps.push_back(std::move(sdp));
-            }
-            return sdps;
-        })) {
-        AES67_LOG("AES67Device: SAP announcing transmit streams on :9875");
+    if (activeProfile.usesSap) {
+        const std::string sapInterface = NetworkInterfaceDetection::detectPTPInterface();
+        const std::string sapAddress = sapInterface.empty()
+            ? std::string{}
+            : NetworkInterfaceDetection::getInterfaceIPAddress(sapInterface);
+        sapAnnouncer_ = std::make_unique<SAPAnnouncer>();
+        if (sapAnnouncer_->initialize(sapAddress) &&
+            sapAnnouncer_->start([this, sapAddress]() {
+                std::vector<std::string> sdps;
+                if (!streamManager_) return sdps;
+                for (SDPSession session : streamManager_->getTransmitSessions()) {
+                    if (session.originAddress.empty()) session.originAddress = sapAddress;
+                    std::string sdp = SDPParser::generate(session);
+                    if (!sdp.empty()) sdps.push_back(std::move(sdp));
+                }
+                return sdps;
+            })) {
+            AES67_LOG("AES67Device: SAP announcing transmit streams on :9875");
+        } else {
+            AES67_LOG("AES67Device: SAP announcement unavailable - continuing without it");
+            sapAnnouncer_.reset();
+        }
     } else {
-        AES67_LOG("AES67Device: SAP announcement unavailable - continuing without it");
-        sapAnnouncer_.reset();
+        AES67_LOGF("AES67Device: SAP announcement not started: the %s profile does not use SAP", activeProfile.displayName.c_str());
     }
 
     // RTSP DESCRIBE endpoint for our own transmit streams. SAP is a
@@ -326,38 +342,42 @@ void AES67Device::Initialize() {
     // not have: kUnprivilegedRTSPPort is what we actually bind, and it is
     // what the mDNS registration below advertises, so a client that
     // discovers us reaches the right port without assuming the default.
-    rtspServer_ = std::make_unique<RTSPServer>(kUnprivilegedRTSPPort);
-    const bool rtspStarted = rtspServer_->start([this]() {
-        std::vector<RTSPPublishedStream> published;
-        if (!streamManager_) return published;
-        for (const auto& session : streamManager_->getTransmitSessions()) {
-            std::string sdp = SDPParser::generate(session);
-            if (sdp.empty()) continue;
-            // One path per session name, plus "/" for the first stream so
-            // a client that asks for the root gets something useful
-            // rather than a 404.
-            RTSPPublishedStream entry;
-            // The path is compared against what a client sends, and the
-            // server percent-decodes that before comparing -- so publish
-            // the decoded form. A session name with a space ("Studio Mic
-            // 1") reaches us as "%20" and matches here.
-            entry.path = "/by-name/" + session.sessionName;
-            entry.sdp = sdp;
-            published.push_back(entry);
-            if (published.size() == 1) {
-                RTSPPublishedStream root;
-                root.path = "/";
-                root.sdp = std::move(sdp);
-                published.push_back(std::move(root));
+    if (activeProfile.usesDnsSdRtsp) {
+        rtspServer_ = std::make_unique<RTSPServer>(kUnprivilegedRTSPPort);
+        const bool rtspStarted = rtspServer_->start([this]() {
+            std::vector<RTSPPublishedStream> published;
+            if (!streamManager_) return published;
+            for (const auto& session : streamManager_->getTransmitSessions()) {
+                std::string sdp = SDPParser::generate(session);
+                if (sdp.empty()) continue;
+                // One path per session name, plus "/" for the first stream so
+                // a client that asks for the root gets something useful
+                // rather than a 404.
+                RTSPPublishedStream entry;
+                // The path is compared against what a client sends, and the
+                // server percent-decodes that before comparing -- so publish
+                // the decoded form. A session name with a space ("Studio Mic
+                // 1") reaches us as "%20" and matches here.
+                entry.path = "/by-name/" + session.sessionName;
+                entry.sdp = sdp;
+                published.push_back(entry);
+                if (published.size() == 1) {
+                    RTSPPublishedStream root;
+                    root.path = "/";
+                    root.sdp = std::move(sdp);
+                    published.push_back(std::move(root));
+                }
             }
+            return published;
+        });
+        if (rtspStarted) {
+            AES67_LOGF("AES67Device: RTSP DESCRIBE serving on :%u", rtspServer_->boundPort());
+        } else {
+            AES67_LOG("AES67Device: RTSP server unavailable - continuing without it");
+            rtspServer_.reset();
         }
-        return published;
-    });
-    if (rtspStarted) {
-        AES67_LOGF("AES67Device: RTSP DESCRIBE serving on :%u", rtspServer_->boundPort());
     } else {
-        AES67_LOG("AES67Device: RTSP server unavailable - continuing without it");
-        rtspServer_.reset();
+        AES67_LOGF("AES67Device: RTSP DESCRIBE not served: the %s profile does not use it", activeProfile.displayName.c_str());
     }
 
     // NMOS. The node -- IS-04 Node API, IS-05 Connection API, and the mDNS
@@ -368,7 +388,7 @@ void AES67Device::Initialize() {
     // this machine in whatever reads the plant's registry, which is a
     // decision somebody makes rather than something a driver starts doing
     // on its own.
-    {
+    if (activeProfile.usesNmos) {
         NMOSSettingsManager nmosSettingsManager;
         NMOSSettings nmosSettings = nmosSettingsManager.load();
         // The node id has to be the same across restarts, or every restart
@@ -530,6 +550,8 @@ void AES67Device::Initialize() {
                 }
             }
         }
+    } else {
+        AES67_LOGF("AES67Device: NMOS node not served: the %s profile does not use NMOS", activeProfile.displayName.c_str());
     }
 
     // Passive PTP peer observer: watches PTP traffic to list which Dolby
