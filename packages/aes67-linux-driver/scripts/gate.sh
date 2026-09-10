@@ -17,14 +17,24 @@ daemon="external/aes67-linux-daemon"
 
 echo "==> Submodule"
 for path in "$daemon/daemon/CMakeLists.txt" \
-            "$daemon/3rdparty/ravenna-alsa-lkm/driver/Makefile" \
-            "$daemon/3rdparty/cpp-httplib/httplib.h"; do
+            "$daemon/3rdparty/cpp-httplib/httplib.h" \
+            "external/ravenna-alsa-lkm/driver/Makefile"; do
     if [[ ! -f "$path" ]]; then
         echo "FAIL: $path missing - run: git submodule update --init --recursive" >&2
         exit 1
     fi
 done
-echo "==> $(git -C "$daemon" rev-parse --short HEAD) checked out"
+echo "==> daemon $(git -C "$daemon" rev-parse --short HEAD), module $(git -C external/ravenna-alsa-lkm rev-parse --short HEAD) checked out"
+
+# The module is pinned twice -- here and inside the daemon -- and the build
+# reads this copy while the daemon's build system reads its own. Different
+# commits mean a daemon talking to a module it was not built against.
+pinned_here="$(git -C external/ravenna-alsa-lkm rev-parse HEAD)"
+pinned_there="$(git -C "$daemon" rev-parse HEAD:3rdparty/ravenna-alsa-lkm 2>/dev/null)"
+if [[ -n "$pinned_there" && "$pinned_here" != "$pinned_there" ]]; then
+    echo "FAIL: external/ravenna-alsa-lkm is $pinned_here, the daemon pins $pinned_there" >&2
+    exit 1
+fi
 
 echo "==> Configure"
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release > /dev/null || {
