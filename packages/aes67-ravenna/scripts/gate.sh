@@ -29,7 +29,13 @@ echo "==> A DESCRIBE over the loopback"
 # network.
 port=18999
 nmos_port=18998
-./build/ravenna-announce --interface lo0 --address 127.0.0.1 --name GateSession \
+# The loopback is lo0 on macOS and lo on Linux, and mdns.start() takes the name
+# and fails on the one that is not there -- which is how this gate passed here
+# for months and failed the first time a runner ran it: the announcer never
+# started, and every check after it read an empty answer.
+loopback=lo0
+[ "$(uname -s)" = "Linux" ] && loopback=lo
+./build/ravenna-announce --interface "$loopback" --address 127.0.0.1 --name GateSession \
     --rtsp-port "$port" --nmos-port "$nmos_port" \
     --ptp-gmid 00-1D-C1-FF-FE-00-00-01 > /dev/null 2>&1 &
 announcer=$!
