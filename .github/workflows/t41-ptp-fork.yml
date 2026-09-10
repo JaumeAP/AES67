@@ -1,0 +1,54 @@
+# Compiles the Teensy package: its host tests, and the board build.
+#
+# It is here because GitHub Actions only reads workflows from the root of a
+# repository, and this is a package inside one -- the workflow that used to
+# cover it lived in `packages/t41-ptp-fork/.github` and never fired. The host
+# tests run on any machine, so `.githooks/pre-push` covers them; the board
+# build wants PlatformIO and a Teensy toolchain the machine this is written on
+# does not carry, which is what this job is for.
+#
+# It compiles; nothing runs on hardware. There is no Teensy on a runner.
+name: t41-ptp-fork
+
+on:
+  push:
+    paths:
+      - 'packages/t41-ptp-fork/**'
+      - '.github/workflows/t41-ptp-fork.yml'
+  pull_request:
+    paths:
+      - 'packages/t41-ptp-fork/**'
+      - '.github/workflows/t41-ptp-fork.yml'
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # QNEthernet and Time are submodules of this repository and the board
+      # build links against both. Without them PlatformIO resolves the
+      # symlinked libraries to empty directories and fails at the first
+      # #include.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The toolchain is hundreds of megabytes and does not change between
+      # runs; the key follows platformio.ini, which is what chooses it.
+      - name: Cache the PlatformIO toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('packages/t41-ptp-fork/ci/platformio.ini') }}
+          restore-keys: platformio-${{ runner.os }}-
+
+      - name: PlatformIO
+        run: pip install platformio
+
+      # The package's own gate, not a second description of it here: host
+      # tests with -Werror, then the Teensy 4.1 build.
+      - name: Gate
+        run: packages/t41-ptp-fork/scripts/gate.sh --board
