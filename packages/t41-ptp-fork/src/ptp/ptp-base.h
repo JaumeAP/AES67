@@ -609,7 +609,13 @@ private:
     // middle of is a pair of timestamps from two different edges.
     void updatePPS(NanoTime refNow, NanoTime refLast, NanoTime localNow, NanoTime localLast);
 
-    uint8_t clockID[8];
+    // Zero until reset() fills it from the MAC. It used to be whatever the
+    // memory held: a port that announced before begin() -- which a sketch can
+    // do, nothing stops it -- put indeterminate bytes on the wire as its own
+    // clock identity, and compared incoming identities against them. Zero is
+    // not a valid identity either, but it is the same wrong answer every time
+    // and it is one a reader can recognise.
+    uint8_t clockID[8] = {0};
     bool initialised=false;
 
     // Whether the hardware timer has been zeroed, which happens once, on

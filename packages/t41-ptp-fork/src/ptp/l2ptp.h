@@ -59,5 +59,9 @@ private:
     // Where a received frame is read to. It lived on the stack of
     // updateSockets(), which put fifteen hundred bytes there on every
     // call of the busiest function in the loop.
-    uint8_t frameBuffer[L2_RECV_BUF_LEN];
+    // Every read of it today is bounded by what EthernetFrame.read() reported
+    // writing, so nothing indeterminate is read -- but that is a property of
+    // the four call sites rather than of the buffer, and it costs one memset
+    // at construction to stop being a property of anything.
+    uint8_t frameBuffer[L2_RECV_BUF_LEN] = {0};
 };
