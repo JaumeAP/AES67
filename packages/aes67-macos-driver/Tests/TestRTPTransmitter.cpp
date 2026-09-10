@@ -345,8 +345,8 @@ TEST_CASE("Channel Interleaving") {
     // Channel 1: [5.0, 6.0, 7.0, 8.0]
     // Interleaved: [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0]
 
-    float ch0[4] = {1.0f, 2.0f, 3.0f, 4.0f};
-    float ch1[4] = {5.0f, 6.0f, 7.0f, 8.0f};
+    const float ch0[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    const float ch1[4] = {5.0f, 6.0f, 7.0f, 8.0f};
 
     float interleaved[8];
     for (int i = 0; i < 4; ++i) {
@@ -355,7 +355,7 @@ TEST_CASE("Channel Interleaving") {
     }
 
     // Verify interleaving
-    float expected[8] = {1.0f, 5.0f, 2.0f, 6.0f, 3.0f, 7.0f, 4.0f, 8.0f};
+    const float expected[8] = {1.0f, 5.0f, 2.0f, 6.0f, 3.0f, 7.0f, 4.0f, 8.0f};
     for (int i = 0; i < 8; ++i) {
         CHECK(interleaved[i] == expected[i]);
     }

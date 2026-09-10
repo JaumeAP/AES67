@@ -12,6 +12,7 @@
 // runs them, which is the opposite of what a test is for.
 //
 
+#include <algorithm>
 #include "NetworkEngine/NetworkUtils.h"
 
 #include <cstdlib>
@@ -30,8 +31,8 @@ bool NetworkUtils::isIPv4Address(const std::string& str) {
         while (i < str.size() && str[i] != '.') ++i;
         const std::string field = str.substr(start, i - start);
         if (field.empty() || field.size() > 3) return false;
-        for (char c : field)
-            if (c < '0' || c > '9') return false;
+        if (!std::all_of(field.begin(), field.end(),
+                         [](char c) { return c >= '0' && c <= '9'; })) return false;
         const int value = std::atoi(field.c_str());
         if (value < 0 || value > 255) return false;
         ++fields;

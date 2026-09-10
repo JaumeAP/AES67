@@ -255,6 +255,9 @@ TEST_CASE("SDP Session Creation") {
     CHECK(sdp.encoding == "L16");
     CHECK(sdp.sampleRate == 48000);
     CHECK(sdp.numChannels == 2);
+    CHECK(sdp.connectionAddress == "239.1.1.1");
+    CHECK(sdp.ttl == 32);
+    CHECK(sdp.payloadType == PT_AES67_L16);
 
     std::cout << "PASS" << std::endl;
 }
@@ -292,9 +295,12 @@ TEST_CASE("Channel Mapping Creation") {
     mapping.deviceChannelStart = 16;
     mapping.deviceChannelCount = 8;
 
+    CHECK(mapping.streamName == "Test Stream");
     CHECK(mapping.streamChannelCount == 8);
+    CHECK(mapping.streamChannelOffset == 0);
     CHECK(mapping.deviceChannelStart == 16);
     CHECK(mapping.deviceChannelCount == 8);
+    CHECK(!mapping.streamID.isNull());
 
     std::cout << "PASS" << std::endl;
 }

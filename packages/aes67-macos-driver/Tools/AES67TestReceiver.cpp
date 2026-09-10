@@ -14,6 +14,7 @@
 //   --duration <sec>  Duration in seconds (default: 10, 0 = infinite)
 //
 
+#include <exception>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -42,7 +43,7 @@ static void signalHandler(int) {
 
 // -- Main --
 
-int main(int argc, char* argv[]) {
+int run(int argc, char* argv[]) {
     // Defaults
     std::string multicastIP = "239.1.1.2";
     uint16_t    port        = 5004;
@@ -255,4 +256,15 @@ int main(int argc, char* argv[]) {
     rtpSocket.close();
 
     return (packetCount > 0 && nonZeroSamples > 0) ? 0 : 1;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main(int argc, char* argv[]) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

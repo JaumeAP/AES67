@@ -3,6 +3,7 @@
 // AES67 macOS Driver
 //
 
+#include <ranges>
 #include <iterator>
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
 #include "NetworkEngine/JsonEscape.h"
@@ -560,9 +561,10 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
         previous = published_;
         published_ = published;
     }
-    for (auto it = previous.rbegin(); it != previous.rend(); ++it) {
-        const bool stillThere = std::find(published.begin(), published.end(), *it) != published.end();
-        if (!stillThere) deleteResource(it->first, it->second);
+    for (const auto& resource : std::ranges::reverse_view(previous)) {
+        const bool stillThere =
+            std::find(published.begin(), published.end(), resource) != published.end();
+        if (!stillThere) deleteResource(resource.first, resource.second);
     }
 
     return allAccepted;
@@ -587,8 +589,8 @@ bool NMOSRegistrationClient::unregister() {
         published = published_;
         published_.clear();
     }
-    for (auto it = published.rbegin(); it != published.rend(); ++it) {
-        deleteResource(it->first, it->second);
+    for (const auto& resource : std::ranges::reverse_view(published)) {
+        deleteResource(resource.first, resource.second);
     }
 
     HTTPClient client(registry.host, registry.port);

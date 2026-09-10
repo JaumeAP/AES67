@@ -15,6 +15,8 @@
 // fixed seed, printed -- so the check runs everywhere and a failure is one
 // command away from being reproduced.
 //
+#include <iterator>
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
@@ -37,10 +39,15 @@ std::vector<std::vector<uint8_t>> seedCorpus() {
     // A SAP announcement: version 1, IPv4, no auth, hash, origin, the MIME
     // type Dante insists on, then an SDP.
     std::vector<uint8_t> sap{0x20, 0x00, 0x12, 0x34, 192, 168, 0, 10};
-    for (char c : std::string("application/sdp")) sap.push_back((uint8_t)c);
+    const std::string mimeType = "application/sdp";
+    std::transform(mimeType.begin(), mimeType.end(), std::back_inserter(sap),
+                   [](char c) { return static_cast<uint8_t>(c); });
     sap.push_back(0);
-    for (char c : std::string("v=0\r\no=- 1 1 IN IP4 192.168.0.10\r\ns=Seed\r\nc=IN IP4 239.1.2.3/32\r\nt=0 0\r\n"
-                              "m=audio 5004 RTP/AVP 96\r\na=rtpmap:96 L24/48000/2\r\na=ptime:1\r\n")) sap.push_back((uint8_t)c);
+    const std::string seedSdp =
+        "v=0\r\no=- 1 1 IN IP4 192.168.0.10\r\ns=Seed\r\nc=IN IP4 239.1.2.3/32\r\nt=0 0\r\n"
+        "m=audio 5004 RTP/AVP 96\r\na=rtpmap:96 L24/48000/2\r\na=ptime:1\r\n";
+    std::transform(seedSdp.begin(), seedSdp.end(), std::back_inserter(sap),
+                   [](char c) { return static_cast<uint8_t>(c); });
     // An RTP frame: V=2, PT 96, seq 1, timestamp, SSRC, 12 bytes of L24.
     std::vector<uint8_t> rtp{0x80, 0x60, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0xde, 0xad, 0xbe, 0xef};
     rtp.resize(12 + 12, 0x11);

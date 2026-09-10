@@ -35,6 +35,7 @@
 // Same reason the RAVENNA one exists: it is the cheapest way to find the
 // mismatch before the hardware does.
 //
+#include <exception>
 #include "Driver/SDPParser.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
@@ -146,7 +147,7 @@ std::string line(const std::string& sdp, const char* prefix) {
 
 } // namespace
 
-int main() {
+int run() {
     std::printf("\n=== INTEROP SIM: macOS driver <-> Dante (Controller 4.18.1.1, AES67 mode) ===\n");
 
     // ------------------------------------------------------------------
@@ -340,4 +341,15 @@ int main() {
     std::printf("\n=== RESULT: %s (%d checks failed, %d left to a live Controller) ===\n",
                 fails == 0 ? "THEY CONNECT" : "MISMATCH", fails, unverified);
     return fails == 0 ? 0 : 1;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main() {
+    try {
+        return run();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

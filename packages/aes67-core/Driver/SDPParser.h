@@ -184,7 +184,6 @@ private:
     static std::vector<std::string> splitLines(const std::string& text);
     static std::vector<std::string> splitString(const std::string& str, char delimiter);
     static std::string trim(const std::string& str);
-    static bool isValidEncoding(const std::string& encoding);
 };
 
 } // namespace AES67

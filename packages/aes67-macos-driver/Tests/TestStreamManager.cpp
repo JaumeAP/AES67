@@ -262,12 +262,7 @@ TEST_CASE("Stream ID String Conversion") {
 TEST_CASE("Multiple Stream Configuration") {
     std::cout << "Test: Multiple stream configuration... ";
 
-    // Create multiple SDP sessions
-    SDPSession stream1 = createTestSDP("Stream 1", 5004, 2, 48000);
-    SDPSession stream2 = createTestSDP("Stream 2", 5006, 4, 48000);
-    SDPSession stream3 = createTestSDP("Stream 3", 5008, 8, 48000);
-
-    // Create non-overlapping mappings
+    // Create non-overlapping mappings for three streams of 2, 4 and 8
     ChannelMapping map1 = createTestMapping(2, 0);   // Channels 0-1
     ChannelMapping map2 = createTestMapping(4, 2);   // Channels 2-5
     ChannelMapping map3 = createTestMapping(8, 6);   // Channels 6-13

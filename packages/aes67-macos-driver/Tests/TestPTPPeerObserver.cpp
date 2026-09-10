@@ -14,6 +14,7 @@
 //
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
 #include "doctest.h"
 
 #include "NetworkEngine/PTP/PTPPeerObserver.h"
@@ -58,10 +59,10 @@ void deliver(PTPPeerObserver& observer, const std::vector<uint8_t>& message,
 
 const PTPPeerObservation* find(const std::vector<PTPPeerObservation>& peers,
                                const std::array<uint8_t, 8>& clockId) {
-    for (const auto& peer : peers) {
-        if (peer.clockId == clockId) return &peer;
-    }
-    return nullptr;
+    const auto match = std::find_if(peers.begin(), peers.end(), [&](const auto& peer) {
+        return peer.clockId == clockId;
+    });
+    return match != peers.end() ? &*match : nullptr;
 }
 
 } // namespace

@@ -49,7 +49,7 @@ private:
 template<typename CleanupFunc>
 class ResourceGuard {
 public:
-    ResourceGuard(CleanupFunc&& cleanup)
+    explicit ResourceGuard(CleanupFunc&& cleanup)
         : cleanup_(std::forward<CleanupFunc>(cleanup)) {}
     
     ~ResourceGuard() {
@@ -77,7 +77,7 @@ private:
 // Specialized guards for common resource types
 class SocketGuard {
 public:
-    SocketGuard(int socket_fd);
+    explicit SocketGuard(int socket_fd);
     ~SocketGuard();
     void release();
     void close();
@@ -89,7 +89,7 @@ private:
 
 class MemoryGuard {
 public:
-    MemoryGuard(void* ptr, std::function<void(void*)> deleter = [](void* p){ ::operator delete(p); });
+    explicit MemoryGuard(void* ptr, std::function<void(void*)> deleter = [](void* p){ ::operator delete(p); });
     ~MemoryGuard();
     void release();
     void free();

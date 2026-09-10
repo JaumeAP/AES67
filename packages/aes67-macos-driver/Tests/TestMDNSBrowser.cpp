@@ -15,6 +15,7 @@
 // where discovery is a convenience and never a reason to break.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
 #include "doctest.h"
 
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
@@ -101,10 +102,9 @@ TEST_CASE("Browser Finds And Resolves A Service It Can See") {
     // Find our own registration among whatever else is on this link.
     const bool found = waitFor(
         [&] {
-            for (const auto& service : browser.discoveredServices()) {
-                if (service.name == instance) return true;
-            }
-            return false;
+            const auto services = browser.discoveredServices();
+            return std::any_of(services.begin(), services.end(),
+                               [&](const auto& service) { return service.name == instance; });
         },
         std::chrono::milliseconds(10000));
 

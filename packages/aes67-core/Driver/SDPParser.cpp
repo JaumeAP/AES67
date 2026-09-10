@@ -814,8 +814,4 @@ std::string SDPParser::trim(const std::string& str) {
 }
 
 
-bool SDPParser::isValidEncoding(const std::string& encoding) {
-    return encoding == "L16" || encoding == "L24" || encoding == "AM824";
-}
-
 } // namespace AES67

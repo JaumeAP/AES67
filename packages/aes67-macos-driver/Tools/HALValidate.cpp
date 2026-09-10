@@ -18,6 +18,8 @@
 //                            [--skip-rates] [--verbose]
 //
 
+#include <algorithm>
+#include <exception>
 #include <CoreAudio/CoreAudio.h>
 #include <CoreFoundation/CoreFoundation.h>
 
@@ -182,17 +184,19 @@ void ListDevices() {
 }
 
 AudioObjectID FindByUID(const std::string& uid) {
-    for (AudioObjectID device : AllDevices()) {
-        if (DeviceUID(device) == uid) return device;
-    }
-    return kAudioObjectUnknown;
+    const std::vector<AudioObjectID> devices = AllDevices();
+    const auto match = std::find_if(devices.begin(), devices.end(), [&](AudioObjectID device) {
+        return DeviceUID(device) == uid;
+    });
+    return match != devices.end() ? *match : kAudioObjectUnknown;
 }
 
 AudioObjectID FindByName(const std::string& needle) {
-    for (AudioObjectID device : AllDevices()) {
-        if (DeviceName(device).find(needle) != std::string::npos) return device;
-    }
-    return kAudioObjectUnknown;
+    const std::vector<AudioObjectID> devices = AllDevices();
+    const auto match = std::find_if(devices.begin(), devices.end(), [&](AudioObjectID device) {
+        return DeviceName(device).find(needle) != std::string::npos;
+    });
+    return match != devices.end() ? *match : kAudioObjectUnknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -589,7 +593,7 @@ void PrintUsage() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
     // Line buffering so a piped run still shows how far it got when a
     // device stalls mid-check.
     setvbuf(stdout, nullptr, _IOLBF, 0);
@@ -690,4 +694,15 @@ int main(int argc, char** argv) {
         }
     }
     return failed ? 1 : 0;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

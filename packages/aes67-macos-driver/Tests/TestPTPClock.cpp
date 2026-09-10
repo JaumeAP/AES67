@@ -183,8 +183,8 @@ TEST_CASE("PTP Clock Manager Singleton") {
     std::cout << "Test: PTPClockManager singleton pattern... ";
 
     // Get instance multiple times - should return same instance
-    PTPClockManager& mgr1 = PTPClockManager::getInstance();
-    PTPClockManager& mgr2 = PTPClockManager::getInstance();
+    const PTPClockManager& mgr1 = PTPClockManager::getInstance();
+    const PTPClockManager& mgr2 = PTPClockManager::getInstance();
 
     CHECK(&mgr1 == &mgr2);
 
@@ -349,10 +349,6 @@ TEST_CASE("Time Conversions") {
     // Test microseconds to milliseconds
     uint64_t ms = us / 1000;
     CHECK(ms == 1000);
-
-    // Test various conversions
-    CHECK(1000000 / 1000 == 1000);
-    CHECK(1000 / 1000 == 1);
 
     std::cout << "PASS" << std::endl;
 }

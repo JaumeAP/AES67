@@ -195,10 +195,11 @@ private:
         result.maxTimeUs = *std::max_element(timings.begin(), timings.end());
 
         // Calculate standard deviation
-        double sqSum = 0.0;
-        for (double time : timings) {
-            sqSum += (time - result.avgTimeUs) * (time - result.avgTimeUs);
-        }
+        const double mean = result.avgTimeUs;
+        const double sqSum = std::accumulate(
+            timings.begin(), timings.end(), 0.0, [mean](double sum, double time) {
+                return sum + (time - mean) * (time - mean);
+            });
         result.stdDevUs = std::sqrt(sqSum / timings.size());
 
         // Calculate throughput (MB/s)

@@ -17,6 +17,9 @@
 //   --no-sap          Disable SAP announcements
 //
 
+#include <iterator>
+#include <algorithm>
+#include <exception>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -82,9 +85,8 @@ static std::vector<uint8_t> buildSAPPacket(const std::string& sdp) {
     pkt.push_back(0);
     pkt.push_back(1);
     // SDP payload (no content-type header — matches what SAPListener expects)
-    for (char c : sdp) {
-        pkt.push_back(static_cast<uint8_t>(c));
-    }
+    std::transform(sdp.begin(), sdp.end(), std::back_inserter(pkt),
+                   [](char c) { return static_cast<uint8_t>(c); });
     return pkt;
 }
 
@@ -117,7 +119,7 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
 
     while (g_running) {
         ssize_t sent = sendto(sockfd, sapPacket.data(), sapPacket.size(), 0,
-                              (struct sockaddr*)&sapAddr, sizeof(sapAddr));
+                              reinterpret_cast<struct sockaddr*>(&sapAddr), sizeof(sapAddr));
         if (sent < 0) {
             fprintf(stderr, "SAP: send failed (errno=%d)\n", errno);
         }
@@ -133,7 +135,7 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
 
 // ── Main ─────────────────────────────────────────────────────────────
 
-int main(int argc, char* argv[]) {
+int run(int argc, char* argv[]) {
     // Defaults
     std::string multicastIP = "239.1.1.1";
     uint16_t    port        = 5004;
@@ -319,4 +321,15 @@ int main(int argc, char* argv[]) {
     if (sapThread.joinable()) sapThread.join();
 
     return 0;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main(int argc, char* argv[]) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

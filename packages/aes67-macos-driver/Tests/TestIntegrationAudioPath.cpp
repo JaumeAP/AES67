@@ -9,6 +9,7 @@
 //
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
 #include "doctest.h"
 
 #include "NetworkEngine/RTP/SimpleRTP.h"
@@ -278,13 +279,9 @@ TEST_CASE("RTP Receive To Ring Buffer") {
     CHECK(ch0Read > 0);
 
     // Verify the samples are approximately 0.5 (L16 has limited precision)
-    bool ch0ValuesCorrect = true;
-    for (size_t i = 0; i < ch0Read; ++i) {
-        if (std::abs(readBuffer[i] - 0.5f) > 0.01f) {
-            ch0ValuesCorrect = false;
-            break;
-        }
-    }
+    const bool ch0ValuesCorrect = std::all_of(
+        readBuffer.begin(), readBuffer.begin() + static_cast<ptrdiff_t>(ch0Read),
+        [](float sample) { return std::abs(sample - 0.5f) <= 0.01f; });
     CHECK(ch0ValuesCorrect);
 
     // Read and verify channel 1
@@ -292,13 +289,9 @@ TEST_CASE("RTP Receive To Ring Buffer") {
     size_t ch1Read = deviceBuffers[1].read(readBuffer.data(), ch1Available);
     CHECK(ch1Read > 0);
 
-    bool ch1ValuesCorrect = true;
-    for (size_t i = 0; i < ch1Read; ++i) {
-        if (std::abs(readBuffer[i] - (-0.5f)) > 0.01f) {
-            ch1ValuesCorrect = false;
-            break;
-        }
-    }
+    const bool ch1ValuesCorrect = std::all_of(
+        readBuffer.begin(), readBuffer.begin() + static_cast<ptrdiff_t>(ch1Read),
+        [](float sample) { return std::abs(sample + 0.5f) <= 0.01f; });
     CHECK(ch1ValuesCorrect);
 
     // Verify unmapped channels remain empty
@@ -520,13 +513,9 @@ TEST_CASE("Underrun Behavior") {
     }
 
     // Verify silence was filled
-    bool allZeros = true;
-    for (size_t i = 0; i < frameCount; ++i) {
-        if (readBuffer[i] != 0.0f) {
-            allZeros = false;
-            break;
-        }
-    }
+    const bool allZeros = std::all_of(
+        readBuffer.begin(), readBuffer.begin() + static_cast<ptrdiff_t>(frameCount),
+        [](float sample) { return sample == 0.0f; });
     CHECK(allZeros);
 
     // Now test with an actual RTPReceiver that is connected but gets no data
@@ -593,13 +582,9 @@ TEST_CASE("Overrun Behavior") {
     size_t readCount = deviceBuffers[0].read(readBack.data(), smallCapacity);
     CHECK(readCount == smallCapacity);
 
-    bool dataIntact = true;
-    for (size_t i = 0; i < readCount; ++i) {
-        if (std::abs(readBack[i] - 0.5f) > 0.001f) {
-            dataIntact = false;
-            break;
-        }
-    }
+    const bool dataIntact = std::all_of(
+        readBack.begin(), readBack.begin() + static_cast<ptrdiff_t>(readCount),
+        [](float sample) { return std::abs(sample - 0.5f) <= 0.001f; });
     CHECK(dataIntact);
 
     // Test overrun tracking: simulate Core Audio writing to output buffers
@@ -708,25 +693,15 @@ TEST_CASE("Multi Stream Channel Isolation") {
     // Verify Stream A data is correct (~0.3f)
     std::vector<float> aCh0Data(aCh0);
     deviceBuffers[0].read(aCh0Data.data(), aCh0);
-    bool aCorrect = true;
-    for (size_t i = 0; i < aCh0; ++i) {
-        if (std::abs(aCh0Data[i] - 0.3f) > 0.02f) {
-            aCorrect = false;
-            break;
-        }
-    }
+    const bool aCorrect = std::all_of(aCh0Data.begin(), aCh0Data.end(),
+                                      [](float sample) { return std::abs(sample - 0.3f) <= 0.02f; });
     CHECK(aCorrect);
 
     // Verify Stream B data is correct (~-0.7f)
     std::vector<float> bCh4Data(bCh4);
     deviceBuffers[4].read(bCh4Data.data(), bCh4);
-    bool bCorrect = true;
-    for (size_t i = 0; i < bCh4; ++i) {
-        if (std::abs(bCh4Data[i] - (-0.7f)) > 0.02f) {
-            bCorrect = false;
-            break;
-        }
-    }
+    const bool bCorrect = std::all_of(bCh4Data.begin(), bCh4Data.end(),
+                                      [](float sample) { return std::abs(sample + 0.7f) <= 0.02f; });
     CHECK(bCorrect);
 
     // Verify no cross-contamination: Stream A data should NOT appear in Stream B channels

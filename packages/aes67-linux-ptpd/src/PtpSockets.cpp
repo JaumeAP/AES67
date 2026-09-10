@@ -164,7 +164,7 @@ bool PtpSockets::open(const std::string& interfaceName,
     }
     bool haveMac = false;
     bool haveAddress = false;
-    for (struct ifaddrs* entry = addresses; entry != nullptr; entry = entry->ifa_next) {
+    for (const struct ifaddrs* entry = addresses; entry != nullptr; entry = entry->ifa_next) {
         if (entry->ifa_addr == nullptr || interfaceName != entry->ifa_name) continue;
         if (entry->ifa_addr->sa_family == AF_PACKET) {
             const auto* link = reinterpret_cast<const struct sockaddr_ll*>(entry->ifa_addr);

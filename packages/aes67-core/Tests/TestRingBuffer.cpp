@@ -52,7 +52,7 @@ TEST_CASE("Batch Write Read") {
     SPSCRingBuffer<float> buffer(128);
 
     // Write batch of 64 samples
-    float writeData[64];
+    float writeData[64] = {};
     for (int i = 0; i < 64; ++i) {
         writeData[i] = static_cast<float>(i);
     }
@@ -79,7 +79,7 @@ TEST_CASE("Buffer Wrap Around") {
     SPSCRingBuffer<float> buffer(64);
 
     // Write 50 samples (capacity is 64, so 14 slots remain)
-    float writeData[50];
+    float writeData[50] = {};
     for (int i = 0; i < 50; ++i) {
         writeData[i] = static_cast<float>(i);
     }
@@ -90,7 +90,7 @@ TEST_CASE("Buffer Wrap Around") {
     buffer.read(readData, 30);
 
     // Write 40 more (will wrap around past end of internal buffer)
-    float moreData[40];
+    float moreData[40] = {};
     for (int i = 0; i < 40; ++i) {
         moreData[i] = static_cast<float>(100 + i);
     }
@@ -121,7 +121,7 @@ TEST_CASE("Buffer Full") {
     SPSCRingBuffer<float> buffer(64);
 
     // Fill buffer completely (full capacity)
-    float writeData[64];
+    float writeData[64] = {};
     for (int i = 0; i < 64; ++i) {
         writeData[i] = static_cast<float>(i);
     }
@@ -169,7 +169,7 @@ TEST_CASE("Available") {
     CHECK(buffer.availableWrite() == 64);
 
     // Write 32 samples
-    float writeData[32];
+    const float writeData[32] = {};
     buffer.write(writeData, 32);
 
     CHECK(buffer.available() == 32);
@@ -184,7 +184,7 @@ TEST_CASE("Reset") {
     SPSCRingBuffer<float> buffer(64);
 
     // Fill buffer
-    float writeData[32];
+    const float writeData[32] = {};
     buffer.write(writeData, 32);
 
     // Reset
@@ -205,7 +205,7 @@ TEST_CASE("Zero Size Operations") {
 
     SPSCRingBuffer<float> buffer(64);
 
-    float data[1];
+    float data[1] = {};
 
     size_t written = buffer.write(data, 0);
     CHECK(written == 0);
@@ -222,11 +222,11 @@ TEST_CASE("Partial Writes") {
     SPSCRingBuffer<float> buffer(64);
 
     // Fill most of buffer
-    float writeData[60];
+    const float writeData[60] = {};
     buffer.write(writeData, 60);
 
     // Try to write more than available
-    float moreData[10];
+    const float moreData[10] = {};
     size_t written = buffer.write(moreData, 10);
 
     CHECK(written == 4);
@@ -240,7 +240,7 @@ TEST_CASE("Partial Reads") {
     SPSCRingBuffer<float> buffer(64);
 
     // Write 5 samples
-    float writeData[5];
+    const float writeData[5] = {};
     buffer.write(writeData, 5);
 
     // Try to read more than available
