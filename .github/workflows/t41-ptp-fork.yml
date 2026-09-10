@@ -1,8 +1,9 @@
 # Compiles the Teensy package: its host tests, and the board build.
 #
-# It is here because GitHub Actions only reads workflows from the root of a
-# repository, and this is a package inside one -- the workflow that used to
-# cover it lived in `packages/t41-ptp-fork/.github` and never fired. The host
+# The package is a submodule now -- JaumeAP/t41-ptp -- so the paths below
+# match only when this repository's pointer to it moves, which is exactly when
+# this tree's copy of it changes. Work done inside that repository is that
+# repository's to check. The host
 # tests run on any machine, so `.githooks/pre-push` covers them; the board
 # build wants PlatformIO and a Teensy toolchain the machine this is written on
 # does not carry, which is what this job is for.
