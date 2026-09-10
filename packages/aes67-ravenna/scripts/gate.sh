@@ -39,10 +39,23 @@ loopback=lo0
     --rtsp-port "$port" --nmos-port "$nmos_port" \
     --ptp-gmid 00-1D-C1-FF-FE-00-00-01 > /dev/null 2>&1 &
 announcer=$!
-sleep 2
 
-answer=$(printf 'DESCRIBE rtsp://127.0.0.1:%s/by-name/GateSession RTSP/1.0\r\nCSeq: 1\r\n\r\n' \
-    "$port" | nc -w 2 127.0.0.1 "$port")
+# The DESCRIBE itself is the wait. Two seconds of sleep was enough on an idle
+# machine and not enough on one building something else at the same time: this
+# gate failed exactly once today, during a run with a sanitizer build in
+# parallel, and passed three times in a row on its own.
+#
+# Retried rather than probed. `nc -z` opens a TCP connection, and this server
+# takes one request per connection -- the probe IS the request, and the real
+# DESCRIBE that followed it got nothing. Asking the question again costs the
+# same and answers it.
+answer=""
+for _ in $(seq 1 40); do
+    answer=$(printf 'DESCRIBE rtsp://127.0.0.1:%s/by-name/GateSession RTSP/1.0\r\nCSeq: 1\r\n\r\n' \
+        "$port" | nc -w 2 127.0.0.1 "$port")
+    case "$answer" in *"RTSP/1.0 200 OK"*) break ;; esac
+    sleep 0.25
+done
 
 echo "==> An IS-05 connection over the loopback"
 # The whole exchange a controller performs to assign one device's stream to
