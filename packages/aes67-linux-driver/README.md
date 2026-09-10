@@ -15,28 +15,21 @@ put it next to the other packages in this tree.
 | `cpp-httplib` | `yhirose/cpp-httplib`, a submodule of the daemon | The HTTP server the REST interface is served from |
 
 The kernel module is a submodule of this package in its own right,
-`external/ravenna-alsa-lkm`, and that is the copy this package builds and
-reads: `RAVENNA_ALSA_LKM_DIR` points at it, and so do the mirrors that hold
-our own code against the module's rules.
+`external/ravenna-alsa-lkm`, and that is the only checkout of it: the build
+reads it (`RAVENNA_ALSA_LKM_DIR`), and so do the mirrors that hold our own
+code against the module's rules.
 
-The daemon pins the same repository again under its own `3rdparty/`, for
-upstream's `build.sh`. This package does not use that checkout and does not
-want it on disk twice, so it is left uninitialised:
+Upstream pins the same repository a second time inside the daemon, under its
+`3rdparty/`. Two checkouts of one thing, free to drift, with only one ever
+compiled -- so the daemon this package tracks is a fork with that submodule
+removed, [`JaumeAP/aes67-linux-daemon`](https://github.com/JaumeAP/aes67-linux-daemon)
+branch `no-vendored-lkm`, one commit ahead of upstream and nothing else. The
+gate fails if a rebase onto upstream ever brings it back.
 
-```bash
-git submodule update --init --recursive
-git -C packages/aes67-linux-driver/external/aes67-linux-daemon \
-    submodule deinit -f 3rdparty/ravenna-alsa-lkm
-```
-
-The pin stays in the daemon's tree either way, and the gate reads it from
-there -- without a checkout -- and refuses to pass when it differs from what
-this package pins. Two pins of one repository are worth nothing unless they
-agree.
-
-Building the daemon with upstream's own `build.sh`, rather than through this
-package's CMake, is what wants that second checkout back:
-`git -C ... submodule update --init 3rdparty/ravenna-alsa-lkm`.
+Upstream's own `build.sh` still expects the module under
+`3rdparty/ravenna-alsa-lkm`; building that way means putting it there. This
+package's CMake does not: it passes the module's location the way `build.sh`
+always did, from the checkout above.
 
 The daemon and the kernel module talk over netlink. The module is the PTP
 slave and clocks every source and sink from that one clock; the daemon

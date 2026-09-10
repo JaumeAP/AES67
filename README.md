@@ -67,10 +67,6 @@ configuring fails on Linux before anything builds.
 ```bash
 git clone --recurse-submodules https://github.com/JaumeAP/AES67.git
 cd AES67
-# One checkout of the RAVENNA module is enough; the daemon pins a second copy
-# of it that nothing here builds from. See packages/aes67-linux-driver.
-git -C packages/aes67-linux-driver/external/aes67-linux-daemon \
-    submodule deinit -f 3rdparty/ravenna-alsa-lkm
 cmake -S . -B build && cmake --build build
 ctest --test-dir build --output-on-failure
 ```

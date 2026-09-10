@@ -26,13 +26,12 @@ for path in "$daemon/daemon/CMakeLists.txt" \
 done
 echo "==> daemon $(git -C "$daemon" rev-parse --short HEAD), module $(git -C external/ravenna-alsa-lkm rev-parse --short HEAD) checked out"
 
-# The module is pinned twice -- here and inside the daemon -- and the build
-# reads this copy while the daemon's build system reads its own. Different
-# commits mean a daemon talking to a module it was not built against.
-pinned_here="$(git -C external/ravenna-alsa-lkm rev-parse HEAD)"
-pinned_there="$(git -C "$daemon" rev-parse HEAD:3rdparty/ravenna-alsa-lkm 2>/dev/null)"
-if [[ -n "$pinned_there" && "$pinned_here" != "$pinned_there" ]]; then
-    echo "FAIL: external/ravenna-alsa-lkm is $pinned_here, the daemon pins $pinned_there" >&2
+# The module is pinned once, here. The daemon used to pin it again under its
+# own 3rdparty/, which is what the fork this package tracks removed: two
+# checkouts of one repository, free to drift, with only one ever compiled. If
+# a rebase onto upstream ever brings that submodule back, this says so.
+if git -C "$daemon" rev-parse HEAD:3rdparty/ravenna-alsa-lkm > /dev/null 2>&1; then
+    echo "FAIL: the daemon pins the RAVENNA module again; this package pins it" >&2
     exit 1
 fi
 
