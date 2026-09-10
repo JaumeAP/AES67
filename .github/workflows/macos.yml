@@ -1,0 +1,75 @@
+# Compiles the macOS half on a runner: the AudioServerPlugIn driver, its PTP
+# daemon and tools, and the SwiftUI Manager app.
+#
+# It is here because those two packages had no CI at all -- the gate that
+# covers them runs on the author's Mac and nowhere else, so a change that
+# builds there is a change nobody else can confirm. A runner is a second
+# machine with a different Xcode, which is most of what CI is for.
+#
+# It compiles and runs the offline suites. What it does NOT do is anything
+# needing the network or a loaded driver: a GitHub runner has no multicast
+# route worth the name and no coreaudiod that will load an unsigned bundle,
+# so the `network` label is excluded and nothing is installed. Those are the
+# checks that need a real Mac on a real segment, and they stay there.
+name: macos
+
+on:
+  push:
+    paths:
+      - 'packages/aes67-macos-driver/**'
+      - 'packages/aes67-macos-manager/**'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-profiles/**'
+      - 'packages/aes67-ravenna/**'
+      - '.github/workflows/macos.yml'
+  pull_request:
+    paths:
+      - 'packages/aes67-macos-driver/**'
+      - 'packages/aes67-macos-manager/**'
+      - '.github/workflows/macos.yml'
+
+jobs:
+  driver:
+    runs-on: macos-latest
+    steps:
+      # doctest is a submodule and every suite includes it; libASPL is
+      # vendored, so nothing else has to be fetched.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swiftc --version
+          cmake --version
+
+      # The package's own gate, not a second description of it here. --clean
+      # because a runner is a fresh checkout and the incremental path has
+      # nothing to be incremental against.
+      #
+      # AES67_ANALYSE is deliberately not set: clang-tidy over 152 files plus
+      # a sanitizer build plus a coverage build is half an hour, and the
+      # author's Mac runs it before every push to the default branch. What a
+      # runner adds here is a second compiler, not a second analysis.
+      - name: aes67-macos-driver
+        run: packages/aes67-macos-driver/scripts/gate.sh --clean
+
+      - name: aes67-macos-manager
+        run: packages/aes67-macos-manager/scripts/gate.sh
+
+      # The app has to come out of it, with the driver and the daemon inside:
+      # that is the whole delivery, and a build that quietly embeds nothing is
+      # a build that ships an Install button with nothing behind it.
+      - name: The app carries the driver and the daemon
+        run: |
+          app=packages/aes67-macos-manager/AES67Manager.app
+          test -x "$app/Contents/MacOS/AES67Manager"
+          test -d "$app/Contents/Resources/AES67Driver.driver"
+          test -f "$app/Contents/Library/LaunchDaemons/com.aes67driver.ptpd.plist"
+          # Contents/MacOS/aes67ptpd, because that is what the LaunchDaemon
+          # plist's BundleProgram names -- launchd looks there and nowhere
+          # else, so a daemon embedded anywhere else is one that registers
+          # and never runs.
+          test -x "$app/Contents/MacOS/aes67ptpd" \
+            || { echo "no aes67ptpd where BundleProgram points"; ls -R "$app/Contents"; exit 1; }
