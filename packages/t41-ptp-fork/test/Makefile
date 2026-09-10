@@ -12,7 +12,7 @@ CXX ?= c++
 # board's compiler sees narrowings this one does not: long is 32 bits there
 # and 64 here. Keeping the host build clean under them is what stops a
 # truncation from reaching the Teensy unnoticed.
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src -I ../../aes67-profiles
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src
 
 # Set by CI to -Werror. A warning that only appears on another compiler
 # should fail there, not be argued about later.
@@ -48,7 +48,7 @@ run: $(BIN)
 TIDY ?= $(firstword $(wildcard $(HOME)/.local/venvs/cpptools/bin/clang-tidy) $(shell command -v clang-tidy))
 tidy:
 	@test -n "$(TIDY)" || { echo "SKIP: no clang-tidy found"; exit 0; }
-	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) -isysroot $$(xcrun --show-sdk-path) -I ../../aes67-profiles
+	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) -isysroot $$(xcrun --show-sdk-path)
 
 HDR = stubs/Arduino.h stubs/QNEthernet.h stubs/TimeLib.h stubs/stub_state.h \
       ptp_messages.h test_harness.h \

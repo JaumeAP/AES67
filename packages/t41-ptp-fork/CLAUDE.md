@@ -102,9 +102,10 @@ API surface (state getters, Announce dataset setters, servo gains, rate/identity
 
 `applyProfile()` takes a `ProfileSettings` and applies it through the setters that clamp and
 validate each value. It holds no table: the three profiles it used to carry in a switch are in
-`packages/aes67-profiles/Profiles/PtpProfiles.h`, freestanding headers this firmware includes
-(`ci/platformio.ini` adds the include path) and the macOS core reads too. A sketch with only this
-library writes the five numbers itself.
+`packages/aes67-profiles/Profiles/PtpProfiles.h`, which the macOS core reads. This package does
+not: it compiles with nothing beside it -- no include path out of this directory, in the library,
+the host tests or the board build -- so `examples/PTPNode` writes the five numbers out and a
+sketch built next to the profiles package can read them from there instead.
 
 This library is IEEE 1588 and nothing else. Anything that carries or describes a media stream --
 the RTP paths, SDP, SAP, the discovery around them, an IS-04 registration -- belongs to the sketch

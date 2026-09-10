@@ -15,7 +15,6 @@
 
 #include "ptp-base.h"
 #include "ptp-internal.h"
-#include "Profiles/PtpIntervals.h"
 
 void printTime(const NanoTime t)
 {
@@ -575,12 +574,19 @@ void PTPBase::updatePortState()
 // A logMessageInterval as milliseconds: two to the power of it, seconds.
 // The exponent is clamped where it is taken in, so the shift is always
 // narrower than the type.
+//
+// Rounded to nearest, not truncated: 2^-7 s is 7.8125 ms and a shift gives
+// 7 where the rule says 8. This library is built on its own, so the rule is
+// written here rather than included from anywhere; anything else reading a
+// PTP interval has to round the same way or the two disagree at the edges.
 unsigned long PTPBase::logIntervalToMillis(int8_t logInterval)
 {
-    // The profiles package's rule, shared with the macOS driver. The shift
-    // this used to do truncated: 2^-7 s is 7.8125 ms and came out as 7 where
-    // the driver said 8.
-    return AES67::ptpLogIntervalToMilliseconds(logInterval);
+    if (logInterval >= 0) {
+        return logInterval > 21 ? 0UL : (1000UL << logInterval);
+    }
+    // 1000 / 2^n, rounded: add half the divisor before dividing.
+    const unsigned long divisor = 1UL << static_cast<unsigned>(-logInterval);
+    return (1000UL + divisor / 2UL) / divisor;
 }
 
 // How long the slave waits for a Sync before it stops believing its own
