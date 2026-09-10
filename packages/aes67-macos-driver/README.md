@@ -82,6 +82,7 @@ look for it.
 - PTP slave-only implementation written (IEEE 1588 message exchange, offset/delay calculation, lock detection)
 - Discovery both ways: SAP in and out, RTSP DESCRIBE as client and server, DNS-SD browsing
 - NMOS IS-04 registration and IS-05 connection management, against loopback registries and controllers
+- Which of those run is the compatibility profile's to say, not a constant: SAP under every profile; DNS-SD browsing and the RTSP DESCRIBE server under AES67 and RAVENNA; the NMOS node under RAVENNA and ST 2110. Dante and the Dolby profiles get SAP and nothing else. `CompatibilityProfile::usesSap`, `usesDnsSdRtsp`, `usesNmos`; applied in `AES67Device::Initialize()`, so a profile change takes effect when the driver next loads
 - Test sender/receiver tools exercise the network path over loopback
 - 28 test suites pass here, plus the platform-free core's own (see `Tests/CMakeLists.txt` for the current list)
 - IO handler benchmark exists for real-time performance characterisation

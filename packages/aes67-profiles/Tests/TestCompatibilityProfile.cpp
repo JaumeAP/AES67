@@ -63,6 +63,51 @@ bool transmitDirectionFor(const CompatibilityProfile& profile) {
 // A. The common baseline
 // ============================================================================
 
+TEST_CASE("Each Profile Names The Discovery It Runs") {
+    // The table, as a table. Every kind is listed on purpose: a kind added
+    // without a row here inherits SAP-only from the defaults, which is right
+    // for a Dolby model and wrong for anything that speaks RTSP or NMOS.
+    struct Row { CompatibilityProfileKind kind; bool sap, dnssd, nmos; };
+    const Row rows[] = {
+        {CompatibilityProfileKind::AES67,            true, true,  false},
+        {CompatibilityProfileKind::RAVENNA,          true, true,  true},
+        {CompatibilityProfileKind::ST2110_30,        true, false, true},
+        {CompatibilityProfileKind::ST2110_30_LevelB, true, false, true},
+        {CompatibilityProfileKind::Dante,            true, false, false},
+        {CompatibilityProfileKind::Dolby,            true, false, false},
+        {CompatibilityProfileKind::DolbyLAN,         true, false, false},
+        {CompatibilityProfileKind::DolbyDAC3202,     true, false, false},
+        {CompatibilityProfileKind::DolbyDMA16,       true, false, false},
+        {CompatibilityProfileKind::DolbyDMA24,       true, false, false},
+        {CompatibilityProfileKind::DolbyDMA32,       true, false, false},
+        {CompatibilityProfileKind::DolbyCP850,       true, false, false},
+        {CompatibilityProfileKind::DolbyCP950,       true, false, false},
+        {CompatibilityProfileKind::DolbyCP950A,      true, false, false},
+    };
+    for (const auto& row : rows) {
+        const auto profile = CompatibilityProfile::forKind(row.kind);
+        INFO(profile.displayName);
+        CHECK(profile.usesSap == row.sap);
+        CHECK(profile.usesDnsSdRtsp == row.dnssd);
+        CHECK(profile.usesNmos == row.nmos);
+    }
+}
+
+TEST_CASE("Only RAVENNA Runs Everything") {
+    // The one profile whose gear expects all three at once. If a second one
+    // ever does, this is the assertion to widen, deliberately.
+    int all = 0;
+    for (auto kind : {CompatibilityProfileKind::AES67, CompatibilityProfileKind::RAVENNA,
+                      CompatibilityProfileKind::ST2110_30, CompatibilityProfileKind::ST2110_30_LevelB,
+                      CompatibilityProfileKind::Dante, CompatibilityProfileKind::Dolby,
+                      CompatibilityProfileKind::DolbyLAN}) {
+        const auto p = CompatibilityProfile::forKind(kind);
+        if (p.usesSap && p.usesDnsSdRtsp && p.usesNmos) ++all;
+    }
+    CHECK(all == 1);
+    CHECK(CompatibilityProfile::forKind(CompatibilityProfileKind::RAVENNA).usesNmos);
+}
+
 TEST_CASE("All Profiles Accept The Common Baseline") {
     std::cout << "Test: A1 · every profile accepts 48kHz/L24/1ms/8ch, each in its own direction... ";
     const auto sdp = baselineSession(); // 239.69.1.10 — Dante's range, and no
