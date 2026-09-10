@@ -143,7 +143,7 @@ TEST_CASE("Smoothed PI Controller Update") {
     CHECK((output1 >= -0.1 && output1 <= 0.1));
 
     // Apply more errors
-    double output2 = controller.update(0.05, 0.001);
+    controller.update(0.05, 0.001);
     double output3 = controller.update(0.05, 0.001);
 
     // Outputs should be reasonable
@@ -302,7 +302,7 @@ TEST_CASE("Clock Drift Scenario") {
 
     // Network is ahead (positive error)
     double correction1 = driftCorrector.update(0.001, 0.001);  // 0.1% ahead
-    double correction2 = driftCorrector.update(0.001, 0.001);
+    driftCorrector.update(0.001, 0.001);
     double correction3 = driftCorrector.update(0.001, 0.001);
 
     // Corrections should accumulate to slow down playback
