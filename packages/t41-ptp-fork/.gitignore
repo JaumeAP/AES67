@@ -1,3 +1,5 @@
 ci/.pio/
 ci/src/main.cpp
 .venv/
+test/coverage/
+test/fuzz/corpus/

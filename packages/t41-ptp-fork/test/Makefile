@@ -28,7 +28,7 @@ SRC = ../src/ptp/ptp-base.cpp ../src/ptp/ptp-config.cpp ../src/ptp/ptp-disciplin
       stubs/stubs.cpp ptp_messages.cpp test_ptp_base.cpp test_transport.cpp \
       test_servo.cpp test_main.cpp
 
-.PHONY: tidy all run board clean
+.PHONY: tidy cppcheck fuzz fuzz-libfuzzer coverage all run board clean
 
 # First target in the file, and it has to stay first: make takes the first
 # rule as the default goal, and .PHONY does not change that. When the tidy
@@ -51,8 +51,71 @@ TIDY ?= $(firstword $(wildcard $(HOME)/.local/venvs/cpptools/bin/clang-tidy) $(s
 # had never run anywhere but here.
 SYSROOT_FLAGS = $(if $(shell command -v xcrun),-isysroot $(shell xcrun --show-sdk-path),)
 tidy:
-	@test -n "$(TIDY)" || { echo "SKIP: no clang-tidy found"; exit 0; }
-	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) $(SYSROOT_FLAGS)
+	@if [ -z "$(TIDY)" ]; then echo "SKIP: no clang-tidy found"; else \
+	  echo "$(TIDY) --quiet ../src/ptp/*.cpp"; \
+	  $(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) $(SYSROOT_FLAGS); fi
+
+# cppcheck, where there is one. It overlaps clang-tidy and does not replace it:
+# what it adds is a second opinion from a different engine, and it reads the
+# library alone rather than a translation unit, so it sees code no test
+# instantiates. Same posture as tidy above -- opt-in, and quiet about being
+# absent, because the machine this is written on has no package manager to
+# install it with.
+CPPCHECK ?= $(shell command -v cppcheck)
+cppcheck:
+	@if [ -z "$(CPPCHECK)" ]; then echo "SKIP: no cppcheck found"; else \
+	  $(CPPCHECK) --quiet --error-exitcode=1 --enable=warning,performance,portability \
+	    --inline-suppr --std=c++17 --language=c++ \
+	    --suppress=missingInclude --suppress=missingIncludeSystem \
+	    -I ../src -I stubs ../src/ptp; fi
+
+# The parser, fed what nobody thought to write a test for. See fuzz/fuzz_parse.cpp
+# for why there are two builds of one function.
+#
+#   make fuzz              the deterministic driver, everywhere
+#   make fuzz ITER=1000000 longer
+#   make fuzz-libfuzzer    coverage-guided, needs a clang with the fuzzer runtime
+FUZZ_SRC = fuzz/fuzz_parse.cpp ../src/ptp/ptp-base.cpp ../src/ptp/ptp-config.cpp \
+           ../src/ptp/ptp-discipline.cpp ../src/ptp/ptp-parse.cpp ../src/ptp/ptp-send.cpp \
+           ../src/ptp/ptp-servo.cpp stubs/stubs.cpp ptp_messages.cpp
+FUZZ_FLAGS = -std=c++17 -Wall -Wextra -O1 -g -I stubs -I ../src -I .
+ITER ?= 200000
+FUZZ_TIME ?= 60
+
+fuzz:
+	$(CXX) $(FUZZ_FLAGS) -fsanitize=address,undefined $(FUZZ_SRC) -o t41-ptp-fuzz
+	./t41-ptp-fuzz $(ITER)
+	@rm -f t41-ptp-fuzz
+
+fuzz-libfuzzer:
+	@$(CXX) $(FUZZ_FLAGS) -DFUZZ_LIBFUZZER -fsanitize=fuzzer,address,undefined \
+	  $(FUZZ_SRC) -o t41-ptp-fuzz-guided 2> /dev/null || \
+	  { echo "SKIP: this compiler has no libFuzzer runtime"; exit 0; }
+	@test -x t41-ptp-fuzz-guided || exit 0; \
+	  mkdir -p fuzz/corpus && \
+	  ./t41-ptp-fuzz-guided fuzz/corpus -max_total_time=$(FUZZ_TIME) -max_len=4096 \
+	    -print_final_stats=1
+	@rm -f t41-ptp-fuzz-guided
+
+# Line coverage of the library, from the host tests. Not a gate: it is a number
+# to look at when deciding what to test next, and a threshold nobody chose is a
+# number people learn to ignore.
+GCOV ?= $(if $(shell command -v xcrun),xcrun llvm-cov gcov,gcov)
+coverage:
+	@rm -rf coverage && mkdir -p coverage
+	$(CXX) $(CXXFLAGS) --coverage -o t41-ptp-coverage $(SRC)
+	./t41-ptp-coverage > /dev/null
+	@$(GCOV) *.gcda > /dev/null 2>&1 || true
+	@mv -f *.gcov coverage/ 2> /dev/null || true
+	@LC_ALL=C awk -F: '/^ *#####:/ { miss++ } /^ *[0-9]+[*]?:/ { hit++ } \
+	  END { total = hit + miss; \
+	        if (total == 0) { print "coverage: nothing measured"; exit 1 } \
+	        printf "coverage: %d/%d lines of src/ptp, %.1f%%\n", hit, total, 100 * hit / total }' \
+	  coverage/ptp-base.cpp.gcov coverage/ptp-config.cpp.gcov \
+	  coverage/ptp-discipline.cpp.gcov coverage/ptp-parse.cpp.gcov \
+	  coverage/ptp-send.cpp.gcov coverage/ptp-servo.cpp.gcov \
+	  coverage/l2ptp.cpp.gcov coverage/l3ptp.cpp.gcov
+	@rm -f t41-ptp-coverage *.gcda *.gcno
 
 HDR = stubs/Arduino.h stubs/QNEthernet.h stubs/TimeLib.h stubs/stub_state.h \
       ptp_messages.h test_harness.h \
@@ -76,4 +139,6 @@ board: ../ci/src/main.cpp
 	  cat $<; } > $@
 
 clean:
-	rm -rf $(BIN) $(BIN).dSYM ../ci/src/main.cpp ../ci/.pio
+	rm -rf $(BIN) $(BIN).dSYM ../ci/src/main.cpp ../ci/.pio \
+	  t41-ptp-fuzz t41-ptp-fuzz.dSYM t41-ptp-fuzz-guided t41-ptp-fuzz-guided.dSYM \
+	  t41-ptp-coverage t41-ptp-coverage.dSYM coverage *.gcda *.gcno *.gcov

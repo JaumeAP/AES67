@@ -51,13 +51,26 @@ jobs:
       # clang-tidy for the analysis half of the gate. The Mac this is written
       # on had none for a long time, and the target it would have run was
       # macOS-only anyway, so nothing had ever analysed this package.
-      - name: clang-tidy
-        run: sudo apt-get update && sudo apt-get install -y clang-tidy
+      - name: clang-tidy and cppcheck
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy cppcheck clang
 
       # The package's own gate, not a second description of it here: host
-      # tests with -Werror, clang-tidy, the same tests under ASan and UBSan,
-      # then the Teensy 4.1 build.
+      # tests with -Werror, clang-tidy, cppcheck, the same tests under ASan
+      # and UBSan, the deterministic fuzz run, then the Teensy 4.1 build.
       - name: Gate
         env:
           AES67_ANALYSE: '1'
         run: packages/t41-ptp-fork/scripts/gate.sh --board
+
+      # The coverage-guided fuzzer, which the gate cannot run on the Mac this
+      # is written on: Apple's clang ships no libFuzzer runtime. A minute of
+      # it per run, from a corpus that does not persist between runs -- what
+      # this catches is a parser that a mutation can walk into, not a deep
+      # state machine bug, and a minute is what that is worth.
+      - name: Fuzz the parser, guided
+        run: make -C packages/t41-ptp-fork/test fuzz-libfuzzer FUZZ_TIME=60 CXX=clang++
+
+      # Line coverage of src/ptp, printed rather than enforced. A threshold
+      # nobody chose is a number people learn to ignore.
+      - name: Coverage
+        run: make -C packages/t41-ptp-fork/test coverage
