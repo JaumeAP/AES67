@@ -549,9 +549,6 @@ private:
     // Device state
     std::atomic<double> currentDeviceSampleRate_{48000.0};
 
-    // PTP clock manager reference
-    std::shared_ptr<PTPClockManager> ptpManager_;
-
     // Callbacks
     StreamCallback streamAddedCallback_;
     StreamCallback streamRemovedCallback_;
