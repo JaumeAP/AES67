@@ -147,7 +147,7 @@ if [ "${AES67_ANALYSE:-0}" = "1" ] || [ "${analyse:-0}" = "1" ]; then
   jobs="$(sysctl -n hw.logicalcpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 
   echo "==> Static analysis"
-  scripts/check-tidy.sh build || { echo "FAIL: clang-tidy" >&2; exit 1; }
+  ../../scripts/check-tidy.sh build || { echo "FAIL: clang-tidy" >&2; exit 1; }
 
   # Found the way check-tidy.sh finds clang-tidy: neither ships with the
   # Command Line Tools, and both live in ~/.local/venvs/cpptools on this
