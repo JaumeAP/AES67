@@ -13,20 +13,21 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+DRIVER_PACKAGE="$(cd "$SCRIPT_DIR/../aes67-macos-driver" && pwd)"
 
-# Same convention as build.sh: CMake passes its binary directory, and a
-# standalone run falls back to this package's own build/.
-BUILD_DIR="${AES67_BUILD_DIR:-$PROJECT_ROOT/build}"
+# Same convention as build.sh: CMake passes the driver's binary directory, and
+# a standalone run falls back to that package's own build/. The version is the
+# driver's too -- this image ships the driver, so it carries its number.
+BUILD_DIR="${AES67_BUILD_DIR:-$DRIVER_PACKAGE/build}"
 
 APP="$SCRIPT_DIR/AES67Manager.app"
-VERSION="$(sed -n 's/^\([0-9][0-9.]*\)-build.*/\1/p' "$PROJECT_ROOT/VERSION.txt")"
+VERSION="$(sed -n 's/^\([0-9][0-9.]*\)-build.*/\1/p' "$DRIVER_PACKAGE/VERSION.txt")"
 OUTPUT_DIR="$BUILD_DIR/dmg"
 STAGING_DIR="$OUTPUT_DIR/staging"
 DMG="$OUTPUT_DIR/AES67Manager-${VERSION}.dmg"
 
 if [ ! -d "$APP" ]; then
-    echo "ERROR: $APP not found. Build the app first (ManagerApp/build.sh)." >&2
+    echo "ERROR: $APP not found. Build the app first (build.sh)." >&2
     exit 1
 fi
 

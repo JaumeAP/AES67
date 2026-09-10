@@ -25,7 +25,6 @@ DerivedData/
 project.xcworkspace/
 
 # Swift build cache for the manager app.
-ManagerApp/.build/
 
 # Test output.
 Tests/output/

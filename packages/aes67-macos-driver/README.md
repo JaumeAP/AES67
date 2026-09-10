@@ -165,7 +165,6 @@ AES67Driver/
 ├── Tools/                   # Test utilities
 │   ├── AES67TestSender      # Sends RTP test packets over loopback
 │   └── AES67TestReceiver    # Receives and validates RTP packets
-├── ManagerApp/              # SwiftUI configuration app
 └── Tests/                   # Unit & integration tests
 ```
 
@@ -347,7 +346,7 @@ System Settings > Privacy & Security > Microphone.
 ### Build Manager App
 
 ```bash
-cd ManagerApp
+cd ../aes67-macos-manager
 ./build.sh
 open AES67Manager.app
 ```

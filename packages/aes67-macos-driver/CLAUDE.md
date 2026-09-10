@@ -193,7 +193,7 @@ system_profiler SPAudioDataType | grep -A 5 "AES67"   # verify it loaded
 
 Build options (pass as `-DOPTION=OFF` to skip): `BUILD_TESTS`, `BUILD_EXAMPLES`, `BUILD_TOOLS` — all `ON` by default.
 
-**CI runs on this machine, not on GitHub (2026-08-25).** The Actions workflow was disabled and deleted; `scripts/gate.sh` replaces it, running the same configure/build/test steps plus the old lint job's two greps. `.githooks/pre-push` runs the monorepo's `scripts/gate.sh`, which runs this one along with every other package's, so a red build in any of them blocks the push — skip one with `git push --no-verify` or `SKIP_LOCAL_CI=1`. A fresh clone must opt in once with `git config core.hooksPath .githooks`; the setting is local, not carried by the repo, and it points at the root of the monorepo -- it was left pointing at the old standalone checkout by the move, which meant no push was gated at all until 2026-09-05. The gate builds everything: driver, tests, tools, examples and `ManagerApp` (tools and examples were excluded until 2026-09-04, which let them rot unnoticed). That app compiles with the Command Line Tools because its `#Preview` blocks live in `ManagerApp/Views/Previews/`, which `build.sh` deliberately leaves out of its source list — the `#Preview` macro needs the `PreviewsMacros` plugin that ships with full Xcode. Keep new previews in that directory, and add them to the Xcode target rather than to `build.sh`. `-DBUILD_MANAGER_APP=OFF` skips the app on a machine without a Swift toolchain.
+**CI runs on this machine, not on GitHub (2026-08-25).** The Actions workflow was disabled and deleted; `scripts/gate.sh` replaces it, running the same configure/build/test steps plus the old lint job's two greps. `.githooks/pre-push` runs the monorepo's `scripts/gate.sh`, which runs this one along with every other package's, so a red build in any of them blocks the push — skip one with `git push --no-verify` or `SKIP_LOCAL_CI=1`. A fresh clone must opt in once with `git config core.hooksPath .githooks`; the setting is local, not carried by the repo, and it points at the root of the monorepo -- it was left pointing at the old standalone checkout by the move, which meant no push was gated at all until 2026-09-05. The gate builds everything in this package: driver, tests, tools and examples (tools and examples were excluded until 2026-09-04, which let them rot unnoticed). The Manager app is `packages/aes67-macos-manager` now, with a gate of its own that the tree gate runs after this one.
 
 **The platform-free core is the sibling package `packages/aes67-core`**, pulled in with `add_subdirectory` and no longer a submodule of anything. Editing it is an ordinary edit in this tree, in the same commit as the change that needs it -- there is no submodule bump any more. Its nineteen test suites build and run from the root `ctest` alongside this package's, and so do the three of `packages/aes67-profiles`, the package the compatibility profiles, the Dolby per-model data and the PTP profiles moved to on 2026-09-07 -- tables both this core and the Teensy firmware read, so neither carries a copy; they were forced off here until 2026-09-05, which meant nobody ran them at all. What belongs here is macOS-specific code plus `aes67_net`. The old wording, that this repository was the base others consume, is what the split undid.
 
@@ -203,7 +203,7 @@ Tests carry CTest labels: `unit`, `timing` (wall-clock or multi-threaded), `netw
 
 Test suites use doctest (the `external/doctest` submodule at the root of the monorepo, shared with the core; link `doctest_headers`, define `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); the migration off hand-written `main`s finished, so a new suite has no other shape to copy. Never use bare `assert()` in a test: the gate builds Release with `-DNDEBUG` and it compiles away silently.
 
-The Manager app has host tests of its own: `ManagerApp/run-tests.sh`, registered as the CTest
+The Manager app has host tests of its own: `../aes67-macos-manager/run-tests.sh`, registered as the CTest
 `ManagerAppUnit`. Plain `swiftc`, no XCTest and no SwiftPM, covering the parts that are pure values
 -- today `Models/PrivilegedScript.swift`, which builds the one privileged command the app runs.
 That command crosses AppleScript's escaping and then the shell's, and getting it wrong produces a
@@ -214,7 +214,7 @@ with `SMAppService` from the copy inside its own bundle (`Contents/MacOS/aes67pt
 `Contents/Library/LaunchDaemons`) rather than copying anything into `/Library` or `/usr/local`.
 There is no `.pkg`: `make dmg` builds the disk image that is the whole delivery.
 
-Manager app can be built standalone: `cd ManagerApp && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
+Manager app can be built standalone: `cd ../aes67-macos-manager && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
 CTest names map 1:1 to `Tests/*.cpp` — `Tests/CMakeLists.txt` is the list, not this file; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
 
@@ -227,7 +227,6 @@ Driver/          AudioServerPlugIn (libASPL): device declaration, IO callbacks, 
 NetworkEngine/   RTP, PTP, stream lifecycle, resampling, SAP/RTSP discovery
 Shared/          Cross-cutting: what is left that is macOS-specific; the ring buffer, types, config, logging and error recovery are in the core
 Tools/           CLI sender/receiver for exercising the RTP path over loopback (no hardware needed)
-ManagerApp/      SwiftUI menu-bar app; talks to the driver via DriverManager.cpp (Core Audio APIs)
 Tests/           One CMake target + CTest entry per subsystem, plus multi-stream/full-path integration tests
 ```
 
@@ -268,7 +267,7 @@ lists, not file presence.
 
 #### Manager app
 
-SwiftUI app in `ManagerApp/`; `Models/DriverManager.swift` wraps `DriverManager.cpp` (a small C++ shim over Core Audio HAL APIs) to talk to the installed driver. Build with `ManagerApp/build.sh` (plain `swiftc`, not SwiftPM, despite `Package.swift` existing). Its functional status against a live driver is unverified — treat UI claims skeptically per README.
+SwiftUI app in `packages/aes67-macos-manager`; `Models/DriverManager.swift` wraps `DriverManager.cpp` (a small C++ shim over Core Audio HAL APIs) to talk to the installed driver. Build with its `build.sh` (plain `swiftc`, not SwiftPM, despite `Package.swift` existing). Its functional status against a live driver is unverified — treat UI claims skeptically per README.
 
 ### Conventions
 

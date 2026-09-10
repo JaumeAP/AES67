@@ -3,7 +3,7 @@
 // AES67 Manager
 // Xcode canvas previews, kept out of the view file itself.
 //
-// ManagerApp/build.sh lists its sources explicitly and does not include
+// build.sh lists its sources explicitly and does not include
 // this directory: the #Preview macro needs the PreviewsMacros plugin,
 // which ships with full Xcode and not with the Command Line Tools, so a
 // command-line build would fail on it. Open the project in Xcode and add

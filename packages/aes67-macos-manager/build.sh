@@ -70,10 +70,11 @@ cp Resources/Info.plist AES67Manager.app/Contents/
 # DriverManager.installDriver/uninstallDriver — so anything missing here is
 # something the Install button cannot put down.
 #
-# The build directory comes from CMake (AES67_BUILD_DIR); the fallback is what
-# a standalone build of this package uses. Missing artifacts are a warning,
-# not an error: the app still builds, and says what it could not embed.
-BUILD_DIR="${AES67_BUILD_DIR:-../build}"
+# The build directory comes from CMake (AES67_BUILD_DIR); the fallback is the
+# driver package's own build/, next door, which is where those artifacts land
+# when that package is built on its own. Missing artifacts are a warning, not
+# an error: the app still builds, and says what it could not embed.
+BUILD_DIR="${AES67_BUILD_DIR:-../aes67-macos-driver/build}"
 
 DRIVER_BUNDLE="$BUILD_DIR/AES67Driver.driver"
 if [ -d "$DRIVER_BUNDLE" ]; then

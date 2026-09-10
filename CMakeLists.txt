@@ -48,6 +48,13 @@ endif()
 
 add_subdirectory(packages/aes67-macos-driver)
 
+# The app embeds what the driver's build produced, so it is told where that
+# is: this build's binary directory for the driver, not the driver package's
+# own build/, which a root build never fills.
+set(AES67_MACOS_DRIVER_BUILD_DIR "${CMAKE_BINARY_DIR}/packages/aes67-macos-driver"
+    CACHE PATH "Directory holding the built driver bundle and PTP daemon" FORCE)
+add_subdirectory(packages/aes67-macos-manager)
+
 # After the driver, because it defines aes67_core and aes67_profiles and both
 # of these guard on the targets already existing. On a Mac this gives the PTP
 # wire library and its three suites and no daemon, which is what that package
