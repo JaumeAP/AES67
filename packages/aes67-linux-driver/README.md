@@ -17,10 +17,26 @@ put it next to the other packages in this tree.
 The kernel module is a submodule of this package in its own right,
 `external/ravenna-alsa-lkm`, and that is the copy this package builds and
 reads: `RAVENNA_ALSA_LKM_DIR` points at it, and so do the mirrors that hold
-our own code against the module's rules. The daemon carries a second checkout
-of the same repository under `3rdparty/`, which its own `build.sh` uses. Two
-copies of one thing are worth nothing unless they agree, so the gate refuses
-to pass when the two pins differ.
+our own code against the module's rules.
+
+The daemon pins the same repository again under its own `3rdparty/`, for
+upstream's `build.sh`. This package does not use that checkout and does not
+want it on disk twice, so it is left uninitialised:
+
+```bash
+git submodule update --init --recursive
+git -C packages/aes67-linux-driver/external/aes67-linux-daemon \
+    submodule deinit -f 3rdparty/ravenna-alsa-lkm
+```
+
+The pin stays in the daemon's tree either way, and the gate reads it from
+there -- without a checkout -- and refuses to pass when it differs from what
+this package pins. Two pins of one repository are worth nothing unless they
+agree.
+
+Building the daemon with upstream's own `build.sh`, rather than through this
+package's CMake, is what wants that second checkout back:
+`git -C ... submodule update --init 3rdparty/ravenna-alsa-lkm`.
 
 The daemon and the kernel module talk over netlink. The module is the PTP
 slave and clocks every source and sink from that one clock; the daemon
