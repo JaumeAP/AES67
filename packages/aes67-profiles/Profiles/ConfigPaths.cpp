@@ -24,7 +24,7 @@ std::vector<std::string> configSearchPaths(const char* envVar, const std::string
 
     if (envVar != nullptr) {
         const char* envPath = std::getenv(envVar);
-        if (envPath && envPath[0] != '\0') paths.push_back(envPath);
+        if (envPath && envPath[0] != '\0') paths.emplace_back(envPath);
     }
 
     const std::string systemPath = std::string(kSupportDirectory) + fileName;
@@ -32,7 +32,7 @@ std::vector<std::string> configSearchPaths(const char* envVar, const std::string
 
     const char* home = std::getenv("HOME");
     if (!home) {
-        struct passwd* pw = getpwuid(getuid());
+        const struct passwd* pw = getpwuid(getuid());
         if (pw) home = pw->pw_dir;
     }
     if (home && home[0] != '\0') {

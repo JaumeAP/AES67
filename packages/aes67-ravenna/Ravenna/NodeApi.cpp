@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <iterator>
 #include "Ravenna/NodeApi.h"
 
 #include <arpa/inet.h>
@@ -64,9 +66,7 @@ JsonValue tagsEmpty() { return JsonValue(JsonObject{}); }
 /// left is still the name a person picked.
 std::string oneLabel(const std::string& name) {
     std::string label = name;
-    for (char& character : label) {
-        if (character == '.') character = ' ';
-    }
+    std::replace(label.begin(), label.end(), '.', ' ');
     return label;
 }
 
@@ -158,13 +158,13 @@ JsonValue NodeApi::self() const {
 JsonValue NodeApi::devices() const {
     JsonArray senderIds;
     for (const std::string& name : catalogue_.names()) {
-        senderIds.push_back(JsonValue(senderIdFor(name)));
+        senderIds.emplace_back(senderIdFor(name));
     }
 
     JsonArray receiverIds;
-    for (const std::string& id : connections_.receiverIds()) {
-        receiverIds.push_back(JsonValue(id));
-    }
+    const std::vector<std::string> ids = connections_.receiverIds();
+    std::transform(ids.begin(), ids.end(), std::back_inserter(receiverIds),
+                   [](const std::string& id) { return JsonValue(id); });
 
     const std::string base = "http://" + addressText(identity_.addressV4) + ":" +
                              std::to_string(identity_.apiPort);
@@ -199,8 +199,8 @@ JsonValue NodeApi::sources() const {
 
         JsonArray channels;
         for (uint16_t i = 0; i < session->sdp.numChannels; ++i) {
-            channels.push_back(JsonValue(JsonObject{
-                {"label", JsonValue("Channel " + std::to_string(i + 1))}}));
+            channels.emplace_back(JsonObject{
+                {"label", JsonValue("Channel " + std::to_string(i + 1))}});
         }
 
         JsonObject source;
@@ -215,7 +215,7 @@ JsonValue NodeApi::sources() const {
         source["clock_name"] = JsonValue("clk0");
         source["format"] = JsonValue("urn:x-nmos:format:audio");
         source["channels"] = JsonValue(channels);
-        items.push_back(JsonValue(source));
+        items.emplace_back(source);
     }
     return JsonValue(items);
 }
@@ -244,7 +244,7 @@ JsonValue NodeApi::flows() const {
             {"denominator", JsonValue(1)}});
         flow["bit_depth"] =
             JsonValue(session->sdp.encoding == "L16" ? 16 : 24);
-        items.push_back(JsonValue(flow));
+        items.emplace_back(flow);
     }
     return JsonValue(items);
 }
@@ -275,7 +275,7 @@ JsonValue NodeApi::senders() const {
                       senderIdFor(name) + "/transportfile/");
         sender["subscription"] = JsonValue(JsonObject{
             {"receiver_id", JsonValue()}, {"active", JsonValue(true)}});
-        items.push_back(JsonValue(sender));
+        items.emplace_back(sender);
     }
     return JsonValue(items);
 }
@@ -302,7 +302,7 @@ JsonValue NodeApi::receivers() const {
             {"media_types", JsonValue(JsonArray{JsonValue("audio/L24"), JsonValue("audio/L16")})}});
         receiver["subscription"] = JsonValue(JsonObject{
             {"sender_id", JsonValue()}, {"active", JsonValue(active)}});
-        items.push_back(JsonValue(receiver));
+        items.emplace_back(receiver);
     }
     return JsonValue(items);
 }
@@ -351,9 +351,11 @@ ApiResponse NodeApi::handle(const std::string& method, const std::string& path,
     if (segments.size() == 1) return jsonResponse(200, found);
 
     // One resource by id.
-    for (const JsonValue& item : found.asArray()) {
-        if (item["id"].asString() == segments[1]) return jsonResponse(200, item);
-    }
+    const JsonArray& items = found.asArray();
+    const auto match = std::find_if(items.begin(), items.end(), [&](const JsonValue& item) {
+        return item["id"].asString() == segments[1];
+    });
+    if (match != items.end()) return jsonResponse(200, *match);
     return errorResponse(404, "no " + collection + " with id " + segments[1]);
 }
 

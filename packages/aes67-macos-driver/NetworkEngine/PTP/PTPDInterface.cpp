@@ -15,8 +15,8 @@
 namespace AES67 {
 
 PTPDInterface::PTPDInterface(bool useStub)
-    : running_(false)
-    , stubMode_(useStub)
+    : 
+     stubMode_(useStub)
 {
     // Initialize state with defaults
     state_.masterOffsetNs.store(0);

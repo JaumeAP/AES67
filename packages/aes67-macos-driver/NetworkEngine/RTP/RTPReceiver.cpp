@@ -74,13 +74,8 @@ RTPReceiver::RTPReceiver(
 
     // Resolve network interface name to IP address
     if (!networkInterface_.empty()) {
-        bool looksLikeIP = true;
-        for (char c : networkInterface_) {
-            if (c != '.' && !isdigit(c)) {
-                looksLikeIP = false;
-                break;
-            }
-        }
+        const bool looksLikeIP = std::all_of(networkInterface_.begin(), networkInterface_.end(),
+                                             [](char c) { return c == '.' || isdigit(c); });
 
         if (looksLikeIP) {
             resolvedInterfaceIP_ = networkInterface_;
@@ -402,8 +397,8 @@ void RTPReceiver::consumeLoop() {
 
             size_t deviceCh = mapping_.deviceChannelStart;
             if (deviceCh < 128) {
-                auto& ringBuf = deviceChannels_[deviceCh];
-                size_t cap = ringBuf.capacity();
+                const auto& ringBuf = deviceChannels_[deviceCh];
+                const size_t cap = ringBuf.capacity();
                 if (cap > 0) {
                     double fillRatio = static_cast<double>(ringBuf.available()) /
                                        static_cast<double>(cap);
@@ -440,7 +435,7 @@ void RTPReceiver::processPacket(const RTP::RTPPacket& packet) {
     uint32_t timestamp = packet.header.timestamp;
 
     // Get payload
-    uint8_t* payload = packet.payload;
+    const uint8_t* payload = packet.payload;
     size_t payloadSize = packet.payloadSize;
 
     if (!payload || payloadSize == 0) {

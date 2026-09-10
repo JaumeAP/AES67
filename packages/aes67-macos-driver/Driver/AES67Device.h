@@ -74,7 +74,7 @@ public:
     //
     explicit AES67Device(const std::shared_ptr<aspl::Context>& context);
 
-    ~AES67Device();
+    ~AES67Device() override;
 
     // Initialize device (must be called after construction)
     void Initialize();
@@ -205,7 +205,7 @@ private:
 
     // Calculate optimal ring buffer size based on sample rate
     // Returns size for desired latency (default: 3ms for network jitter tolerance)
-    // Result is rounded up to power of 2 for efficient modulo operations
+    // Result is rounded up to a power of two
     static size_t CalculateRingBufferSize(Float64 sampleRate, double latencyMs = 3.0);
 
     // Ring buffers for audio data

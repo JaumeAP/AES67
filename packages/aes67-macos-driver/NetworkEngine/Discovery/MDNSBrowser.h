@@ -36,7 +36,7 @@ struct MDNSService {
     /// event-driven rather than periodic, so an entry only disappears
     /// when the responder actively withdraws it (see kServiceTimeout for
     /// the backstop).
-    std::chrono::steady_clock::time_point lastSeen{};
+    std::chrono::steady_clock::time_point lastSeen;
 
     bool isResolved() const { return port != 0 && !address.empty(); }
 };

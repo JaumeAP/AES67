@@ -65,9 +65,7 @@ bool ChannelMapping::containsDeviceChannel(int deviceCh) const {
 
 StreamChannelMapper::StreamChannelMapper() {
     // Initialize all device channels as unassigned
-    for (auto& owner : deviceChannelOwners_) {
-        owner = StreamID::null();
-    }
+    std::fill(deviceChannelOwners_.begin(), deviceChannelOwners_.end(), StreamID::null());
 }
 
 StreamChannelMapper::~StreamChannelMapper() = default;
@@ -159,9 +157,7 @@ void StreamChannelMapper::clearAll() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     mappings_.clear();
-    for (auto& owner : deviceChannelOwners_) {
-        owner = StreamID::null();
-    }
+    std::fill(deviceChannelOwners_.begin(), deviceChannelOwners_.end(), StreamID::null());
 }
 
 std::optional<ChannelMapping> StreamChannelMapper::createDefaultMapping(const SDPSession& sdp) {
@@ -461,11 +457,8 @@ void StreamChannelMapper::updateDeviceChannelOwners(const ChannelMapping& mappin
 void StreamChannelMapper::clearDeviceChannelOwners(const StreamID& streamID) {
     // Note: Caller must hold lock
 
-    for (auto& owner : deviceChannelOwners_) {
-        if (owner == streamID) {
-            owner = StreamID::null();
-        }
-    }
+    std::replace(deviceChannelOwners_.begin(), deviceChannelOwners_.end(),
+                 streamID, StreamID::null());
 }
 
 bool StreamChannelMapper::isRangeValid(uint16_t start, uint16_t count) const {

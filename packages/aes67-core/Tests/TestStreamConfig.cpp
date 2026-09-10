@@ -9,6 +9,8 @@
 
 #include "NetworkEngine/StreamConfig.h"
 #include "Driver/SDPParser.h"
+#include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <cassert>
 #include <cstring>
@@ -224,17 +226,23 @@ TEST_CASE("Config Search Paths") {
     CHECK(!paths.empty());
     CHECK(paths.size() >= 2);
 
-    // Verify paths contain expected components
-    bool hasUserPath = false;
-    bool hasSystemPath = false;
+    // Both paths end in the same tail, so a search for
+    // "Library/Application Support" matches either one and tells them apart
+    // from nothing. The system copy is that absolute path; the user's is the
+    // same tail under $HOME.
+    const std::string systemPath = "/Library/Application Support/AES67Driver/streams.json";
+    const char* home = std::getenv("HOME");
+    REQUIRE(home != nullptr);
+    const std::string userPath = std::string(home) + systemPath;
 
-    for (const auto& path : paths) {
-        if (path.find("Library/Application Support") != std::string::npos) {
-            hasUserPath = true;
-        }
-    }
+    const auto userAt = std::find(paths.begin(), paths.end(), userPath);
+    const auto systemAt = std::find(paths.begin(), paths.end(), systemPath);
 
-    CHECK(hasUserPath);
+    REQUIRE(userAt != paths.end());
+    REQUIRE(systemAt != paths.end());
+
+    // The user's own file is read before the system-wide one.
+    CHECK(userAt < systemAt);
 
     std::cout << "PASS" << std::endl;
 }

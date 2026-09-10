@@ -118,7 +118,7 @@ private:
     mutable std::mutex statusMutex_;
     PTPServiceStatus status_{};
     bool haveStatus_ = false;
-    std::chrono::steady_clock::time_point receivedAt_{};
+    std::chrono::steady_clock::time_point receivedAt_;
 
     std::atomic<int> connectCount_{0};
     std::atomic<int> rejectedCount_{0};

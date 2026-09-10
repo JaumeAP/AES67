@@ -79,7 +79,7 @@ private:
         in_addr ifAddr{};
     };
     std::vector<Membership> memberships_;
-    std::chrono::steady_clock::time_point lastRejoin_{};
+    std::chrono::steady_clock::time_point lastRejoin_;
 };
 
 } // namespace AES67

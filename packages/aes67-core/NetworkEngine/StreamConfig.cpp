@@ -301,7 +301,9 @@ std::optional<std::vector<PersistedStreamConfig>> StreamConfigManager::fromJSON(
             braceDepth++;
         } else if (c == '}') {
             braceDepth--;
-            if (braceDepth == 0 && !currentObject.empty()) {
+            // No emptiness test: the '}' was appended above, so the object
+            // holds at least that character.
+            if (braceDepth == 0) {
                 streamObjects.push_back(currentObject);
                 currentObject.clear();
             }

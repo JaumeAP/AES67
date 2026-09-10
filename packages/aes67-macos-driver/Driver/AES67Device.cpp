@@ -17,6 +17,7 @@
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <arpa/inet.h>
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace AES67 {
@@ -249,34 +250,33 @@ void AES67Device::Initialize() {
     // that refuses to load because a multicast join failed.
     if (activeProfile.usesSap) {
         sapListener_ = std::make_unique<SAPListener>();
-        if (sapListener_) {
-            // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
-            // source re-announces with changed transport, re-point any receive
-            // stream bound to it. Parsing happens here, off the audio path; the
-            // match/re-subscribe is StreamManager's job.
-            sapListener_->registerAnnouncementCallback(
-                [this](const SAPAnnouncement& a) {
-                    if (a.isDeletion || a.sessionDescription.empty()) return;
-                    if (!streamManager_) return;
-                    auto parsed = SDPParser::parseString(a.sessionDescription);
-                    if (!parsed) return;
-                    // The announcement has to come from the host it claims to
-                    // describe. Without this, any machine on the network can
-                    // re-point a live receiver at its own multicast group by
-                    // announcing a session that borrows the name and origin of a
-                    // real one (2026-09-04 audit). It does not survive a spoofed
-                    // source IP, but it removes the case that needs nothing but a
-                    // socket.
-                    if (parsed->originAddress.empty() ||
-                        parsed->originAddress != a.sourceAddress) {
-                        AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
-                                   "— ignored for sink-follow",
-                                   a.sourceAddress.c_str(), parsed->originAddress.c_str());
-                        return;
-                    }
-                    streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
-                });
-        }
+        // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
+        // source re-announces with changed transport, re-point any receive
+        // stream bound to it. Parsing happens here, off the audio path; the
+        // match/re-subscribe is StreamManager's job.
+        sapListener_->registerAnnouncementCallback(
+            [this](const SAPAnnouncement& a) {
+                if (a.isDeletion || a.sessionDescription.empty()) return;
+                if (!streamManager_) return;
+                auto parsed = SDPParser::parseString(a.sessionDescription);
+                if (!parsed) return;
+                // The announcement has to come from the host it claims to
+                // describe. Without this, any machine on the network can
+                // re-point a live receiver at its own multicast group by
+                // announcing a session that borrows the name and origin of a
+                // real one (2026-09-04 audit). It does not survive a spoofed
+                // source IP, but it removes the case that needs nothing but a
+                // socket.
+                if (parsed->originAddress.empty() ||
+                    parsed->originAddress != a.sourceAddress) {
+                    AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
+                               "— ignored for sink-follow",
+                               a.sourceAddress.c_str(), parsed->originAddress.c_str());
+                    return;
+                }
+                streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
+            });
+
         if (sapListener_->initialize() && sapListener_->start()) {
             AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
         } else {
@@ -417,9 +417,9 @@ void AES67Device::Initialize() {
         // The host's own storage is what Apple offers instead. The settings
         // file is still READ, because the label and the registry override are
         // the Manager app's to write; only the id is kept here.
-        static constexpr const char* kNodeIdKey = "nmos.nodeId";
         storage_ = std::make_shared<aspl::Storage>(context_);
         if (nmosSettings.nodeId.empty()) {
+            static constexpr const char* kNodeIdKey = "nmos.nodeId";
             auto [stored, ok] = storage_->ReadString(kNodeIdKey);
             if (ok && !stored.empty()) {
                 nmosSettings.nodeId = stored;
@@ -460,7 +460,6 @@ void AES67Device::Initialize() {
             // IS-05. Bound to an ephemeral port: this is a user-space driver
             // and the port it gets is what it advertises.
             connectionServer_ = std::make_unique<ConnectionAPIServer>(0);
-            std::string controlHref;
             nodeRouter_ = std::make_unique<NodeAPIRouter>(
                 node, std::string{}, [this] { return nmosSenderResources(); },
                 [this] { return nmosReceiverResources(); });
@@ -475,7 +474,7 @@ void AES67Device::Initialize() {
                     return applyConnectionPatch(id, patch);
                 });
             if (connectionStarted) {
-                controlHref = connectionServer_->controlHref(apiHost);
+                const std::string controlHref = connectionServer_->controlHref(apiHost);
                 node.apiHost = apiHost;
                 node.apiPort = connectionServer_->boundPort();
                 node.href = "http://" + apiHost + ":" + std::to_string(node.apiPort) + "/";
@@ -751,16 +750,13 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
 
     // Which of our receive streams this id names. The ids are derived from
     // the session name, so this is the same walk the listing does.
-    SDPSession target;
-    bool found = false;
-    for (const SDPSession& sdp : streamManager_->getReceiveSessions()) {
-        if (nmosIdFor("receiver", sdp.sessionName) == receiverId) {
-            target = sdp;
-            found = true;
-            break;
-        }
-    }
-    if (!found) return false;
+    const std::vector<SDPSession> sessions = streamManager_->getReceiveSessions();
+    const auto match = std::find_if(sessions.begin(), sessions.end(),
+                                    [&](const SDPSession& sdp) {
+                                        return nmosIdFor("receiver", sdp.sessionName) == receiverId;
+                                    });
+    if (match == sessions.end()) return false;
+    const SDPSession target = *match;
 
     // A patch with no activation is staged and not applied. This driver
     // keeps no staged state, so saying yes to it would be a promise it
@@ -773,11 +769,12 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
             std::lock_guard<std::mutex> lock(receiverSenderIdsMutex_);
             receiverSenderIds_.erase(receiverId);
         }
-        for (const StreamInfo& info : streamManager_->getActiveStreams()) {
-            if (info.name == target.sessionName) {
-                return streamManager_->removeStream(info.id);
-            }
-        }
+        const std::vector<StreamInfo> active = streamManager_->getActiveStreams();
+        const auto running = std::find_if(active.begin(), active.end(),
+                                          [&](const StreamInfo& info) {
+                                              return info.name == target.sessionName;
+                                          });
+        if (running != active.end()) return streamManager_->removeStream(running->id);
         return true;   // already not running: the controller got what it asked for
     }
 
@@ -991,13 +988,9 @@ Float64 AES67Device::GetSampleRate() const {
 
 OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
     // Validate sample rate
-    bool isValid = false;
-    for (auto validRate : kSupportedSampleRates) {
-        if (std::abs(sampleRate - validRate) < 0.1) {
-            isValid = true;
-            break;
-        }
-    }
+    const bool isValid = std::any_of(
+        kSupportedSampleRates.begin(), kSupportedSampleRates.end(),
+        [sampleRate](auto validRate) { return std::abs(sampleRate - validRate) < 0.1; });
 
     if (!isValid) {
         return kAudioHardwareUnsupportedOperationError;
@@ -1056,9 +1049,9 @@ OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
 std::vector<AudioValueRange> AES67Device::GetAvailableSampleRates() const {
     std::vector<AudioValueRange> ranges;
     ranges.reserve(kSupportedSampleRates.size());
-for (auto rate : kSupportedSampleRates) {
-        ranges.push_back({rate, rate});
-    }
+    std::transform(kSupportedSampleRates.begin(), kSupportedSampleRates.end(),
+                   std::back_inserter(ranges),
+                   [](auto rate) { return AudioValueRange{rate, rate}; });
     return ranges;
 }
 
@@ -1068,13 +1061,9 @@ UInt32 AES67Device::GetBufferSize() const {
 
 OSStatus AES67Device::SetBufferSize(UInt32 bufferSize) {
     // Validate buffer size
-    bool isValid = false;
-    for (auto validSize : kSupportedBufferSizes) {
-        if (bufferSize == validSize) {
-            isValid = true;
-            break;
-        }
-    }
+    const bool isValid = std::any_of(
+        kSupportedBufferSizes.begin(), kSupportedBufferSizes.end(),
+        [bufferSize](auto validSize) { return bufferSize == validSize; });
 
     if (!isValid) {
         return kAudioHardwareUnsupportedOperationError;
@@ -1331,14 +1320,17 @@ size_t AES67Device::CalculateRingBufferSize(Float64 sampleRate, double latencyMs
     // - Processing delays (typical: 0.5-1ms)
     // - Scheduling variations (typical: 0.5-1ms)
     //
-    // Power-of-2 sizing enables efficient modulo operations
+    // The size is a power of two because it keeps the numbers round and the
+    // growth predictable, not because the ring buffer masks with it: the
+    // internal size is capacity+1, sentinel included, so it never is one. See
+    // SPSCRingBuffer::wrap.
 
     // Calculate minimum size based on latency requirement
     const size_t minSize = static_cast<size_t>(
         (sampleRate * latencyMs) / 1000.0
     );
 
-    // Round up to next power of 2 for efficient modulo operations
+    // Round up to the next power of two.
     size_t size = 1;
     while (size < minSize) {
         size <<= 1;

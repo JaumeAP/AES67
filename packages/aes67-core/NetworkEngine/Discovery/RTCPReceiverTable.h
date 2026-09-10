@@ -23,7 +23,9 @@
 // never the sole source of truth.
 //
 
+#include <algorithm>
 #include <array>
+#include <iterator>
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -45,8 +47,8 @@ struct RTCPReporter {
     uint32_t ssrc{0};
     std::string sourceIp;   // last source IP seen
     std::string cname;      // from SDES, when present
-    std::chrono::steady_clock::time_point firstSeen{};
-    std::chrono::steady_clock::time_point lastSeen{};
+    std::chrono::steady_clock::time_point firstSeen;
+    std::chrono::steady_clock::time_point lastSeen;
     uint64_t packetCount{0};
 };
 
@@ -110,10 +112,9 @@ public:
     void record(uint32_t ssrc, const std::string& sourceIp, const std::string& cname,
                 std::chrono::steady_clock::time_point now) {
         if (rows_.find(ssrc) == rows_.end() && rows_.size() >= kMaxReporters) {
-            auto oldest = rows_.begin();
-            for (auto it = rows_.begin(); it != rows_.end(); ++it) {
-                if (it->second.lastSeen < oldest->second.lastSeen) oldest = it;
-            }
+            const auto oldest = std::min_element(
+                rows_.begin(), rows_.end(),
+                [](const auto& a, const auto& b) { return a.second.lastSeen < b.second.lastSeen; });
             if (oldest != rows_.end()) rows_.erase(oldest);
         }
         auto& r = rows_[ssrc];
@@ -134,7 +135,8 @@ public:
     std::vector<RTCPReporter> reporters() const {
         std::vector<RTCPReporter> out;
         out.reserve(rows_.size());
-        for (const auto& kv : rows_) out.push_back(kv.second);
+        std::transform(rows_.begin(), rows_.end(), std::back_inserter(out),
+                       [](const auto& kv) { return kv.second; });
         return out;
     }
 

@@ -1,4 +1,5 @@
 #include "ErrorRecoveryManager.h"
+#include <algorithm>
 #include <thread>
 #include <utility>
 
@@ -67,12 +68,8 @@ std::chrono::steady_clock::duration ErrorRecoveryManager::getTimeSinceLastError(
 }
 
 bool ErrorRecoveryManager::isInRecovery() const {
-    for (const auto& pair : recoveryActions_) {
-        if (pair.second.inProgress) {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(recoveryActions_.begin(), recoveryActions_.end(),
+                       [](const auto& pair) { return pair.second.inProgress; });
 }
 
 size_t ErrorRecoveryManager::getRecoveryAttempts() const {

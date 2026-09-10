@@ -3,6 +3,7 @@
 // AES67 macOS Driver
 //
 
+#include <iterator>
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
 #include "NetworkEngine/JsonEscape.h"
 
@@ -104,9 +105,9 @@ std::string uuidText(const uint8_t bytes[16]) {
 /// nothing only if two callers disagree about what a namespace is.
 bool uuidBytes(const std::string& text, uint8_t out[16]) {
     std::string hex;
-    for (char c : text) {
-        if (std::isxdigit(static_cast<unsigned char>(c))) hex.push_back(c);
-    }
+    std::copy_if(text.begin(), text.end(), std::back_inserter(hex), [](char c) {
+        return std::isxdigit(static_cast<unsigned char>(c)) != 0;
+    });
     if (hex.size() != 32) return false;
     for (int i = 0; i < 16; i++) {
         out[i] = static_cast<uint8_t>(std::stoul(hex.substr(static_cast<size_t>(i) * 2, 2),

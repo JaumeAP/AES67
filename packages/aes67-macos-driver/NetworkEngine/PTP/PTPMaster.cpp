@@ -108,11 +108,10 @@ std::chrono::nanoseconds LogIntervalToNs(int8_t logInterval) {
         const int shift = logInterval < kMaxLeftShift ? logInterval : kMaxLeftShift;
         return std::chrono::nanoseconds(kNsPerSecond << shift);
     }
-    // The shift count, clamped into [0, kMaxRightShift] before it is used
-    // rather than inside the shift itself: a shift by a negative value is
-    // undefined, and a reader should be able to see that it cannot be one.
+    // The shift count, capped at kMaxRightShift before it is used rather than
+    // inside the shift itself. It cannot be negative: this is the branch where
+    // logInterval is below zero, so negating it lands above zero.
     int shift = -static_cast<int>(logInterval);
-    if (shift < 0) shift = 0;
     if (shift > kMaxRightShift) shift = kMaxRightShift;
     return std::chrono::nanoseconds(kNsPerSecond >> shift);
 }

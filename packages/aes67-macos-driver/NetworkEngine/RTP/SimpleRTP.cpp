@@ -23,8 +23,7 @@ namespace RTP {
 //
 
 RTPSocket::RTPSocket()
-    : sockfd_(-1)
-    , isReceiver_(false)
+     
 {
     memset(&multicastAddr_, 0, sizeof(multicastAddr_));
     memset(&boundInterfaceAddr_, 0, sizeof(boundInterfaceAddr_));
@@ -237,7 +236,7 @@ ssize_t RTPSocket::send(const RTPPacket& packet) {
 
     // Send header + payload
     struct iovec iov[2];
-    iov[0].iov_base = (void*)&header;
+    iov[0].iov_base = static_cast<void*>(&header);
     iov[0].iov_len = sizeof(header);
     iov[1].iov_base = packet.payload;
     iov[1].iov_len = packet.payloadSize;

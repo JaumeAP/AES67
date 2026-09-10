@@ -69,9 +69,10 @@ void PTPArbitrator::setMeasurementCallback(const PTPMeasurementCallback& cb) {
 
 void PTPArbitrator::updateDiagnostics(PTPDiagnostics& diag) const {
     const bool weAreMaster = master_->isActive();
-    if (weAreMaster) everWasMaster_.store(true, std::memory_order_relaxed);
 
     if (weAreMaster) {
+        everWasMaster_.store(true, std::memory_order_relaxed);
+
         // We're the grandmaster: no offset to report (we ARE the reference),
         // but the rest of the diagnostic surface should reflect that state
         // honestly rather than showing stale slave numbers.

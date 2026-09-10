@@ -61,7 +61,7 @@ inline constexpr uint8_t kControlOther = 0x05;
 /// this clock rather than of the profile, which is why none of them come from
 /// the shared profile table.
 struct AnnounceDataset {
-    PTPClockIdentity clockIdentity{};
+    PTPClockIdentity clockIdentity;
     uint8_t priority1 = 128;
     uint8_t priority2 = 128;
     uint8_t clockClass = 248;
@@ -75,7 +75,7 @@ struct AnnounceDataset {
 
 /// What every message this daemon sends has in common.
 struct PortContext {
-    PTPClockIdentity clockIdentity{};
+    PTPClockIdentity clockIdentity;
     uint16_t portNumber = 1;
     uint8_t domainNumber = 0;
     uint8_t majorSdoId = 0;

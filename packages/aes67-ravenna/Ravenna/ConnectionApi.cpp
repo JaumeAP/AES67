@@ -1,6 +1,7 @@
 #include "Ravenna/ConnectionApi.h"
 
 #include <algorithm>
+#include <iterator>
 #include <ctime>
 
 namespace AES67::Ravenna {
@@ -40,7 +41,8 @@ ApiResponse errorResponse(int status, const std::string& detail) {
 ApiResponse listResponse(const std::vector<std::string>& entries) {
     JsonArray items;
     items.reserve(entries.size());
-    for (const std::string& entry : entries) items.push_back(JsonValue(entry));
+    std::transform(entries.begin(), entries.end(), std::back_inserter(items),
+                   [](const std::string& entry) { return JsonValue(entry); });
     return jsonResponse(200, JsonValue(items));
 }
 

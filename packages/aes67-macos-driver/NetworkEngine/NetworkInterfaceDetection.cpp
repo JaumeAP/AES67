@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "NetworkInterfaceDetection.h"
 #include <sys/socket.h>
 #include <ifaddrs.h>
@@ -12,7 +13,8 @@
 namespace AES67 {
 
 std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     std::string primaryInterface;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -37,7 +39,7 @@ std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
                         name.substr(0, 3) == "usb") { // USB Ethernet
                     
                         // Prefer interfaces with actual IP addresses (not link-local)
-                        struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                        const auto* addr = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                         std::string ip = inet_ntoa(addr->sin_addr);
                         
                         // Skip link-local addresses (169.254.x.x)
@@ -57,7 +59,8 @@ std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
 
 std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
     std::vector<std::string> interfaces;
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -66,13 +69,8 @@ std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
                 std::string name(ifa->ifa_name);
                 
                 // Check if we already have this interface
-                bool found = false;
-                for (const auto& existing : interfaces) {
-                    if (existing == name) {
-                        found = true;
-                        break;
-                    }
-                }
+                const bool found =
+                    std::find(interfaces.begin(), interfaces.end(), name) != interfaces.end();
                 
                 if (!found) {
                     interfaces.push_back(name);
@@ -86,7 +84,8 @@ std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
 }
 
 bool NetworkInterfaceDetection::isInterfaceActive(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     bool isActive = false;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -105,7 +104,8 @@ bool NetworkInterfaceDetection::isInterfaceActive(const std::string& interfaceNa
 }
 
 bool NetworkInterfaceDetection::isEthernetInterface(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     bool isEthernet = false;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -126,14 +126,15 @@ bool NetworkInterfaceDetection::isEthernetInterface(const std::string& interface
 }
 
 std::string NetworkInterfaceDetection::getInterfaceIPAddress(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     std::string ipAddress;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
             if (ifa->ifa_name != nullptr && interfaceName == ifa->ifa_name) {
                 if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
-                    struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                    const auto* addr = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                     ipAddress = inet_ntoa(addr->sin_addr);
                     break;
                 }
@@ -146,7 +147,8 @@ std::string NetworkInterfaceDetection::getInterfaceIPAddress(const std::string& 
 }
 
 bool NetworkInterfaceDetection::supportsMulticast(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     bool hasMulticast = false;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -167,7 +169,8 @@ bool NetworkInterfaceDetection::supportsMulticast(const std::string& interfaceNa
 
 std::vector<std::string> NetworkInterfaceDetection::getMulticastCapableInterfaces() {
     std::vector<std::string> interfaces;
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -183,20 +186,15 @@ std::vector<std::string> NetworkInterfaceDetection::getMulticastCapableInterface
                 std::string name(ifa->ifa_name);
 
                 // Skip link-local addresses (169.254.x.x)
-                struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                const auto* addr = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                 std::string ip = inet_ntoa(addr->sin_addr);
                 if (ip.substr(0, 7) == "169.254") {
                     continue;
                 }
 
                 // Check if we already have this interface
-                bool found = false;
-                for (const auto& existing : interfaces) {
-                    if (existing == name) {
-                        found = true;
-                        break;
-                    }
-                }
+                const bool found =
+                    std::find(interfaces.begin(), interfaces.end(), name) != interfaces.end();
 
                 if (!found) {
                     interfaces.push_back(name);
@@ -219,11 +217,11 @@ std::string NetworkInterfaceDetection::detectPTPInterface() {
 
     // First pass: Look for dedicated AES67/audio interface naming conventions
     for (const auto& iface : interfaces) {
-        std::string lowerName = iface;
         // Convert to lowercase for case-insensitive comparison
-        for (auto& c : lowerName) {
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        }
+        std::string lowerName = iface;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](char c) {
+            return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        });
 
         if (lowerName.find("aes67") != std::string::npos ||
             lowerName.find("audio") != std::string::npos ||
@@ -234,20 +232,19 @@ std::string NetworkInterfaceDetection::detectPTPInterface() {
     }
 
     // Second pass: Prefer standard Ethernet interfaces (en0, en1, etc.)
-    for (const auto& iface : interfaces) {
-        if (iface.substr(0, 2) == "en") {
-            return iface;
-        }
-    }
+    const auto builtIn = std::find_if(interfaces.begin(), interfaces.end(), [](const auto& iface) {
+        return iface.substr(0, 2) == "en";
+    });
+    if (builtIn != interfaces.end()) return *builtIn;
 
     // Third pass: Accept other Ethernet-like interfaces
-    for (const auto& iface : interfaces) {
-        if (iface.substr(0, 3) == "eth" ||      // Alternative ethernet naming
-            iface.substr(0, 4) == "thun" ||     // Thunderbolt ethernet
-            iface.substr(0, 3) == "usb") {      // USB ethernet
-            return iface;
-        }
-    }
+    const auto ethernetLike =
+        std::find_if(interfaces.begin(), interfaces.end(), [](const auto& iface) {
+            return iface.substr(0, 3) == "eth" ||      // Alternative ethernet naming
+                   iface.substr(0, 4) == "thun" ||     // Thunderbolt ethernet
+                   iface.substr(0, 3) == "usb";        // USB ethernet
+        });
+    if (ethernetLike != interfaces.end()) return *ethernetLike;
 
     // Fall back to first available interface
     return interfaces[0];

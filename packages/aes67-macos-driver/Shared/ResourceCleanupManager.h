@@ -50,7 +50,7 @@ template<typename CleanupFunc>
 class ResourceGuard {
 public:
     ResourceGuard(CleanupFunc&& cleanup)
-        : cleanup_(std::forward<CleanupFunc>(cleanup)), active_(true) {}
+        : cleanup_(std::forward<CleanupFunc>(cleanup)) {}
     
     ~ResourceGuard() {
         if (active_) {
@@ -71,7 +71,7 @@ public:
 
 private:
     CleanupFunc cleanup_;
-    bool active_;
+    bool active_{true};
 };
 
 // Specialized guards for common resource types
@@ -84,7 +84,7 @@ public:
     
 private:
     int socket_fd_;
-    bool active_;
+    bool active_{true};
 };
 
 class MemoryGuard {
@@ -97,7 +97,7 @@ public:
 private:
     void* ptr_;
     std::function<void(void*)> deleter_;
-    bool active_;
+    bool active_{true};
 };
 
 // Global cleanup manager instance

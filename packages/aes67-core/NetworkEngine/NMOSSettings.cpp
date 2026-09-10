@@ -3,6 +3,7 @@
 // AES67 macOS Driver
 //
 
+#include <algorithm>
 #include "NMOSSettings.h"
 #include "NetworkEngine/JsonEscape.h"
 #include "Profiles/ConfigPaths.h"
@@ -91,7 +92,8 @@ std::string NMOSSettingsManager::generateNodeId() {
     std::uniform_int_distribution<uint32_t> byte(0, 255);
 
     uint8_t bytes[16];
-    for (uint8_t& b : bytes) b = static_cast<uint8_t>(byte(source));
+    std::generate(std::begin(bytes), std::end(bytes),
+                  [&] { return static_cast<uint8_t>(byte(source)); });
     bytes[6] = static_cast<uint8_t>((bytes[6] & 0x0F) | 0x40); // version 4
     bytes[8] = static_cast<uint8_t>((bytes[8] & 0x3F) | 0x80); // variant 1
 

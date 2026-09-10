@@ -99,20 +99,20 @@ private:
     double integralGain_;
 
     // PLL state
-    double phaseErrorAccumulator_;
-    double frequencyCorrection_;
-    double lastPhaseError_;
+    double phaseErrorAccumulator_{0.0};
+    double frequencyCorrection_{0.0};
+    double lastPhaseError_{0.0};
 
     // Timing references
-    uint64_t lastLocalTime_;
-    uint64_t lastRemoteTime_;
-    uint64_t lastSampleCount_;
-    uint32_t lastSampleRate_;
+    uint64_t lastLocalTime_{0};
+    uint64_t lastRemoteTime_{0};
+    uint64_t lastSampleCount_{0};
+    uint32_t lastSampleRate_{48000};
 
     // Status
     mutable std::mutex pllMutex_;
-    int lockCount_;
-    int lockThreshold_;
+    int lockCount_{0};
+    int lockThreshold_{10};
 
     // Constants
     // AES67 allows up to +/- 4.6 ppm for sample rate accuracy

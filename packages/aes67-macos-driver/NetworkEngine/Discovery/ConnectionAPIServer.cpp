@@ -3,6 +3,7 @@
 // AES67 macOS Driver
 //
 
+#include <iterator>
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 
 #include <arpa/inet.h>
@@ -364,7 +365,7 @@ private:
     /// The five leaves every sender and receiver carries.
     static std::vector<std::string> leaves(bool isSender) {
         std::vector<std::string> entries{"constraints/", "staged/", "active/", "transporttype/"};
-        if (isSender) entries.push_back("transportfile/");
+        if (isSender) entries.emplace_back("transportfile/");
         return entries;
     }
 
@@ -464,9 +465,13 @@ ConnectionAPIServer::Reply ConnectionAPIServer::Impl::route(const std::string& m
     if (pieces.size() == 5) {
         std::vector<std::string> ids;
         if (isSender) {
-            for (const ConnectionSender& sender : senderList) ids.push_back(sender.id + "/");
+            ids.reserve(senderList.size());
+            std::transform(senderList.begin(), senderList.end(), std::back_inserter(ids),
+                           [](const ConnectionSender& sender) { return sender.id + "/"; });
         } else {
-            for (const ConnectionReceiver& receiver : receiverList) ids.push_back(receiver.id + "/");
+            ids.reserve(receiverList.size());
+            std::transform(receiverList.begin(), receiverList.end(), std::back_inserter(ids),
+                           [](const ConnectionReceiver& receiver) { return receiver.id + "/"; });
         }
         return {200, "application/json", jsonList(ids)};
     }

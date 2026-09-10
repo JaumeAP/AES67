@@ -25,7 +25,9 @@
 // Docs/dac3202_autodetection_study.md.
 //
 
+#include <algorithm>
 #include <array>
+#include <iterator>
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -50,8 +52,8 @@ struct PTPPeerObservation {
     std::string sourceIp;                 // last source IP seen for this identity
     int domain{0};                        // last PTP domain seen
     uint32_t messageTypeMask{0};          // bit N set = message type N seen
-    std::chrono::steady_clock::time_point firstSeen{};
-    std::chrono::steady_clock::time_point lastSeen{};
+    std::chrono::steady_clock::time_point firstSeen;
+    std::chrono::steady_clock::time_point lastSeen;
     uint64_t messageCount{0};
 
     // Vendor OUI (first 3 bytes of the clock identity == the MAC OUI, because
@@ -154,15 +156,16 @@ public:
     std::vector<PTPPeerObservation> peers() const {
         std::vector<PTPPeerObservation> out;
         out.reserve(rows_.size());
-        for (const auto& kv : rows_) out.push_back(kv.second);
+        std::transform(rows_.begin(), rows_.end(), std::back_inserter(out),
+                       [](const auto& kv) { return kv.second; });
         return out;
     }
 
     // Count of peers matching a role, optionally restricted to one OUI.
     size_t countByRole(PTPPeerRole role) const {
-        size_t n = 0;
-        for (const auto& kv : rows_) if (kv.second.role() == role) ++n;
-        return n;
+        return static_cast<size_t>(std::count_if(
+            rows_.begin(), rows_.end(),
+            [role](const auto& kv) { return kv.second.role() == role; }));
     }
 
     size_t size() const { return rows_.size(); }
@@ -170,10 +173,9 @@ public:
 
 private:
     void evictLeastRecentlySeen() {
-        auto oldest = rows_.begin();
-        for (auto it = rows_.begin(); it != rows_.end(); ++it) {
-            if (it->second.lastSeen < oldest->second.lastSeen) oldest = it;
-        }
+        const auto oldest = std::min_element(
+            rows_.begin(), rows_.end(),
+            [](const auto& a, const auto& b) { return a.second.lastSeen < b.second.lastSeen; });
         if (oldest != rows_.end()) rows_.erase(oldest);
     }
 

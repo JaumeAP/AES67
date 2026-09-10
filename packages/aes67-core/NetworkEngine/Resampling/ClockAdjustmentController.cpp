@@ -11,8 +11,8 @@ ClockAdjustmentController::ClockAdjustmentController(LockFreeCircularJitterBuffe
     : jitterBuffer_(jitterBuffer), resampler_(resampler),
       piController_(kp, ki, -0.01, 0.01, 5),  // Limit to ±1% adjustment with smoothing window of 5
       targetFillRatio_(targetFillRatio),
-      currentRatio_(1.0), targetBufferLevel_(0), maxBufferLevel_(jitterBuffer.getMaxBufferSize()),
-      lastUpdateTime_(std::chrono::steady_clock::now()), lastError_(0.0) {
+       maxBufferLevel_(jitterBuffer.getMaxBufferSize()),
+      lastUpdateTime_(std::chrono::steady_clock::now()) {
     // resampler_ reserved for future use (adaptive resampling ratio adjustment)
     (void)resampler_;
     // Calculate the target buffer level based on the max size and target ratio

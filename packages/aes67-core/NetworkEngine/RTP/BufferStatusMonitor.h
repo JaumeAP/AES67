@@ -13,7 +13,7 @@ namespace AES67 {
  */
 class BufferStatusMonitor {
 public:
-    BufferStatusMonitor(size_t bufferSize);
+    explicit BufferStatusMonitor(size_t bufferSize);
     
     /**
      * Update the monitor with current fill level

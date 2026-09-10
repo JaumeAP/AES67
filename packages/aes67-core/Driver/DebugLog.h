@@ -28,7 +28,7 @@ inline void Log(const char* message) {
 
         char timestamp[64];
         time_t nowtime = tv.tv_sec;
-        struct tm* nowtm = localtime(&nowtime);
+        const struct tm* nowtm = localtime(&nowtime);
         (void)strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", nowtm);
 
         // A debug line that could not be written is not worth failing over.

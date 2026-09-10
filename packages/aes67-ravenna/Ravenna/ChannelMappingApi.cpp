@@ -65,7 +65,7 @@ JsonValue channelLabels(uint16_t count, const char* prefix) {
     for (uint16_t i = 0; i < count; ++i) {
         JsonObject channel;
         channel["label"] = JsonValue(std::string(prefix) + " " + std::to_string(i + 1));
-        channels.push_back(JsonValue(channel));
+        channels.emplace_back(channel);
     }
     return JsonValue(channels);
 }
@@ -220,9 +220,7 @@ ApiResponse ChannelMappingApi::activate(const std::string& body) {
         // names a new input or empties it. Two inputs on one output channel
         // is not a mix, it is a fault.
         for (auto& [receiverId, mapping] : updated) {
-            for (int& channel : mapping.channelMap) {
-                if (channel == deviceChannel) channel = -1;
-            }
+            std::replace(mapping.channelMap.begin(), mapping.channelMap.end(), deviceChannel, -1);
         }
 
         const JsonValue& input = cell["input"];

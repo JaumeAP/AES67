@@ -101,8 +101,7 @@ namespace {
 
 PTPSlave::PTPSlave(const PTPSlaveConfig& config)
     : config_(config)
-    , eventSocket_(-1)
-    , generalSocket_(-1)
+     
 {
     // The port number is configuration, not something start() discovers, and
     // a Delay_Resp is addressed to the whole port identity: setting it here
@@ -500,7 +499,8 @@ void PTPSlave::receiveThread() {
                 for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr;
                      cmsg = CMSG_NXTHDR(&msg, cmsg)) {
                     if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_TIMESTAMP) {
-                        struct timeval* tvp = reinterpret_cast<struct timeval*>(CMSG_DATA(cmsg));
+                        const struct timeval* tvp =
+                            reinterpret_cast<const struct timeval*>(CMSG_DATA(cmsg));
                         receiveTimeNs = static_cast<uint64_t>(tvp->tv_sec) * 1000000000ULL +
                                         static_cast<uint64_t>(tvp->tv_usec) * 1000ULL;
                         break;
@@ -609,10 +609,10 @@ void PTPSlave::storeFilteredPathDelay(int64_t delayNs) {
     delayHistoryIndex_ = (delayHistoryIndex_ + 1) % kDelayFilterSize;
     if (delayHistoryCount_ < kDelayFilterSize) delayHistoryCount_++;
 
-    int64_t minDelay = delayNs;
-    for (size_t i = 0; i < delayHistoryCount_; ++i) {
-        minDelay = std::min(minDelay, delayHistory_[i]);
-    }
+    const int64_t minDelay =
+        std::min(delayNs, *std::min_element(delayHistory_.begin(),
+                                            delayHistory_.begin() +
+                                                static_cast<ptrdiff_t>(delayHistoryCount_)));
     pathDelayNs_.store(minDelay, std::memory_order_release);
 }
 
@@ -1333,7 +1333,6 @@ void PTPSlave::calculateOffsetAndDelay() {
     }
 
     int64_t offset = 0;
-    int64_t delay = 0;
 
     if (haveDelay) {
         // Full four-timestamp calculation
@@ -1343,7 +1342,7 @@ void PTPSlave::calculateOffsetAndDelay() {
         int64_t slave2m = t4Ns - t3Ns;           // t4 - t3
 
         offset = (ms2slave - slave2m) / 2;
-        delay  = (ms2slave + slave2m) / 2;
+        const int64_t delay = (ms2slave + slave2m) / 2;
 
         storeFilteredPathDelay(delay);
     } else {
@@ -1358,10 +1357,10 @@ void PTPSlave::calculateOffsetAndDelay() {
     if (offsetHistoryCount_ < kOffsetFilterSize) offsetHistoryCount_++;
 
     // Compute filtered offset (average)
-    int64_t filteredOffset = 0;
-    for (size_t i = 0; i < offsetHistoryCount_; ++i) {
-        filteredOffset += offsetHistory_[i];
-    }
+    int64_t filteredOffset =
+        std::accumulate(offsetHistory_.begin(),
+                        offsetHistory_.begin() + static_cast<ptrdiff_t>(offsetHistoryCount_),
+                        int64_t{0});
     filteredOffset /= static_cast<int64_t>(offsetHistoryCount_);
 
     // Store computed offset

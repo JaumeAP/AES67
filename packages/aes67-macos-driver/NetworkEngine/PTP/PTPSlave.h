@@ -187,8 +187,8 @@ private:
     PTPSlaveConfig config_;
 
     // Sockets
-    int eventSocket_;    // UDP port 319 (Sync, Delay_Req, Delay_Resp)
-    int generalSocket_;  // UDP port 320 (Follow_Up, Announce)
+    int eventSocket_{-1};    // UDP port 319 (Sync, Delay_Req, Delay_Resp)
+    int generalSocket_{-1};  // UDP port 320 (Follow_Up, Announce)
 
     // Our clock identity
     PTPPortIdentity selfPortId_;

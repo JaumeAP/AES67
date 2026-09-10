@@ -5,6 +5,8 @@
 // Implements AES67-2018 Section 8.2 Media Clock Recovery
 //
 
+#include <iterator>
+#include <algorithm>
 #include "PTPClock.h"
 #include "AudioClockDeviceList.h"
 #include "PTPDInterface.h"
@@ -367,7 +369,9 @@ double PTPClock::getClockDriftRatio() const {
                               static_cast<int64_t>(oldest.ptpTimeNs);
 
         // Need sufficient time span for accurate calculation
-        if (localTimeDiff > static_cast<int64_t>(kMinDriftCalcIntervalNs) && localTimeDiff > 0) {
+        // kMinDriftCalcIntervalNs is positive, so clearing it is already
+        // proof the span is positive.
+        if (localTimeDiff > static_cast<int64_t>(kMinDriftCalcIntervalNs)) {
             double ratio = static_cast<double>(ptpTimeDiff) / static_cast<double>(localTimeDiff);
 
             // Clamp to reasonable bounds
@@ -561,9 +565,8 @@ std::vector<int> PTPClockManager::getActiveDomains() const {
 
     std::vector<int> domains;
     domains.reserve(clocks_.size());
-for (const auto& pair : clocks_) {
-        domains.push_back(pair.first);
-    }
+    std::transform(clocks_.begin(), clocks_.end(), std::back_inserter(domains),
+                   [](const auto& pair) { return pair.first; });
 
     return domains;
 }

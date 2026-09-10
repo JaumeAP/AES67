@@ -81,16 +81,13 @@ bool NetworkErrorHandler::attemptRecovery() {
     
     LOG_INFO("Starting network recovery procedure...");
     
-    // Perform recovery steps based on the type of errors
-    // This is where specific recovery logic would go
-    bool success = true;  // Placeholder - implement actual recovery logic
-    
-    if (success) {
-        LOG_INFO("Network recovery completed successfully");
-        recentErrorCount_.store(0);  // Reset recent error count
-    } else {
-        LOG_ERROR("Network recovery failed");
-    }
+    // There are no recovery steps of its own to run here: what recovers a
+    // socket is the owner reopening it, and this handler's part is to say the
+    // attempt happened and clear the recent error count so the next failure is
+    // judged on its own. The branch that used to test a hardcoded `true` said
+    // nothing and hid that.
+    LOG_INFO("Network recovery completed");
+    recentErrorCount_.store(0);
     
     // Update recovery timestamp
     lastRecoveryAttempt_ = std::chrono::steady_clock::now();
@@ -98,7 +95,7 @@ bool NetworkErrorHandler::attemptRecovery() {
     // Clear recovery flag after a delay
     recoveryActive_.store(false);
     
-    return success;
+    return true;
 }
 
 } // namespace AES67
