@@ -20,7 +20,12 @@ This is a package of the `JaumeAP/AES67` monorepo. It used to be a repository
 of its own, `JaumeAP/t41-ptp`, which is gone now. The two libraries it needs
 arrive differently, and the difference is whose code it is.
 
-- `libraries/QNEthernet` — QNEthernet with IEEE 1588 support: [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) plus three commits, and it is a directory in this tree rather than a checkout of anything. Nothing serves those three commits: this is the only copy, which is the reason for the paragraph below and the reason nobody can update it out from under this package.
+- `libraries/QNEthernet` — QNEthernet with IEEE 1588 support: [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) plus three commits. A `git subtree`, not a submodule and not a bare copy: upstream's 617 commits are commits of THIS repository, under this path, so `git log` answers where any line came from and a clone needs nothing initialised. Bringing later upstream work in, if there ever is any worth having:
+
+  ```bash
+  git subtree pull --prefix packages/t41-ptp-fork/libraries/QNEthernet \
+    https://github.com/HedgeHawk/QNEthernet.git ieee1588-2-fix
+  ```
 - `libraries/Time` — `TimeLib.h`, used for the log output. This one is upstream's own, [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), a submodule of the monorepo pinned at `a18e50d` (v1.6.1): run `git submodule update --init` after cloning, or the directory is empty.
 
 #### Why QNEthernet comes from a fork
