@@ -20,7 +20,10 @@ public:
     static constexpr size_t DEFAULT_POOL_SIZE = 100;
 
     struct PooledRTPPacket {
-        uint8_t data[MAX_PACKET_SIZE];
+        // Zeroed, for the same reason as LockFreeBufferPacket::data: every read
+        // is bounded by `length`, and that is the callers' discipline, not the
+        // struct's.
+        uint8_t data[MAX_PACKET_SIZE]{};
         size_t length;
         uint32_t sequenceNumber;
         uint64_t presentationTime;
@@ -31,6 +34,13 @@ public:
 
     explicit LockFreePacketPool(size_t poolSize = DEFAULT_POOL_SIZE);
     ~LockFreePacketPool();
+
+    // Not copyable. This object owns its pre-allocated pool memory, and the compiler's copy would
+    // duplicate the handle rather than the resource: two objects freeing one
+    // allocation. Nothing copies it today; this is what keeps that true.
+    LockFreePacketPool(const LockFreePacketPool&) = delete;
+    LockFreePacketPool& operator=(const LockFreePacketPool&) = delete;
+
 
     // Acquire a packet from the pool (lock-free, called by network thread)
     PooledRTPPacket* acquire();

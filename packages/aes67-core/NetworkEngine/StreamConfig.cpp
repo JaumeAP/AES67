@@ -87,7 +87,7 @@ std::string StreamConfigManager::findExistingConfig() {
 
 StreamConfigManager::~StreamConfigManager() = default;
 
-std::string StreamConfigManager::getConfigPath() const {
+const std::string& StreamConfigManager::getConfigPath() const {
     return configPath_;
 }
 

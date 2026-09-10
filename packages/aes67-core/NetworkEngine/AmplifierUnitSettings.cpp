@@ -18,7 +18,7 @@ AmplifierUnitSettingsManager::AmplifierUnitSettingsManager() {
 
 AmplifierUnitSettingsManager::~AmplifierUnitSettingsManager() = default;
 
-std::string AmplifierUnitSettingsManager::getConfigPath() const { return configPath_; }
+const std::string& AmplifierUnitSettingsManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> AmplifierUnitSettingsManager::getConfigSearchPaths() {
     return configSearchPaths("AES67_AMPLIFIER_UNIT_CONFIG_PATH", kDefaultConfigFile);

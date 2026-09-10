@@ -29,6 +29,8 @@
 #include "Ravenna/RtspServer.h"
 #include "Ravenna/SessionCatalogue.h"
 
+#include <optional>
+#include <cerrno>
 #include <arpa/inet.h>
 
 #include <atomic>
@@ -73,6 +75,17 @@ bool addressFrom(const std::string& text, uint32_t& out) {
 
 }  // namespace
 
+// strtol rather than atoi: atoi answers 0 to "abc" and to "0" alike, and a
+// port of 0 from a typo is a bug that only shows on the wire.
+static std::optional<long> parseNumber(const char* text) {
+    if (text == nullptr || *text == '\0') return std::nullopt;
+    char* endptr = nullptr;
+    errno = 0;
+    const long parsed = std::strtol(text, &endptr, 10);
+    if (errno != 0 || *endptr != '\0') return std::nullopt;
+    return parsed;
+}
+
 int main(int argc, char** argv) {
     using namespace AES67;
     using namespace AES67::Ravenna;
@@ -103,15 +116,15 @@ int main(int argc, char** argv) {
         else if (option == "--host") { if (!need()) { usage(); return 2; } hostName = value; }
         else if (option == "--name") { if (!need()) { usage(); return 2; } sessionName = value; nameGiven = true; }
         else if (option == "--group") { if (!need()) { usage(); return 2; } group = value; }
-        else if (option == "--port") { if (!need()) { usage(); return 2; } streamPort = static_cast<uint16_t>(std::atoi(value)); }
-        else if (option == "--rtsp-port") { if (!need()) { usage(); return 2; } rtspPort = static_cast<uint16_t>(std::atoi(value)); }
-        else if (option == "--channels") { if (!need()) { usage(); return 2; } channels = static_cast<uint16_t>(std::atoi(value)); }
-        else if (option == "--device-channel") { if (!need()) { usage(); return 2; } deviceChannel = static_cast<uint16_t>(std::atoi(value)); }
-        else if (option == "--ptime-us") { if (!need()) { usage(); return 2; } ptimeUs = static_cast<uint32_t>(std::atoi(value)); }
+        else if (option == "--port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } streamPort = static_cast<uint16_t>(*n); }
+        else if (option == "--rtsp-port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } rtspPort = static_cast<uint16_t>(*n); }
+        else if (option == "--channels") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } channels = static_cast<uint16_t>(*n); }
+        else if (option == "--device-channel") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } deviceChannel = static_cast<uint16_t>(*n); }
+        else if (option == "--ptime-us") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } ptimeUs = static_cast<uint32_t>(*n); }
         else if (option == "--ptp-gmid") { if (!need()) { usage(); return 2; } ptpGrandmaster = value; }
-        else if (option == "--ptp-domain") { if (!need()) { usage(); return 2; } ptpDomain = std::atoi(value); }
-        else if (option == "--nmos-port") { if (!need()) { usage(); return 2; } nmosPort = static_cast<uint16_t>(std::atoi(value)); }
-        else { std::fprintf(stderr, "unknown option: %s\n", option.c_str()); usage(); return 2; }
+        else if (option == "--ptp-domain") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } ptpDomain = static_cast<int>(*n); }
+        else if (option == "--nmos-port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } nmosPort = static_cast<uint16_t>(*n); }
+        else { (void)std::fprintf(stderr, "unknown option: %s\n", option.c_str()); usage(); return 2; }
     }
 
     if (interfaceName.empty() || addressText.empty()) { usage(); return 2; }

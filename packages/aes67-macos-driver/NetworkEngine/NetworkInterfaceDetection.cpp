@@ -30,7 +30,9 @@ std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
                     // Look for ethernet interfaces (typically named en0, en1, etc.)
                     // But also check for other common names
                     if (name.substr(0, 2) == "en" ||  // Ethernet
-                        name.substr(0, 4) == "eth" || // Alternative naming
+                        name.substr(0, 3) == "eth" || // Alternative naming, 3 characters not 4:
+                                                      // substr(0, 4) never equals a 3-character
+                                                      // literal, so eth0 was never matched
                         name.substr(0, 4) == "thun" || // Thunderbolt Ethernet
                         name.substr(0, 3) == "usb") { // USB Ethernet
                     

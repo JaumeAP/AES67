@@ -3,10 +3,11 @@
 
 namespace AES67 {
 
-BufferStatusMonitor::BufferStatusMonitor(size_t bufferSize) : bufferSize_(bufferSize), lastUpdate_(std::chrono::steady_clock::now()) {
-    lastUnderrunEvent_ = std::chrono::steady_clock::now();
-    lastOverrunEvent_ = std::chrono::steady_clock::now();
-}
+BufferStatusMonitor::BufferStatusMonitor(size_t bufferSize)
+    : bufferSize_(bufferSize),
+      lastUpdate_(std::chrono::steady_clock::now()),
+      lastUnderrunEvent_(std::chrono::steady_clock::now()),
+      lastOverrunEvent_(std::chrono::steady_clock::now()) {}
 
 void BufferStatusMonitor::updateFillLevel(size_t fillLevel) {
     currentFillLevel_.store(fillLevel, std::memory_order_relaxed);

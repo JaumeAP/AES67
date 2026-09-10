@@ -111,7 +111,7 @@ public:
     /// This port's identity: the clock identity built from the interface MAC
     /// by start(), and the configured port number, which is set from
     /// construction. Zero clock identity means start() has not run.
-    PTPPortIdentity getPortIdentity() const { return selfPortId_; }
+    const PTPPortIdentity& getPortIdentity() const { return selfPortId_; }
 
     /// Feeds one PTP message in as if it had arrived on the event socket
     /// (319) or the general one (320) at `receiveTimeNs`. Everything a real
@@ -206,7 +206,10 @@ private:
 
     // Current master (from Announce/BMCA)
     mutable std::mutex masterMutex_;
-    PTPAnnounceData currentMaster_;
+    // Value-initialised: read before the first Announce arrives -- which is
+    // exactly the window a slave spends listening -- it would otherwise hold
+    // whatever the allocation did.
+    PTPAnnounceData currentMaster_{};
     bool hasMaster_{false};
 
     // Sync state: waiting for Follow_Up with matching sequenceId

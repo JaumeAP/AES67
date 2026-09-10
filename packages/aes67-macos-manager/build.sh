@@ -26,6 +26,9 @@ echo "Building AES67 Manager..."
 # Note: SDPProcessor.swift disabled - needs compatibility fixes
 swiftc -o AES67Manager \
   -target arm64-apple-macos13.0 \
+  `# A warning here is a warning nobody sees: this is the build that ships,` \
+  `# and four CFString pointer warnings lived in it unread until 2026-09-10.` \
+  -warnings-as-errors \
   -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
   -framework SwiftUI \
   -framework Foundation \

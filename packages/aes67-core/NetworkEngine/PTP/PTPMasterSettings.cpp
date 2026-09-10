@@ -24,7 +24,7 @@ PTPMasterSettingsManager::PTPMasterSettingsManager() {
 
 PTPMasterSettingsManager::~PTPMasterSettingsManager() = default;
 
-std::string PTPMasterSettingsManager::getConfigPath() const { return configPath_; }
+const std::string& PTPMasterSettingsManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> PTPMasterSettingsManager::getConfigSearchPaths() {
     return configSearchPaths("AES67_PTP_MASTER_CONFIG_PATH", kDefaultConfigFile);

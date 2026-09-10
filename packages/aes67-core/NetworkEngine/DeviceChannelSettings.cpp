@@ -60,7 +60,7 @@ DeviceChannelSettingsManager::DeviceChannelSettingsManager() {
 
 DeviceChannelSettingsManager::~DeviceChannelSettingsManager() = default;
 
-std::string DeviceChannelSettingsManager::getConfigPath() const { return configPath_; }
+const std::string& DeviceChannelSettingsManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> DeviceChannelSettingsManager::getConfigSearchPaths() {
     return configSearchPaths("AES67_DEVICE_CHANNELS_CONFIG_PATH", kDefaultConfigFile);

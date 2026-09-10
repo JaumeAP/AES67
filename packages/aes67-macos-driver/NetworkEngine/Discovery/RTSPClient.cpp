@@ -102,7 +102,7 @@ bool RTSPClient::setup(const std::string& path, uint16_t clientPort) {
         // Remove timeout parameter if present
         size_t semicolon = sessionID_.find(';');
         if (semicolon != std::string::npos) {
-            sessionID_ = sessionID_.substr(0, semicolon);
+            sessionID_.resize(semicolon);  // not substr: assigned to itself
         }
     }
 
@@ -311,7 +311,7 @@ bool RTSPClient::parseURL(const std::string& url, std::string& host, uint16_t& p
 
     // Check for rtsp:// prefix
     const std::string prefix = "rtsp://";
-    if (url.find(prefix) != 0) {
+    if (!url.starts_with(prefix)) {
         return false;
     }
 

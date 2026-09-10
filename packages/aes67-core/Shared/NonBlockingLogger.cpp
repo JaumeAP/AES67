@@ -1,4 +1,5 @@
 #include "NonBlockingLogger.h"
+#include <cstdio>
 #include <chrono>
 #include <iomanip>
 #include <ctime>
@@ -54,6 +55,10 @@ NonBlockingLogger::~NonBlockingLogger() {
             logFile_.close();
         }
     } catch (...) {
+        // Nothing may escape a shutdown: this runs from the destructor. The
+        // logger itself is the thing that failed, so stderr is the only
+        // place left to say so.
+        (void)std::fputs("NonBlockingLogger: exception while shutting down; log output may be incomplete\n", stderr); // nowhere left to report a failure of this
     }
 }
 

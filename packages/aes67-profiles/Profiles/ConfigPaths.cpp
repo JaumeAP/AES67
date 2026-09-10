@@ -60,6 +60,9 @@ bool ensureParentDirectory(const std::string& filePath, const char* who) {
     struct stat st;
     if (stat(dir.c_str(), &st) == 0) return S_ISDIR(st.st_mode);
 
+    // ProfileLog may compile the log line below to nothing, and then `who`
+    // is a parameter with no reader; it is still the right parameter.
+    (void)who;
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     if (ec) {

@@ -25,7 +25,9 @@
 # does not travel with a repository.
 #
 #   scripts/gate.sh              the cheap half of every package
-#   AES67_ANALYSE=1 scripts/gate.sh   with static analysis where a package has it
+#   AES67_ANALYSE=1 scripts/gate.sh   plus each package's analysis half: clang-tidy,
+#                                     cppcheck, the suites under ASan and UBSan, the
+#                                     parsers fuzzed, and line coverage
 #
 # Arguments are passed through to each package gate, so `--clean` or
 # `--analyse` reach the ones that understand them and are refused by the ones

@@ -35,7 +35,7 @@ jobs:
       # aes67-core includes <uuid/uuid.h>, which comes with the SDK on macOS
       # and is a package here.
       - name: Dependencies
-        run: sudo apt-get update && sudo apt-get install -y uuid-dev
+        run: sudo apt-get update && sudo apt-get install -y uuid-dev clang-tidy cppcheck clang
 
       - name: Configure
         run: cmake -S packages/aes67-linux-ptpd -B build -DCMAKE_BUILD_TYPE=Release
@@ -48,6 +48,20 @@ jobs:
 
       - name: Tests
         run: ctest --test-dir build --output-on-failure
+
+      # The package's own gate with its analysis half: clang-tidy, cppcheck,
+      # the suites under ASan and UBSan, the wire parser fuzzed, coverage.
+      - name: Gate, analysed
+        env:
+          AES67_ANALYSE: '1'
+        run: packages/aes67-linux-ptpd/scripts/gate.sh
+
+      - name: Fuzz the wire parser, guided
+        run: |
+          cmake -S packages/aes67-linux-ptpd -B build-fuzz -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++ -DAES67_LIBFUZZER=ON -DAES67_SANITIZE=address,undefined
+          cmake --build build-fuzz -j
+          build-fuzz/FuzzPtpWire -max_total_time=60 -max_len=4096 -print_final_stats=1
 
   # The build that produces something to install, on a native arm64 runner --
   # the Pi 5's own architecture, no cross toolchain and no emulation -- and

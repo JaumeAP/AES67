@@ -78,7 +78,7 @@ public:
     const RTSPResponse& getLastResponse() const { return lastResponse_; }
 
     // Get session ID (from SETUP response)
-    std::string getSessionID() const { return sessionID_; }
+    const std::string& getSessionID() const { return sessionID_; }
 
     // Check if connected
     bool isConnected() const { return socket_ >= 0; }

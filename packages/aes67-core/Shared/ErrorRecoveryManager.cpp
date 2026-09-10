@@ -4,9 +4,8 @@
 
 namespace AES67 {
 
-ErrorRecoveryManager::ErrorRecoveryManager() {
-    lastErrorTime_ = std::chrono::steady_clock::now();
-}
+ErrorRecoveryManager::ErrorRecoveryManager()
+    : lastErrorTime_(std::chrono::steady_clock::now()) {}
 
 ErrorRecoveryManager::~ErrorRecoveryManager() = default;
 

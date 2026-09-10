@@ -15,6 +15,25 @@ endif()
 
 
 
+# The parsers, fed what nobody wrote a test for: fuzz/FuzzDriverParsers.cpp.
+# Not a CTest test -- the gate runs it under AES67_ANALYSE=1, in the sanitizer
+# build, with an iteration count. -DAES67_LIBFUZZER=ON builds the
+# coverage-guided form instead, for a clang that ships the runtime.
+option(AES67_LIBFUZZER "Build the fuzz harness against libFuzzer" OFF)
+add_executable(FuzzDriverParsers
+    fuzz/FuzzDriverParsers.cpp
+    ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+)
+target_include_directories(FuzzDriverParsers PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(FuzzDriverParsers PRIVATE aes67_net "-framework Accelerate")
+target_compile_features(FuzzDriverParsers PRIVATE cxx_std_17)
+if(AES67_LIBFUZZER)
+    target_compile_definitions(FuzzDriverParsers PRIVATE FUZZ_LIBFUZZER=1)
+    target_compile_options(FuzzDriverParsers PRIVATE -fsanitize=fuzzer)
+    target_link_options(FuzzDriverParsers PRIVATE -fsanitize=fuzzer)
+endif()
+
 # Test: RTP Receiver
 add_executable(TestRTPReceiver
     TestRTPReceiver.cpp

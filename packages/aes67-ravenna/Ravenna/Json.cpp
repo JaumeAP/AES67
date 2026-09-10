@@ -198,7 +198,7 @@ std::string jsonQuote(const std::string& text) {
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
                     char escape[7];
-                    std::snprintf(escape, sizeof(escape), "\\u%04x", c);
+                    (void)std::snprintf(escape, sizeof(escape), "\\u%04x", c); // 6 chars into 7, always
                     quoted += escape;
                 } else {
                     quoted += c;

@@ -22,7 +22,8 @@ cmake_minimum_required(VERSION 3.20)
 # they are set before the first project() call of the whole tree, which is now
 # this one.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+    # Same number as the driver package and the Manager app: 13.0.
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
     set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
 endif()
 

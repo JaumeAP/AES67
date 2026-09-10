@@ -97,7 +97,7 @@ public:
     PlayoutDelaySettings loadPlayoutDelay();
     bool savePlayoutDelay(const PlayoutDelaySettings& settings);
 
-    std::string getConfigPath() const;
+    const std::string& getConfigPath() const;
 
 private:
     std::vector<std::string> getConfigSearchPaths();

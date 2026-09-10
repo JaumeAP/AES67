@@ -68,7 +68,7 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     bindAddr.sin_port = htons(port);
 
-    if (bind(sockfd_, (struct sockaddr*)&bindAddr, sizeof(bindAddr)) < 0) {
+    if (bind(sockfd_, reinterpret_cast<struct sockaddr*>(&bindAddr), sizeof(bindAddr)) < 0) {
         (void)fprintf(stderr, "AES67 RTP openReceiver: bind() failed on port %u (errno=%d: %s)\n",
                 port, errno, strerror(errno));
         ::close(sockfd_);

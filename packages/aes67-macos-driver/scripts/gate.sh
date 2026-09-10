@@ -157,4 +157,60 @@ done < <(grep -ohE '^[[:space:]]+(\.\./)?(Driver|NetworkEngine|Shared|Tools|Daem
          | tr -d ' ' | sed 's|^\.\./||' | sort -u)
 [ "$missing" = "0" ] && echo "Every listed source exists"
 
+# ---------------------------------------------------------------------------
+# The rest of the analysis half, under AES67_ANALYSE=1 (or --analyse): the
+# suites under ASan and UBSan in build-san, the parsers fuzzed in that build,
+# and line coverage through scripts/coverage.sh. Each is a full build of the
+# driver, which is why none of it runs on an ordinary push. A run started
+# with --sanitize already IS the sanitizer build and skips that step.
+# ---------------------------------------------------------------------------
+if [ "${AES67_ANALYSE:-0}" = "1" ] || [ "$analyse" = "1" ]; then
+  # Found the way check-tidy.sh finds clang-tidy: neither ships with the
+  # Command Line Tools, and both live in ~/.local/venvs/cpptools on this
+  # machine. CPPCHECK=/path/to/cppcheck overrides.
+  cppcheck_bin="${CPPCHECK:-}"
+  if [ -z "$cppcheck_bin" ]; then
+    for candidate in "$HOME/.local/venvs/cpptools/bin/cppcheck" "$(command -v cppcheck || true)"; do
+      [ -x "$candidate" ] && { cppcheck_bin="$candidate"; break; }
+    done
+  fi
+
+  echo "==> cppcheck"
+  if [ -n "$cppcheck_bin" ]; then
+    # -U rather than a suppression: cppcheck analyses every branch of an #if,
+    # and Profiles/ProfileLog.h's is `#include AES67_PROFILES_LOG_HEADER`,
+    # which is not a header when the macro is undefined. Nothing in this tree
+    # defines it, so saying so is the truth rather than a silenced check.
+    "$cppcheck_bin" --quiet --error-exitcode=1 --enable=warning,performance,portability \
+      --inline-suppr --std=c++20 --language=c++ -U AES67_PROFILES_LOG_HEADER \
+      --suppress=missingInclude --suppress=missingIncludeSystem \
+      --suppress=normalCheckLevelMaxBranches \
+      -I . -I ../aes67-core -I ../aes67-profiles -I ../aes67-ravenna \
+      Driver/ NetworkEngine/ Shared/ Daemon/ || { echo "FAIL: cppcheck" >&2; exit 1; }
+  else
+    echo "SKIP: no cppcheck found"
+  fi
+
+  if [ -z "$sanitize" ]; then
+    echo "==> Sanitizers (address, undefined)"
+    cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DAES67_SANITIZE=address,undefined \
+      -DBUILD_TESTS=ON -DBUILD_EXAMPLES=OFF -DBUILD_TOOLS=OFF > /dev/null \
+      || { echo "FAIL: sanitizer configure" >&2; exit 1; }
+    cmake --build build-san -j"$jobs" > /dev/null || { echo "FAIL: sanitizer build" >&2; exit 1; }
+    ( cd build-san && UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" ctest --output-on-failure -LE network ) \
+      || { echo "FAIL: tests under sanitizers" >&2; exit 1; }
+    fuzz_dir="build-san"
+  else
+    fuzz_dir="$build_dir"
+  fi
+
+  echo "==> Fuzzing the parsers"
+  "$fuzz_dir/Tests/FuzzDriverParsers" "${AES67_FUZZ_ITER:-200000}" || { echo "FAIL: fuzzing" >&2; exit 1; }
+
+  echo "==> Coverage"
+  scripts/coverage.sh 2>&1 | grep -E "^TOTAL|FAIL" || echo "coverage: no report"
+else
+  echo "==> Analysis skipped: cppcheck, sanitizers, fuzzing and coverage (AES67_ANALYSE=1 or --analyse to run them)"
+fi
+
 echo "==> PASS"

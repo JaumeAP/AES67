@@ -327,7 +327,7 @@ public:
 
     bool save(CompatibilityProfileKind kind);
 
-    std::string getConfigPath() const;
+    const std::string& getConfigPath() const;
 
 private:
     std::vector<std::string> getConfigSearchPaths();

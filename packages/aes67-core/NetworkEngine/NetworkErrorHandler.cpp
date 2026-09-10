@@ -8,10 +8,9 @@ namespace AES67 {
 // Global error handler instance
 std::unique_ptr<NetworkErrorHandler> g_networkErrorHandler;
 
-NetworkErrorHandler::NetworkErrorHandler() : lastRecoveryAttempt_(std::chrono::steady_clock::now()) {
-    // Initialize with current time
-    recoveryStartTime_ = std::chrono::steady_clock::now();
-}
+NetworkErrorHandler::NetworkErrorHandler()
+    : lastRecoveryAttempt_(std::chrono::steady_clock::now()),
+      recoveryStartTime_(std::chrono::steady_clock::now()) {}
 
 NetworkErrorHandler::~NetworkErrorHandler() = default;
 

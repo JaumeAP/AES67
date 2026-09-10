@@ -22,7 +22,11 @@ enum class SlotState : uint8_t {
 
 /// Slot holding one RTP packet with metadata for lock-free access.
 struct LockFreeBufferPacket {
-    uint8_t data[1500]; // Standard max Ethernet frame size
+    // Zeroed: a slot is read up to `length`, and length is set by the writer,
+    // so nothing indeterminate is read today. That is a property of the two
+    // call sites rather than of the slot, and this costs one memset at
+    // construction to stop being one.
+    uint8_t data[1500]{}; // Standard max Ethernet frame size
     std::atomic<size_t> length{0};
     std::atomic<uint32_t> sequenceNumber{0};
     std::atomic<uint64_t> presentationTime{0};

@@ -52,7 +52,7 @@ public:
 
     bool save(const DeviceActivation& activation);
 
-    std::string getConfigPath() const;
+    const std::string& getConfigPath() const;
 
 private:
     std::vector<std::string> getConfigSearchPaths();

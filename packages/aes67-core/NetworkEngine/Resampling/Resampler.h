@@ -11,6 +11,13 @@ class Resampler {
 public:
     Resampler(double inputSampleRate, double outputSampleRate, int channels = 2);
     ~Resampler();
+
+    // Not copyable. This object owns an opaque resampler state pointer, and the compiler's copy would
+    // duplicate the handle rather than the resource: two objects freeing one
+    // allocation. Nothing copies it today; this is what keeps that true.
+    Resampler(const Resampler&) = delete;
+    Resampler& operator=(const Resampler&) = delete;
+
     
     // Process audio samples - returns number of output samples
     int process(const float* input, int inputFrames, float* output, int outputFrames, bool endOfInput = false);
