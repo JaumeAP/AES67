@@ -11,7 +11,8 @@ not because they build together.
 |---------|------------|------------|
 | [`packages/aes67-profiles`](packages/aes67-profiles) | The tables every implementation here has to agree on: the AoIP compatibility profiles, the Dolby per-model data and the PTP profiles. Freestanding headers -- no platform, no operating system, no other package -- so the macOS core and the Teensy firmware read the same numbers instead of keeping two copies | CMake, C++20 |
 | [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
-| [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app and the tools | CMake, C++20 and Objective-C++ |
+| [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon and the tools | CMake, C++20 and Objective-C++ |
+| [`packages/aes67-macos-manager`](packages/aes67-macos-manager) | The SwiftUI manager app: what a person runs, and what installs the driver and the daemon it carries as resources. Built by its own `build.sh` against the driver package's `build/` | swiftc, Swift 5 |
 | [`packages/aes67-linux-ptpd`](packages/aes67-linux-ptpd) | A PTP grandmaster for Linux, written for a Raspberry Pi 5: it announces the NIC's own hardware clock, stamps its Sync messages with it and reads its rates from `aes67-profiles`. Announce, Sync/Follow_Up and Delay_Resp; no BMCA and no slave side | CMake, C++20 |
 | [`packages/ravenna-alsa-lkm`](packages/ravenna-alsa-lkm) | The Linux device's kernel half: Merging Technologies' RAVENNA/AES67 ALSA module through [`bondagit/ravenna-alsa-lkm`](https://github.com/bondagit/ravenna-alsa-lkm), as a submodule. Its own package because a kernel module and a user-space process fail in different ways | Kernel Makefile |
 | [`packages/aes67-ravenna`](packages/aes67-ravenna) | RAVENNA's session layer and the NMOS APIs a controller routes with: DNS-SD over mDNS and the RTSP DESCRIBE that hands over the SDP, IS-04 so the device is on the list, IS-05 to give one device another's stream, IS-08 for the grid channel by channel. The SDP is the core's and the grid is the core's matrix | CMake, C++20 |
@@ -45,6 +46,7 @@ packages/aes67-profiles/scripts/gate.sh
 packages/aes67-core/scripts/gate.sh
 packages/aes67-ravenna/scripts/gate.sh
 packages/aes67-macos-driver/scripts/gate.sh
+packages/aes67-macos-manager/scripts/gate.sh
 packages/aes67-linux-ptpd/scripts/gate.sh
 packages/ravenna-alsa-lkm/scripts/gate.sh
 packages/t41-ptp/scripts/gate.sh

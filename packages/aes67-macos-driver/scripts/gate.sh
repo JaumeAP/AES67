@@ -69,19 +69,14 @@ jobs="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
 
 echo "==> Configure (Release, everything)"
 mkdir -p "$build_dir"
-# ManagerApp is back in the gate: it built with the Command Line Tools once
-# the #Preview blocks moved to Views/Previews/ (the macro plugin they need
-# ships with full Xcode only, and build.sh lists its sources explicitly, so
-# that directory stays out of a command-line build) and once
-# DiscoveredSessionsView's session-already-added check was rewritten. Skip it
-# with -DBUILD_MANAGER_APP=OFF if a machine lacks a Swift toolchain.
+# The Manager app is packages/aes67-macos-manager and has a gate of its own;
+# the tree gate runs it after this one, so it finds the bundle this builds.
 cmake -S . -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DAES67_SANITIZE="$sanitize" \
   -DBUILD_TESTS=ON \
   -DBUILD_EXAMPLES=ON \
   -DBUILD_TOOLS=ON \
-  -DBUILD_MANAGER_APP=ON \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON || { echo "FAIL: cmake configure" >&2; exit 1; }
 
 echo "==> Build (-j$jobs)"

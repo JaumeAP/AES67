@@ -1,0 +1,6 @@
+# What build.sh and run-tests.sh produce. The app bundle is assembled here,
+# beside the sources, because that is where build.sh has always put it.
+AES67Manager.app/
+ManagerAppTests
+build/
+.build/

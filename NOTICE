@@ -15,7 +15,8 @@ file inside the subtree is the one that governs it.
 | Path | What it is |
 |------|------------|
 | `packages/aes67-core` | The platform-free AES67 core: SDP, RTP, jitter buffer, PLL, resampling, channel mapping |
-| `packages/aes67-macos-driver` | The macOS AudioServerPlugIn driver, its daemon, tools and manager app, **excluding** `external/` |
+| `packages/aes67-macos-driver` | The macOS AudioServerPlugIn driver, its daemon and tools, **excluding** `external/` |
+| `packages/aes67-macos-manager` | The SwiftUI manager app |
 
 ## Third-party, under their own licences
 

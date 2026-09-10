@@ -50,7 +50,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Use "thread" instead for data-race checking. macOS ASan has no leak detector
 # (detect_leaks is unsupported); use the system `leaks --atExit -- <binary>`
 # tool on a normal build for leaks. Applies to every C++ target; the Swift
-# ManagerApp (built by its own build.sh) is unaffected.
+# The Manager app, now packages/aes67-macos-manager, is unaffected.
 set(AES67_SANITIZE "" CACHE STRING
     "Sanitizers to enable, e.g. address,undefined or thread (empty = none)")
 if(AES67_SANITIZE)
@@ -298,57 +298,13 @@ if(APPLE AND ASPL_FOUND)
 endif()
 
 # ============================================================================
-# Manager App (SwiftUI - macOS only)
+# Manager App
 # ============================================================================
-
-# Declared here rather than beside BUILD_TESTS/BUILD_EXAMPLES/BUILD_TOOLS
-# further down: an option has to exist before the block that reads it.
-# The app builds through its own build.sh (raw swiftc, not SwiftPM), so it
-# needs a full Xcode toolchain that a plain command-line build may not have.
-option(BUILD_MANAGER_APP "Build the SwiftUI Manager app" ON)
-
-if(APPLE AND ASPL_FOUND AND BUILD_MANAGER_APP)
-    # The app carries the driver, the daemon and the daemon's plist as
-    # resources, and is what puts them on the system. build.sh takes them from
-    # this binary directory.
-    add_custom_target(ManagerApp ALL
-        COMMAND ${CMAKE_COMMAND} -E env AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-                ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build.sh
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
-        COMMENT "Building AES67 Manager App (SwiftUI)"
-        DEPENDS AES67Driver aes67ptpd
-        VERBATIM
-    )
-
-    # The app's own host tests: plain Swift over plain values, no SwiftUI and
-    # no driver. See ManagerApp/run-tests.sh.
-    if(BUILD_TESTS)
-        add_test(NAME ManagerAppUnit
-                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/run-tests.sh)
-        set_tests_properties(ManagerAppUnit PROPERTIES
-            LABELS "unit"
-            TIMEOUT 120
-            ENVIRONMENT "AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}")
-    endif()
-
-    # Disk image (explicit only — not part of ALL). This is the whole of the
-    # delivery: the app installs the driver, the daemon and the LaunchDaemon
-    # itself, so there is no package to build and no installer to run.
-    add_custom_target(dmg
-        COMMAND ${CMAKE_COMMAND} -E env AES67_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-                ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/build-dmg.sh
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp
-        COMMENT "Building AES67Manager.dmg"
-        DEPENDS ManagerApp
-        VERBATIM
-    )
-
-    # Install the Manager app to /Applications
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ManagerApp/AES67Manager.app
-        DESTINATION "/Applications"
-        USE_SOURCE_PERMISSIONS
-    )
-endif()
+# Not here any more. The SwiftUI app is packages/aes67-macos-manager, its own
+# package: it embeds what this one builds -- AES67Driver.driver and aes67ptpd
+# -- and is built by its own build.sh from a Swift toolchain this package does
+# not need. The monorepo's root CMakeLists adds it after this one and points it
+# at this binary directory.
 
 # ============================================================================
 # Tests

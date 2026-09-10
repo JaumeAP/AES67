@@ -10,6 +10,7 @@
 #   packages/aes67-core/scripts/gate.sh          build, test, platform contract
 #   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
+#   packages/aes67-macos-manager/scripts/gate.sh  host tests, the app
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
 #   packages/ravenna-alsa-lkm/scripts/gate.sh    the kernel module, on Linux with headers
 #   packages/t41-ptp/scripts/gate.sh             host tests
@@ -49,6 +50,7 @@ run "aes67-profiles"     packages/aes67-profiles/scripts/gate.sh
 run "aes67-core"         packages/aes67-core/scripts/gate.sh
 run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
+run "aes67-macos-manager" packages/aes67-macos-manager/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 run "ravenna-alsa-lkm"   packages/ravenna-alsa-lkm/scripts/gate.sh
 run "t41-ptp"            packages/t41-ptp/scripts/gate.sh

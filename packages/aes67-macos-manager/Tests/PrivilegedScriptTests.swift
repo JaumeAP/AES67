@@ -6,7 +6,7 @@
 // text and can go wrong silently: the privileged command
 // (Models/PrivilegedScript.swift).
 //
-// Not XCTest: the app is compiled by ManagerApp/build.sh with plain swiftc,
+// Not XCTest: the app is compiled by build.sh with plain swiftc,
 // not SwiftPM, and a test bundle would be a second build system for six
 // functions. This is a binary that returns non-zero when something fails, in
 // the same shape as the Teensy package's host tests.

@@ -191,7 +191,7 @@ class DriverManager: ObservableObject {
     // MARK: - Driver Install / Uninstall (switch-driven, not lifecycle-bound)
     //
     // This app carries its own copy of AES67Driver.driver, embedded at build
-    // time into AES67Manager.app/Contents/Resources/ (see ManagerApp/build.sh).
+    // time into AES67Manager.app/Contents/Resources/ (see build.sh).
     // Nothing here runs automatically on launch or quit: the main window has
     // a switch (ContentView) bound to isDriverInstalled that calls
     // setDriverInstalled() when the user flips it. Launch just reflects
@@ -218,7 +218,7 @@ class DriverManager: ObservableObject {
 
     /// Path to the driver bundle embedded in this app, or nil if this build
     /// of the app doesn't carry one (e.g. AES67Driver wasn't built when
-    /// ManagerApp/build.sh ran).
+    /// build.sh ran).
     private var embeddedDriverURL: URL? {
         embeddedResourceURL(Self.driverName)
     }
@@ -296,7 +296,7 @@ class DriverManager: ObservableObject {
         guard let source = embeddedDriverURL else {
             showAlert(title: "Driver Not Bundled",
                      message: "This build of AES67 Manager doesn't carry a driver to install — "
-                             + "rebuild with AES67Driver.driver present before ManagerApp/build.sh runs.")
+                             + "rebuild with AES67Driver.driver present before build.sh runs.")
             return
         }
 
