@@ -638,8 +638,12 @@ private:
     bool timeTraceable = false;
     bool frequencyTraceable = false;
     uint16_t stepsRemoved = 0;
-    int8_t logSyncInterval = 0;        // 1 s
-    int8_t logAnnounceInterval = 0;    // 1 s
+    int8_t logSyncInterval = 0;        // 1 s, the 1588-2008 default
+    // 2 s. IEEE 1588-2008 Annex J.3 puts the default profile's announce
+    // interval at 1 and its sync interval at 0; this was 0 for both, so a
+    // port that set no profile announced twice as often as the standard it
+    // otherwise followed. ProfileSettings already defaulted to 1.
+    int8_t logAnnounceInterval = 1;
     uint16_t delayRequestSequenceID = 0;
     uint16_t syncSequenceID=0;
     uint16_t syncServerSequenceID = 0;

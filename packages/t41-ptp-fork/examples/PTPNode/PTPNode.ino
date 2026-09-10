@@ -48,6 +48,29 @@ Serial.begin(2000000);
   // package can read the same five from Profiles/PtpProfiles.h instead.
   ptp.applyProfile({0, 0, -3, 0, -3});
 
+  // The rest of what the media profile asks of a clock announcing itself on
+  // an AES67 network, which applyProfile() deliberately leaves alone because
+  // it describes THIS clock rather than the ecosystem. Both are the profile's
+  // own values and both are the library's defaults, written out so the sketch
+  // says what it runs rather than inheriting it: a node that is not meant to
+  // win the election raises priority1, and one meant to win lowers it.
+  ptp.setPriority1(128);
+  ptp.setPriority2(128);
+
+  // Announced as unknown, because they are: the reference on pin 15 is a word
+  // clock, which carries a rate and no epoch, so nothing here can put a bound
+  // on this clock's offset from TAI or compute its variance.
+  ptp.setClockAccuracy(0xfe);
+  ptp.setOffsetScaledLogVariance(0xffff);
+
+  // TAI - UTC, for a receiver that wants wall time. The flag stays false: the
+  // number is compiled in rather than traceable to a primary reference, and a
+  // valid flag over a number nobody checked is worse than no flag. Same
+  // reason timeTraceable and frequencyTraceable are left false -- a word clock
+  // is not a primary reference.
+  ptp.setCurrentUtcOffset(37);
+  ptp.setUtcOffsetValid(false);
+
   // Setup networking
   qindesign::network::Ethernet.setHostname("t41ptpnode");
   qindesign::network::Ethernet.macAddress(mac);
@@ -218,6 +241,12 @@ static void announceClockClass(uint8_t value)
   if (value != announced) {
     announced = value;
     ptp.setClockClass(value);
+    // Table 7, kept in step with the class above: a clock class that names
+    // an application-specific source -- 13, and 14 holding over from it --
+    // is announcing OTHER, and 248 is the crystal this board came with.
+    // Announcing INTERNAL_OSCILLATOR while claiming class 13 tells a
+    // receiver two different stories about the same clock.
+    ptp.setTimeSource(value == 248 ? 0xa0 : 0x90);
   }
 }
 
