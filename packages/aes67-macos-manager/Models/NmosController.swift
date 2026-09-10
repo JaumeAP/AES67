@@ -230,7 +230,15 @@ private extension NmosController {
     /// it again. The alternative is resolving by hand over DNS-SD, which is
     /// the layer this moved off.
     func startBrowsing() {
-        let descriptor = NWBrowser.Descriptor.bonjour(type: Self.serviceType, domain: "local.")
+        // Without the trailing dot. NetServiceBrowser took "_nmos-node._tcp."
+        // and NWBrowser does not: Descriptor.bonjour(type:domain:) wants the
+        // bare type, with the domain given separately, and a type ending in a
+        // dot matches nothing -- silently, which is how a browser that finds
+        // no nodes looks exactly like a network with none.
+        let type = Self.serviceType.hasSuffix(".")
+            ? String(Self.serviceType.dropLast())
+            : Self.serviceType
+        let descriptor = NWBrowser.Descriptor.bonjour(type: type, domain: "local.")
         let parameters = NWParameters()
         parameters.includePeerToPeer = false
         let browser = NWBrowser(for: descriptor, using: parameters)
