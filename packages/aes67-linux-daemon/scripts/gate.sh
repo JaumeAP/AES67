@@ -20,7 +20,7 @@ module="../ravenna-alsa-lkm/external/ravenna-alsa-lkm"
 
 echo "==> Submodule"
 for path in "$daemon/daemon/CMakeLists.txt" \
-            "$daemon/3rdparty/cpp-httplib/httplib.h" \
+            "external/cpp-httplib/httplib.h" \
             "$module/driver/Makefile"; do
     if [[ ! -f "$path" ]]; then
         echo "FAIL: $path missing - run: git submodule update --init --recursive" >&2
@@ -29,15 +29,17 @@ for path in "$daemon/daemon/CMakeLists.txt" \
 done
 echo "==> daemon $(git -C "$daemon" rev-parse --short HEAD), module $(git -C "$module" rev-parse --short HEAD) checked out"
 
-# The module is pinned once, by packages/ravenna-alsa-lkm. The daemon used to
-# pin it again under its own 3rdparty/, which is what the fork this package
-# tracks removed: two checkouts of one repository, free to drift, with only one
-# ever compiled. If a rebase onto upstream ever brings that submodule back,
-# this says so.
-if git -C "$daemon" rev-parse HEAD:3rdparty/ravenna-alsa-lkm > /dev/null 2>&1; then
-    echo "FAIL: the daemon pins the RAVENNA module again; this package pins it" >&2
-    exit 1
-fi
+# The module is pinned once, by packages/ravenna-alsa-lkm, and cpp-httplib once,
+# here. The daemon used to pin both again under its own 3rdparty/, which is what
+# the fork this package tracks removed: two checkouts of one repository, free to
+# drift, with only one ever compiled. If a rebase onto upstream ever brings
+# either submodule back, this says so.
+for vendored in 3rdparty/ravenna-alsa-lkm 3rdparty/cpp-httplib; do
+    if git -C "$daemon" rev-parse "HEAD:$vendored" > /dev/null 2>&1; then
+        echo "FAIL: the daemon pins $vendored again; this tree pins it" >&2
+        exit 1
+    fi
+done
 
 echo "==> Configure"
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release > /dev/null || {

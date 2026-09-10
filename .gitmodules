@@ -8,3 +8,7 @@
 [submodule "packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm"]
 	path = packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm
 	url = https://github.com/bondagit/ravenna-alsa-lkm.git
+[submodule "packages/aes67-linux-daemon/external/cpp-httplib"]
+	path = packages/aes67-linux-daemon/external/cpp-httplib
+	url = https://github.com/bondagit/cpp-httplib.git
+	branch = master

@@ -94,7 +94,7 @@ set(AES67_LINUX_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ravenna-alsa-lkm"
     CACHE PATH "Directory holding the kernel module package")
 set(RAVENNA_ALSA_LKM_DIR "${AES67_LINUX_MODULE_DIR}/external/ravenna-alsa-lkm"
     CACHE PATH "Directory holding the RAVENNA ALSA kernel module sources")
-set(CPP_HTTPLIB_DIR "${AES67_LINUX_DAEMON_DIR}/3rdparty/cpp-httplib"
+set(CPP_HTTPLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/cpp-httplib"
     CACHE PATH "Directory holding cpp-httplib")
 set(ENABLE_TESTS ON CACHE BOOL "Build the daemon's own tests")
 set(WITH_AVAHI ON CACHE BOOL "mDNS support via Avahi")
