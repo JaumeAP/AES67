@@ -118,6 +118,58 @@ target_link_libraries(TestDeviceActivation PRIVATE aes67_core)
 target_link_libraries(TestDeviceActivation PRIVATE doctest_headers)
 target_compile_features(TestDeviceActivation PRIVATE cxx_std_17)
 
+# Test: the device itself, offline — see TestAES67DeviceOffline.cpp. It builds
+# an aspl::Context with no host, the way TestDeviceActivationPlugIn does, and
+# calls Initialize(): every discovery surface fails to bind on a machine with
+# no multicast route, and every one of those failures is a documented
+# non-fatal path that nothing had ever run.
+# Same source list as TestDeviceActivationPlugIn below, and for the same
+# reason: the device is not in a library of its own, so a suite that
+# constructs one compiles what it needs. Skipped where libASPL is, like that
+# one.
+if(ASPL_FOUND)
+    add_executable(TestAES67DeviceOffline
+        TestAES67DeviceOffline.cpp
+        ../Driver/AES67Device.cpp
+        ../Driver/AES67IOHandler.cpp
+        ../Driver/AudioThreadPriority.cpp
+        ../Driver/DeviceActivation.cpp
+        ../NetworkEngine/RTP/PCMCodec.cpp
+        ../NetworkEngine/PTP/PTPClock.cpp
+        ../NetworkEngine/PTP/PTPDInterface.cpp
+        ../NetworkEngine/PTP/PTPArbitrator.cpp
+        ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+        ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+        ${ASPL_SOURCES}
+    )
+    target_include_directories(TestAES67DeviceOffline PRIVATE ${PROJECT_SOURCE_DIR})
+    target_include_directories(TestAES67DeviceOffline SYSTEM PRIVATE ${ASPL_INCLUDE_DIR})
+    target_link_libraries(TestAES67DeviceOffline PRIVATE aes67_net doctest_headers
+        "-framework CoreAudio" "-framework CoreFoundation" "-framework AudioToolbox" "-framework Accelerate")
+    target_compile_features(TestAES67DeviceOffline PRIVATE cxx_std_17)
+    if(ASPL_LIBRARY)
+        target_link_libraries(TestAES67DeviceOffline PRIVATE ${ASPL_LIBRARY})
+    endif()
+endif()
+
+# Test: PTP Arbitrator — offline, like TestPTPMaster: constructed and asked,
+# never started, because start() binds 319/320 and spawns a monitor thread.
+add_executable(TestPTPArbitrator
+    TestPTPArbitrator.cpp
+    ../NetworkEngine/PTP/PTPArbitrator.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+target_include_directories(TestPTPArbitrator PRIVATE ${PROJECT_SOURCE_DIR})
+# CoreAudio, because CoreAudioClockSource is compiled in: the arbitrator's
+# constructor chooses between it and the internal clock, and choosing is the
+# branch this suite covers. No device is opened -- that needs one to exist.
+target_link_libraries(TestPTPArbitrator PRIVATE aes67_net doctest_headers
+    "-framework CoreAudio" "-framework CoreFoundation")
+target_compile_features(TestPTPArbitrator PRIVATE cxx_std_17)
+
 # Test: PTP Master / BMCA — offline only, see TestPTPMaster.cpp's own header
 # comment for why it doesn't touch sockets. PTPMaster.cpp is compiled in: the
 # suite was named for it and tested only what it is built on, which is why its
@@ -624,6 +676,8 @@ add_test(NAME RTPReceiver COMMAND TestRTPReceiver)
 add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME PTPMaster COMMAND TestPTPMaster)
+add_test(NAME PTPArbitrator COMMAND TestPTPArbitrator)
+add_test(NAME AES67DeviceOffline COMMAND TestAES67DeviceOffline)
 add_test(NAME PTPLoopback COMMAND TestPTPLoopback)
 add_test(NAME PTPService COMMAND TestPTPService)
 add_test(NAME MDNSBrowser COMMAND TestMDNSBrowser)
@@ -673,6 +727,8 @@ set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTPTransmitter PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
 set_tests_properties(PTPMaster PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(PTPArbitrator PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(AES67DeviceOffline PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(DeviceActivation PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
