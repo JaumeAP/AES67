@@ -2,15 +2,52 @@
 
 The RAVENNA/AES67 ALSA kernel module: Merging Technologies' driver, through
 [`bondagit/ravenna-alsa-lkm`](https://github.com/bondagit/ravenna-alsa-lkm),
-vendored under `external/` as a submodule.
+vendored under `external/` as a submodule, pinned to the **`aes67-daemon`**
+branch.
 
 Nothing is written here. What this package holds is the checkout, the one
 command that builds it and the gate that says whether it is there.
 
+## The user-space half, and which one
+
+The module is half a device. Merging's own README says so: the kernel part
+registers the ALSA device, generates and receives the RTP packets and runs the
+PTP-driven interrupt loop; everything above that -- mDNS and SAP discovery,
+NMOS IS-04/05, sample-rate arbitration between devices, the REST API -- lives
+in a user-space process, and the module does nothing without one.
+
+There are two of those, and this tree uses the second:
+
+- **The Butler** (`Merging_RAVENNA_Daemon`), which arrives inside the checkout
+  under `external/ravenna-alsa-lkm/Butler/`. It is a 5.5 MB ELF binary, not
+  source, under a licence of its own (`Butler/LICENSE.md`) rather than the
+  module's GPL -- and the public build is **limited to 8 inputs and outputs
+  unless a Merging device is present**. Nothing here builds it, installs it or
+  runs it.
+- **[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)**,
+  GPL-3.0, which drives the same module over the same netlink interface
+  (`daemon/netlink.hpp`, `daemon/driver_handler.cpp`) and implements the same
+  session layer in the open. No channel limit, and the source is readable --
+  which is what let `packages/aes67-macos-driver` mirror its SAP receive path
+  and its SDP writer in its interop suites rather than guess at them.
+
+The branch pin is what makes that choice real rather than nominal. `master` is
+Merging's module as it stands; `aes67-daemon` is the same module with the
+patches that daemon needs, and it is what the pinned commit is on. Without the
+pin an update would quietly move to a module the free daemon does not drive.
+
+Building and running the daemon is its business, from its own checkout:
+
+```bash
+git clone https://github.com/bondagit/aes67-linux-daemon.git
+# then follow its README: it wants Boost, Avahi and this module inserted first
+sudo insmod external/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko
+```
+
 ## Why it is its own package
 
 It is its own thing. This is kernel C, built by the kernel's own build system
-against the running kernel's headers; the daemon beside it is a user-space
+against the running kernel's headers; the daemon above it is a user-space
 process with Boost and Avahi. They are the two halves of one device and they
 fail in different ways: a daemon that will not start and a module that will
 not load are not the same morning's work.

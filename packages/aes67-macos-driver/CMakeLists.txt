@@ -75,6 +75,12 @@ if(AES67_COVERAGE)
     message(STATUS "Coverage instrumentation enabled")
     add_compile_options(-fprofile-instr-generate -fcoverage-mapping -g -O0)
     add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+    # This package instruments for llvm-cov; aes67-core, aes67-profiles and
+    # aes67-ravenna, added below as subdirectories, would otherwise add gcov's
+    # --coverage on top of it from their own block. The two together emit
+    # neither .profraw nor .gcda, which is what "no .profraw produced - was the
+    # build instrumented?" was.
+    set_property(GLOBAL PROPERTY AES67_INSTRUMENTATION_APPLIED ON)
 endif()
 
 # Build type
