@@ -16,7 +16,7 @@
 // this says so rather than quietly stamping against CLOCK_REALTIME through
 // /dev/pps, which would mean disciplining one clock and announcing another.
 //
-// The servo is not a new one. It is packages/t41-ptp-fork's ptp-servo, the same
+// The servo is not a new one. It is packages/t41-ptp's ptp-servo, the same
 // one the Teensy box runs against its word clock, which is platform-free for
 // exactly this reason.
 //
