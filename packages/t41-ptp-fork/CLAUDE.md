@@ -47,10 +47,11 @@ here and the badge it fed pointed at an archived repository.
 
 `libraries/QNEthernet` and `libraries/Time` are required for the board build, not for the host
 tests, which stub them out. `libraries/Time` is a submodule of the monorepo at `a18e50d` and needs
-`git submodule update --init`. `libraries/QNEthernet` is a plain directory: HedgeHawk's
-`ieee1588-2-fix` plus the three commits this library needs, and no repository serves those, so
-this is the only copy of them anywhere. Do not "update" it from upstream -- there is no upstream
-carrying what is here. There was a `packages/QNEthernet` in this monorepo too, byte-identical and
+`git submodule update --init`. `libraries/QNEthernet` is a `git subtree` of HedgeHawk's
+`ieee1588-2-fix` with the three commits this library needs on top of it, so upstream's history is
+this repository's history and there is no remote to initialise. Do not replace the directory to
+"update" it: `git subtree pull --prefix packages/t41-ptp-fork/libraries/QNEthernet
+https://github.com/HedgeHawk/QNEthernet.git ieee1588-2-fix` is what keeps the three commits. There was a `packages/QNEthernet` in this monorepo too, byte-identical and
 consumed by nobody; it is gone.
 
 ## Architecture
