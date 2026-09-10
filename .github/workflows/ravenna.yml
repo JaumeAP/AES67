@@ -64,4 +64,9 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ -DAES67_LIBFUZZER=ON -DAES67_SANITIZE=address,undefined
           cmake --build build-fuzz -j
           build-fuzz/FuzzRavennaParsers -max_total_time=60 -max_len=4096 -print_final_stats=1
-          build-fuzz/FuzzCoreParsers -max_total_time=60 -max_len=8192 -print_final_stats=1
+          # aes67-core is a subdirectory of this build, so its target lands
+          # under that subdirectory's binary dir and not at the top. It was
+          # written as if it were top-level, and the step exited 127 -- after
+          # the ravenna fuzzer had already run its minute, which is why the
+          # failure looked like a fuzzing failure and was a path.
+          build-fuzz/aes67-core/FuzzCoreParsers -max_total_time=60 -max_len=8192 -print_final_stats=1
