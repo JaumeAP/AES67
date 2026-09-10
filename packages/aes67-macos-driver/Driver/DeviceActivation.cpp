@@ -1,15 +1,12 @@
 #include "DeviceActivation.h"
+#include "Profiles/ConfigPaths.h"
 #include "Driver/DebugLog.h"
 
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <optional>
-#include <pwd.h>
 #include <regex>
 #include <sstream>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace AES67 {
 
@@ -51,55 +48,15 @@ DeviceActivationManager::~DeviceActivationManager() = default;
 std::string DeviceActivationManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> DeviceActivationManager::getConfigSearchPaths() {
-    std::vector<std::string> paths;
-
-    const char* envPath = std::getenv("AES67_DEVICE_ACTIVATION_PATH");
-    if (envPath && envPath[0] != '\0') paths.push_back(envPath);
-
-    // /Library before the home directory, which is the other way round from
-    // the settings that came before this one. This flag is written by the
-    // Manager app through an administrator prompt, and /Library is the only
-    // place it can write: the driver is constructed inside coreaudiod, whose
-    // HOME is not the logged-in user's. A stray copy under some home directory
-    // must not decide whether the device appears.
-    paths.push_back("/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile));
-
-    const char* home = std::getenv("HOME");
-    if (!home) {
-        struct passwd* pw = getpwuid(getuid());
-        if (pw) home = pw->pw_dir;
-    }
-    if (home && home[0] != '\0') {
-        paths.push_back(std::string(home) + "/Library/Application Support/AES67Driver/" + kDefaultConfigFile);
-    }
-
-    return paths;
+    return configSearchPaths("AES67_DEVICE_ACTIVATION_PATH", kDefaultConfigFile, true);
 }
 
 std::string DeviceActivationManager::findExistingConfig() {
-    for (const auto& path : getConfigSearchPaths()) {
-        struct stat st;
-        if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) return path;
-    }
-    return "";
+    return AES67::findExistingConfig("AES67_DEVICE_ACTIVATION_PATH", kDefaultConfigFile, true);
 }
 
 bool DeviceActivationManager::ensureConfigDirectoryExists() {
-    size_t lastSlash = configPath_.find_last_of('/');
-    if (lastSlash == std::string::npos) return false;
-    std::string dir = configPath_.substr(0, lastSlash);
-
-    struct stat st;
-    if (stat(dir.c_str(), &st) == 0) return S_ISDIR(st.st_mode);
-
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    if (ec) {
-        AES67_LOGF("DeviceActivationManager: Failed to create directory '%s': %s",
-                   dir.c_str(), ec.message().c_str());
-        return false;
-    }
-    return true;
+    return ensureParentDirectory(configPath_, "DeviceActivationManager");
 }
 
 DeviceActivation DeviceActivationManager::load() {

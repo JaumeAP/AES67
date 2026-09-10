@@ -5,6 +5,7 @@
 //
 
 #include "StreamConfig.h"
+#include "Profiles/ConfigPaths.h"
 #include "NetworkUtils.h"
 #include "../Driver/DebugLog.h"
 #include <fstream>
@@ -14,8 +15,6 @@
 #include <ctime>
 #include <regex>
 #include <cstdlib>
-#include <pwd.h>
-#include <unistd.h>
 
 namespace AES67 {
 
@@ -62,30 +61,14 @@ StreamConfigManager::StreamConfigManager() {
 }
 
 std::vector<std::string> StreamConfigManager::getConfigSearchPaths() {
-    std::vector<std::string> paths;
-
-    // 1. Environment variable override (highest priority)
+    // The log line is this manager's own: AES67_CONFIG_PATH is the override a
+    // person reaches for while chasing which file is being read, and saying so
+    // is half the answer.
     const char* envPath = std::getenv("AES67_CONFIG_PATH");
     if (envPath && envPath[0] != '\0') {
-        paths.push_back(envPath);
         AES67_LOGF("StreamConfigManager: AES67_CONFIG_PATH set to: %s", envPath);
     }
-
-    // 2. User-level config (~/.config/AES67Driver or ~/Library/Application Support)
-    const char* home = std::getenv("HOME");
-    if (!home) {
-        struct passwd* pw = getpwuid(getuid());
-        if (pw) home = pw->pw_dir;
-    }
-    if (home && home[0] != '\0') {
-        std::string userPath = std::string(home) + "/Library/Application Support/AES67Driver/streams.json";
-        paths.push_back(userPath);
-    }
-
-    // 3. System-wide config (default)
-    paths.push_back("/Library/Application Support/AES67Driver/streams.json");
-
-    return paths;
+    return configSearchPaths("AES67_CONFIG_PATH", "streams.json");
 }
 
 std::string StreamConfigManager::findExistingConfig() {
@@ -113,35 +96,7 @@ void StreamConfigManager::setConfigPath(const std::string& path) {
 }
 
 bool StreamConfigManager::ensureConfigDirectoryExists() {
-    // Extract directory from config path
-    size_t lastSlash = configPath_.find_last_of('/');
-    if (lastSlash == std::string::npos) {
-        return false;
-    }
-
-    std::string dir = configPath_.substr(0, lastSlash);
-
-    // Check if directory already exists
-    struct stat st;
-    if (stat(dir.c_str(), &st) == 0) {
-        return S_ISDIR(st.st_mode);
-    }
-
-    // Directory doesn't exist — create parent first, then target.
-    // For /Library/Application Support/AES67Driver/ the parent should already exist,
-    // but handle the case where it doesn't gracefully.
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    if (ec) {
-        AES67_LOGF("StreamConfigManager: Failed to create directory '%s': %s",
-                   dir.c_str(), ec.message().c_str());
-        return false;
-    }
-
-    // Set directory permissions to 755 (rwxr-xr-x)
-    chmod(dir.c_str(), 0755);
-
-    return true;
+    return ensureParentDirectory(configPath_, "StreamConfigManager");
 }
 
 bool StreamConfigManager::saveConfig(const std::vector<PersistedStreamConfig>& configs) {

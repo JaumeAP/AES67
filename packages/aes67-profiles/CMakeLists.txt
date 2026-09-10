@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(aes67_profiles
     Profiles/CompatibilityProfile.cpp
+    Profiles/ConfigPaths.cpp
 )
 
 target_include_directories(aes67_profiles PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
