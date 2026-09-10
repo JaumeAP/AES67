@@ -15,7 +15,7 @@
 //
 // Swift has no equivalent header to include, so the selector value and the
 // dictionary key strings are declared identically in
-// ManagerApp/Models/DriverManager.swift's PTP diagnostics gateway section —
+// packages/aes67-macos-manager's Models/DriverManager.swift, PTP diagnostics —
 // keep the two in sync by hand if either changes.
 //
 #pragma once
