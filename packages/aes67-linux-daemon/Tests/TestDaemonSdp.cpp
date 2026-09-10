@@ -17,7 +17,7 @@ using namespace AES67::LinuxDriver;
 namespace {
 
 /// The parameters of the SDP the daemon's own README prints
-/// (external/aes67-linux-daemon/daemon/README.md, the RTP sink example).
+/// (bondagit/aes67-linux-daemon, daemon/README.md, the RTP sink example).
 DaemonSdpParams documented() {
     DaemonSdpParams params;
     params.nodeId = "";  // that example's session name is the source name alone

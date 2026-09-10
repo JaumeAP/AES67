@@ -13,7 +13,7 @@ not because they build together.
 | [`packages/aes67-core`](packages/aes67-core) | The platform-free core: SDP parsing, the RTP wire header, the jitter buffer and packet pool, the media-clock PLL, the resampling chain, channel mapping, configuration. No Apple framework, no socket header, no operating system — checked, not just intended | CMake, C++20 |
 | [`packages/aes67-macos-driver`](packages/aes67-macos-driver) | The macOS AudioServerPlugIn driver, the PTP daemon, the SwiftUI manager app and the tools | CMake, C++20 and Objective-C++ |
 | [`packages/aes67-linux-ptpd`](packages/aes67-linux-ptpd) | A PTP grandmaster for Linux, written for a Raspberry Pi 5: it announces the NIC's own hardware clock, stamps its Sync messages with it and reads its rates from `aes67-profiles`. Announce, Sync/Follow_Up and Delay_Resp; no BMCA and no slave side | CMake, C++20 |
-| [`packages/aes67-linux-daemon`](packages/aes67-linux-daemon) | The Linux device's user-space half: [`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon) as a submodule, through a fork that drops its vendored copy of the kernel module, plus `aes67-profile-conf`, which writes the daemon's configuration and its sources from the profiles and reads one back | CMake, C++20 |
+| [`packages/aes67-linux-daemon`](packages/aes67-linux-daemon) | The tools that configure the AES67 Linux daemon from the profiles: `aes67-profile-conf` writes its `daemon.conf` and its RTP sources, reads one back and says what is wrong with it, and holds our SDP against the daemon's own. The daemon is built from its own checkout, not vendored here | CMake, C++20 |
 | [`packages/ravenna-alsa-lkm`](packages/ravenna-alsa-lkm) | The Linux device's kernel half: Merging Technologies' RAVENNA/AES67 ALSA module through [`bondagit/ravenna-alsa-lkm`](https://github.com/bondagit/ravenna-alsa-lkm), as a submodule. Its own package because a kernel module and a user-space process fail in different ways | Kernel Makefile |
 | [`packages/aes67-ravenna`](packages/aes67-ravenna) | RAVENNA's session layer and the NMOS APIs a controller routes with: DNS-SD over mDNS and the RTSP DESCRIBE that hands over the SDP, IS-04 so the device is on the list, IS-05 to give one device another's stream, IS-08 for the grid channel by channel. The SDP is the core's and the grid is the core's matrix | CMake, C++20 |
 | [`packages/t41-ptp`](packages/t41-ptp) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
@@ -74,8 +74,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 That builds the driver, which pulls the core in with it: 42 test suites, plus
-the core's 19. `external/doctest` is the submodule those two share; the
-others are `aes67-linux-daemon`'s, and nothing on macOS reads them.
+the core's 19. `external/doctest` is the submodule those two share; the other is the RAVENNA
+kernel module, which nothing on macOS reads.
 
 `t41-ptp` is cross-compiled for an ARM Cortex-M7 and is not wired into the
 CMake tree. Its host tests run on the Mac; its board build needs PlatformIO.

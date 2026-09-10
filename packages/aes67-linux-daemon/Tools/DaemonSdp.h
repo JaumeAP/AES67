@@ -3,10 +3,11 @@
 // aes67-linux-daemon
 // The SDP the vendored daemon announces, written the way it writes it.
 //
-// This mirrors SessionManager::get_source_sdp_ in
-// external/aes67-linux-daemon/daemon/session_manager.cpp, which cannot be
+// This mirrors SessionManager::get_source_sdp_ in the AES67 Linux daemon,
+// bondagit/aes67-linux-daemon, daemon/session_manager.cpp, which cannot be
 // called from here: it is a private method of a class that owns a netlink
-// handle, a driver and a PTP state. What it emits, though, is a function of a
+// handle, a driver and a PTP state, and its source is not vendored in this
+// tree. What it emits, though, is a function of a
 // dozen values, and those are what this takes.
 //
 // It is a mirror, so it drifts if upstream changes. TestDaemonSdp pins it to

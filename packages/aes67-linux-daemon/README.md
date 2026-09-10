@@ -1,53 +1,19 @@
 # aes67-linux-daemon
 
-The user-space half of the Linux device: an AES67 device a Linux host offers
-to the network. The kernel half is its own package,
+The tools that configure the AES67 Linux daemon from this repository's
+compatibility profiles. The daemon itself is not here: it is
+[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon),
+built from its own checkout, and the kernel module it drives is
 `packages/ravenna-alsa-lkm`.
 
-None of the daemon is written here. What this package holds is
-[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)
-as a submodule under `external/`, the build and the gate, and the tools that
-turn this repository's compatibility profiles into the daemon's own
-configuration.
+What is here reads the profiles, the core's SDP writer and a text file, so it
+builds and is tested wherever this repository is read -- Linux or not.
 
-## What is vendored
-
-| Piece | Where it comes from | What it does |
-|-------|--------------------|--------------|
-| `aes67-daemon` | `bondagit/aes67-linux-daemon` | The user-space half: SAP and mDNS discovery, the REST interface, the sources and sinks configuration, NMOS IS-04 |
-| `cpp-httplib` | [`bondagit/cpp-httplib`](https://github.com/bondagit/cpp-httplib), a submodule of this package | The HTTP server the REST interface is served from |
-
-The kernel module is not here: it is `packages/ravenna-alsa-lkm`, its own
-package with its own checkout and its own gate, because a kernel module and a
-user-space process fail in different ways. This package builds the daemon
-against that checkout -- `RAVENNA_ALSA_LKM_DIR` points at it.
-
-Upstream pins the module a second time inside the daemon, under its
-`3rdparty/`, and cpp-httplib the same way. Two checkouts of one thing, free to
-drift, with only one ever compiled -- so the daemon this package tracks is a
-fork with both submodules removed and the two pins kept here instead, [`JaumeAP/aes67-linux-daemon`](https://github.com/JaumeAP/aes67-linux-daemon)
-branch `no-vendored-lkm`, one commit ahead of upstream and nothing else. The
-gate fails if a rebase onto upstream ever brings it back.
-
-Upstream's own `build.sh` still expects both under `3rdparty/`; building that
-way means putting them there. This
-package's CMake does not: it passes the module's location the way `build.sh`
-always did.
-
-The daemon and the kernel module talk over netlink. The module is the PTP
-slave and clocks every source and sink from that one clock; the daemon
-configures it and reports its status.
-
-Both are GPL. Their licence is theirs, not this repository's -- see
-`external/aes67-linux-daemon/LICENSE`.
-
-## What this package adds
-
-`CMakeLists.txt` configures the vendored daemon with the options `build.sh`
-uses, against the module package's checkout.
-
-Nothing here patches upstream. A change in behaviour belongs upstream, not in
-a copy kept beside it.
+`Tools/daemon.conf.upstream` is upstream's own `daemon.conf`, verbatim: the
+base a rewrite starts from, so every key a profile does not determine keeps
+the value upstream ships rather than one invented here. `Tools/DaemonSdp`
+mirrors the daemon's SDP writer and names the file and lines it came from --
+there is no copy of the daemon in this tree to diff against.
 
 ## Writing the daemon's configuration from a profile
 
@@ -174,14 +140,14 @@ standard rules out is an error.
 ## Building
 
 ```bash
-git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-The daemon wants Boost (thread, filesystem, log, program_options), Avahi and
-systemd headers. The web interface is a release download or an `npm` build --
-see the upstream `README.md` and `build.sh`.
+No dependency beyond this repository: the profiles package, the core and
+doctest. Building the daemon itself is upstream's `build.sh`, from upstream's
+checkout, and wants Boost, Avahi, systemd headers and the module from
+`packages/ravenna-alsa-lkm`.
 
 ## Verification
 
@@ -189,12 +155,12 @@ see the upstream `README.md` and `build.sh`.
 packages/aes67-linux-daemon/scripts/gate.sh
 ```
 
-Everywhere it builds `aes67-profile-conf` and runs its suite. On Linux it also
-configures, builds and runs the tests the daemon ships; anywhere else that half
-is skipped and said to be skipped.
+It builds the tools and runs their four suites, everywhere.
 
 ## What is not here
 
-The PTP grandmaster: that is `packages/aes67-linux-ptpd`, which announces the
-NIC's own hardware clock. The daemon is a slave and wants a master on the
-segment; the two are the two ends of the same link, not alternatives.
+The daemon and the kernel module. The daemon is upstream's, built from its own
+checkout; the module is `packages/ravenna-alsa-lkm`. And the PTP grandmaster,
+which is `packages/aes67-linux-ptpd`: the module is a PTP slave and wants a
+master on the segment, so the two are the ends of one link rather than
+alternatives.
