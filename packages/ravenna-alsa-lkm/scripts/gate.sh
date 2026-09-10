@@ -20,6 +20,25 @@ if [[ ! -f "$module/driver/Makefile" ]]; then
 fi
 echo "==> $(git -C "$module" rev-parse --short HEAD) checked out"
 
+# Butler/ stays off the disk.
+#
+# The checkout carries Merging's own user-space daemon as a 5.5 MB binary
+# under a licence of its own, plus its web app: 7.9 MB of the 8.7 that this
+# submodule weighs, and nothing here builds, installs or runs any of it --
+# the user-space half this tree uses is bondagit/aes67-linux-daemon, from
+# source. See README.md.
+#
+# It cannot be deleted: it is tracked in the submodule's own repository, which
+# is not ours. sparse-checkout is how it never lands instead, and it is set
+# here rather than left to a README line because a fresh clone would otherwise
+# fetch it and nobody would notice.
+if [[ -d "$module/Butler" ]]; then
+    echo "==> Excluding Butler/ from the checkout (a binary nothing here uses)"
+    git -C "$module" sparse-checkout init --no-cone > /dev/null 2>&1 || true
+    printf '/*\n!/Butler/\n' | git -C "$module" sparse-checkout set --stdin > /dev/null 2>&1 \
+        || echo "note: sparse-checkout not available; Butler/ stays on disk, unused"
+fi
+
 if [[ "$(uname -s)" != "Linux" ]]; then
     echo "==> Not Linux: the module was not built"
     echo "==> PASS"

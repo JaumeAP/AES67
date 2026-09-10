@@ -18,12 +18,21 @@ in a user-space process, and the module does nothing without one.
 
 There are two of those, and this tree uses the second:
 
-- **The Butler** (`Merging_RAVENNA_Daemon`), which arrives inside the checkout
-  under `external/ravenna-alsa-lkm/Butler/`. It is a 5.5 MB ELF binary, not
-  source, under a licence of its own (`Butler/LICENSE.md`) rather than the
-  module's GPL -- and the public build is **limited to 8 inputs and outputs
-  unless a Merging device is present**. Nothing here builds it, installs it or
-  runs it.
+- **The Butler** (`Merging_RAVENNA_Daemon`), which the checkout carries under
+  `external/ravenna-alsa-lkm/Butler/`. It is a 5.5 MB ELF binary, not source,
+  under a licence of its own (`Butler/LICENSE.md`) rather than the module's
+  GPL -- and the public build is **limited to 8 inputs and outputs unless a
+  Merging device is present**.
+
+  It is not on this disk. `scripts/gate.sh` sets a `sparse-checkout` on the
+  submodule that leaves `Butler/` out, which takes the checkout from 8.7 MB to
+  820 KB and means everything present here builds from source. Deleting it is
+  not an option -- it is tracked in `bondagit`'s repository, not ours -- so
+  not fetching it is. To see it anyway:
+
+  ```bash
+  git -C packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm sparse-checkout disable
+  ```
 - **[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)**,
   GPL-3.0, which drives the same module over the same netlink interface
   (`daemon/netlink.hpp`, `daemon/driver_handler.cpp`) and implements the same
