@@ -3,6 +3,8 @@
 // AES67 macOS Driver
 //
 
+#include <iterator>
+#include <algorithm>
 #include "NetworkEngine/Discovery/NodeAPIRouter.h"
 
 #include <chrono>
@@ -171,12 +173,14 @@ ConnectionAPIServer::Reply NodeAPIRouter::route(const std::string& method,
     if (!wantsOne) {
         std::vector<std::string> datas;
         datas.reserve(objects.size());
-        for (const auto& object : objects) datas.push_back(object.second);
+        std::transform(objects.begin(), objects.end(), std::back_inserter(datas),
+                       [](const auto& object) { return object.second; });
         return {200, "application/json", jsonArrayOf(datas)};
     }
-    for (const auto& object : objects) {
-        if (object.first == wantedId) return {200, "application/json", object.second};
-    }
+    const auto wanted = std::find_if(objects.begin(), objects.end(), [&](const auto& object) {
+        return object.first == wantedId;
+    });
+    if (wanted != objects.end()) return {200, "application/json", wanted->second};
     return error(404, "no such resource");
 }
 

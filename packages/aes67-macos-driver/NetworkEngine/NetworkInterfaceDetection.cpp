@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "NetworkInterfaceDetection.h"
 #include <sys/socket.h>
 #include <ifaddrs.h>
@@ -66,13 +67,8 @@ std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
                 std::string name(ifa->ifa_name);
                 
                 // Check if we already have this interface
-                bool found = false;
-                for (const auto& existing : interfaces) {
-                    if (existing == name) {
-                        found = true;
-                        break;
-                    }
-                }
+                const bool found =
+                    std::find(interfaces.begin(), interfaces.end(), name) != interfaces.end();
                 
                 if (!found) {
                     interfaces.push_back(name);
@@ -190,13 +186,8 @@ std::vector<std::string> NetworkInterfaceDetection::getMulticastCapableInterface
                 }
 
                 // Check if we already have this interface
-                bool found = false;
-                for (const auto& existing : interfaces) {
-                    if (existing == name) {
-                        found = true;
-                        break;
-                    }
-                }
+                const bool found =
+                    std::find(interfaces.begin(), interfaces.end(), name) != interfaces.end();
 
                 if (!found) {
                     interfaces.push_back(name);
@@ -219,11 +210,11 @@ std::string NetworkInterfaceDetection::detectPTPInterface() {
 
     // First pass: Look for dedicated AES67/audio interface naming conventions
     for (const auto& iface : interfaces) {
-        std::string lowerName = iface;
         // Convert to lowercase for case-insensitive comparison
-        for (auto& c : lowerName) {
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        }
+        std::string lowerName = iface;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), [](char c) {
+            return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        });
 
         if (lowerName.find("aes67") != std::string::npos ||
             lowerName.find("audio") != std::string::npos ||
@@ -234,20 +225,19 @@ std::string NetworkInterfaceDetection::detectPTPInterface() {
     }
 
     // Second pass: Prefer standard Ethernet interfaces (en0, en1, etc.)
-    for (const auto& iface : interfaces) {
-        if (iface.substr(0, 2) == "en") {
-            return iface;
-        }
-    }
+    const auto builtIn = std::find_if(interfaces.begin(), interfaces.end(), [](const auto& iface) {
+        return iface.substr(0, 2) == "en";
+    });
+    if (builtIn != interfaces.end()) return *builtIn;
 
     // Third pass: Accept other Ethernet-like interfaces
-    for (const auto& iface : interfaces) {
-        if (iface.substr(0, 3) == "eth" ||      // Alternative ethernet naming
-            iface.substr(0, 4) == "thun" ||     // Thunderbolt ethernet
-            iface.substr(0, 3) == "usb") {      // USB ethernet
-            return iface;
-        }
-    }
+    const auto ethernetLike =
+        std::find_if(interfaces.begin(), interfaces.end(), [](const auto& iface) {
+            return iface.substr(0, 3) == "eth" ||      // Alternative ethernet naming
+                   iface.substr(0, 4) == "thun" ||     // Thunderbolt ethernet
+                   iface.substr(0, 3) == "usb";        // USB ethernet
+        });
+    if (ethernetLike != interfaces.end()) return *ethernetLike;
 
     // Fall back to first available interface
     return interfaces[0];

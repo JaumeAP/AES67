@@ -608,10 +608,10 @@ void PTPSlave::storeFilteredPathDelay(int64_t delayNs) {
     delayHistoryIndex_ = (delayHistoryIndex_ + 1) % kDelayFilterSize;
     if (delayHistoryCount_ < kDelayFilterSize) delayHistoryCount_++;
 
-    int64_t minDelay = delayNs;
-    for (size_t i = 0; i < delayHistoryCount_; ++i) {
-        minDelay = std::min(minDelay, delayHistory_[i]);
-    }
+    const int64_t minDelay =
+        std::min(delayNs, *std::min_element(delayHistory_.begin(),
+                                            delayHistory_.begin() +
+                                                static_cast<ptrdiff_t>(delayHistoryCount_)));
     pathDelayNs_.store(minDelay, std::memory_order_release);
 }
 
@@ -1356,10 +1356,10 @@ void PTPSlave::calculateOffsetAndDelay() {
     if (offsetHistoryCount_ < kOffsetFilterSize) offsetHistoryCount_++;
 
     // Compute filtered offset (average)
-    int64_t filteredOffset = 0;
-    for (size_t i = 0; i < offsetHistoryCount_; ++i) {
-        filteredOffset += offsetHistory_[i];
-    }
+    int64_t filteredOffset =
+        std::accumulate(offsetHistory_.begin(),
+                        offsetHistory_.begin() + static_cast<ptrdiff_t>(offsetHistoryCount_),
+                        int64_t{0});
     filteredOffset /= static_cast<int64_t>(offsetHistoryCount_);
 
     // Store computed offset

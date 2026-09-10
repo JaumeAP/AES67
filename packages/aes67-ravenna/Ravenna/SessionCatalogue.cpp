@@ -1,6 +1,7 @@
 #include "Ravenna/SessionCatalogue.h"
 
 #include <algorithm>
+#include <numeric>
 
 namespace AES67::Ravenna {
 
@@ -18,9 +19,10 @@ bool SessionCatalogue::add(const RavennaSession& session, std::string& error) {
     if (!session.sdp.isValid()) {
         const std::vector<std::string> problems = session.sdp.getValidationErrors();
         error = "the SDP for " + session.name + " is not valid";
-        for (const std::string& problem : problems) {
-            error += "\n  - " + problem;
-        }
+        error = std::accumulate(problems.begin(), problems.end(), error,
+                                [](const std::string& text, const std::string& problem) {
+                                    return text + "\n  - " + problem;
+                                });
         return false;
     }
 

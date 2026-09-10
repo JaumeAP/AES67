@@ -220,9 +220,7 @@ ApiResponse ChannelMappingApi::activate(const std::string& body) {
         // names a new input or empties it. Two inputs on one output channel
         // is not a mix, it is a fault.
         for (auto& [receiverId, mapping] : updated) {
-            for (int& channel : mapping.channelMap) {
-                if (channel == deviceChannel) channel = -1;
-            }
+            std::replace(mapping.channelMap.begin(), mapping.channelMap.end(), deviceChannel, -1);
         }
 
         const JsonValue& input = cell["input"];

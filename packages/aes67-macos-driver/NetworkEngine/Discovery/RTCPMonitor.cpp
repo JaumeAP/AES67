@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "RTCPMonitor.h"
 #include "NetworkEngine/SelectWait.h"
 
@@ -179,10 +180,9 @@ public:
 
         std::lock_guard<std::mutex> lock(mutex_);
         for (uint32_t ssrc : parsed.reporterSSRCs) {
-            std::string cname;
-            for (const auto& c : parsed.cnames) {
-                if (c.first == ssrc) { cname = c.second; break; }
-            }
+            const auto named = std::find_if(parsed.cnames.begin(), parsed.cnames.end(),
+                                            [ssrc](const auto& c) { return c.first == ssrc; });
+            const std::string cname = named != parsed.cnames.end() ? named->second : std::string();
             table_.record(ssrc, sourceIp, cname, now);
         }
     }

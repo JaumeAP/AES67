@@ -27,6 +27,7 @@
 //
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -74,9 +75,8 @@ inline int runFuzzDriver(int argc, char** argv,
             }
         } else {
             input.resize(rng() % maxRandomLength);
-            for (auto& b : input) {
-                b = static_cast<uint8_t>(rng() & 0xff);
-            }
+            std::generate(input.begin(), input.end(),
+                          [&rng] { return static_cast<uint8_t>(rng() & 0xff); });
         }
         LLVMFuzzerTestOneInput(input.data(), input.size());
     }

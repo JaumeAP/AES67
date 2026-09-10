@@ -1010,11 +1010,10 @@ bool StreamManager::setDeviceSampleRate(double sampleRate) {
     std::lock_guard<std::mutex> lock(streamsMutex_);
 
     // Check if any streams would be incompatible
-    for (const auto& pair : streams_) {
-        if (std::abs(pair.second.sdp.sampleRate - sampleRate) > 0.1) {
-            return false;
-        }
-    }
+    const bool allCompatible = std::all_of(streams_.begin(), streams_.end(), [&](const auto& pair) {
+        return std::abs(pair.second.sdp.sampleRate - sampleRate) <= 0.1;
+    });
+    if (!allCompatible) return false;
 
     currentDeviceSampleRate_.store(sampleRate);
     return true;

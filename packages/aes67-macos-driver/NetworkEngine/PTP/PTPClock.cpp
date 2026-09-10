@@ -5,6 +5,8 @@
 // Implements AES67-2018 Section 8.2 Media Clock Recovery
 //
 
+#include <iterator>
+#include <algorithm>
 #include "PTPClock.h"
 #include "AudioClockDeviceList.h"
 #include "PTPDInterface.h"
@@ -563,9 +565,8 @@ std::vector<int> PTPClockManager::getActiveDomains() const {
 
     std::vector<int> domains;
     domains.reserve(clocks_.size());
-for (const auto& pair : clocks_) {
-        domains.push_back(pair.first);
-    }
+    std::transform(clocks_.begin(), clocks_.end(), std::back_inserter(domains),
+                   [](const auto& pair) { return pair.first; });
 
     return domains;
 }

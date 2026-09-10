@@ -17,6 +17,7 @@
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <arpa/inet.h>
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace AES67 {
@@ -750,16 +751,13 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
 
     // Which of our receive streams this id names. The ids are derived from
     // the session name, so this is the same walk the listing does.
-    SDPSession target;
-    bool found = false;
-    for (const SDPSession& sdp : streamManager_->getReceiveSessions()) {
-        if (nmosIdFor("receiver", sdp.sessionName) == receiverId) {
-            target = sdp;
-            found = true;
-            break;
-        }
-    }
-    if (!found) return false;
+    const std::vector<SDPSession> sessions = streamManager_->getReceiveSessions();
+    const auto match = std::find_if(sessions.begin(), sessions.end(),
+                                    [&](const SDPSession& sdp) {
+                                        return nmosIdFor("receiver", sdp.sessionName) == receiverId;
+                                    });
+    if (match == sessions.end()) return false;
+    const SDPSession target = *match;
 
     // A patch with no activation is staged and not applied. This driver
     // keeps no staged state, so saying yes to it would be a promise it
@@ -772,11 +770,12 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
             std::lock_guard<std::mutex> lock(receiverSenderIdsMutex_);
             receiverSenderIds_.erase(receiverId);
         }
-        for (const StreamInfo& info : streamManager_->getActiveStreams()) {
-            if (info.name == target.sessionName) {
-                return streamManager_->removeStream(info.id);
-            }
-        }
+        const std::vector<StreamInfo> active = streamManager_->getActiveStreams();
+        const auto running = std::find_if(active.begin(), active.end(),
+                                          [&](const StreamInfo& info) {
+                                              return info.name == target.sessionName;
+                                          });
+        if (running != active.end()) return streamManager_->removeStream(running->id);
         return true;   // already not running: the controller got what it asked for
     }
 
@@ -990,13 +989,9 @@ Float64 AES67Device::GetSampleRate() const {
 
 OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
     // Validate sample rate
-    bool isValid = false;
-    for (auto validRate : kSupportedSampleRates) {
-        if (std::abs(sampleRate - validRate) < 0.1) {
-            isValid = true;
-            break;
-        }
-    }
+    const bool isValid = std::any_of(
+        kSupportedSampleRates.begin(), kSupportedSampleRates.end(),
+        [sampleRate](auto validRate) { return std::abs(sampleRate - validRate) < 0.1; });
 
     if (!isValid) {
         return kAudioHardwareUnsupportedOperationError;
@@ -1055,9 +1050,9 @@ OSStatus AES67Device::SetSampleRate(Float64 sampleRate) {
 std::vector<AudioValueRange> AES67Device::GetAvailableSampleRates() const {
     std::vector<AudioValueRange> ranges;
     ranges.reserve(kSupportedSampleRates.size());
-for (auto rate : kSupportedSampleRates) {
-        ranges.push_back({rate, rate});
-    }
+    std::transform(kSupportedSampleRates.begin(), kSupportedSampleRates.end(),
+                   std::back_inserter(ranges),
+                   [](auto rate) { return AudioValueRange{rate, rate}; });
     return ranges;
 }
 
@@ -1067,13 +1062,9 @@ UInt32 AES67Device::GetBufferSize() const {
 
 OSStatus AES67Device::SetBufferSize(UInt32 bufferSize) {
     // Validate buffer size
-    bool isValid = false;
-    for (auto validSize : kSupportedBufferSizes) {
-        if (bufferSize == validSize) {
-            isValid = true;
-            break;
-        }
-    }
+    const bool isValid = std::any_of(
+        kSupportedBufferSizes.begin(), kSupportedBufferSizes.end(),
+        [bufferSize](auto validSize) { return bufferSize == validSize; });
 
     if (!isValid) {
         return kAudioHardwareUnsupportedOperationError;

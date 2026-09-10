@@ -4,6 +4,7 @@
 // Implementation of common types and utilities
 //
 
+#include <algorithm>
 #include "Types.h"
 #include <random>
 #include <sstream>
@@ -82,9 +83,7 @@ StreamID StreamID::generate() {
     std::uniform_int_distribution<uint8_t> dis(0, 255);
 
     uint8_t uuid[16];
-    for (uint8_t& byte : uuid) {
-        byte = dis(gen);
-    }
+    std::generate(std::begin(uuid), std::end(uuid), [&] { return dis(gen); });
 
     // Set version (4) and variant bits for UUID v4
     uuid[6] = (uuid[6] & 0x0F) | 0x40;

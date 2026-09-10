@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "Ravenna/NodeApi.h"
 
 #include <arpa/inet.h>
@@ -64,9 +65,7 @@ JsonValue tagsEmpty() { return JsonValue(JsonObject{}); }
 /// left is still the name a person picked.
 std::string oneLabel(const std::string& name) {
     std::string label = name;
-    for (char& character : label) {
-        if (character == '.') character = ' ';
-    }
+    std::replace(label.begin(), label.end(), '.', ' ');
     return label;
 }
 
@@ -351,9 +350,11 @@ ApiResponse NodeApi::handle(const std::string& method, const std::string& path,
     if (segments.size() == 1) return jsonResponse(200, found);
 
     // One resource by id.
-    for (const JsonValue& item : found.asArray()) {
-        if (item["id"].asString() == segments[1]) return jsonResponse(200, item);
-    }
+    const JsonArray& items = found.asArray();
+    const auto match = std::find_if(items.begin(), items.end(), [&](const JsonValue& item) {
+        return item["id"].asString() == segments[1];
+    });
+    if (match != items.end()) return jsonResponse(200, *match);
     return errorResponse(404, "no " + collection + " with id " + segments[1]);
 }
 

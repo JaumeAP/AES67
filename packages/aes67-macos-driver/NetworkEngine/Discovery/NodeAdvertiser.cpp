@@ -3,6 +3,7 @@
 // AES67 macOS Driver
 //
 
+#include <algorithm>
 #include "NetworkEngine/Discovery/NodeAdvertiser.h"
 
 #include <chrono>
@@ -18,9 +19,7 @@ Ravenna::SessionAdvertisement nodeAdvertisement(const std::string& label,
     // would make a PTR of two labels and mDNSResponder drops the record.
     // Same rule, and the same replacement, as aes67-ravenna's oneLabel().
     node.instanceName = label;
-    for (char& character : node.instanceName) {
-        if (character == '.') character = ' ';
-    }
+    std::replace(node.instanceName.begin(), node.instanceName.end(), '.', ' ');
     node.hostName = hostName;
     node.port = apiPort;
     node.addressV4 = addressV4;

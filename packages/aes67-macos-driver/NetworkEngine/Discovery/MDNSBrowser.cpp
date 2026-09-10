@@ -15,6 +15,8 @@
 // with every macOS — no dependency added.
 //
 
+#include <iterator>
+#include <algorithm>
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
 #include "NetworkEngine/SelectWait.h"
 
@@ -88,7 +90,8 @@ public:
         sweepLocked();
         std::vector<MDNSService> out;
         out.reserve(services_.size());
-        for (const auto& entry : services_) out.push_back(entry.second);
+        std::transform(services_.begin(), services_.end(), std::back_inserter(out),
+                       [](const auto& entry) { return entry.second; });
         return out;
     }
 

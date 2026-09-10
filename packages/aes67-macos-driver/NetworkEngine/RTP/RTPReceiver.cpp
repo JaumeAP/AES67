@@ -74,13 +74,8 @@ RTPReceiver::RTPReceiver(
 
     // Resolve network interface name to IP address
     if (!networkInterface_.empty()) {
-        bool looksLikeIP = true;
-        for (char c : networkInterface_) {
-            if (c != '.' && !isdigit(c)) {
-                looksLikeIP = false;
-                break;
-            }
-        }
+        const bool looksLikeIP = std::all_of(networkInterface_.begin(), networkInterface_.end(),
+                                             [](char c) { return c == '.' || isdigit(c); });
 
         if (looksLikeIP) {
             resolvedInterfaceIP_ = networkInterface_;

@@ -17,6 +17,8 @@
 // addressed on 2026-08-31).
 //
 
+#include <iterator>
+#include <algorithm>
 #include "NetworkEngine/Discovery/RTSPServer.h"
 #include "NetworkEngine/SelectWait.h"
 
@@ -59,9 +61,9 @@ int parseCSeq(const std::string& request) {
     const std::string key = "cseq:";
     std::string lowered;
     lowered.reserve(request.size());
-    for (char c : request) {
-        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    }
+    std::transform(request.begin(), request.end(), std::back_inserter(lowered), [](char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    });
     const size_t at = lowered.find(key);
     if (at == std::string::npos) return 0;
     size_t cursor = at + key.size();
