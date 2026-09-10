@@ -312,6 +312,14 @@ private:
 
     /// The node id in use, empty when NMOS is off.
 
+
+    // Whether Initialize() has run. See its comment: a second call used to add
+
+    // a second pair of streams.
+
+    std::atomic<bool> initialised_{false};
+
+
     // The context this device was constructed with. aspl::Object hands out a
     // const one and aspl::Storage wants a mutable one, so it is kept here
     // rather than const_cast away what the base class deliberately hid.

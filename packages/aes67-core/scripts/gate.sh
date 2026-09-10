@@ -61,7 +61,7 @@ scripts/check-platform-free.sh || { echo "FAIL: platform contract" >&2; exit 1; 
 # when the push is going to the default branch, after asking.
 if [ "${AES67_ANALYSE:-0}" = "1" ] || [ "$analyse" = "1" ]; then
   echo "==> Static analysis"
-  scripts/check-tidy.sh "$build_dir" || { echo "FAIL: clang-tidy" >&2; exit 1; }
+  ../../scripts/check-tidy.sh "$build_dir" || { echo "FAIL: clang-tidy" >&2; exit 1; }
 else
   echo "==> Static analysis skipped (AES67_ANALYSE=1 or --analyse to run it)"
 fi

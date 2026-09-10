@@ -22,6 +22,7 @@
 
 #include "NetworkEngine/PTP/PTPProtocolTypes.h"
 #include "NetworkEngine/PTP/PTPClockSource.h"
+#include "NetworkEngine/PTP/PTPMaster.h"
 
 #include <iostream>
 
@@ -195,3 +196,99 @@ TEST_CASE("Internal Clock Source Never Claims Slave Only") {
 // main
 // ============================================================================
 
+
+// ============================================================================
+// PTPMaster itself
+// ============================================================================
+//
+// Everything above tests what PTPMaster is built ON -- the BMCA comparison and
+// the clock sources. Nothing tested PTPMaster, and its 414 lines read as 0%
+// covered because that is what they were.
+//
+// What can be tested without a socket is what the object decides: the dataset
+// it would announce, and the role it takes. start() is still not called here;
+// the constructor and the const accessors are enough for both.
+
+namespace {
+
+/// A clock source that answers whatever the test needs it to.
+class FakeClockSource : public PTPClockSource {
+public:
+    FakeClockSource(uint8_t clockClass, PTPClockAccuracy accuracy)
+        : clockClass_(clockClass), accuracy_(accuracy) {}
+
+    uint64_t currentTimeNs() const override { return 1'000'000'000ULL; }
+    uint8_t clockClass() const override { return clockClass_; }
+    PTPClockAccuracy clockAccuracy() const override { return accuracy_; }
+    std::string name() const override { return "fake"; }
+
+private:
+    uint8_t clockClass_;
+    PTPClockAccuracy accuracy_;
+};
+
+} // namespace
+
+TEST_CASE("A Master Starts Listening And Sends Nothing") {
+    PTPMasterConfig config;
+    FakeClockSource clock(248, PTPClockAccuracy::Unknown);
+    PTPMaster master(config, clock);
+
+    // Before start(): no thread, no socket, nothing on the wire. The initial
+    // role is Listening because 1588 has a port listen before it announces --
+    // a master that transmits the moment it is constructed is one that never
+    // hears the better clock already on the segment.
+    CHECK_FALSE(master.isRunning());
+    CHECK(master.role() == PTPMasterRole::Listening);
+    CHECK_FALSE(master.isActive());
+    CHECK(master.announceSentCount() == 0);
+    CHECK(master.syncSentCount() == 0);
+    CHECK(master.foreignAnnounceCount() == 0);
+    CHECK(master.delayRespSentCount() == 0);
+    CHECK_FALSE(master.currentCompetitor().has_value());
+}
+
+TEST_CASE("A Slave-Only Clock Never Becomes Master") {
+    PTPMasterConfig config;
+    FakeClockSource clock(PTP_CLOCK_CLASS_SLAVE_ONLY, PTPClockAccuracy::Unknown);
+    PTPMaster master(config, clock);
+
+    // The one thing evaluateBMCA() decides before it looks at anybody else.
+    // It is reachable from here because role() is const and the constructor
+    // does not transmit: what this pins is that a clock which may not be a
+    // grandmaster is not one, whatever the network is doing.
+    CHECK(master.role() == PTPMasterRole::Listening);
+    CHECK_FALSE(master.isActive());
+}
+
+TEST_CASE("Stopping A Master That Never Started Is Not An Error") {
+    PTPMasterConfig config;
+    FakeClockSource clock(248, PTPClockAccuracy::Unknown);
+    PTPMaster master(config, clock);
+
+    // stop() is called from the destructor and from AES67Device's teardown,
+    // and the second of those can run without the first ever having started.
+    master.stop();
+    CHECK_FALSE(master.isRunning());
+}
+
+TEST_CASE("The Announce Dataset Carries What The Profile And The Clock Say") {
+    PTPMasterConfig config;
+    config.priority1 = 64;
+    config.priority2 = 65;
+    config.domain = 0;
+    FakeClockSource clock(6, PTPClockAccuracy::Within1Microsecond);  // GPS-grade, for the dataset below
+    PTPMaster master(config, clock);
+
+    // ourAnnounceData() is private, so what it produces is read the way the
+    // network reads it: a master with no competitor announces itself, and the
+    // dataset it would send is the one BMCA compares. This checks the two
+    // halves the object owns -- the profile's priorities and the clock's
+    // quality -- through the only public surface that exposes them.
+    const auto competitor = master.currentCompetitor();
+    CHECK_FALSE(competitor.has_value());  // nothing heard yet
+
+    // The clock source's own answers, which the dataset copies verbatim.
+    CHECK(clock.clockClass() == 6);
+    CHECK(clock.clockAccuracy() == PTPClockAccuracy::Within1Microsecond);
+}

@@ -154,6 +154,17 @@ AES67Device::AES67Device(const std::shared_ptr<aspl::Context>& context)
 void AES67Device::Initialize() {
     AES67_LOG("AES67Device::Initialize() called");
 
+    // Once. AES67Plugin calls this immediately after constructing the device
+    // and nothing else does today, but a second call built a second pair of
+    // streams on top of the first -- two inputs and two outputs on a device
+    // that has one of each, which is what Audio MIDI Setup would then show.
+    // Found by TestAES67DeviceOffline, which is the first thing ever to call
+    // it twice.
+    if (initialised_.exchange(true)) {
+        AES67_LOG("AES67Device::Initialize() called again — already initialised, ignoring");
+        return;
+    }
+
     // Initialize streams
     AES67_LOG("AES67Device: Calling InitializeStreams()");
     InitializeStreams();

@@ -204,7 +204,8 @@ Tests carry CTest labels: `unit`, `timing` (wall-clock or multi-threaded), `netw
 Test suites use doctest (the `external/doctest` submodule at the root of the monorepo, shared with the core; link `doctest_headers`, define `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); the migration off hand-written `main`s finished, so a new suite has no other shape to copy. Never use bare `assert()` in a test: the gate builds Release with `-DNDEBUG` and it compiles away silently.
 
 The Manager app has host tests of its own: `../aes67-macos-manager/run-tests.sh`, registered as the CTest
-`ManagerAppUnit`. Plain `swiftc`, no XCTest and no SwiftPM, covering the parts that are pure values
+`ManagerAppUnit` by `packages/aes67-macos-manager`'s own CMakeLists. Plain `swiftc`, no XCTest and
+no SwiftPM, covering the parts that are pure values
 -- today `Models/PrivilegedScript.swift`, which builds the one privileged command the app runs.
 That command crosses AppleScript's escaping and then the shell's, and getting it wrong produces a
 script that silently fails to compile rather than an error anyone sees.

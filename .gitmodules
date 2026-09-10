@@ -1,12 +1,10 @@
 [submodule "external/doctest"]
 	path = external/doctest
 	url = https://github.com/doctest/doctest.git
-[submodule "packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm"]
-	path = packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm
-	url = https://github.com/bondagit/ravenna-alsa-lkm.git
 [submodule "packages/t41-ptp"]
 	path = packages/t41-ptp
 	url = https://github.com/JaumeAP/t41-ptp.git
-[submodule "packages/aes67-ravenna/external/ravennakit"]
-	path = packages/aes67-ravenna/external/ravennakit
-	url = https://github.com/soundondigital/ravennakit.git
+[submodule "external/ravenna-alsa-lkm"]
+	path = external/ravenna-alsa-lkm
+	url = https://github.com/bondagit/ravenna-alsa-lkm.git
+	branch = aes67-daemon

@@ -28,10 +28,10 @@ StreamManager::StreamManager(DeviceChannelBuffers& inputChannels, DeviceChannelB
 PTPDiagnostics StreamManager::getPTPDiagnostics(int domain) {
     // Reports whatever is actually running — which, unless setPTPEnabled(true)
     // has been called, is nothing, and the disconnected defaults are the
-    // honest answer. ptpManager_ (the member) stays unused: clocks are
-    // owned by PTPClockManager's singleton, keyed by domain, because
-    // several streams on the same domain must share one clock rather than
-    // each starting its own.
+    // honest answer. This manager holds no clock of its own: they are owned
+    // by PTPClockManager's singleton, keyed by domain, because several
+    // streams on the same domain must share one clock rather than each
+    // starting its own.
     return PTPClockManager::getInstance().getDiagnostics(domain);
 }
 

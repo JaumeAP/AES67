@@ -226,7 +226,6 @@ TEST_CASE("Config Search Paths") {
 
     // Verify paths contain expected components
     bool hasUserPath = false;
-    bool hasSystemPath = false;
 
     for (const auto& path : paths) {
         if (path.find("Library/Application Support") != std::string::npos) {

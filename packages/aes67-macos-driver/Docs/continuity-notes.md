@@ -20,7 +20,7 @@ CI: local only, GitHub Actions disabled and deleted. `scripts/gate.sh` is the ga
 
 Static analysis: `.clang-tidy` runs the defect families and leaves style off; `WarningsAsErrors` is deliberately narrower than `Checks`. Install with `python3 -m venv ~/.local/venvs/cpptools && ~/.local/venvs/cpptools/bin/pip install clang-tidy==21.1.6`.
 
-Manager app previews: `#Preview` blocks live in `ManagerApp/Views/Previews/`, kept out of `build.sh`'s source list because the macro needs full Xcode. New previews go there, and into the Xcode target, never into `build.sh`.
+Manager app previews: `#Preview` blocks live in `packages/aes67-macos-manager/Views/Previews/`, kept out of `build.sh`'s source list because the macro needs full Xcode. New previews go there, and into the Xcode target, never into `build.sh`.
 
 Related repositories, and where they stand: `aes67-core` and `t41-ptp` are packages of this monorepo now, not separate repositories -- their GitHub originals are archived and read-only, and so is `JaumeAP/QNEthernet`, which arrives inside t41-ptp as `libraries/QNEthernet` and had a duplicate top-level package here until 2026-09-05. `JaumeAP/AES67-master-box-` (the grandmaster firmware) is the exception: it was a package here and is standalone again, `main` at 2f66e20, carrying t41-ptp as the `lib/t41-ptp` submodule at `bc9cd69`. The box does NOT consume `aes67-core`, and after weighing it on 2026-09-03 it stays that way.
 

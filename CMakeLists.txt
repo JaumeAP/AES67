@@ -62,4 +62,14 @@ add_subdirectory(packages/aes67-macos-manager)
 # configures to when it is not Linux; the kernel module's package configures to
 # nothing at all off Linux and says so.
 add_subdirectory(packages/aes67-linux-ptpd)
-add_subdirectory(packages/ravenna-alsa-lkm)
+# The RAVENNA ALSA kernel module: a checkout under external/, not a package.
+# Kernel C, built by the kernel's own build system against the running
+# kernel's headers, and out of ALL for the same reason it always was -- a
+# configure that succeeds is not a promise that a build will.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux"
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm/driver/Makefile")
+    add_custom_target(ravenna-alsa-lkm
+        COMMAND make -C "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm/driver"
+        COMMENT "RAVENNA ALSA kernel module"
+        VERBATIM)
+endif()

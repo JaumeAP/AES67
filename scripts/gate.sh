@@ -12,7 +12,6 @@
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
 #   packages/aes67-macos-manager/scripts/gate.sh  host tests, the app
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
-#   packages/ravenna-alsa-lkm/scripts/gate.sh    the kernel module, on Linux with headers
 #   packages/t41-ptp/scripts/gate.sh             host tests
 #
 # aes67-core and aes67-ravenna run before the driver on purpose: the driver
@@ -54,7 +53,28 @@ run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
 run "aes67-macos-manager" packages/aes67-macos-manager/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
-run "ravenna-alsa-lkm"   packages/ravenna-alsa-lkm/scripts/gate.sh
+
+# The RAVENNA ALSA kernel module is a checkout, not a package: docs/ravenna-alsa-lkm.md
+# says why. What its wrapper's gate did, this does.
+#
+# Butler/ stays off the disk: the checkout carries Merging's own user-space
+# daemon as a 5.5 MB binary under a licence of its own, plus its web app --
+# 7.9 MB of the 8.7 this submodule weighs, and nothing here builds, installs
+# or runs any of it. It cannot be deleted, being tracked in a repository that
+# is not ours, so it is not fetched instead.
+lkm="external/ravenna-alsa-lkm"
+if [ -d "$lkm/Butler" ]; then
+  echo
+  echo "######## ravenna-alsa-lkm"
+  echo "==> Excluding Butler/ from the checkout (a binary nothing here uses)"
+  git -C "$lkm" sparse-checkout init --no-cone > /dev/null 2>&1 || true
+  printf '/*\n!/Butler/\n' | git -C "$lkm" sparse-checkout set --stdin > /dev/null 2>&1 \
+    || echo "note: sparse-checkout not available; Butler/ stays on disk, unused"
+fi
+if [ -f "$lkm/driver/Makefile" ] && [ "$(uname -s)" = "Linux" ] \
+   && [ -d "/lib/modules/$(uname -r)/build" ]; then
+  run "ravenna-alsa-lkm" make -C "$lkm/driver"
+fi
 run "t41-ptp"            packages/t41-ptp/scripts/gate.sh
 
 echo

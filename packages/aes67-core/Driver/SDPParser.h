@@ -160,7 +160,6 @@ public:
 
 private:
     // Parsing helper functions
-    static bool parseSessionLine(const std::string& line, SDPSession& session);
     static bool parseOriginLine(const std::string& line, SDPSession& session);
     static bool parseConnectionLine(const std::string& line, SDPSession& session);
     static bool parseTimingLine(const std::string& line, SDPSession& session);
@@ -174,7 +173,6 @@ private:
     static bool parseSourceFilterAttribute(const std::string& value, SDPSession& session);
     static bool parsePTPRefClockAttribute(const std::string& value, SDPSession& session);
     static bool parseMediaClockAttribute(const std::string& value, SDPSession& session);
-    static bool parseDirectionAttribute(const std::string& value, SDPSession& session);
 
     // Generation helper functions
     static std::string generateOriginLine(const SDPSession& session);
