@@ -136,18 +136,31 @@ TEST_CASE("Smoothed PI Controller Creation") {
 TEST_CASE("Smoothed PI Controller Update") {
     std::cout << "Test: SmoothedPIController update with smoothing window... ";
 
-    SmoothedPIController controller(0.1, 0.01, -0.1, 0.1, 5);
+    constexpr size_t window = 5;
+    constexpr double kp = 0.1;
+    constexpr double error = 0.05;
 
-    // Apply error
-    double output1 = controller.update(0.05, 0.001);
-    CHECK((output1 >= -0.1 && output1 <= 0.1));
+    SmoothedPIController controller(kp, 0.01, -0.1, 0.1, window);
 
-    // Apply more errors
-    controller.update(0.05, 0.001);
-    double output3 = controller.update(0.05, 0.001);
+    // The window starts full of zeros, so a step error arrives at the
+    // proportional term one fifth at a time. That ramp is the smoothing, and
+    // it is the whole difference from PIController: checking only that the
+    // output stays inside the limits would pass with no smoothing at all.
+    double previous = 0.0;
+    for (size_t step = 1; step <= window; ++step) {
+        const double output = controller.update(error, 0.001);
+        const double expected = kp * error * static_cast<double>(step) / static_cast<double>(window);
 
-    // Outputs should be reasonable
-    CHECK((output3 >= -0.1 && output3 <= 0.1));
+        CHECK((output >= -0.1 && output <= 0.1));
+        CHECK(controller.getProportional() == doctest::Approx(expected));
+        CHECK(output > previous);
+        previous = output;
+    }
+
+    // The window now holds the same error five times over: the average is the
+    // error itself and the proportional term stops moving.
+    controller.update(error, 0.001);
+    CHECK(controller.getProportional() == doctest::Approx(kp * error));
 
     std::cout << "PASS" << std::endl;
 }
