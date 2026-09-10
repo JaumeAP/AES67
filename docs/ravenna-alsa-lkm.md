@@ -1,5 +1,9 @@
 # ravenna-alsa-lkm
 
+Not a package: a checkout, under `external/` beside doctest, and this file.
+It was `packages/ravenna-alsa-lkm` -- three files of wrapper around a
+submodule -- until the wrapper stopped earning its place.
+
 The RAVENNA/AES67 ALSA kernel module: Merging Technologies' driver, through
 [`bondagit/ravenna-alsa-lkm`](https://github.com/bondagit/ravenna-alsa-lkm),
 vendored under `external/` as a submodule, pinned to the **`aes67-daemon`**
@@ -24,14 +28,14 @@ There are two of those, and this tree uses the second:
   GPL -- and the public build is **limited to 8 inputs and outputs unless a
   Merging device is present**.
 
-  It is not on this disk. `scripts/gate.sh` sets a `sparse-checkout` on the
+  It is not on this disk. the tree's `scripts/gate.sh` sets a `sparse-checkout` on the
   submodule that leaves `Butler/` out, which takes the checkout from 8.7 MB to
   820 KB and means everything present here builds from source. Deleting it is
   not an option -- it is tracked in `bondagit`'s repository, not ours -- so
   not fetching it is. To see it anyway:
 
   ```bash
-  git -C packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm sparse-checkout disable
+  git -C external/ravenna-alsa-lkm sparse-checkout disable
   ```
 - **[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)**,
   GPL-3.0, which drives the same module over the same netlink interface
@@ -88,7 +92,7 @@ have.
 ## Verification
 
 ```bash
-packages/ravenna-alsa-lkm/scripts/gate.sh
+scripts/gate.sh   # the tree gate carries what this package's own used to do
 ```
 
 On Linux with kernel headers it builds the module and checks a
