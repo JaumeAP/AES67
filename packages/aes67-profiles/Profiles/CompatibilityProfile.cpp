@@ -500,7 +500,7 @@ CompatibilityProfileManager::CompatibilityProfileManager() {
 
 CompatibilityProfileManager::~CompatibilityProfileManager() = default;
 
-std::string CompatibilityProfileManager::getConfigPath() const { return configPath_; }
+const std::string& CompatibilityProfileManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> CompatibilityProfileManager::getConfigSearchPaths() {
     return configSearchPaths("AES67_COMPAT_PROFILE_CONFIG_PATH", kDefaultConfigFile);

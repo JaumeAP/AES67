@@ -63,9 +63,10 @@ PTPClock::PTPClock(int domain)
     : domain_(domain)
     , running_(false)
     , localClock_(std::make_unique<LocalClock>())
+    // Auto-detected here rather than in the body: the log line and the
+    // fallback below both read it, so it has to exist before the body runs.
+    , networkInterface_(NetworkInterfaceDetection::detectPTPInterface())
 {
-    // Auto-detect the best network interface for PTP
-    networkInterface_ = NetworkInterfaceDetection::detectPTPInterface();
 
     std::cout << "[PTPClock] Domain " << domain << " - Auto-detected network interface: "
               << networkInterface_ << '\n';

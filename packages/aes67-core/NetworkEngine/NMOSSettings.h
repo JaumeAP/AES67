@@ -53,7 +53,7 @@ public:
     /// same one it just persisted.
     bool save(NMOSSettings& settings);
 
-    std::string getConfigPath() const;
+    const std::string& getConfigPath() const;
 
     /// A random UUID, version 4. Public because the driver needs one at
     /// first run and because a generator worth trusting is worth testing.

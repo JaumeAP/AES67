@@ -1,6 +1,30 @@
 cmake_minimum_required(VERSION 3.20)
 project(aes67_linux_ptpd LANGUAGES CXX)
 
+# Instrumentation, for the analysis half of the gate. Both are off by default
+# and both are applied once for the whole tree: a package built as another's
+# subdirectory inherits the flags from the directory that set them, and this
+# property is what stops it adding them a second time.
+#
+#   -DAES67_SANITIZE=address,undefined   ASan and UBSan, in build-san
+#   -DAES67_COVERAGE=ON                  gcov counters, in build-cov
+set(AES67_SANITIZE "" CACHE STRING "Sanitizers to build with, e.g. address,undefined")
+option(AES67_COVERAGE "Build with coverage counters" OFF)
+get_property(_aes67_instrumented GLOBAL PROPERTY AES67_INSTRUMENTATION_APPLIED)
+if(NOT _aes67_instrumented)
+    set_property(GLOBAL PROPERTY AES67_INSTRUMENTATION_APPLIED ON)
+    if(AES67_SANITIZE)
+        message(STATUS "Sanitizers enabled: ${AES67_SANITIZE}")
+        add_compile_options(-fsanitize=${AES67_SANITIZE} -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=${AES67_SANITIZE})
+    endif()
+    if(AES67_COVERAGE)
+        message(STATUS "Coverage counters enabled")
+        add_compile_options(--coverage -O0 -g)
+        add_link_options(--coverage)
+    endif()
+endif()
+
 # A PTP grandmaster for Linux, and specifically for a board whose NIC keeps a
 # PTP hardware clock -- a Raspberry Pi 5 is the one this was written for.
 #
@@ -27,7 +51,7 @@ add_library(aes67_ptp_wire
 )
 target_include_directories(aes67_ptp_wire PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(aes67_ptp_wire PUBLIC aes67_core)
-target_compile_options(aes67_ptp_wire PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(aes67_ptp_wire PRIVATE -Wall -Wextra -Wpedantic -Wshadow)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # ptp-servo.cpp is the Teensy library's servo, compiled in rather than
@@ -101,6 +125,20 @@ if(BUILD_TESTS)
         target_link_libraries(TestRavennaSlaveInterop PRIVATE aes67_ptp_wire doctest_headers)
         add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
         set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)
+
+    # The parsers, fed what nobody wrote a test for: Tests/fuzz/FuzzParsers.cpp.
+    # Not a CTest test -- the gate runs it under AES67_ANALYSE=1, in the
+    # sanitizer build, with an iteration count. -DAES67_LIBFUZZER=ON builds the
+    # coverage-guided form instead, for a clang that ships the runtime.
+    option(AES67_LIBFUZZER "Build the fuzz harness against libFuzzer" OFF)
+    add_executable(FuzzPtpWire Tests/fuzz/FuzzParsers.cpp)
+    target_link_libraries(FuzzPtpWire PRIVATE aes67_ptp_wire)
+    if(AES67_LIBFUZZER)
+        target_compile_definitions(FuzzPtpWire PRIVATE FUZZ_LIBFUZZER=1)
+        target_compile_options(FuzzPtpWire PRIVATE -fsanitize=fuzzer)
+        target_link_options(FuzzPtpWire PRIVATE -fsanitize=fuzzer)
+    endif()
+
     else()
         message(WARNING "${AES67_DOCTEST_DIR} is empty - run: git submodule update --init --recursive")
     endif()

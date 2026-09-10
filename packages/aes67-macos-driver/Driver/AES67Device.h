@@ -22,6 +22,7 @@
 #include "NetworkEngine/Discovery/RTCPMonitor.h"
 #include "NetworkEngine/RTSafeStreamInterface.h"
 #include <aspl/Device.hpp>
+#include <aspl/Storage.hpp>
 #include <aspl/Stream.hpp>
 #include <aspl/Context.hpp>
 #include <memory>
@@ -72,6 +73,7 @@ public:
     // Constructor
     //
     explicit AES67Device(const std::shared_ptr<aspl::Context>& context);
+
     ~AES67Device();
 
     // Initialize device (must be called after construction)
@@ -309,6 +311,19 @@ private:
     std::string nmosIdFor(const std::string& prefix, const std::string& name) const;
 
     /// The node id in use, empty when NMOS is off.
+
+    // The context this device was constructed with. aspl::Object hands out a
+    // const one and aspl::Storage wants a mutable one, so it is kept here
+    // rather than const_cast away what the base class deliberately hid.
+    std::shared_ptr<aspl::Context> context_;
+
+    // Apple's persistent storage for a plug-in: AudioServerPlugInHostInterface's
+    // storage operations, through libASPL. The sandbox a plug-in runs in may
+    // write nowhere but the system's cache and temporary directories, and this
+    // is what the host offers instead. Built in Initialize(), when the host
+    // interface exists.
+    std::shared_ptr<aspl::Storage> storage_;
+
     std::string nmosNodeId_;
     std::unique_ptr<PTPPeerObserver> ptpPeerObserver_;
     std::unique_ptr<RTCPMonitor> rtcpMonitor_;

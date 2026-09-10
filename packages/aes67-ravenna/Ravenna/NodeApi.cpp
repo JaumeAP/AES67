@@ -80,7 +80,7 @@ std::string stableUuidFrom(const std::string& name) {
     const uint64_t low = std::hash<std::string>{}(name + "/aes67-ravenna");
 
     char text[37] = {};
-    std::snprintf(text, sizeof(text), "%08llx-%04llx-5%03llx-a%03llx-%012llx",
+    (void)std::snprintf(text, sizeof(text), "%08llx-%04llx-5%03llx-a%03llx-%012llx", // 36 chars into 37, always
                   static_cast<unsigned long long>(high >> 32),
                   static_cast<unsigned long long>((high >> 16) & 0xFFFF),
                   static_cast<unsigned long long>(high & 0x0FFF),

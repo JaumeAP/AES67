@@ -58,7 +58,7 @@ public:
         addr.sin_port = htons(kSapPort);
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-        if (bind(sockFd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        if (bind(sockFd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
             std::cerr << "Failed to bind SAP socket" << '\n';
             close(sockFd_);
             return false;
@@ -185,7 +185,7 @@ private:
             socklen_t addrLen = sizeof(srcAddr);
             
             ssize_t bytesRead = recvfrom(sockFd_, buffer, sizeof(buffer)-1, 0,
-                                        (struct sockaddr*)&srcAddr, &addrLen);
+                                        reinterpret_cast<struct sockaddr*>(&srcAddr), &addrLen);
             
             if (bytesRead > 0) {
                 buffer[bytesRead] = '\0';

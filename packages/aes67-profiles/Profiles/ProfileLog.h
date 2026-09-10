@@ -10,8 +10,10 @@
 //
 // So: silent by default, and a consumer that wants the lines defines
 // AES67_PROFILES_LOG_HEADER as the header carrying AES67_LOG and AES67_LOGF
-// before including anything from this package. The macOS driver does, so its
-// behaviour is unchanged.
+// before including anything from this package. Nobody in this repository does
+// today -- the macOS driver was said to, and does not -- so these lines go
+// nowhere, everywhere. The seam is the point: the package logs through
+// whatever its consumer hands it and owns no logger of its own.
 //
 #pragma once
 

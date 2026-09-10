@@ -597,7 +597,7 @@ void ConnectionAPIServer::Impl::serve(int client) {
         method = head.substr(0, firstSpace);
         std::string path = head.substr(firstSpace + 1, secondSpace - firstSpace - 1);
         const size_t query = path.find('?');
-        if (query != std::string::npos) path = path.substr(0, query);
+        if (query != std::string::npos) path.resize(query);  // not substr: assigned to itself
         reply = route(method, path, body);
     }
 

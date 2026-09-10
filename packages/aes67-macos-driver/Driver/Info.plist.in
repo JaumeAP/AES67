@@ -35,8 +35,14 @@
     <key>AudioServerPlugIn_FactoryUUID</key>
     <string>E31B6C42-6B3D-4F3A-9A85-6D8F7E9B4C1D</string>
 
+    <!-- A PATH, relative to this bundle, not an identifier: CoreAudio's
+         AudioServerPlugIn.h says of kAudioPlugInPropertyResourceBundle "a path
+         to a resource bundle... relative to the path of the plug-in's bundle".
+         The empty string is this bundle, which is where our resources are.
+         It held com.aes67driver.audiodevice, which is a bundle identifier and
+         is not a path to anything. -->
     <key>AudioServerPlugIn_ResourceBundle</key>
-    <string>com.aes67driver.audiodevice</string>
+    <string></string>
 
     <key>CFPlugInFactories</key>
     <dict>

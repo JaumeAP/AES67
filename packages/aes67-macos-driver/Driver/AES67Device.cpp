@@ -84,6 +84,9 @@ AES67Device::AES67Device(const std::shared_ptr<aspl::Context>& context)
           CalculateRingBufferSize(384000.0)))  // Max sample rate
     , outputBuffers_(MakeRingBufferArray(
           CalculateRingBufferSize(384000.0)))  // Max sample rate
+    // Last, because it is declared last: aspl::Storage wants a mutable
+    // Context and Object::GetContext() hands out a const one.
+    , context_(context)
 {
     AES67_LOG("AES67Device constructor: Starting initialization");
 
@@ -391,16 +394,36 @@ void AES67Device::Initialize() {
     if (activeProfile.usesNmos) {
         NMOSSettingsManager nmosSettingsManager;
         NMOSSettings nmosSettings = nmosSettingsManager.load();
+
         // The node id has to be the same across restarts, or every restart
-        // looks like a new device. First run has none: generate and persist.
+        // looks like a new device. Where it is kept is not a free choice: an
+        // AudioServerPlugIn is sandboxed and may write nowhere but the
+        // system's cache and temporary directories, and this code runs inside
+        // coreaudiod. Writing the settings file from here -- which is what it
+        // used to do -- is asking the sandbox for something it does not owe
+        // us, and it worked only because the file happened to be writable.
+        //
+        // The host's own storage is what Apple offers instead. The settings
+        // file is still READ, because the label and the registry override are
+        // the Manager app's to write; only the id is kept here.
+        static constexpr const char* kNodeIdKey = "nmos.nodeId";
+        storage_ = std::make_shared<aspl::Storage>(context_);
         if (nmosSettings.nodeId.empty()) {
-            (void)nmosSettingsManager.save(nmosSettings);
+            auto [stored, ok] = storage_->ReadString(kNodeIdKey);
+            if (ok && !stored.empty()) {
+                nmosSettings.nodeId = stored;
+            } else {
+                nmosSettings.nodeId = NMOSSettingsManager::generateNodeId();
+                if (!storage_->WriteString(kNodeIdKey, nmosSettings.nodeId)) {
+                    AES67_LOG("AES67Device: NMOS node id could not be stored; "
+                              "it will differ after a restart");
+                }
+            }
         }
         nmosNodeId_ = nmosSettings.nodeId;
         if (nmosNodeId_.empty()) {
-            // save() generates the id and leaves it in the settings; an
-            // empty one here means it never got that far, the config
-            // directory being unwritable. Serving a node under an empty
+            // Empty means the generator returned nothing, which it does not,
+            // or that something above changed. Serving a node under an empty
             // id is worse than serving none: nmosIdFor() answers "" for
             // every IS-05 resource while the Node API derives its own ids
             // from the same empty string, so a controller sees a node

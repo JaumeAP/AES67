@@ -35,15 +35,33 @@ jobs:
 
       # aes67-core includes <uuid/uuid.h>, which comes with the SDK on macOS
       # and is a package here.
+      # uuid-dev for aes67-core's <uuid/uuid.h>; the rest is the analysis
+      # half of each gate, which AES67_ANALYSE=1 below turns on.
       - name: Dependencies
-        run: sudo apt-get update && sudo apt-get install -y uuid-dev
+        run: sudo apt-get update && sudo apt-get install -y uuid-dev clang-tidy cppcheck clang
 
       # The packages' own gates, not a second description of them here.
       - name: aes67-profiles
+        env:
+          AES67_ANALYSE: '1'
         run: packages/aes67-profiles/scripts/gate.sh
 
       - name: aes67-core
+        env:
+          AES67_ANALYSE: '1'
         run: packages/aes67-core/scripts/gate.sh
 
       - name: aes67-ravenna
+        env:
+          AES67_ANALYSE: '1'
         run: packages/aes67-ravenna/scripts/gate.sh
+
+      # The coverage-guided fuzzers, which the gates cannot build on the Mac
+      # this is written on: Apple's clang ships no libFuzzer runtime.
+      - name: Fuzz the parsers, guided
+        run: |
+          cmake -S packages/aes67-ravenna -B build-fuzz -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++ -DAES67_LIBFUZZER=ON -DAES67_SANITIZE=address,undefined
+          cmake --build build-fuzz -j
+          build-fuzz/FuzzRavennaParsers -max_total_time=60 -max_len=4096 -print_final_stats=1
+          build-fuzz/FuzzCoreParsers -max_total_time=60 -max_len=8192 -print_final_stats=1

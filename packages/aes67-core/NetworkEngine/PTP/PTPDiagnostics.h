@@ -65,9 +65,11 @@ struct PTPDiagnostics {
     int competitorPriority1{0};
     int competitorPriority2{0};
 
-    PTPDiagnostics() {
-        lastMessageTime = std::chrono::steady_clock::now();
-    }
+    // In the initialiser list rather than the body: it is the only member
+    // this constructor sets, and every other one has a default initialiser
+    // where it is declared.
+    PTPDiagnostics()
+        : lastMessageTime(std::chrono::steady_clock::now()) {}
 };
 
 } // namespace AES67

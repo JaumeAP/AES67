@@ -28,9 +28,8 @@ struct NetworkError {
     int errorCode;
     
     NetworkError(NetworkErrorType t, const std::string& msg, const std::string& src, int err = 0)
-        : type(t), message(msg), source(src), errorCode(err) {
-        timestamp = std::chrono::steady_clock::now();
-    }
+        : type(t), message(msg), source(src),
+          timestamp(std::chrono::steady_clock::now()), errorCode(err) {}
 };
 
 class NetworkErrorHandler {

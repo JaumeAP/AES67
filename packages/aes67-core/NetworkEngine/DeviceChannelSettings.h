@@ -96,7 +96,7 @@ public:
 
     bool save(const DeviceChannelSettings& settings);
 
-    std::string getConfigPath() const;
+    const std::string& getConfigPath() const;
 
 private:
     std::vector<std::string> getConfigSearchPaths();

@@ -13,6 +13,7 @@
 //
 
 import Foundation
+import Network
 
 @MainActor
 final class NmosController: NSObject, ObservableObject {
@@ -25,10 +26,15 @@ final class NmosController: NSObject, ObservableObject {
     @Published private(set) var lastRead: Date? = nil
     @Published var lastError: String? = nil
 
-    private let browser = NetServiceBrowser()
-    /// Services being resolved. NetService needs a strong reference until
-    /// its delegate hears back.
-    private var resolving: [NetService] = []
+    /// NWBrowser, not NetServiceBrowser: the latter is deprecated as of
+    /// macOS 15, and it is the API whose interaction with Local Network
+    /// privacy is the one people trip over. Network framework resolves the
+    /// endpoint for us -- there is no separate resolve step and no strong
+    /// reference to keep alive while it happens.
+    private var browser: NWBrowser?
+    /// Connections opened only to learn a host and port, closed as soon as
+    /// they are ready. NWBrowser hands out a service name, not an address.
+    private var resolving: [String: NWConnection] = [:]
     /// Resolved endpoints by service name, kept until Bonjour withdraws them.
     private var endpoints: [String: (host: String, port: Int)] = [:]
     private var refreshTimer: Timer?
@@ -47,13 +53,12 @@ final class NmosController: NSObject, ObservableObject {
 
     override init() {
         super.init()
-        browser.delegate = self
     }
 
     func start() {
         guard !started else { return }
         started = true
-        browser.searchForServices(ofType: Self.serviceType, inDomain: "local.")
+        startBrowsing()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
@@ -62,7 +67,10 @@ final class NmosController: NSObject, ObservableObject {
     func stop() {
         guard started else { return }
         started = false
-        browser.stop()
+        browser?.cancel()
+        browser = nil
+        for connection in resolving.values { connection.cancel() }
+        resolving.removeAll()
         refreshTimer?.invalidate()
         refreshTimer = nil
     }
@@ -212,38 +220,94 @@ final class NmosController: NSObject, ObservableObject {
 
 // MARK: - Bonjour
 
-extension NmosController: NetServiceBrowserDelegate, NetServiceDelegate {
-    nonisolated func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        Task { @MainActor in
-            service.delegate = self
-            self.resolving.append(service)
-            service.resolve(withTimeout: 5)
+private extension NmosController {
+    /// Browse for the service type, and resolve what turns up.
+    ///
+    /// NWBrowser reports endpoints as `.service(name:type:domain:interface:)`,
+    /// which is a name and not an address. The way Network framework turns one
+    /// into a host and port is to open a connection to it and read
+    /// `currentPath` once it is ready -- so that is what this does, and closes
+    /// it again. The alternative is resolving by hand over DNS-SD, which is
+    /// the layer this moved off.
+    func startBrowsing() {
+        let descriptor = NWBrowser.Descriptor.bonjour(type: Self.serviceType, domain: "local.")
+        let parameters = NWParameters()
+        parameters.includePeerToPeer = false
+        let browser = NWBrowser(for: descriptor, using: parameters)
+        self.browser = browser
+
+        browser.browseResultsChangedHandler = { [weak self] results, changes in
+            Task { @MainActor in
+                guard let self else { return }
+                for change in changes {
+                    switch change {
+                    case .added(let result):
+                        self.resolve(result)
+                    case .removed(let result):
+                        self.forget(result)
+                    default:
+                        break
+                    }
+                }
+                // A pass that ends with no results at all still has to publish
+                // the empty list, or a node that went away stays on screen.
+                if results.isEmpty && self.endpoints.isEmpty {
+                    self.publish([])
+                }
+            }
         }
+        browser.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor in
+                guard case .failed(let error) = state else { return }
+                self?.lastError = "Bonjour browsing stopped: \(error.localizedDescription)"
+            }
+        }
+        browser.start(queue: .main)
     }
 
-    nonisolated func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
-        Task { @MainActor in
-            guard let gone = self.endpoints.removeValue(forKey: service.name) else { return }
-            self.resolving.removeAll { $0 == service }
-            self.publish(self.nodes.filter { !($0.host == gone.host && $0.port == gone.port) })
-        }
+    func serviceName(of result: NWBrowser.Result) -> String? {
+        guard case .service(let name, _, _, _) = result.endpoint else { return nil }
+        return name
     }
 
-    nonisolated func netServiceDidResolveAddress(_ service: NetService) {
-        Task { @MainActor in
-            defer { self.resolving.removeAll { $0 == service } }
-            guard let host = service.hostName, service.port > 0 else { return }
-            // Bonjour hands back "name.local." with a trailing dot; URLSession
-            // resolves it either way, the dot is only dropped for display.
-            let trimmed = host.hasSuffix(".") ? String(host.dropLast()) : host
-            self.endpoints[service.name] = (trimmed, service.port)
-            self.refresh()
+    func resolve(_ result: NWBrowser.Result) {
+        guard let name = serviceName(of: result), resolving[name] == nil else { return }
+
+        let connection = NWConnection(to: result.endpoint, using: .tcp)
+        resolving[name] = connection
+        connection.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor in
+                guard let self else { return }
+                switch state {
+                case .ready:
+                    if let endpoint = connection.currentPath?.remoteEndpoint,
+                       case .hostPort(let host, let port) = endpoint {
+                        // "name.local." keeps its trailing dot in some forms;
+                        // URLSession resolves it either way, the dot is only
+                        // dropped for display.
+                        var text = "\(host)"
+                        if let percent = text.firstIndex(of: "%") { text = String(text[..<percent]) }
+                        if text.hasSuffix(".") { text = String(text.dropLast()) }
+                        self.endpoints[name] = (text, Int(port.rawValue))
+                        self.refresh()
+                    }
+                    connection.cancel()
+                    self.resolving[name] = nil
+                case .failed, .cancelled:
+                    self.resolving[name] = nil
+                default:
+                    break
+                }
+            }
         }
+        connection.start(queue: .main)
     }
 
-    nonisolated func netService(_ service: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        Task { @MainActor in
-            self.resolving.removeAll { $0 == service }
-        }
+    func forget(_ result: NWBrowser.Result) {
+        guard let name = serviceName(of: result),
+              let gone = endpoints.removeValue(forKey: name) else { return }
+        resolving[name]?.cancel()
+        resolving[name] = nil
+        publish(nodes.filter { !($0.host == gone.host && $0.port == gone.port) })
     }
 }

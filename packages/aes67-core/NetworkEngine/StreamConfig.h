@@ -61,7 +61,7 @@ public:
     //
 
     /// Get the active configuration file path (first found in search order).
-    std::string getConfigPath() const;
+    const std::string& getConfigPath() const;
 
     /// Set a custom configuration file path (overrides search).
     void setConfigPath(const std::string& path);

@@ -1,6 +1,30 @@
 cmake_minimum_required(VERSION 3.20)
 project(aes67_core LANGUAGES CXX)
 
+# Instrumentation, for the analysis half of the gate. Both are off by default
+# and both are applied once for the whole tree: a package built as another's
+# subdirectory inherits the flags from the directory that set them, and this
+# property is what stops it adding them a second time.
+#
+#   -DAES67_SANITIZE=address,undefined   ASan and UBSan, in build-san
+#   -DAES67_COVERAGE=ON                  gcov counters, in build-cov
+set(AES67_SANITIZE "" CACHE STRING "Sanitizers to build with, e.g. address,undefined")
+option(AES67_COVERAGE "Build with coverage counters" OFF)
+get_property(_aes67_instrumented GLOBAL PROPERTY AES67_INSTRUMENTATION_APPLIED)
+if(NOT _aes67_instrumented)
+    set_property(GLOBAL PROPERTY AES67_INSTRUMENTATION_APPLIED ON)
+    if(AES67_SANITIZE)
+        message(STATUS "Sanitizers enabled: ${AES67_SANITIZE}")
+        add_compile_options(-fsanitize=${AES67_SANITIZE} -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=${AES67_SANITIZE})
+    endif()
+    if(AES67_COVERAGE)
+        message(STATUS "Coverage counters enabled")
+        add_compile_options(--coverage -O0 -g)
+        add_link_options(--coverage)
+    endif()
+endif()
+
 # Platform-free by construction, and checked: see scripts/check-platform-free.sh
 # and the README. Nothing here may include an Apple framework, a socket header
 # or anything else that assumes an operating system -- that is the whole reason
@@ -64,7 +88,7 @@ target_include_directories(aes67_core PUBLIC
 )
 
 target_link_libraries(aes67_core PUBLIC aes67_profiles)
-target_compile_options(aes67_core PRIVATE -Wall -Wextra -Wpedantic
+target_compile_options(aes67_core PRIVATE -Wall -Wextra -Wpedantic -Wshadow
     -Wno-unused-parameter -Wno-missing-field-initializers)
 
 option(AES67_CORE_TESTS "Build the test suites" ON)
@@ -106,6 +130,20 @@ if(AES67_CORE_TESTS)
     # against the daemon's is worth more than a string literal.
     target_compile_definitions(TestInteropSDP PRIVATE
         AES67_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Tests/fixtures")
+
+    # The parsers, fed what nobody wrote a test for: Tests/fuzz/FuzzParsers.cpp.
+    # Not a CTest test -- the gate runs it under AES67_ANALYSE=1, in the
+    # sanitizer build, with an iteration count. -DAES67_LIBFUZZER=ON builds the
+    # coverage-guided form instead, for a clang that ships the runtime.
+    option(AES67_LIBFUZZER "Build the fuzz harness against libFuzzer" OFF)
+    add_executable(FuzzCoreParsers Tests/fuzz/FuzzParsers.cpp)
+    target_link_libraries(FuzzCoreParsers PRIVATE aes67_core)
+    if(AES67_LIBFUZZER)
+        target_compile_definitions(FuzzCoreParsers PRIVATE FUZZ_LIBFUZZER=1)
+        target_compile_options(FuzzCoreParsers PRIVATE -fsanitize=fuzzer)
+        target_link_options(FuzzCoreParsers PRIVATE -fsanitize=fuzzer)
+    endif()
+
     set_tests_properties(InteropSDP PROPERTIES LABELS "unit;interop")
 
     # The ring buffer has two suites: what it does, and what it does under two

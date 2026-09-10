@@ -1,0 +1,17 @@
+# The command-line tool, and only it: the package's own .clang-tidy applies to
+# everything else through InheritParentConfig.
+#
+# Two checks off, each for a reason:
+#
+#   cert-err33-c: every printf and puts in a tool that talks to a terminal.
+#     What their return value would tell -- stdout is gone -- is nothing this
+#     program could act on.
+#   bugprone-exception-escape: main() may throw, says the check, because it
+#     builds std::strings. An uncaught exception in a tool ends the tool with
+#     a message and a non-zero status, which is the same thing it would do by
+#     hand; inside the library, where an escape costs somebody else's process,
+#     the check stays on.
+InheritParentConfig: true
+Checks: >
+  -cert-err33-c,
+  -bugprone-exception-escape

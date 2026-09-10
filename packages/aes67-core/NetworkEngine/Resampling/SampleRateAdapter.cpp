@@ -19,6 +19,12 @@ public:
             lastSample_[i] = 0.0f;
         }
     }
+
+    // Not copyable. This object owns a float buffer allocated with new[], and the compiler's copy would
+    // duplicate the handle rather than the resource: two objects freeing one
+    // allocation. Nothing copies it today; this is what keeps that true.
+    LinearResampler(const LinearResampler&) = delete;
+    LinearResampler& operator=(const LinearResampler&) = delete;
     
     ~LinearResampler() {
         delete[] buffer_;

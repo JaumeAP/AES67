@@ -40,7 +40,15 @@ bool asksAbout(const std::vector<std::string>& asked,
 }  // namespace
 
 MdnsResponder::~MdnsResponder() {
-    if (socket_ >= 0) goodbye();
+    // The goodbye is a courtesy to the browsers on the segment; the socket
+    // closing is not optional. A destructor cannot throw, so a goodbye that
+    // cannot be sent is a goodbye not sent, and the socket still closes.
+    try {
+        if (socket_ >= 0) goodbye();
+    } catch (...) {
+        stop();
+        return;
+    }
     stop();
 }
 

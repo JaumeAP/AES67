@@ -69,7 +69,7 @@ NMOSSettingsManager::NMOSSettingsManager() {
 
 NMOSSettingsManager::~NMOSSettingsManager() = default;
 
-std::string NMOSSettingsManager::getConfigPath() const { return configPath_; }
+const std::string& NMOSSettingsManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> NMOSSettingsManager::getConfigSearchPaths() {
     return configSearchPaths("AES67_NMOS_CONFIG_PATH", kDefaultConfigFile);

@@ -183,10 +183,13 @@ private:
     std::vector<float> audioBuffer_;
 
     // Receive buffer for network packets (max MTU 1500 bytes)
-    uint8_t receiveBuffer_[2048];
+    // Zeroed: every read of these is bounded by the byte count recvfrom()
+    // reported, so nothing indeterminate is read today. That is the callers'
+    // discipline; this makes it the buffers'.
+    uint8_t receiveBuffer_[2048]{};
 
     // Jitter buffer read buffer
-    uint8_t jitterReadBuffer_[1500];
+    uint8_t jitterReadBuffer_[1500]{};
 
     // Network interface binding
     std::string networkInterface_;   // Interface name or IP from config

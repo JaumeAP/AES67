@@ -261,6 +261,21 @@ class DriverManager: ObservableObject {
             showAlert(title: "PTP Daemon Not Registered",
                      message: "The driver is installed and will run on the local clock. "
                             + "Registering the PTP daemon failed: \(error.localizedDescription)")
+            return
+        }
+
+        // register() succeeding is not the daemon running. Since macOS 13 a
+        // registered daemon sits in Login Items awaiting the user's approval,
+        // and until they give it launchd will not start it -- with no error
+        // anywhere, which is how this looked like it had worked while PTP was
+        // never running.
+        if service.status == .requiresApproval {
+            showAlert(title: "PTP Daemon Needs Your Approval",
+                     message: "The driver is installed. macOS is holding the PTP daemon in "
+                            + "System Settings > General > Login Items & Extensions, under "
+                            + "\"Allow in the Background\". Turn it on there and the driver "
+                            + "will follow the network clock; until then it runs on the local one.",
+                     openLoginItems: true)
         }
     }
 
@@ -602,21 +617,26 @@ class DriverManager: ObservableObject {
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            var uidRef: CFString? = nil
-            var uidSize = UInt32(MemoryLayout<CFString?>.size)
+            // Unmanaged<CFString>, not CFString?: taking a pointer to a
+            // variable holding a CF object hands CoreAudio a slot it writes a
+            // +1 reference into, and Swift's ARC does not know that. The
+            // compiler says so ("forming UnsafeMutableRawPointer to a variable
+            // of type Optional<CFString>"); this is what it is asking for.
+            var uidRef: Unmanaged<CFString>? = nil
+            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             guard AudioObjectGetPropertyData(device, &uidAddr, 0, nil, &uidSize, &uidRef) == noErr,
-                  let uid = uidRef as String? else { continue }
+                  let uid = uidRef?.takeRetainedValue() as String? else { continue }
 
             var nameAddr = AudioObjectPropertyAddress(
                 mSelector: kAudioObjectPropertyName,
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            var nameRef: CFString? = nil
-            var nameSize = UInt32(MemoryLayout<CFString?>.size)
+            var nameRef: Unmanaged<CFString>? = nil
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             let name: String
             if AudioObjectGetPropertyData(device, &nameAddr, 0, nil, &nameSize, &nameRef) == noErr,
-               let n = nameRef as String? {
+               let n = nameRef?.takeRetainedValue() as String? {
                 name = n
             } else {
                 name = "(unnamed device)"
@@ -630,12 +650,12 @@ class DriverManager: ObservableObject {
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            var manufacturerRef: CFString? = nil
-            var manufacturerSize = UInt32(MemoryLayout<CFString?>.size)
+            var manufacturerRef: Unmanaged<CFString>? = nil
+            var manufacturerSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             var manufacturer = ""
             if AudioObjectGetPropertyData(device, &manufacturerAddr, 0, nil,
                                           &manufacturerSize, &manufacturerRef) == noErr,
-               let m = manufacturerRef as String? {
+               let m = manufacturerRef?.takeRetainedValue() as String? {
                 manufacturer = m
             }
             let isAvidHD = manufacturer.localizedCaseInsensitiveContains("avid")
@@ -1061,13 +1081,24 @@ class DriverManager: ObservableObject {
         startAutoRefresh()
     }
 
-    private func showAlert(title: String, message: String) {
+    /// `openLoginItems` adds a button that opens the Login Items pane, for the
+    /// one case where the message is asking the user to go there.
+    private func showAlert(title: String, message: String, openLoginItems: Bool = false) {
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = title
             alert.informativeText = message
             alert.alertStyle = .informational
-            alert.runModal()
+            if openLoginItems {
+                alert.addButton(withTitle: "Open Login Items")
+                alert.addButton(withTitle: "Later")
+                if alert.runModal() == .alertFirstButtonReturn,
+                   let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                    NSWorkspace.shared.open(url)
+                }
+            } else {
+                alert.runModal()
+            }
         }
     }
 
@@ -1757,9 +1788,10 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             return nil
         }
 
-        var cfDict: CFDictionary? = nil
+        // Unmanaged, for the same reason as the CFString properties above.
+        var cfDict: Unmanaged<CFDictionary>? = nil
         guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfDict) == noErr,
-              let dict = cfDict as? [String: Any] else {
+              let dict = cfDict?.takeRetainedValue() as? [String: Any] else {
             return nil
         }
 
@@ -1999,9 +2031,9 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             return []
         }
 
-        var cfArray: CFArray? = nil
+        var cfArray: Unmanaged<CFArray>? = nil
         guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
-              let entries = cfArray as? [[String: Any]] else {
+              let entries = cfArray?.takeRetainedValue() as? [[String: Any]] else {
             return []
         }
 
@@ -2047,9 +2079,9 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             return []
         }
 
-        var cfArray: CFArray? = nil
+        var cfArray: Unmanaged<CFArray>? = nil
         guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
-              let entries = cfArray as? [[String: Any]] else {
+              let entries = cfArray?.takeRetainedValue() as? [[String: Any]] else {
             return []
         }
 
@@ -2086,9 +2118,9 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         guard AudioObjectHasProperty(deviceID, &address) else { return [] }
         var dataSize: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else { return [] }
-        var cfArray: CFArray? = nil
+        var cfArray: Unmanaged<CFArray>? = nil
         guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
-              let entries = cfArray as? [[String: Any]] else { return [] }
+              let entries = cfArray?.takeRetainedValue() as? [[String: Any]] else { return [] }
         return entries.compactMap { entry in
             guard let ssrc = entry["ssrc"] as? Int64 else { return nil }
             return RtcpReceiver(

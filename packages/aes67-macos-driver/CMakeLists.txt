@@ -13,7 +13,10 @@ cmake_minimum_required(VERSION 3.20)
 # the APPLE variable itself isn't set until after that same first project()
 # call.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+    # 13.0, matching the Manager app's LSMinimumSystemVersion and the Xcode
+    # attribute below. It said 12.0 here and 13.0 in the other two, which is
+    # three numbers for one decision.
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
     set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures")
 endif()
 
@@ -57,6 +60,9 @@ if(AES67_SANITIZE)
     message(STATUS "Sanitizers enabled: ${AES67_SANITIZE}")
     add_compile_options(-fsanitize=${AES67_SANITIZE} -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=${AES67_SANITIZE})
+    # The core and the profiles, built as subdirectories below, inherit these
+    # and would otherwise apply them a second time.
+    set_property(GLOBAL PROPERTY AES67_INSTRUMENTATION_APPLIED ON)
 endif()
 
 # Source-based coverage, opt-in and in its own build dir:

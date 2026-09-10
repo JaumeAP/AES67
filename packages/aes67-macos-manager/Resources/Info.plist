@@ -37,9 +37,14 @@
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>AES67 Manager looks for NMOS audio devices on the local network so you can route streams between them.</string>
+    <!-- Exhaustive since macOS 15: a service type not listed here is not
+         browsed, and nothing says so at run time. _rtsp._tcp is what the
+         driver browses to find RAVENNA-class senders, and what this app has
+         to see to show them. -->
     <key>NSBonjourServices</key>
     <array>
         <string>_nmos-node._tcp</string>
+        <string>_rtsp._tcp</string>
     </array>
 </dict>
 </plist>

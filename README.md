@@ -36,7 +36,7 @@ what any of them does.
 
 ```bash
 scripts/gate.sh                    # the cheap half of every package: seconds
-AES67_ANALYSE=1 scripts/gate.sh    # with clang-tidy where a package has it: minutes
+AES67_ANALYSE=1 scripts/gate.sh    # plus clang-tidy, cppcheck, ASan/UBSan, fuzzing and coverage: many minutes
 ```
 
 Each package's gate can be run on its own, from anywhere:

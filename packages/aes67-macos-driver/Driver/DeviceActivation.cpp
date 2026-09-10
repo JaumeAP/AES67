@@ -45,7 +45,7 @@ DeviceActivationManager::DeviceActivationManager() {
 
 DeviceActivationManager::~DeviceActivationManager() = default;
 
-std::string DeviceActivationManager::getConfigPath() const { return configPath_; }
+const std::string& DeviceActivationManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> DeviceActivationManager::getConfigSearchPaths() {
     return configSearchPaths("AES67_DEVICE_ACTIVATION_PATH", kDefaultConfigFile, true);

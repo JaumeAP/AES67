@@ -26,7 +26,7 @@ cmake -S . -B "$build_dir" \
   -DBUILD_TESTS=ON \
   -DBUILD_EXAMPLES=OFF \
   -DBUILD_TOOLS=OFF \
-  -DBUILD_MANAGER_APP=OFF || { echo "FAIL: cmake configure" >&2; exit 1; }
+  || { echo "FAIL: cmake configure" >&2; exit 1; }
 
 echo "==> Build"
 cmake --build "$build_dir" -j"$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)" \

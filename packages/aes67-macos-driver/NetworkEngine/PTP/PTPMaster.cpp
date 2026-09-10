@@ -99,15 +99,22 @@ std::chrono::nanoseconds LogIntervalToNs(int8_t logInterval) {
     // MsToLogInterval, and clamping to them changes nothing that happens --
     // it only puts the limit where the compiler can see it.
     constexpr int kMaxLeftShift = 33;
-    constexpr int kMaxRightShift = 63;
+    // 62, not 63: kNsPerSecond is a signed 64-bit value, and shifting one by
+    // 63 is implementation-defined. Everything past ~30 is zero nanoseconds
+    // anyway -- this clamp is about staying defined, not about precision.
+    constexpr int kMaxRightShift = 62;
 
     if (logInterval >= 0) {
         const int shift = logInterval < kMaxLeftShift ? logInterval : kMaxLeftShift;
         return std::chrono::nanoseconds(kNsPerSecond << shift);
     }
-    const int shift = -static_cast<int>(logInterval);
-    return std::chrono::nanoseconds(
-        kNsPerSecond >> (shift < kMaxRightShift ? shift : kMaxRightShift));
+    // The shift count, clamped into [0, kMaxRightShift] before it is used
+    // rather than inside the shift itself: a shift by a negative value is
+    // undefined, and a reader should be able to see that it cannot be one.
+    int shift = -static_cast<int>(logInterval);
+    if (shift < 0) shift = 0;
+    if (shift > kMaxRightShift) shift = kMaxRightShift;
+    return std::chrono::nanoseconds(kNsPerSecond >> shift);
 }
 
 }  // namespace

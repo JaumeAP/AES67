@@ -105,7 +105,9 @@ bool parseHttpRequest(const std::string& text, std::string& method, std::string&
     if (version.rfind("HTTP/", 0) != 0) return false;
 
     const auto query = path.find('?');
-    if (query != std::string::npos) path = path.substr(0, query);
+    // resize, not substr: the result is assigned back to the same string, so
+    // a copy is made and thrown away.
+    if (query != std::string::npos) path.resize(query);
     // After the query is gone, so an escaped '?' cannot cut the path short.
     path = decodePath(path);
 
