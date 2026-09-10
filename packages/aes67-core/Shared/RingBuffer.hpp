@@ -66,7 +66,7 @@ public:
 
         // Update write index with release semantics
         // Ensures all writes complete before index update is visible
-        const size_t newWriteIdx = (writeIdx + toWrite) % capacity_;
+        const size_t newWriteIdx = wrap(writeIdx + toWrite);
         writeIndex_.store(newWriteIdx, std::memory_order_release);
 
         return toWrite;
@@ -101,7 +101,7 @@ public:
 
         // Update read index with release semantics
         // Ensures all reads complete before index update is visible
-        const size_t newReadIdx = (readIdx + toRead) % capacity_;
+        const size_t newReadIdx = wrap(readIdx + toRead);
         readIndex_.store(newReadIdx, std::memory_order_release);
 
         return toRead;
@@ -143,6 +143,18 @@ public:
     }
 
 private:
+    // Bring an index that has just been advanced back inside the buffer.
+    //
+    // A single subtraction is enough, and no modulo is needed: the caller has
+    // already clamped the advance to what getAvailableWrite/getAvailableRead
+    // reported, so the sum never reaches twice the capacity. The internal size
+    // is capacity+1 -- the sentinel element that tells full from empty -- so it
+    // is not a power of two and `%` would compile to a real integer division on
+    // every transfer, on the audio thread as well.
+    size_t wrap(size_t index) const noexcept {
+        return index >= capacity_ ? index - capacity_ : index;
+    }
+
     // Calculate available elements for reading
     size_t getAvailableRead(size_t readIdx, size_t writeIdx) const noexcept {
         if (writeIdx >= readIdx) {
@@ -166,10 +178,14 @@ private:
     std::vector<T> buffer_;
     size_t capacity_;
 
-    // Cache-line aligned atomic indices to prevent false sharing
-    // On most systems, cache lines are 64 bytes
-    alignas(64) std::atomic<size_t> writeIndex_{0};
-    alignas(64) std::atomic<size_t> readIndex_{0};
+    // Cache-line aligned atomic indices to prevent false sharing. The producer
+    // writes one and the consumer the other, and on this driver's hot path they
+    // are a network thread and the Core Audio thread, so sharing a line costs a
+    // coherence round trip per transfer. 64 bytes is not enough everywhere:
+    // Apple Silicon reports hw.cachelinesize 128.
+    static constexpr size_t kCacheLine = 128;
+    alignas(kCacheLine) std::atomic<size_t> writeIndex_{0};
+    alignas(kCacheLine) std::atomic<size_t> readIndex_{0};
 };
 
 } // namespace AES67

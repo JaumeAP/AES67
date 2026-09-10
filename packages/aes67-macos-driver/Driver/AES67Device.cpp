@@ -1331,14 +1331,17 @@ size_t AES67Device::CalculateRingBufferSize(Float64 sampleRate, double latencyMs
     // - Processing delays (typical: 0.5-1ms)
     // - Scheduling variations (typical: 0.5-1ms)
     //
-    // Power-of-2 sizing enables efficient modulo operations
+    // The size is a power of two because it keeps the numbers round and the
+    // growth predictable, not because the ring buffer masks with it: the
+    // internal size is capacity+1, sentinel included, so it never is one. See
+    // SPSCRingBuffer::wrap.
 
     // Calculate minimum size based on latency requirement
     const size_t minSize = static_cast<size_t>(
         (sampleRate * latencyMs) / 1000.0
     );
 
-    // Round up to next power of 2 for efficient modulo operations
+    // Round up to the next power of two.
     size_t size = 1;
     while (size < minSize) {
         size <<= 1;
