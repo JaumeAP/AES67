@@ -27,8 +27,12 @@ install_manifest.txt
 /CPackConfig.cmake
 /CPackSourceConfig.cmake
 
-# ctest writes this at the root of whatever tree it runs in.
-Testing/
+# ctest writes this at the root of whatever tree it runs in -- which is a
+# build directory, and those are ignored above. Anchored to the root rather
+# than matching every directory of that name at any depth: unanchored, it
+# swallowed packages/aes67-profiles/Testing/FuzzDriver.h, silently, and the
+# tree built here and not on a runner.
+/Testing/
 
 # macOS.
 .DS_Store

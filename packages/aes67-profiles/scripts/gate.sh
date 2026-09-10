@@ -23,15 +23,15 @@ ctest --test-dir build --output-on-failure || { echo "FAIL: tests" >&2; exit 1; 
 # package. The first is the same rule the core keeps; the second is this
 # package's own, and it is the reason it exists.
 echo "==> No platform, no neighbours"
-if grep -rn '#include <\(CoreAudio\|CoreFoundation\|AudioToolbox\|Accelerate\|mach\|sys/socket\|netinet\|arpa\|ifaddrs\|Arduino\|QNEthernet\|TimeLib\)' Profiles/ 2>/dev/null; then
+if grep -rn '#include <\(CoreAudio\|CoreFoundation\|AudioToolbox\|Accelerate\|mach\|sys/socket\|netinet\|arpa\|ifaddrs\|Arduino\|QNEthernet\|TimeLib\)' Profiles/ Testing/ 2>/dev/null; then
     echo "FAIL: a platform header in a package that has no platform" >&2
     exit 1
 fi
-if grep -rn '#include "\(\.\./\|Driver/\|NetworkEngine/\|Shared/\)' Profiles/ 2>/dev/null; then
+if grep -rn '#include "\(\.\./\|Driver/\|NetworkEngine/\|Shared/\)' Profiles/ Testing/ 2>/dev/null; then
     echo "FAIL: a header from another package" >&2
     exit 1
 fi
-echo "$(ls Profiles/*.h Profiles/*.cpp | wc -l | tr -d ' ') files, self-contained"
+echo "$(ls Profiles/*.h Profiles/*.cpp Testing/*.h | wc -l | tr -d ' ') files, self-contained"
 
 # Static analysis, opt-in like the other packages: it is slow and it wants a
 # clang-tidy the Command Line Tools do not ship. AES67_ANALYSE=1 turns it on.
