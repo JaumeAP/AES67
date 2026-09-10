@@ -14,6 +14,12 @@ put it next to the other packages in this tree.
 | RAVENNA ALSA LKM | `bondagit/ravenna-alsa-lkm`, a submodule of the daemon | The kernel half, from Merging Technologies: a virtual ALSA device, the RTP streams and the PTP slave clock |
 | `cpp-httplib` | `yhirose/cpp-httplib`, a submodule of the daemon | The HTTP server the REST interface is served from |
 
+The kernel module is also a submodule of this package in its own right,
+`external/ravenna-alsa-lkm`, pinned at the same commit the daemon pins. Two
+checkouts of one repository: the daemon's, which its own build uses, and this
+one, which is where the module is read from when what is wanted is the module
+rather than the daemon around it.
+
 The daemon and the kernel module talk over netlink. The module is the PTP
 slave and clocks every source and sink from that one clock; the daemon
 configures it and reports its status.
