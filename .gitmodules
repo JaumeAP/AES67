@@ -7,7 +7,3 @@
 [submodule "packages/t41-ptp-fork/libraries/Time"]
 	path = packages/t41-ptp-fork/libraries/Time
 	url = https://github.com/PaulStoffregen/Time.git
-[submodule "packages/t41-ptp-fork/libraries/QNEthernet"]
-	path = packages/t41-ptp-fork/libraries/QNEthernet
-	url = https://github.com/JaumeAP/QNEthernet.git
-	branch = multicast-ttl

@@ -17,19 +17,18 @@ The parts this runs on, and where they can be ordered, are in
 - Working Teensy Arduino environment
 
 This is a package of the `JaumeAP/AES67` monorepo. It used to be a repository
-of its own, `JaumeAP/t41-ptp`, which is archived and read-only now. Both
-libraries it needs are submodules of the monorepo, so run
-`git submodule update --init` after cloning or the two directories are empty.
+of its own, `JaumeAP/t41-ptp`, which is gone now. The two libraries it needs
+arrive differently, and the difference is whose code it is.
 
-- `libraries/QNEthernet` — QNEthernet with IEEE 1588 support, from [JaumeAP/QNEthernet](https://github.com/JaumeAP/QNEthernet/tree/multicast-ttl) branch `multicast-ttl`, pinned at `b55b462`: a fork of [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) with three commits on top. See below for why this is a fork and not upstream.
-- `libraries/Time` — `TimeLib.h`, used for the log output. This one is upstream's own, [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), pinned at `a18e50d` (v1.6.1).
+- `libraries/QNEthernet` — QNEthernet with IEEE 1588 support: [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) plus three commits, and it is a directory in this tree rather than a checkout of anything. Nothing serves those three commits: this is the only copy, which is the reason for the paragraph below and the reason nobody can update it out from under this package.
+- `libraries/Time` — `TimeLib.h`, used for the log output. This one is upstream's own, [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), a submodule of the monorepo pinned at `a18e50d` (v1.6.1): run `git submodule update --init` after cloning, or the directory is empty.
 
 #### Why QNEthernet comes from a fork
 
 Not for convenience. Upstream cannot supply this code, in three separate ways:
 
 - **`ssilverman/QNEthernet`'s `master` has no IEEE 1588 at all** — no `EthernetIEEE1588Class`, no `adjustFreq()`, no frame timestamping. Everything this library stands on has only ever lived on branches that were never merged into it.
-- **The branch it did live on has been rewritten since.** The 2022 commit this fork is built on is no longer served by upstream at all: asking for it answers `couldn't find remote ref`. It survives on HedgeHawk's `ieee1588-2-fix`, which is what this fork is made of.
+- **The branch it did live on has been rewritten since.** The 2022 commit this fork is built on is no longer served by upstream at all: asking for it answers `couldn't find remote ref`. It survives on HedgeHawk's `ieee1588-2-fix`, which is what the copy here is made of.
 - **Six commits between that base and this fork's tip are load-bearing**, by Jens Schleusner (IMS Hannover, the authors of the paper): the timer-event functions the reference input needs, `EthernetIEEE1588Class::offsetTimer()` — the servo's coarse step, called at `src/ptp/ptp-base.cpp:719` — and `adjustFreq()` taking a `double` rather than an `int`, which is what lets the fine term of the servo command less than a nanosecond per second. Today's upstream `ieee1588-2` branch, 2100 commits further on, has neither of the last two.
 
 The three commits on top of that are this fork's own: `math.h` included in `lwip_t41.c`, without which the library does not build on current GCC; `~EthernetUDP` made virtual; and the two socket options, `EthernetUDP::setMulticastTTL()` — called six times from `src/ptp/l3ptp.cpp`, and upstream's nearest equivalent, `setOutgoingTTL()`, has a different signature and is not multicast-specific — and `EthernetUDP::setOutgoingDiffServ()`, which marks the DSCP the AES67 and RAVENNA guides ask for.

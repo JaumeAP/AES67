@@ -46,11 +46,12 @@ reads workflows from the root of a repository, and this is a package inside one,
 here and the badge it fed pointed at an archived repository.
 
 `libraries/QNEthernet` and `libraries/Time` are required for the board build, not for the host
-tests, which stub them out. Both are submodules of the monorepo and need
-`git submodule update --init`: `libraries/Time` at `a18e50d`, and `libraries/QNEthernet` at
-`b55b462` on branch `multicast-ttl` of the fork `JaumeAP/QNEthernet`, which is HedgeHawk's
-`ieee1588-2-fix` plus the three commits this library needs. There was a `packages/QNEthernet` in
-this monorepo too, byte-identical and consumed by nobody; it is gone.
+tests, which stub them out. `libraries/Time` is a submodule of the monorepo at `a18e50d` and needs
+`git submodule update --init`. `libraries/QNEthernet` is a plain directory: HedgeHawk's
+`ieee1588-2-fix` plus the three commits this library needs, and no repository serves those, so
+this is the only copy of them anywhere. Do not "update" it from upstream -- there is no upstream
+carrying what is here. There was a `packages/QNEthernet` in this monorepo too, byte-identical and
+consumed by nobody; it is gone.
 
 ## Architecture
 
