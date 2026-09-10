@@ -184,12 +184,6 @@ private:
     static std::vector<std::string> splitLines(const std::string& text);
     static std::vector<std::string> splitString(const std::string& str, char delimiter);
     static std::string trim(const std::string& str);
-    static bool startsWith(const std::string& str, const std::string& prefix);
-
-    // Validation helpers
-    static bool isValidIPv4(const std::string& ip);
-    static bool isValidPort(uint16_t port);
-    static bool isValidSampleRate(uint32_t sampleRate);
     static bool isValidEncoding(const std::string& encoding);
 };
 

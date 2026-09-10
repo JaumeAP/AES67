@@ -361,7 +361,7 @@ bool RTSPClient::connect() {
     }
 
     // Resolve hostname
-    struct hostent* he = gethostbyname(host_.c_str());
+    const struct hostent* he = gethostbyname(host_.c_str());
     if (!he) {
         std::cerr << "RTSPClient: Failed to resolve host " << host_ << '\n';
         return false;
@@ -387,7 +387,7 @@ bool RTSPClient::connect() {
     serverAddr.sin_port = htons(port_);
     memcpy(&serverAddr.sin_addr, he->h_addr_list[0], he->h_length);
 
-    if (::connect(socket_, (sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+    if (::connect(socket_, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
         std::cerr << "RTSPClient: Failed to connect to " << host_ << ":" << port_ << '\n';
         close(socket_);
         socket_ = -1;

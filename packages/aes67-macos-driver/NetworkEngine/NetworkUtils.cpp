@@ -23,13 +23,15 @@ void resolveMulticastInterface(const std::string& interfaceName, struct ip_mreqn
         mreq.imr_address = interfaceAddr;
         return;
     }
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
             if (ifa->ifa_addr == nullptr) continue;
             if (ifa->ifa_addr->sa_family == AF_INET &&
                 interfaceName == ifa->ifa_name) {
-                mreq.imr_address = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+                mreq.imr_address =
+                    reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr)->sin_addr;
                 break;
             }
         }
@@ -125,7 +127,8 @@ bool NetworkUtils::bindToInterface(int sockfd, const std::string& interfaceName)
 
 std::vector<std::string> NetworkUtils::getNetworkInterfaces() {
     std::vector<std::string> interfaces;
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -141,7 +144,8 @@ std::vector<std::string> NetworkUtils::getNetworkInterfaces() {
 }
 
 std::string NetworkUtils::getPrimaryEthernetInterface() {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     std::string primaryInterface;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -251,7 +255,8 @@ bool NetworkUtils::isIPv4Address(const std::string& str) {
 }
 
 std::string NetworkUtils::getInterfaceIP(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     std::string result;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -260,7 +265,7 @@ std::string NetworkUtils::getInterfaceIP(const std::string& interfaceName) {
             if (ifa->ifa_addr->sa_family == AF_INET &&
                 interfaceName == ifa->ifa_name) {
                 char ip[INET_ADDRSTRLEN];
-                struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+                const auto* sa = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                 inet_ntop(AF_INET, &sa->sin_addr, ip, sizeof(ip));
                 result = ip;
                 break;
@@ -293,7 +298,8 @@ std::string NetworkUtils::resolveInterfaceToIP(const std::string& interfaceSpec)
 
 std::vector<std::pair<std::string, std::string>> NetworkUtils::getActiveInterfacesWithIPs() {
     std::vector<std::pair<std::string, std::string>> result;
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -307,7 +313,7 @@ std::vector<std::pair<std::string, std::string>> NetworkUtils::getActiveInterfac
             if (!(ifa->ifa_flags & IFF_UP)) continue;
 
             char ip[INET_ADDRSTRLEN];
-            struct sockaddr_in* sa = (struct sockaddr_in*)ifa->ifa_addr;
+            const auto* sa = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
             inet_ntop(AF_INET, &sa->sin_addr, ip, sizeof(ip));
 
             result.emplace_back(ifa->ifa_name, ip);

@@ -121,7 +121,7 @@ int Resampler::process(const float* input, int inputFrames, float* output, int o
 }
 
 int Resampler::getOutputSize(int inputFrames) const {
-    SimpleResampler* simpleResampler = static_cast<SimpleResampler*>(resamplerState_);
+    const SimpleResampler* simpleResampler = static_cast<const SimpleResampler*>(resamplerState_);
     return simpleResampler->getOutputSize(inputFrames);
 }
 

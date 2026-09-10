@@ -18,7 +18,7 @@ public:
      * @param minOutput Minimum output value
      * @param maxOutput Maximum output value
      */
-    PIController(double kp = 0.1, double ki = 0.01, 
+    explicit PIController(double kp = 0.1, double ki = 0.01, 
                  double minOutput = -0.1, double maxOutput = 0.1);
     
     /**

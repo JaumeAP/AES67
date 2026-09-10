@@ -11,7 +11,6 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <regex>
 #include <ctime>
 
 namespace AES67 {
@@ -814,39 +813,6 @@ std::string SDPParser::trim(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
-bool SDPParser::startsWith(const std::string& str, const std::string& prefix) {
-    return str.size() >= prefix.size() &&
-           str.compare(0, prefix.size(), prefix) == 0;
-}
-
-bool SDPParser::isValidIPv4(const std::string& ip) {
-    std::regex ipv4Regex(R"(^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$)");
-    std::smatch match;
-
-    if (!std::regex_match(ip, match, ipv4Regex)) {
-        return false;
-    }
-
-    for (int i = 1; i <= 4; i++) {
-        int octet = std::stoi(match[i]);
-        if (octet < 0 || octet > 255) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool SDPParser::isValidPort(uint16_t port) {
-    return port > 0;
-}
-
-bool SDPParser::isValidSampleRate(uint32_t sampleRate) {
-    static const std::vector<uint32_t> validRates = {
-        44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000
-    };
-    return std::find(validRates.begin(), validRates.end(), sampleRate) != validRates.end();
-}
 
 bool SDPParser::isValidEncoding(const std::string& encoding) {
     return encoding == "L16" || encoding == "L24" || encoding == "AM824";

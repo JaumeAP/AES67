@@ -13,7 +13,8 @@
 namespace AES67 {
 
 std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     std::string primaryInterface;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -38,7 +39,7 @@ std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
                         name.substr(0, 3) == "usb") { // USB Ethernet
                     
                         // Prefer interfaces with actual IP addresses (not link-local)
-                        struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                        const auto* addr = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                         std::string ip = inet_ntoa(addr->sin_addr);
                         
                         // Skip link-local addresses (169.254.x.x)
@@ -58,7 +59,8 @@ std::string NetworkInterfaceDetection::getPrimaryEthernetInterface() {
 
 std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
     std::vector<std::string> interfaces;
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -82,7 +84,8 @@ std::vector<std::string> NetworkInterfaceDetection::getAllInterfaces() {
 }
 
 bool NetworkInterfaceDetection::isInterfaceActive(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     bool isActive = false;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -101,7 +104,8 @@ bool NetworkInterfaceDetection::isInterfaceActive(const std::string& interfaceNa
 }
 
 bool NetworkInterfaceDetection::isEthernetInterface(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     bool isEthernet = false;
     
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -122,14 +126,15 @@ bool NetworkInterfaceDetection::isEthernetInterface(const std::string& interface
 }
 
 std::string NetworkInterfaceDetection::getInterfaceIPAddress(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     std::string ipAddress;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
             if (ifa->ifa_name != nullptr && interfaceName == ifa->ifa_name) {
                 if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
-                    struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                    const auto* addr = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                     ipAddress = inet_ntoa(addr->sin_addr);
                     break;
                 }
@@ -142,7 +147,8 @@ std::string NetworkInterfaceDetection::getInterfaceIPAddress(const std::string& 
 }
 
 bool NetworkInterfaceDetection::supportsMulticast(const std::string& interfaceName) {
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
     bool hasMulticast = false;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
@@ -163,7 +169,8 @@ bool NetworkInterfaceDetection::supportsMulticast(const std::string& interfaceNa
 
 std::vector<std::string> NetworkInterfaceDetection::getMulticastCapableInterfaces() {
     std::vector<std::string> interfaces;
-    struct ifaddrs *ifaddrs_ptr, *ifa;
+    struct ifaddrs* ifaddrs_ptr = nullptr;
+    const struct ifaddrs* ifa = nullptr;
 
     if (getifaddrs(&ifaddrs_ptr) == 0) {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -179,7 +186,7 @@ std::vector<std::string> NetworkInterfaceDetection::getMulticastCapableInterface
                 std::string name(ifa->ifa_name);
 
                 // Skip link-local addresses (169.254.x.x)
-                struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+                const auto* addr = reinterpret_cast<const struct sockaddr_in*>(ifa->ifa_addr);
                 std::string ip = inet_ntoa(addr->sin_addr);
                 if (ip.substr(0, 7) == "169.254") {
                     continue;

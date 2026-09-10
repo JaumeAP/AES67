@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <iterator>
 #include "Ravenna/NodeApi.h"
 
 #include <arpa/inet.h>
@@ -161,9 +162,9 @@ JsonValue NodeApi::devices() const {
     }
 
     JsonArray receiverIds;
-    for (const std::string& id : connections_.receiverIds()) {
-        receiverIds.emplace_back(id);
-    }
+    const std::vector<std::string> ids = connections_.receiverIds();
+    std::transform(ids.begin(), ids.end(), std::back_inserter(receiverIds),
+                   [](const std::string& id) { return JsonValue(id); });
 
     const std::string base = "http://" + addressText(identity_.addressV4) + ":" +
                              std::to_string(identity_.apiPort);

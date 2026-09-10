@@ -362,7 +362,7 @@ struct Error {
     std::string message;
     std::string context;
 
-    Error(ErrorCode c, const std::string& msg = "", const std::string& ctx = "")
+    explicit Error(ErrorCode c, const std::string& msg = "", const std::string& ctx = "")
         : code(c), message(msg), context(ctx) {}
 
     bool isSuccess() const { return code == ErrorCode::Success; }

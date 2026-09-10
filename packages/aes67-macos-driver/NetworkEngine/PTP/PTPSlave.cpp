@@ -499,7 +499,8 @@ void PTPSlave::receiveThread() {
                 for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr;
                      cmsg = CMSG_NXTHDR(&msg, cmsg)) {
                     if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_TIMESTAMP) {
-                        struct timeval* tvp = reinterpret_cast<struct timeval*>(CMSG_DATA(cmsg));
+                        const struct timeval* tvp =
+                            reinterpret_cast<const struct timeval*>(CMSG_DATA(cmsg));
                         receiveTimeNs = static_cast<uint64_t>(tvp->tv_sec) * 1000000000ULL +
                                         static_cast<uint64_t>(tvp->tv_usec) * 1000ULL;
                         break;

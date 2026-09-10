@@ -417,9 +417,9 @@ void AES67Device::Initialize() {
         // The host's own storage is what Apple offers instead. The settings
         // file is still READ, because the label and the registry override are
         // the Manager app's to write; only the id is kept here.
-        static constexpr const char* kNodeIdKey = "nmos.nodeId";
         storage_ = std::make_shared<aspl::Storage>(context_);
         if (nmosSettings.nodeId.empty()) {
+            static constexpr const char* kNodeIdKey = "nmos.nodeId";
             auto [stored, ok] = storage_->ReadString(kNodeIdKey);
             if (ok && !stored.empty()) {
                 nmosSettings.nodeId = stored;
@@ -460,7 +460,6 @@ void AES67Device::Initialize() {
             // IS-05. Bound to an ephemeral port: this is a user-space driver
             // and the port it gets is what it advertises.
             connectionServer_ = std::make_unique<ConnectionAPIServer>(0);
-            std::string controlHref;
             nodeRouter_ = std::make_unique<NodeAPIRouter>(
                 node, std::string{}, [this] { return nmosSenderResources(); },
                 [this] { return nmosReceiverResources(); });
@@ -475,7 +474,7 @@ void AES67Device::Initialize() {
                     return applyConnectionPatch(id, patch);
                 });
             if (connectionStarted) {
-                controlHref = connectionServer_->controlHref(apiHost);
+                const std::string controlHref = connectionServer_->controlHref(apiHost);
                 node.apiHost = apiHost;
                 node.apiPort = connectionServer_->boundPort();
                 node.href = "http://" + apiHost + ":" + std::to_string(node.apiPort) + "/";

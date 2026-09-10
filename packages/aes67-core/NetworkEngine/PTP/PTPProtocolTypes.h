@@ -70,7 +70,7 @@ struct PTPTimestamp {
 
     PTPTimestamp() : secondsHi(0), secondsLo(0), nanoseconds(0) {}
 
-    PTPTimestamp(uint64_t totalNs) {
+    explicit PTPTimestamp(uint64_t totalNs) {
         uint64_t totalSec = totalNs / 1000000000ULL;
         secondsHi = static_cast<uint16_t>((totalSec >> 32) & 0xFFFF);
         secondsLo = static_cast<uint32_t>(totalSec & 0xFFFFFFFF);

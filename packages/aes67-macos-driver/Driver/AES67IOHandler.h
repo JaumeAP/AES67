@@ -45,7 +45,7 @@ public:
     // Takes an RTSafeStreamInterface which provides the RT-safe boundary:
     // only lock-free ring buffers and atomic counters, no StreamManager access.
     //
-    AES67IOHandler(
+    explicit AES67IOHandler(
         RTSafeStreamInterface& rtInterface,
         UInt32 channelCount = 128,
         UInt32 bytesPerSample = sizeof(Float32)
