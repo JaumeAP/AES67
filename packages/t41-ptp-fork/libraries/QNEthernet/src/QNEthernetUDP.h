@@ -30,7 +30,11 @@ class EthernetUDP : public UDP {
   // to a minimum of 1.
   explicit EthernetUDP(size_t queueSize);
 
-  ~EthernetUDP();
+  // Virtual, so that deleting a socket through this type is defined even
+  // where the compiler cannot see that the static and dynamic types are
+  // the same. Arduino's UDP has no virtual destructor, which is what
+  // -Wdelete-non-virtual-dtor was pointing at.
+  virtual ~EthernetUDP();
 
   // Returns the maximum number of UDP sockets.
   static constexpr int maxSockets() {
