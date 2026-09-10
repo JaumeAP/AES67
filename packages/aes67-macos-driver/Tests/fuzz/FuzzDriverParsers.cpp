@@ -18,8 +18,6 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -28,6 +26,7 @@
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/SDPFetcher.h"
 #include "NetworkEngine/RTP/SimpleRTP.h"
+#include "Testing/FuzzDriver.h"
 
 using namespace AES67;
 
@@ -74,30 +73,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
 #ifndef FUZZ_LIBFUZZER
 int main(int argc, char** argv) {
-    const unsigned long iterations = (argc > 1) ? strtoul(argv[1], nullptr, 10) : 200000;
-    const unsigned seed = (argc > 2) ? (unsigned)strtoul(argv[2], nullptr, 10) : 20260910u;
-    printf("fuzz: %lu iterations, seed %u\n", iterations, seed);
-
-    std::mt19937 rng(seed);
-    const auto seeds = seedCorpus();
-
-    for (unsigned long i = 0; i < iterations; ++i) {
-        std::vector<uint8_t> input;
-        if ((i & 1) == 0) {
-            input = seeds[rng() % seeds.size()];
-            const unsigned edits = 1 + (rng() % 8);
-            for (unsigned e = 0; e < edits && !input.empty(); ++e) {
-                input[rng() % input.size()] = (uint8_t)(rng() & 0xff);
-            }
-            if ((rng() % 4) == 0) input.resize(rng() % (input.size() + 1));
-        } else {
-            input.resize(rng() % 1500);
-            for (auto& b : input) b = (uint8_t)(rng() & 0xff);
-        }
-        LLVMFuzzerTestOneInput(input.data(), input.size());
-    }
-
-    printf("fuzz: no crash, no sanitizer report\n");
-    return 0;
+    return AES67::Testing::runFuzzDriver(argc, argv, seedCorpus(), 1500);
 }
 #endif
