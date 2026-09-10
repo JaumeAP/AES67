@@ -58,7 +58,7 @@ away from the studio. `--reference` is what fixes that:
 
 It asks the PHC for external timestamps (`PTP_EXTTS_REQUEST2`) and steers the
 clock to the edges it gets, through `clock_adjtime`. The servo is not a new
-one: it is `packages/t41-ptp-fork`'s `ptp-servo`, the same loop the Teensy box runs
+one: it is `packages/t41-ptp`'s `ptp-servo`, the same loop the Teensy box runs
 against its word clock, with the same gains and the same 100 ppm bound.
 
 The edge has to be stamped by the PHC, not by the kernel. That is a separate

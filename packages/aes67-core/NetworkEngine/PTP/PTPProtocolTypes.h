@@ -24,7 +24,7 @@
 #include <string>
 
 // The dataset comparison of IEEE 1588 §9.3 and the dataset it compares live in
-// the Teensy PTP library, packages/t41-ptp-fork: that implementation came first and
+// the Teensy PTP library, packages/t41-ptp: that implementation came first and
 // this one was written from it, so rather than keep a second copy that can
 // drift, this includes it. The header is plain data and one pure function --
 // nothing of the board comes with it.

@@ -49,7 +49,7 @@ add_library(aes67_core
 # header is reached, and it is plain data plus a pure function -- the
 # platform-free contract still holds, and check-platform-free.sh follows the
 # include to prove it.
-set(AES67_T41_PTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../t41-ptp-fork/src"
+set(AES67_T41_PTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../t41-ptp/src"
     CACHE PATH "Directory holding the Teensy PTP library's headers")
 set(AES67_PROFILES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../aes67-profiles"
     CACHE PATH "Directory holding the profiles package")

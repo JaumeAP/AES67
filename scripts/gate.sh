@@ -12,7 +12,7 @@
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
 #   packages/ravenna-alsa-lkm/scripts/gate.sh    the kernel module, on Linux with headers
 #   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
-#   packages/t41-ptp-fork/scripts/gate.sh        host tests
+#   packages/t41-ptp/scripts/gate.sh             host tests
 #
 # aes67-core runs before the driver on purpose: the driver builds the core in
 # and its failures are harder to read than the core's own.
@@ -49,7 +49,7 @@ run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 run "ravenna-alsa-lkm"   packages/ravenna-alsa-lkm/scripts/gate.sh
 run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
-run "t41-ptp-fork"       packages/t41-ptp-fork/scripts/gate.sh
+run "t41-ptp"            packages/t41-ptp/scripts/gate.sh
 
 echo
 echo "######## every package passed"
