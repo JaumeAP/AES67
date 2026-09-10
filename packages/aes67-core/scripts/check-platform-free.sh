@@ -20,7 +20,7 @@ files="$(find Driver NetworkEngine Shared -name '*.cpp' -o -name '*.h' -o -name 
 # library without anything here failing. Resolved from what is actually
 # included rather than named literally, so a second such include is covered
 # the day someone writes it.
-t41_dir="../t41-ptp-fork/src"
+t41_dir="../t41-ptp/src"
 for inc in $(grep -rho '#include "ptp/[^"]*"' $files 2>/dev/null | sed 's/.*"\(.*\)"/\1/' | sort -u); do
   if [ -f "$t41_dir/$inc" ]; then
     files="$files

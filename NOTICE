@@ -24,10 +24,10 @@ file inside the subtree is the one that governs it.
 | `external/doctest` | [doctest/doctest](https://github.com/doctest/doctest), submodule at v2.5.3 | MIT | `LICENSE.txt` |
 | `packages/aes67-macos-driver/external/libASPL` | [gavv/libASPL](https://github.com/gavv/libASPL), vendored subset pinned at `633e0f70203edd87d320fc5a3cae901e1363aac5` (see `VENDORED.md`) | MIT, plus Apple sample-code licences for the derived parts | `LICENSE`, `LICENSE.apple2012`, `LICENSE.apple2020` |
 | `packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm` | [bondagit/ravenna-alsa-lkm](https://github.com/bondagit/ravenna-alsa-lkm), from Merging Technologies, the only checkout of it here: the daemon fork this repository tracks drops its own | GPL-2.0 | none shipped: `MODULE_LICENSE("GPL v2")` in `driver/`, and `README.md` links the GPL |
-| `packages/t41-ptp-fork` | [IMS-AS-LUH/t41-ptp](https://github.com/IMS-AS-LUH/t41-ptp), through the fork [JaumeAP/t41-ptp](https://github.com/JaumeAP/t41-ptp), a submodule of this repository. The three rows below are its contents, and their licences travel with it rather than with this tree | MIT | `LICENSE` |
-| `packages/t41-ptp-fork/libraries/QNEthernet` | [ssilverman/QNEthernet](https://github.com/ssilverman/QNEthernet), through [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) at `6edbded`, imported as a `git subtree` with three commits made here on top | MIT | `LICENSE` |
-| `packages/t41-ptp-fork/libraries/QNEthernet/src/lwip` | [lwIP](https://savannah.nongnu.org/projects/lwip/), bundled by QNEthernet | BSD 3-clause, in the header of every file | per-file headers |
-| `packages/t41-ptp-fork/libraries/Time` | [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), Michael Margolis, submodule at `a18e50d` (v1.6.1) | LGPL-2.1-or-later | none shipped: the notice is in the header of every source file |
+| `packages/t41-ptp` | [IMS-AS-LUH/t41-ptp](https://github.com/IMS-AS-LUH/t41-ptp), through the fork [JaumeAP/t41-ptp](https://github.com/JaumeAP/t41-ptp), a submodule of this repository. The three rows below are its contents, and their licences travel with it rather than with this tree | MIT | `LICENSE` |
+| `packages/t41-ptp/libraries/QNEthernet` | [ssilverman/QNEthernet](https://github.com/ssilverman/QNEthernet), through [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) at `6edbded`, imported as a `git subtree` with three commits made here on top | MIT | `LICENSE` |
+| `packages/t41-ptp/libraries/QNEthernet/src/lwip` | [lwIP](https://savannah.nongnu.org/projects/lwip/), bundled by QNEthernet | BSD 3-clause, in the header of every file | per-file headers |
+| `packages/t41-ptp/libraries/Time` | [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), Michael Margolis, submodule at `a18e50d` (v1.6.1) | LGPL-2.1-or-later | none shipped: the notice is in the header of every source file |
 
 ## Notes
 
@@ -35,7 +35,7 @@ file inside the subtree is the one that governs it.
   t41-ptp, byte-identical to it and consumed by nobody: what gets compiled is
   the copy under `t41-ptp/libraries`. The duplicate is gone, and with it the
   chance of the two drifting while reporting the same version string.
-- `packages/t41-ptp-fork/libraries/Time` says in every source file that the reader
+- `packages/t41-ptp/libraries/Time` says in every source file that the reader
   "should have received a copy of the GNU Lesser General Public License", and
   upstream ships none. It is a submodule now: the directory is upstream's own
   checkout and nothing can be added to it here, so the copy this repository

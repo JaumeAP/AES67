@@ -4,6 +4,6 @@
 [submodule "packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm"]
 	path = packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm
 	url = https://github.com/bondagit/ravenna-alsa-lkm.git
-[submodule "packages/t41-ptp-fork"]
-	path = packages/t41-ptp-fork
+[submodule "packages/t41-ptp"]
+	path = packages/t41-ptp
 	url = https://github.com/JaumeAP/t41-ptp.git

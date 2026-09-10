@@ -9,17 +9,17 @@
 # does not carry, which is what this job is for.
 #
 # It compiles; nothing runs on hardware. There is no Teensy on a runner.
-name: t41-ptp-fork
+name: t41-ptp
 
 on:
   push:
     paths:
-      - 'packages/t41-ptp-fork/**'
-      - '.github/workflows/t41-ptp-fork.yml'
+      - 'packages/t41-ptp/**'
+      - '.github/workflows/t41-ptp.yml'
   pull_request:
     paths:
-      - 'packages/t41-ptp-fork/**'
-      - '.github/workflows/t41-ptp-fork.yml'
+      - 'packages/t41-ptp/**'
+      - '.github/workflows/t41-ptp.yml'
 
 jobs:
   gate:
@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('packages/t41-ptp-fork/ci/platformio.ini') }}
+          key: platformio-${{ runner.os }}-${{ hashFiles('packages/t41-ptp/ci/platformio.ini') }}
           restore-keys: platformio-${{ runner.os }}-
 
       - name: PlatformIO
@@ -61,7 +61,7 @@ jobs:
       - name: Gate
         env:
           AES67_ANALYSE: '1'
-        run: packages/t41-ptp-fork/scripts/gate.sh --board
+        run: packages/t41-ptp/scripts/gate.sh --board
 
       # The coverage-guided fuzzer, which the gate cannot run on the Mac this
       # is written on: Apple's clang ships no libFuzzer runtime. A minute of
@@ -69,9 +69,9 @@ jobs:
       # this catches is a parser that a mutation can walk into, not a deep
       # state machine bug, and a minute is what that is worth.
       - name: Fuzz the parser, guided
-        run: make -C packages/t41-ptp-fork/test fuzz-libfuzzer FUZZ_TIME=60 CXX=clang++
+        run: make -C packages/t41-ptp/test fuzz-libfuzzer FUZZ_TIME=60 CXX=clang++
 
       # Line coverage of src/ptp, printed rather than enforced. A threshold
       # nobody chose is a number people learn to ignore.
       - name: Coverage
-        run: make -C packages/t41-ptp-fork/test coverage
+        run: make -C packages/t41-ptp/test coverage
