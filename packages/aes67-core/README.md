@@ -18,7 +18,7 @@ ProfileAdapter.h` is the one function that fills a profile's
 and not theirs.
 
 The other: the 1588 dataset comparison of §9.3 and the
-dataset it compares are `packages/t41-ptp/src/ptp/ptp-bmca.h`. That
+dataset it compares are `packages/t41-ptp-fork/src/ptp/ptp-bmca.h`. That
 implementation came first and this one was written from it, so rather than keep
 a second copy that can drift, `NetworkEngine/PTP/PTPProtocolTypes.h` includes
 it. It is plain data and one pure function; `scripts/check-platform-free.sh`

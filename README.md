@@ -15,7 +15,7 @@ not because they build together.
 | [`packages/aes67-linux-ptpd`](packages/aes67-linux-ptpd) | A PTP grandmaster for Linux, written for a Raspberry Pi 5: it announces the NIC's own hardware clock, stamps its Sync messages with it and reads its rates from `aes67-profiles`. Announce, Sync/Follow_Up and Delay_Resp; no BMCA and no slave side | CMake, C++20 |
 | [`packages/ravenna-alsa-lkm`](packages/ravenna-alsa-lkm) | The Linux device's kernel half: Merging Technologies' RAVENNA/AES67 ALSA module through [`bondagit/ravenna-alsa-lkm`](https://github.com/bondagit/ravenna-alsa-lkm), as a submodule. Its own package because a kernel module and a user-space process fail in different ways | Kernel Makefile |
 | [`packages/aes67-ravenna`](packages/aes67-ravenna) | RAVENNA's session layer and the NMOS APIs a controller routes with: DNS-SD over mDNS and the RTSP DESCRIBE that hands over the SDP, IS-04 so the device is on the list, IS-05 to give one device another's stream, IS-08 for the grid channel by channel. The SDP is the core's and the grid is the core's matrix | CMake, C++20 |
-| [`packages/t41-ptp`](packages/t41-ptp) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
+| [`packages/t41-ptp-fork`](packages/t41-ptp-fork) | IEEE 1588 for the Teensy 4.1, a fork of `IMS-AS-LUH/t41-ptp`, carrying QNEthernet and TimeLib under `libraries/` | Arduino / PlatformIO |
 
 The grandmaster firmware that consumes `t41-ptp` is not here: it is
 [`JaumeAP/AES67-master-box-`](https://github.com/JaumeAP/AES67-master-box-),
@@ -46,7 +46,7 @@ packages/aes67-macos-driver/scripts/gate.sh
 packages/aes67-linux-ptpd/scripts/gate.sh
 packages/ravenna-alsa-lkm/scripts/gate.sh
 packages/aes67-ravenna/scripts/gate.sh
-packages/t41-ptp/scripts/gate.sh
+packages/t41-ptp-fork/scripts/gate.sh
 ```
 
 There is no CI. GitHub Actions was disabled and deleted, and `.githooks/pre-push`

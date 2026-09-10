@@ -16,7 +16,7 @@ on:
       - 'packages/aes67-linux-ptpd/**'
       - 'packages/aes67-core/**'
       - 'packages/aes67-profiles/**'
-      - 'packages/t41-ptp/src/ptp/ptp-bmca.h'
+      - 'packages/t41-ptp-fork/src/ptp/ptp-bmca.h'
       - '.github/workflows/linux-ptpd.yml'
   pull_request:
     paths:
