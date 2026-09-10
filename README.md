@@ -49,15 +49,21 @@ packages/aes67-ravenna/scripts/gate.sh
 packages/t41-ptp-fork/scripts/gate.sh
 ```
 
-There is no CI. GitHub Actions was disabled and deleted, and `.githooks/pre-push`
-is what replaced it: it runs `scripts/gate.sh` before every push, and asks
-about the static analysis when the push is to the default branch. A fresh
-clone has to opt in once, because hook configuration is local and does not
-travel with a repository:
+Verification is local. `.githooks/pre-push` runs `scripts/gate.sh` before every
+push and asks about the static analysis when the push is to the default branch;
+a fresh clone has to opt in once, because hook configuration is local and does
+not travel with a repository:
 
 ```bash
 git config core.hooksPath .githooks
 ```
+
+Two workflows exist, for the two things this machine cannot check.
+`.github/workflows/linux-ptpd.yml` compiles the Linux daemon, whose half that
+talks to the kernel does not build on a Mac at all, and packages it for the
+Pi. `.github/workflows/t41-ptp-fork.yml` runs the Teensy package's gate with
+the board build, which wants a PlatformIO toolchain. Neither is a merge gate:
+what they cover, no local run can.
 
 ## Building
 
