@@ -87,7 +87,11 @@ endif()
 
 # The upstream daemon reads these as cache entries; build.sh passes the same
 # ones on the command line.
-set(RAVENNA_ALSA_LKM_DIR "${AES67_LINUX_DAEMON_DIR}/3rdparty/ravenna-alsa-lkm"
+# The module is a submodule of this package in its own right, pinned at the
+# commit the daemon pins. The daemon's own copy is still there, three levels
+# down, and building against one while reading the other is how the two come
+# to differ without anyone noticing: this is the one both do.
+set(RAVENNA_ALSA_LKM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm"
     CACHE PATH "Directory holding the RAVENNA ALSA kernel module sources")
 set(CPP_HTTPLIB_DIR "${AES67_LINUX_DAEMON_DIR}/3rdparty/cpp-httplib"
     CACHE PATH "Directory holding cpp-httplib")
