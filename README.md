@@ -61,14 +61,19 @@ not travel with a repository:
 git config core.hooksPath .githooks
 ```
 
-Three workflows exist, for what this machine cannot check.
+Four workflows exist. Three are for what this machine cannot check, and one
+is for a second opinion on what it can.
 `.github/workflows/linux-ptpd.yml` compiles the Linux daemon, whose half that
 talks to the kernel does not build on a Mac at all, and packages it for the
 Pi. `.github/workflows/t41-ptp.yml` runs the Teensy package's gate with the
 board build, which wants a PlatformIO toolchain. `.github/workflows/ravenna.yml`
 runs `aes67-profiles`, `aes67-core` and `aes67-ravenna` on Linux, because those
 three have no Apple in them and a portability nobody ever tests is a claim
-rather than a fact. None is a merge gate: what they cover, no local run can.
+rather than a fact. `.github/workflows/macos.yml` builds the driver and the
+Manager app on a macOS runner and checks that the app comes out carrying both
+-- a second Mac with a different Xcode, which is what the two packages that
+only ever built here were missing. None is a merge gate: what the first three
+cover, no local run can, and the fourth repeats a local run on other hardware.
 
 ## Building
 
