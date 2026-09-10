@@ -15,7 +15,11 @@
 # and means nothing.
 set -uo pipefail
 
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The package to analyse, as its directory. One copy of this script lived in
+# each of four packages, byte for byte the same; it lives at the root now and
+# is told which one it is working on.
+package="${AES67_TIDY_PACKAGE:-$PWD}"
+cd "$package" || { echo "FAIL: no such package: $package" >&2; exit 1; }
 
 TIDY="${CLANG_TIDY:-}"
 if [ -z "$TIDY" ]; then

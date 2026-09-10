@@ -37,7 +37,7 @@ echo "$(ls Profiles/*.h Profiles/*.cpp Testing/*.h | wc -l | tr -d ' ') files, s
 # clang-tidy the Command Line Tools do not ship. AES67_ANALYSE=1 turns it on.
 if [ "${AES67_ANALYSE:-0}" = "1" ]; then
     echo "==> Static analysis"
-    scripts/check-tidy.sh build || { echo "FAIL: clang-tidy" >&2; exit 1; }
+    ../../scripts/check-tidy.sh build || { echo "FAIL: clang-tidy" >&2; exit 1; }
 else
     echo "==> Static analysis skipped (AES67_ANALYSE=1 to run it)"
 fi
