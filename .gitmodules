@@ -4,3 +4,6 @@
 [submodule "packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm"]
 	path = packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm
 	url = https://github.com/bondagit/ravenna-alsa-lkm.git
+[submodule "packages/t41-ptp-fork/libraries/Time"]
+	path = packages/t41-ptp-fork/libraries/Time
+	url = https://github.com/PaulStoffregen/Time.git

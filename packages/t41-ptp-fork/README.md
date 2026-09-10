@@ -17,12 +17,12 @@ The parts this runs on, and where they can be ordered, are in
 - Working Teensy Arduino environment
 
 This is a package of the `JaumeAP/AES67` monorepo. It used to be a repository
-of its own, `JaumeAP/t41-ptp`, which is archived and read-only now; the two
-libraries it needs were submodules there and are plain directories here, so
-nothing has to be initialised.
+of its own, `JaumeAP/t41-ptp`, which is archived and read-only now. The two
+libraries it needs arrive differently: one is a checkout, the other is a
+directory in this tree.
 
-- `libraries/QNEthernet` — QNEthernet with IEEE 1588 support, from [JaumeAP/QNEthernet](https://github.com/JaumeAP/QNEthernet/tree/multicast-ttl), itself [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) plus three commits. See below for why this is a fork and not upstream.
-- `libraries/Time` — `TimeLib.h`, used for the log output. This one is upstream's own, [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time).
+- `libraries/QNEthernet` — QNEthernet with IEEE 1588 support, from [JaumeAP/QNEthernet](https://github.com/JaumeAP/QNEthernet/tree/multicast-ttl), itself [HedgeHawk's `ieee1588-2-fix`](https://github.com/HedgeHawk/QNEthernet/tree/ieee1588-2-fix) plus three commits. A directory here, not a submodule: no repository serves that code any more. See below for why this is a fork and not upstream.
+- `libraries/Time` — `TimeLib.h`, used for the log output. This one is upstream's own, [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), a submodule of the monorepo pinned at `a18e50d` (v1.6.1): run `git submodule update --init` after cloning, or the directory is empty.
 
 #### Why QNEthernet comes from a fork
 
