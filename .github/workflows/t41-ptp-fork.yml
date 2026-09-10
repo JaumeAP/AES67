@@ -48,7 +48,16 @@ jobs:
       - name: PlatformIO
         run: pip install platformio
 
+      # clang-tidy for the analysis half of the gate. The Mac this is written
+      # on had none for a long time, and the target it would have run was
+      # macOS-only anyway, so nothing had ever analysed this package.
+      - name: clang-tidy
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy
+
       # The package's own gate, not a second description of it here: host
-      # tests with -Werror, then the Teensy 4.1 build.
+      # tests with -Werror, clang-tidy, the same tests under ASan and UBSan,
+      # then the Teensy 4.1 build.
       - name: Gate
+        env:
+          AES67_ANALYSE: '1'
         run: packages/t41-ptp-fork/scripts/gate.sh --board

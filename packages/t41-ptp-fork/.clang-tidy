@@ -27,6 +27,13 @@
 #   cert-dcl50-cpp: C-style variadic functions. They are the printf-style
 #     logging macros, which are that way on purpose so that a switched-off
 #     level compiles to nothing.
+#   bugprone-throwing-static-initialization: the same two objects cert-err58-cpp
+#     was excluded for -- l3ptp.cpp's multicast addresses -- reported by a
+#     second check. The exclusion above named one of the pair and left this one
+#     firing, which is how the two findings this file was meant to have none of
+#     survived. Arduino's IPAddress takes four octets and stores them; it is the
+#     host stub's std::string members that make a constructor the analyser
+#     cannot prove will not throw, and no such type reaches the board.
 
 Checks: >
   -*,
@@ -39,6 +46,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
   -cert-err58-cpp,
+  -bugprone-throwing-static-initialization,
   -performance-enum-size
 
 WarningsAsErrors: >

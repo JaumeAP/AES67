@@ -8,8 +8,9 @@
 # workflows from the root of a repository, and this is a package inside one.
 # A change here reached the board unverified.
 #
-#   scripts/gate.sh           host tests
-#   scripts/gate.sh --board   host tests and the Teensy build
+#   scripts/gate.sh              host tests
+#   scripts/gate.sh --board      host tests and the Teensy build
+#   AES67_ANALYSE=1 scripts/gate.sh   with clang-tidy and the sanitizers
 #
 # The board build needs PlatformIO and downloads a toolchain on first use, so
 # it is opt-in. Without --board the gate is seconds; the host tests stub out
@@ -44,8 +45,23 @@ if [ "${AES67_ANALYSE:-0}" = "1" ]; then
     echo "FAIL: clang-tidy" >&2
     exit 1
   fi
+
+  # The same 887 checks again, under AddressSanitizer and
+  # UndefinedBehaviorSanitizer. They are here rather than in the plain run
+  # because they are minutes rather than seconds, and they catch what neither
+  # the compiler nor clang-tidy can: what the code does with the values a test
+  # actually feeds it.
+  echo "==> Sanitizers"
+  make -s -C test clean > /dev/null 2>&1
+  if ! EXTRA_CXXFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+       UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" make -s -C test; then
+    make -s -C test clean > /dev/null 2>&1
+    echo "FAIL: sanitizers" >&2
+    exit 1
+  fi
+  make -s -C test clean > /dev/null 2>&1
 else
-  echo "==> Static analysis skipped (AES67_ANALYSE=1 to run it)"
+  echo "==> Static analysis and sanitizers skipped (AES67_ANALYSE=1 to run them)"
 fi
 
 if [ "$board" = "1" ]; then

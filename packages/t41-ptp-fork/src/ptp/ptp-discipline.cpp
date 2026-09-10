@@ -178,7 +178,14 @@ NanoTime PTPBase::updateController(NanoTime refDiff, NanoTime localDiff)
         {
             Serial.printf("ENET_ATINC %08X\n", ENET_ATINC);
             Serial.printf("ENET_ATPER %d\n", ENET_ATPER);
-            Serial.printf("ENET_ATCOR %d (%f)\n", ENET_ATCOR, 25000000 / outcome.freqAdjustNsps);
+            // The period the correction counter works out to, and only when
+            // there is a correction: a zero adjustment is a valid outcome and
+            // dividing by it printed inf.
+            if (outcome.freqAdjustNsps != 0.0) {
+                Serial.printf("ENET_ATCOR %d (%f)\n", ENET_ATCOR, 25000000 / outcome.freqAdjustNsps);
+            } else {
+                Serial.printf("ENET_ATCOR %d (no adjustment)\n", ENET_ATCOR);
+            }
         }
         Serial.println();
         Serial.println();
