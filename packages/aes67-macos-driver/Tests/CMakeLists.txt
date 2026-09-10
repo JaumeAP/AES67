@@ -119,9 +119,13 @@ target_link_libraries(TestDeviceActivation PRIVATE doctest_headers)
 target_compile_features(TestDeviceActivation PRIVATE cxx_std_17)
 
 # Test: PTP Master / BMCA — offline only, see TestPTPMaster.cpp's own header
-# comment for why it doesn't touch sockets.
+# comment for why it doesn't touch sockets. PTPMaster.cpp is compiled in: the
+# suite was named for it and tested only what it is built on, which is why its
+# 414 lines read as untested.
 add_executable(TestPTPMaster
     TestPTPMaster.cpp
+    ../NetworkEngine/PTP/PTPMaster.cpp
+    ../Driver/AudioThreadPriority.cpp   # the transmit and receive threads ask for it
 )
 
 target_include_directories(TestPTPMaster PRIVATE

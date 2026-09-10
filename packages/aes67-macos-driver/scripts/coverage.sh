@@ -2,8 +2,8 @@
 # Source-based coverage report for the test suite, using the llvm-cov that
 # ships with the Command Line Tools -- no extra install.
 #
-#   scripts/coverage.sh            build, run the gate's tests, report
-#   scripts/coverage.sh --all      include the `timing` label too
+#   scripts/coverage.sh            build, run every suite, report
+#   scripts/coverage.sh --quick    skip the `timing` label
 #
 # Builds in build-cov/ so the normal build tree keeps its optimised binaries
 # and stays free of .profraw files.
@@ -14,9 +14,24 @@ cd "$repo_root"
 
 build_dir="build-cov"
 prof_dir="$build_dir/profraw"
-ctest_filter=(-LE timing)
-if [ "${1:-}" = "--all" ]; then
-  ctest_filter=()
+
+# Every suite, timing included. They are excluded from the ordinary gate
+# because they are slow and wall-clock dependent, not because they are
+# unreliable here -- and excluding them from COVERAGE means the PTP code they
+# are the only exercise of reads as untested. It did: PTPClock.cpp came out at
+# 10% and PTPService.cpp at 0% while both had suites.
+#
+# --quick drops them again, for a run that only has to be fast.
+#
+# Seeded with --output-on-failure so the array is never empty: bash 3.2, which
+# is what /bin/bash is on macOS, treats "${arr[@]}" on an empty array as an
+# unbound variable under `set -u` and aborts the subshell -- which here meant
+# ctest never ran and the profiles that were never written were reported as an
+# uninstrumented build. scripts/gate.sh carries the same note for the same
+# reason.
+ctest_filter=(--output-on-failure)
+if [ "${1:-}" = "--quick" ]; then
+  ctest_filter+=(-LE timing)
 fi
 
 echo "==> Configure (coverage, no Manager app)"
@@ -40,7 +55,7 @@ echo "==> Run tests"
 # relative LLVM_PROFILE_FILE scatters the profiles next to each binary instead
 # of collecting them; %p because every suite is its own process and a fixed
 # name would leave only whichever ran last.
-( cd "$build_dir" && LLVM_PROFILE_FILE="$repo_root/$prof_dir/%p.profraw" ctest "${ctest_filter[@]}" --output-on-failure )
+( cd "$build_dir" && LLVM_PROFILE_FILE="$repo_root/$prof_dir/%p.profraw" ctest "${ctest_filter[@]}" )
 test_status=$?
 
 echo "==> Merge profiles"
@@ -66,7 +81,11 @@ arch="$(uname -m)"
 xcrun llvm-cov report "${objects[@]}" \
   -arch "$arch" \
   -instr-profile="$build_dir/coverage.profdata" \
-  -ignore-filename-regex='(external|vendor|Tests)/' \
+  `# Other packages' sources are measured by their own gates -- aes67-core,` \
+  `# aes67-profiles and aes67-ravenna each report their own number. Counting` \
+  `# them here charged this package for code its suites are not the exercise` \
+  `# of: aes67-ravenna reads 85.8% in its own gate and 0% in this report.` \
+  -ignore-filename-regex='(external|vendor|Tests)/|packages/aes67-(core|profiles|ravenna)/' \
   || { echo "FAIL: llvm-cov report" >&2; exit 1; }
 
 echo
