@@ -15,7 +15,7 @@ configuration.
 | Piece | Where it comes from | What it does |
 |-------|--------------------|--------------|
 | `aes67-daemon` | `bondagit/aes67-linux-daemon` | The user-space half: SAP and mDNS discovery, the REST interface, the sources and sinks configuration, NMOS IS-04 |
-| `cpp-httplib` | `bondagit/cpp-httplib`, a submodule of the daemon | The HTTP server the REST interface is served from |
+| `cpp-httplib` | [`bondagit/cpp-httplib`](https://github.com/bondagit/cpp-httplib), a submodule of this package | The HTTP server the REST interface is served from |
 
 The kernel module is not here: it is `packages/ravenna-alsa-lkm`, its own
 package with its own checkout and its own gate, because a kernel module and a
@@ -23,14 +23,14 @@ user-space process fail in different ways. This package builds the daemon
 against that checkout -- `RAVENNA_ALSA_LKM_DIR` points at it.
 
 Upstream pins the module a second time inside the daemon, under its
-`3rdparty/`. Two checkouts of one thing, free to drift, with only one ever
-compiled -- so the daemon this package tracks is a fork with that submodule
-removed, [`JaumeAP/aes67-linux-daemon`](https://github.com/JaumeAP/aes67-linux-daemon)
+`3rdparty/`, and cpp-httplib the same way. Two checkouts of one thing, free to
+drift, with only one ever compiled -- so the daemon this package tracks is a
+fork with both submodules removed and the two pins kept here instead, [`JaumeAP/aes67-linux-daemon`](https://github.com/JaumeAP/aes67-linux-daemon)
 branch `no-vendored-lkm`, one commit ahead of upstream and nothing else. The
 gate fails if a rebase onto upstream ever brings it back.
 
-Upstream's own `build.sh` still expects the module under
-`3rdparty/ravenna-alsa-lkm`; building that way means putting it there. This
+Upstream's own `build.sh` still expects both under `3rdparty/`; building that
+way means putting them there. This
 package's CMake does not: it passes the module's location the way `build.sh`
 always did.
 
