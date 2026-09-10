@@ -5,8 +5,7 @@ The RAVENNA/AES67 ALSA kernel module: Merging Technologies' driver, through
 vendored under `external/` as a submodule.
 
 Nothing is written here. What this package holds is the checkout, the one
-command that builds it and the gate that says whether it is there -- the same
-posture `packages/aes67-linux-daemon` takes towards the daemon.
+command that builds it and the gate that says whether it is there.
 
 ## Why it is its own package
 

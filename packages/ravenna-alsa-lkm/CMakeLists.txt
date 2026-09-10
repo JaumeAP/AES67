@@ -8,7 +8,7 @@ project(ravenna_alsa_lkm LANGUAGES NONE)
 #
 # It is its own package because it is its own thing: a Linux kernel module,
 # built by the kernel's build system against the running kernel's headers,
-# while packages/aes67-linux-daemon is a user-space process. They are two
+# while the daemon that drives it is a user-space process. They are two
 # halves of one device and they fail in different ways.
 
 set(AES67_LKM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm"
