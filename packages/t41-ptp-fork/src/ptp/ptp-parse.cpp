@@ -173,8 +173,10 @@ void PTPBase::parseAnnounceMessage(const uint8_t *buf)
         }
     }
 
-    const uint16_t stepsRemoved = (uint16_t)((buf[61] << 8) | buf[62]);
-    if (stepsRemoved >= MAX_STEPS_REMOVED)
+    // Named for the message it came out of, not for the member: this->stepsRemoved
+    // is what THIS clock announces, and the two were one word apart.
+    const uint16_t announcedStepsRemoved = (uint16_t)((buf[61] << 8) | buf[62]);
+    if (announcedStepsRemoved >= MAX_STEPS_REMOVED)
     {
         // Further away than 1588 allows a port to follow, and what a
         // message that has gone round a loop ends up carrying.
@@ -204,7 +206,7 @@ void PTPBase::parseAnnounceMessage(const uint8_t *buf)
     {
         candidate.grandmasterIdentity[i] = buf[53 + i];
     }
-    candidate.stepsRemoved = stepsRemoved;
+    candidate.stepsRemoved = announcedStepsRemoved;
     for (int i = 0; i < 10; i++)
     {
         candidate.portIdentity[i] = buf[20 + i];

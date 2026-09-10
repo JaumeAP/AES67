@@ -12,7 +12,7 @@ CXX ?= c++
 # board's compiler sees narrowings this one does not: long is 32 bits there
 # and 64 here. Keeping the host build clean under them is what stops a
 # truncation from reaching the Teensy unnoticed.
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -O0 -g -I stubs -I ../src
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -O0 -g -I stubs -I ../src
 
 # Set by CI to -Werror. A warning that only appears on another compiler
 # should fail there, not be argued about later.
@@ -46,9 +46,13 @@ run: $(BIN)
 # gate (AES67_ANALYSE=1); it wants a clang-tidy the Command Line Tools do not
 # ship, found the way the other packages find it.
 TIDY ?= $(firstword $(wildcard $(HOME)/.local/venvs/cpptools/bin/clang-tidy) $(shell command -v clang-tidy))
+# -isysroot only where there is one to point at: xcrun is macOS's, and on Linux
+# the same line ran clang-tidy with an empty sysroot, which is why this target
+# had never run anywhere but here.
+SYSROOT_FLAGS = $(if $(shell command -v xcrun),-isysroot $(shell xcrun --show-sdk-path),)
 tidy:
 	@test -n "$(TIDY)" || { echo "SKIP: no clang-tidy found"; exit 0; }
-	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) -isysroot $$(xcrun --show-sdk-path)
+	$(TIDY) --quiet ../src/ptp/*.cpp -- $(CXXFLAGS) $(SYSROOT_FLAGS)
 
 HDR = stubs/Arduino.h stubs/QNEthernet.h stubs/TimeLib.h stubs/stub_state.h \
       ptp_messages.h test_harness.h \
