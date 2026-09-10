@@ -1,6 +1,6 @@
 //
 // ConfCheck.h
-// aes67-linux-driver
+// aes67-linux-daemon
 // Reading a daemon.conf back and saying what is wrong with it.
 //
 // Upstream's daemon reads its configuration and validates almost none of it:

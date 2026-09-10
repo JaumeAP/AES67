@@ -1,6 +1,6 @@
 //
 // TestDaemonSdp.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 // The daemon's SDP as the daemon documents it, and where ours differs.
 //
 

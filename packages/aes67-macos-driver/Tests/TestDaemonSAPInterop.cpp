@@ -4,7 +4,7 @@
 // This driver's SAP against the AES67 Linux daemon's rules for taking it.
 //
 // The daemon is vendored in this repository
-// (packages/aes67-linux-driver/external/aes67-linux-daemon), so its receive
+// (packages/aes67-linux-daemon/external/aes67-linux-daemon), so its receive
 // path is readable rather than guessed at, and support/DaemonSap mirrors it.
 // This suite is what says whether the two speak: it found that they did not.
 //

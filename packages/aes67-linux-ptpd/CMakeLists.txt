@@ -91,7 +91,7 @@ if(BUILD_TESTS)
         endforeach()
 
         # What this daemon sends, against the rules of a real slave: the
-        # RAVENNA ALSA kernel module vendored under packages/aes67-linux-driver,
+        # RAVENNA ALSA kernel module vendored under packages/aes67-linux-daemon,
         # mirrored in Tests/support/RavennaSlave from its own PTP.c.
         add_executable(TestRavennaSlaveInterop
             Tests/TestRavennaSlaveInterop.cpp

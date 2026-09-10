@@ -1,6 +1,6 @@
 //
 // DaemonSdp.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 //
 // Line for line with session_manager.cpp:754-790, in the order it writes
 // them. The duplicated-stream half of that function (ST 2022-7, a=group:DUP)

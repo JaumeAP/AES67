@@ -1,6 +1,6 @@
 //
 // SourceGen.h
-// aes67-linux-driver
+// aes67-linux-daemon
 // The daemon's RTP sources, written from a compatibility profile.
 //
 // A source is what the daemon sends: an ALSA playback device read into RTP

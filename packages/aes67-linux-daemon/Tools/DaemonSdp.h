@@ -1,6 +1,6 @@
 //
 // DaemonSdp.h
-// aes67-linux-driver
+// aes67-linux-daemon
 // The SDP the vendored daemon announces, written the way it writes it.
 //
 // This mirrors SessionManager::get_source_sdp_ in

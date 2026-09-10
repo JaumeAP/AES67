@@ -1,6 +1,6 @@
 //
 // TestConfCheck.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 // What --check reports, and on whose authority.
 //
 

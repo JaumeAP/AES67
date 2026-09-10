@@ -1,6 +1,6 @@
 //
 // SdpCompare.h
-// aes67-linux-driver
+// aes67-linux-daemon
 // The daemon's SDP against this project's, field by field.
 //
 // Both sides describe the same stream: same address, port, codec, rate,

@@ -1,6 +1,6 @@
 //
 // ProfileConf.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 //
 
 #include "Tools/ProfileConf.h"

@@ -1,6 +1,6 @@
 //
 // SdpCompare.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 //
 
 #include "Tools/SdpCompare.h"

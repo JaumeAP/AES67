@@ -1,6 +1,6 @@
 //
 // SourceGen.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 //
 
 #include "Tools/SourceGen.h"

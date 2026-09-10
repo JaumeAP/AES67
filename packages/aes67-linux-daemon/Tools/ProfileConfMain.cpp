@@ -1,6 +1,6 @@
 //
 // ProfileConfMain.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 // aes67-profile-conf: write the daemon's configuration for a profile.
 //
 
