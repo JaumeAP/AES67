@@ -158,12 +158,12 @@ JsonValue NodeApi::self() const {
 JsonValue NodeApi::devices() const {
     JsonArray senderIds;
     for (const std::string& name : catalogue_.names()) {
-        senderIds.push_back(JsonValue(senderIdFor(name)));
+        senderIds.emplace_back(senderIdFor(name));
     }
 
     JsonArray receiverIds;
     for (const std::string& id : connections_.receiverIds()) {
-        receiverIds.push_back(JsonValue(id));
+        receiverIds.emplace_back(id);
     }
 
     const std::string base = "http://" + addressText(identity_.addressV4) + ":" +
@@ -199,8 +199,8 @@ JsonValue NodeApi::sources() const {
 
         JsonArray channels;
         for (uint16_t i = 0; i < session->sdp.numChannels; ++i) {
-            channels.push_back(JsonValue(JsonObject{
-                {"label", JsonValue("Channel " + std::to_string(i + 1))}}));
+            channels.emplace_back(JsonObject{
+                {"label", JsonValue("Channel " + std::to_string(i + 1))}});
         }
 
         JsonObject source;
@@ -215,7 +215,7 @@ JsonValue NodeApi::sources() const {
         source["clock_name"] = JsonValue("clk0");
         source["format"] = JsonValue("urn:x-nmos:format:audio");
         source["channels"] = JsonValue(channels);
-        items.push_back(JsonValue(source));
+        items.emplace_back(source);
     }
     return JsonValue(items);
 }
@@ -244,7 +244,7 @@ JsonValue NodeApi::flows() const {
             {"denominator", JsonValue(1)}});
         flow["bit_depth"] =
             JsonValue(session->sdp.encoding == "L16" ? 16 : 24);
-        items.push_back(JsonValue(flow));
+        items.emplace_back(flow);
     }
     return JsonValue(items);
 }
@@ -275,7 +275,7 @@ JsonValue NodeApi::senders() const {
                       senderIdFor(name) + "/transportfile/");
         sender["subscription"] = JsonValue(JsonObject{
             {"receiver_id", JsonValue()}, {"active", JsonValue(true)}});
-        items.push_back(JsonValue(sender));
+        items.emplace_back(sender);
     }
     return JsonValue(items);
 }
@@ -302,7 +302,7 @@ JsonValue NodeApi::receivers() const {
             {"media_types", JsonValue(JsonArray{JsonValue("audio/L24"), JsonValue("audio/L16")})}});
         receiver["subscription"] = JsonValue(JsonObject{
             {"sender_id", JsonValue()}, {"active", JsonValue(active)}});
-        items.push_back(JsonValue(receiver));
+        items.emplace_back(receiver);
     }
     return JsonValue(items);
 }

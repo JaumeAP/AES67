@@ -40,7 +40,7 @@ ApiResponse errorResponse(int status, const std::string& detail) {
 ApiResponse listResponse(const std::vector<std::string>& entries) {
     JsonArray items;
     items.reserve(entries.size());
-    for (const std::string& entry : entries) items.push_back(JsonValue(entry));
+    for (const std::string& entry : entries) items.emplace_back(entry);
     return jsonResponse(200, JsonValue(items));
 }
 

@@ -74,7 +74,7 @@ public:
     //
     explicit AES67Device(const std::shared_ptr<aspl::Context>& context);
 
-    ~AES67Device();
+    ~AES67Device() override;
 
     // Initialize device (must be called after construction)
     void Initialize();

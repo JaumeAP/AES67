@@ -131,7 +131,7 @@ std::vector<std::string> NetworkUtils::getNetworkInterfaces() {
         for (ifa = ifaddrs_ptr; ifa != nullptr; ifa = ifa->ifa_next) {
             if (ifa->ifa_addr == nullptr) continue;
             if (ifa->ifa_addr->sa_family == AF_INET) {  // IPv4 interfaces
-                interfaces.push_back(ifa->ifa_name);
+                interfaces.emplace_back(ifa->ifa_name);
             }
         }
         freeifaddrs(ifaddrs_ptr);

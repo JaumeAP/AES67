@@ -113,8 +113,8 @@ constexpr bool ptpProfileNameEquals(const char* a, const char* b) {
 /// "aes67", "gptp".
 constexpr const PtpProfile* ptpProfileByName(const char* name) {
     if (name == nullptr) return nullptr;
-    for (size_t i = 0; i < kPtpProfileCount; ++i) {
-        if (ptpProfileNameEquals(kPtpProfiles[i]->name, name)) return kPtpProfiles[i];
+    for (const PtpProfile* profile : kPtpProfiles) {
+        if (ptpProfileNameEquals(profile->name, name)) return profile;
     }
     return nullptr;
 }

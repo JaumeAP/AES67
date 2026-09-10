@@ -68,7 +68,7 @@ std::vector<SessionAdvertisement> SessionCatalogue::advertisements(
         // What a browser can use before it opens a connection. The path is
         // the one thing it cannot guess, and the channel count is what turns
         // a list of names into something a person can route.
-        entry.txtEntries.push_back("txtvers=1");
+        entry.txtEntries.emplace_back("txtvers=1");
         entry.txtEntries.push_back("path=" + session.path);
         entry.txtEntries.push_back("channels=" + std::to_string(session.sdp.numChannels));
         advertised.push_back(entry);

@@ -47,15 +47,15 @@ std::vector<std::string> SDPSession::getValidationErrors() const {
     std::vector<std::string> errors;
 
     if (sessionName.empty()) {
-        errors.push_back("Session name (s=) is required");
+        errors.emplace_back("Session name (s=) is required");
     }
 
     if (connectionAddress.empty()) {
-        errors.push_back("Connection address (c=) is required");
+        errors.emplace_back("Connection address (c=) is required");
     }
 
     if (port == 0) {
-        errors.push_back("Port must be non-zero");
+        errors.emplace_back("Port must be non-zero");
     }
 
     if (encoding != "L16" && encoding != "L24" && encoding != "AM824") {
@@ -63,11 +63,11 @@ std::vector<std::string> SDPSession::getValidationErrors() const {
     }
 
     if (sampleRate == 0) {
-        errors.push_back("Sample rate must be non-zero");
+        errors.emplace_back("Sample rate must be non-zero");
     }
 
     if (numChannels == 0) {
-        errors.push_back("Channel count must be non-zero");
+        errors.emplace_back("Channel count must be non-zero");
     }
 
     return errors;
@@ -573,7 +573,7 @@ std::vector<std::string> SDPParser::generateAttributes(const SDPSession& session
     // Integer.parseInt and takes nothing else (DanteInteropSim). The parser
     // above still accepts both.
     if (session.ptpTraceable) {
-        attributes.push_back("a=ts-refclk:ptp=IEEE1588-2008:traceable");
+        attributes.emplace_back("a=ts-refclk:ptp=IEEE1588-2008:traceable");
     } else if (session.ptpDomain >= 0 && !session.ptpMasterMAC.empty()) {
         std::ostringstream ptpRefclk;
         ptpRefclk << "a=ts-refclk:ptp=IEEE1588-2008:"

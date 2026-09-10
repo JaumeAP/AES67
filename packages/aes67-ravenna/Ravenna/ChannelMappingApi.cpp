@@ -65,7 +65,7 @@ JsonValue channelLabels(uint16_t count, const char* prefix) {
     for (uint16_t i = 0; i < count; ++i) {
         JsonObject channel;
         channel["label"] = JsonValue(std::string(prefix) + " " + std::to_string(i + 1));
-        channels.push_back(JsonValue(channel));
+        channels.emplace_back(channel);
     }
     return JsonValue(channels);
 }

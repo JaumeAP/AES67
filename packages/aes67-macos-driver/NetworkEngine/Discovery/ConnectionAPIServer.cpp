@@ -364,7 +364,7 @@ private:
     /// The five leaves every sender and receiver carries.
     static std::vector<std::string> leaves(bool isSender) {
         std::vector<std::string> entries{"constraints/", "staged/", "active/", "transporttype/"};
-        if (isSender) entries.push_back("transportfile/");
+        if (isSender) entries.emplace_back("transportfile/");
         return entries;
     }
 

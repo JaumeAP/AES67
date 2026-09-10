@@ -82,8 +82,8 @@ StreamID StreamID::generate() {
     std::uniform_int_distribution<uint8_t> dis(0, 255);
 
     uint8_t uuid[16];
-    for (int i = 0; i < 16; i++) {
-        uuid[i] = dis(gen);
+    for (uint8_t& byte : uuid) {
+        byte = dis(gen);
     }
 
     // Set version (4) and variant bits for UUID v4

@@ -24,7 +24,7 @@ std::vector<std::string> configSearchPaths(const char* envVar, const std::string
 
     if (envVar != nullptr) {
         const char* envPath = std::getenv(envVar);
-        if (envPath && envPath[0] != '\0') paths.push_back(envPath);
+        if (envPath && envPath[0] != '\0') paths.emplace_back(envPath);
     }
 
     const std::string systemPath = std::string(kSupportDirectory) + fileName;
