@@ -184,18 +184,15 @@ TEST_CASE("what the other implementation refuses is refused here") {
     CHECK_FALSE(SDPParser::parseString("bbb").has_value());
 }
 
-TEST_CASE("v=1 -- a version SDP does not have -- is taken here and not there") {
+TEST_CASE("v=1 -- a version SDP does not have -- is refused on both sides") {
     // sdp_session_description.test.cpp:89-96 refuses a session whose version
-    // is not 0, which is the only version RFC 4566 defines. This project's
-    // parser reads the v= line and does nothing with it (SDPParser.cpp:108),
-    // so a complete session announcing v=1 is accepted.
+    // is not 0, the only version RFC 4566 defines. This project took it: the
+    // v= line was read and discarded. It is checked now, and this assertion
+    // is the one that says so.
     //
-    // The three-line vector that suite uses would be refused here anyway, for
-    // the unrelated reason above, which is why this is asked with a complete
-    // session: that is what separates "we agree" from "we agree by accident".
-    //
-    // Recorded, not asserted as correct. The day the parser starts checking
-    // the version, this flips to CHECK_FALSE and the comparison is closed.
+    // Asked with a COMPLETE session on purpose. The three-line vector that
+    // suite uses would be refused here for an unrelated reason -- see above --
+    // and a test that cannot tell the two refusals apart proves nothing.
     const std::string wrongVersion =
         "v=1\r\n"
         "o=- 13 0 IN IP4 192.168.15.52\r\n"
@@ -204,7 +201,7 @@ TEST_CASE("v=1 -- a version SDP does not have -- is taken here and not there") {
         "t=0 0\r\n"
         "m=audio 5004 RTP/AVP 98\r\n"
         "a=rtpmap:98 L16/48000/2\r\n";
-    CHECK(SDPParser::parseString(wrongVersion).has_value());
+    CHECK_FALSE(SDPParser::parseString(wrongVersion).has_value());
 }
 
 TEST_CASE("what this project writes, it reads back the same") {

@@ -105,7 +105,15 @@ std::optional<SDPSession> SDPParser::parseString(const std::string& sdp) {
         std::string value = line.substr(2);
 
         switch (type) {
-            case 'v':  // Version (should be 0)
+            case 'v':  // Version. RFC 4566 defines one, and it is 0.
+                // Read and discarded until now, so a session announcing any
+                // other version was taken and parsed as if it were SDP this
+                // parser understands. Whatever a v=1 turns out to mean, the
+                // lines under it are not this format, and reading them as
+                // though they were is worse than refusing the session.
+                if (trim(value) != "0") {
+                    return std::nullopt;
+                }
                 break;
 
             case 'o':  // Origin
