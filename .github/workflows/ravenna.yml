@@ -1,0 +1,49 @@
+# Compiles aes67-ravenna and aes67-core on Linux.
+#
+# It is here because the machine this is written on is a Mac and these two are
+# the packages that have no reason to be: no Apple framework, no Objective-C++,
+# nothing but POSIX sockets and the standard library. A package that only ever
+# meets one compiler is a package whose portability is a claim rather than a
+# fact, and aes67-core's platform-free contract is exactly such a claim.
+#
+# It compiles and runs the tests. The loopback checks the package's own gate
+# does are in there too: a runner has a loopback.
+name: ravenna
+
+on:
+  push:
+    paths:
+      - 'packages/aes67-ravenna/**'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-profiles/**'
+      - '.github/workflows/ravenna.yml'
+  pull_request:
+    paths:
+      - 'packages/aes67-ravenna/**'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-profiles/**'
+      - '.github/workflows/ravenna.yml'
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # doctest is a submodule of this repository and every suite includes it.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # aes67-core includes <uuid/uuid.h>, which comes with the SDK on macOS
+      # and is a package here.
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y uuid-dev
+
+      # The packages' own gates, not a second description of them here.
+      - name: aes67-profiles
+        run: packages/aes67-profiles/scripts/gate.sh
+
+      - name: aes67-core
+        run: packages/aes67-core/scripts/gate.sh
+
+      - name: aes67-ravenna
+        run: packages/aes67-ravenna/scripts/gate.sh

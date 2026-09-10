@@ -2,11 +2,13 @@
 # Monorepo root
 #
 # The packages under packages/ came from separate repositories and each keeps
-# its own build files. This file only makes the macOS driver reachable from
-# the repository root, so `cmake -S . -B build` and `ctest --test-dir build`
-# still work the way they did before the move. t41-ptp is cross-compiled for a
-# Teensy with the Arduino toolchain and is deliberately not wired in here;
-# packages/aes67-core is pulled in by the driver itself.
+# its own build files. This file makes them reachable from the repository
+# root, so `cmake -S . -B build` and `ctest --test-dir build` cover the tree
+# rather than one package of it. The driver pulls in aes67-core, aes67-profiles
+# and aes67-ravenna itself; the two below are the ones nothing else reaches.
+#
+# t41-ptp is cross-compiled for a Teensy with the Arduino toolchain and is
+# deliberately not wired in here -- it has scripts/gate.sh instead.
 #
 # Every package verifies itself: scripts/gate.sh runs each package's own gate,
 # and .githooks/pre-push runs that.
@@ -45,3 +47,11 @@ if(NOT TARGET doctest_headers)
 endif()
 
 add_subdirectory(packages/aes67-macos-driver)
+
+# After the driver, because it defines aes67_core and aes67_profiles and both
+# of these guard on the targets already existing. On a Mac this gives the PTP
+# wire library and its three suites and no daemon, which is what that package
+# configures to when it is not Linux; the kernel module's package configures to
+# nothing at all off Linux and says so.
+add_subdirectory(packages/aes67-linux-ptpd)
+add_subdirectory(packages/ravenna-alsa-lkm)

@@ -41,11 +41,12 @@ AES67_ANALYSE=1 scripts/gate.sh    # with clang-tidy where a package has it: min
 Each package's gate can be run on its own, from anywhere:
 
 ```bash
+packages/aes67-profiles/scripts/gate.sh
 packages/aes67-core/scripts/gate.sh
+packages/aes67-ravenna/scripts/gate.sh
 packages/aes67-macos-driver/scripts/gate.sh
 packages/aes67-linux-ptpd/scripts/gate.sh
 packages/ravenna-alsa-lkm/scripts/gate.sh
-packages/aes67-ravenna/scripts/gate.sh
 packages/t41-ptp/scripts/gate.sh
 ```
 
@@ -58,17 +59,22 @@ not travel with a repository:
 git config core.hooksPath .githooks
 ```
 
-Two workflows exist, for the two things this machine cannot check.
+Three workflows exist, for what this machine cannot check.
 `.github/workflows/linux-ptpd.yml` compiles the Linux daemon, whose half that
 talks to the kernel does not build on a Mac at all, and packages it for the
-Pi. `.github/workflows/t41-ptp.yml` runs the Teensy package's gate with
-the board build, which wants a PlatformIO toolchain. Neither is a merge gate:
-what they cover, no local run can.
+Pi. `.github/workflows/t41-ptp.yml` runs the Teensy package's gate with the
+board build, which wants a PlatformIO toolchain. `.github/workflows/ravenna.yml`
+runs `aes67-profiles`, `aes67-core` and `aes67-ravenna` on Linux, because those
+three have no Apple in them and a portability nobody ever tests is a claim
+rather than a fact. None is a merge gate: what they cover, no local run can.
 
 ## Building
 
-macOS only for the two CMake packages: `project()` declares OBJCXX, so
-configuring fails on Linux before anything builds.
+macOS only, and only because of the driver: `aes67-macos-driver`'s `project()`
+declares OBJCXX, so configuring the root fails on Linux before anything builds.
+The other CMake packages -- `aes67-profiles`, `aes67-core`, `aes67-ravenna`,
+`aes67-linux-ptpd` -- configure and build on either system from their own
+directory, and `ravenna-alsa-lkm` wants Linux and the running kernel's headers.
 
 ```bash
 git clone --recurse-submodules https://github.com/JaumeAP/AES67.git
