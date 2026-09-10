@@ -16,13 +16,13 @@ struct SAPAnnouncement {
     std::string sourceAddress;       // IP address of the announcer
     std::string sessionName;         // Name of the session
     std::string multicastAddress;    // Multicast address for the stream
-    int port;                        // Port for the stream
-    int ptpDomain;                   // PTP domain
+    int port{0};                        // Port for the stream
+    int ptpDomain{0};                   // PTP domain
 
     /// When this session was last announced. A SAP announcer repeats
     /// itself indefinitely, so an entry that stops being refreshed means
     /// the sender is gone — see SAPListener::kSessionTimeout.
-    std::chrono::steady_clock::time_point lastSeen{};
+    std::chrono::steady_clock::time_point lastSeen;
 
     /// True for a SAP deletion packet (RFC 2974 type bit set) — the
     /// announcer saying this session is finished. Never appears in
@@ -41,7 +41,7 @@ struct SAPAnnouncement {
     uint16_t msgIdHash{0};
     uint32_t originatingSource{0};
 
-    SAPAnnouncement() : port(0), ptpDomain(0) {}
+    SAPAnnouncement()  {}
 };
 
 using SAPAnnouncementCallback = std::function<void(const SAPAnnouncement&)>;

@@ -68,7 +68,7 @@ size_t ResourceCleanupManager::getCleanupCount() const {
 }
 
 // SocketGuard implementation
-SocketGuard::SocketGuard(int socket_fd) : socket_fd_(socket_fd), active_(true) {}
+SocketGuard::SocketGuard(int socket_fd) : socket_fd_(socket_fd) {}
 
 SocketGuard::~SocketGuard() {
     if (active_) {
@@ -90,7 +90,7 @@ void SocketGuard::close() {
 
 // MemoryGuard implementation
 MemoryGuard::MemoryGuard(void* ptr, std::function<void(void*)> deleter) 
-    : ptr_(ptr), deleter_(std::move(deleter)), active_(true) {}
+    : ptr_(ptr), deleter_(std::move(deleter)) {}
 
 MemoryGuard::~MemoryGuard() {
     // The deleter is caller-supplied, so it can throw whatever it likes. A

@@ -38,15 +38,15 @@ private:
 
     // State
     mutable std::mutex controllerMutex_;
-    double currentRatio_;
-    size_t targetBufferLevel_;
+    double currentRatio_{1.0};
+    size_t targetBufferLevel_{0};
     size_t maxBufferLevel_;
 
     // Timing for delta time calculation
     std::chrono::steady_clock::time_point lastUpdateTime_;
 
     // Stats
-    double lastError_;
+    double lastError_{0.0};
 };
 
 } // namespace AES67

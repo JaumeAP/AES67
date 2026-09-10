@@ -50,8 +50,8 @@ struct PTPPeerObservation {
     std::string sourceIp;                 // last source IP seen for this identity
     int domain{0};                        // last PTP domain seen
     uint32_t messageTypeMask{0};          // bit N set = message type N seen
-    std::chrono::steady_clock::time_point firstSeen{};
-    std::chrono::steady_clock::time_point lastSeen{};
+    std::chrono::steady_clock::time_point firstSeen;
+    std::chrono::steady_clock::time_point lastSeen;
     uint64_t messageCount{0};
 
     // Vendor OUI (first 3 bytes of the clock identity == the MAC OUI, because

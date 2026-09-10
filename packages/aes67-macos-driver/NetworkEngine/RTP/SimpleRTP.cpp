@@ -23,8 +23,7 @@ namespace RTP {
 //
 
 RTPSocket::RTPSocket()
-    : sockfd_(-1)
-    , isReceiver_(false)
+     
 {
     memset(&multicastAddr_, 0, sizeof(multicastAddr_));
     memset(&boundInterfaceAddr_, 0, sizeof(boundInterfaceAddr_));

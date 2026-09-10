@@ -18,7 +18,7 @@ class SAPListener::Impl {
 public:
     static constexpr uint16_t kSapPort = 9875; // RFC 2974, shared by every SAP group
 
-    Impl() : running_(false), sockFd_(-1) {
+    Impl() : running_(false) {
     }
     
     ~Impl() {
@@ -259,7 +259,7 @@ private:
     }
 
     std::atomic<bool> running_;
-    int sockFd_;
+    int sockFd_{-1};
     std::thread listenThread_;
     MulticastRejoiner rejoiner_;
     

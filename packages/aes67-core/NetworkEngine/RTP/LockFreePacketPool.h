@@ -24,12 +24,12 @@ public:
         // is bounded by `length`, and that is the callers' discipline, not the
         // struct's.
         uint8_t data[MAX_PACKET_SIZE]{};
-        size_t length;
-        uint32_t sequenceNumber;
-        uint64_t presentationTime;
-        uint64_t arrivalTime;
+        size_t length{0};
+        uint32_t sequenceNumber{0};
+        uint64_t presentationTime{0};
+        uint64_t arrivalTime{0};
 
-        PooledRTPPacket() : length(0), sequenceNumber(0), presentationTime(0), arrivalTime(0) {}
+        PooledRTPPacket()  {}
     };
 
     explicit LockFreePacketPool(size_t poolSize = DEFAULT_POOL_SIZE);

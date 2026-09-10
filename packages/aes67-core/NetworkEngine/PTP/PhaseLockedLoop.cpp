@@ -7,15 +7,7 @@ namespace AES67 {
 PhaseLockedLoop::PhaseLockedLoop(double bandwidth, double damping)
     : bandwidth_(bandwidth)
     , damping_(damping)
-    , phaseErrorAccumulator_(0.0)
-    , frequencyCorrection_(0.0)
-    , lastPhaseError_(0.0)
-    , lastLocalTime_(0)
-    , lastRemoteTime_(0)
-    , lastSampleCount_(0)
-    , lastSampleRate_(48000)
-    , lockCount_(0)
-    , lockThreshold_(10)
+     
 {
     // Calculate loop filter coefficients based on bandwidth and damping
     // These are derived from standard second-order PLL theory

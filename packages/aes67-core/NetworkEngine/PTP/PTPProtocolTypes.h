@@ -112,9 +112,9 @@ struct PTPClockIdentity {
 
 struct PTPPortIdentity {
     PTPClockIdentity clockIdentity;
-    uint16_t portNumber;
+    uint16_t portNumber{0};
 
-    PTPPortIdentity() : portNumber(0) {}
+    PTPPortIdentity()  {}
 
     bool operator==(const PTPPortIdentity& other) const {
         return clockIdentity == other.clockIdentity && portNumber == other.portNumber;

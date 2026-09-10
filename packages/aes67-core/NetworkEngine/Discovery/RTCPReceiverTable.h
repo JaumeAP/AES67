@@ -45,8 +45,8 @@ struct RTCPReporter {
     uint32_t ssrc{0};
     std::string sourceIp;   // last source IP seen
     std::string cname;      // from SDES, when present
-    std::chrono::steady_clock::time_point firstSeen{};
-    std::chrono::steady_clock::time_point lastSeen{};
+    std::chrono::steady_clock::time_point firstSeen;
+    std::chrono::steady_clock::time_point lastSeen;
     uint64_t packetCount{0};
 };
 

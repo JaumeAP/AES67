@@ -55,17 +55,17 @@ private:
     double minOutput_;    // Minimum output limit
     double maxOutput_;    // Maximum output limit
     
-    double integral_;     // Accumulated integral term
-    double lastError_;    // Previous error for derivative calculation (if needed)
+    double integral_{0.0};     // Accumulated integral term
+    double lastError_{0.0};    // Previous error for derivative calculation (if needed)
     
     // Smoothing buffer
     std::vector<double> smoothingBuffer_;
-    size_t smoothingIndex_;
+    size_t smoothingIndex_{0};
     size_t smoothingWindow_;
     
     // For debugging/monitoring
-    double proportionalTerm_;
-    double integralTerm_;
+    double proportionalTerm_{0.0};
+    double integralTerm_{0.0};
     
     // Apply smoothing to the error signal
     double applySmoothing(double error);

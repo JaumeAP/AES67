@@ -103,7 +103,7 @@ private:
 
     PTPState state_;
     PTPDiagnostics diagnostics_;
-    bool running_;
+    bool running_{false};
     bool stubMode_;
     int domain_{0};
     std::string interfaceName_;

@@ -10,7 +10,7 @@ struct PTPDiagnostics {
     // Connection status
     bool isConnected{false};
     bool isLocked{false};
-    std::string masterClockID{""};
+    std::string masterClockID;
     int clockClass{248};  // Default: slave-only
     int clockAccuracy{254};  // Default: unknown accuracy
     int64_t offsetNs{0};

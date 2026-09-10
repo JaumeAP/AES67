@@ -5,8 +5,7 @@
 namespace AES67 {
 
 PIController::PIController(double kp, double ki, double minOutput, double maxOutput)
-    : kp_(kp), ki_(ki), minOutput_(minOutput), maxOutput_(maxOutput),
-      integral_(0.0), lastError_(0.0), proportionalTerm_(0.0), integralTerm_(0.0) {
+    : kp_(kp), ki_(ki), minOutput_(minOutput), maxOutput_(maxOutput) {
 }
 
 double PIController::update(double error, double deltaTime) {

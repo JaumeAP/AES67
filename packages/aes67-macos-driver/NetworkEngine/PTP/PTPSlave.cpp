@@ -101,8 +101,7 @@ namespace {
 
 PTPSlave::PTPSlave(const PTPSlaveConfig& config)
     : config_(config)
-    , eventSocket_(-1)
-    , generalSocket_(-1)
+     
 {
     // The port number is configuration, not something start() discovers, and
     // a Delay_Resp is addressed to the whole port identity: setting it here

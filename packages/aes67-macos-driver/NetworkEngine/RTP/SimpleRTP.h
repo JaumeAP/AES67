@@ -25,10 +25,10 @@ namespace RTP {
 //
 struct RTPPacket {
     RTPHeader header;
-    uint8_t* payload;
-    size_t payloadSize;
+    uint8_t* payload{nullptr};
+    size_t payloadSize{0};
 
-    RTPPacket() : payload(nullptr), payloadSize(0) {
+    RTPPacket()  {
         header.version = 2;
         header.padding = 0;
         header.extension = 0;
@@ -103,9 +103,9 @@ public:
     int getFd() const { return sockfd_; }
 
 private:
-    int sockfd_;
+    int sockfd_{-1};
     struct sockaddr_in multicastAddr_;
-    bool isReceiver_;
+    bool isReceiver_{false};
     struct in_addr boundInterfaceAddr_;  // Interface used for multicast join (for proper leave)
     struct in_addr multicastGroupAddr_{};  // Group joined, for rejoinMulticast()
 };
