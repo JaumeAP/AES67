@@ -15,6 +15,7 @@
 
 #include <core_pins.h>
 #include <pgmspace.h>
+#include <math.h>
 #include <util/atomic.h>
 
 #include "lwip/err.h"
