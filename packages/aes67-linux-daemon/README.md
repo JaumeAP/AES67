@@ -1,25 +1,28 @@
-# aes67-linux-driver
+# aes67-linux-daemon
 
-The Linux side of the same idea the macOS driver implements: an AES67 device a
-Linux host offers to the network. None of it is written here. What this package
-holds is [`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)
-as a submodule under `external/`, plus the build, the gate and the notes that
-put it next to the other packages in this tree.
+The user-space half of the Linux device: an AES67 device a Linux host offers
+to the network. The kernel half is its own package,
+`packages/ravenna-alsa-lkm`.
+
+None of the daemon is written here. What this package holds is
+[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)
+as a submodule under `external/`, the build and the gate, and the tools that
+turn this repository's compatibility profiles into the daemon's own
+configuration.
 
 ## What is vendored
 
 | Piece | Where it comes from | What it does |
 |-------|--------------------|--------------|
 | `aes67-daemon` | `bondagit/aes67-linux-daemon` | The user-space half: SAP and mDNS discovery, the REST interface, the sources and sinks configuration, NMOS IS-04 |
-| RAVENNA ALSA LKM | `bondagit/ravenna-alsa-lkm`, a submodule of the daemon | The kernel half, from Merging Technologies: a virtual ALSA device, the RTP streams and the PTP slave clock |
-| `cpp-httplib` | `yhirose/cpp-httplib`, a submodule of the daemon | The HTTP server the REST interface is served from |
+| `cpp-httplib` | `bondagit/cpp-httplib`, a submodule of the daemon | The HTTP server the REST interface is served from |
 
-The kernel module is a submodule of this package in its own right,
-`external/ravenna-alsa-lkm`, and that is the only checkout of it: the build
-reads it (`RAVENNA_ALSA_LKM_DIR`), and so do the mirrors that hold our own
-code against the module's rules.
+The kernel module is not here: it is `packages/ravenna-alsa-lkm`, its own
+package with its own checkout and its own gate, because a kernel module and a
+user-space process fail in different ways. This package builds the daemon
+against that checkout -- `RAVENNA_ALSA_LKM_DIR` points at it.
 
-Upstream pins the same repository a second time inside the daemon, under its
+Upstream pins the module a second time inside the daemon, under its
 `3rdparty/`. Two checkouts of one thing, free to drift, with only one ever
 compiled -- so the daemon this package tracks is a fork with that submodule
 removed, [`JaumeAP/aes67-linux-daemon`](https://github.com/JaumeAP/aes67-linux-daemon)
@@ -29,7 +32,7 @@ gate fails if a rebase onto upstream ever brings it back.
 Upstream's own `build.sh` still expects the module under
 `3rdparty/ravenna-alsa-lkm`; building that way means putting it there. This
 package's CMake does not: it passes the module's location the way `build.sh`
-always did, from the checkout above.
+always did.
 
 The daemon and the kernel module talk over netlink. The module is the PTP
 slave and clocks every source and sink from that one clock; the daemon
@@ -41,9 +44,7 @@ Both are GPL. Their licence is theirs, not this repository's -- see
 ## What this package adds
 
 `CMakeLists.txt` configures the vendored daemon with the options `build.sh`
-uses and adds a `ravenna-alsa-lkm` target for the kernel module, which the
-kernel's own build system builds and CMake does not. The module target is not
-part of `all`: building a module wants the running kernel's headers.
+uses, against the module package's checkout.
 
 Nothing here patches upstream. A change in behaviour belongs upstream, not in
 a copy kept beside it.
@@ -176,7 +177,6 @@ standard rules out is an error.
 git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-cmake --build build --target ravenna-alsa-lkm   # wants the kernel headers
 ```
 
 The daemon wants Boost (thread, filesystem, log, program_options), Avahi and
@@ -186,7 +186,7 @@ see the upstream `README.md` and `build.sh`.
 ## Verification
 
 ```bash
-packages/aes67-linux-driver/scripts/gate.sh
+packages/aes67-linux-daemon/scripts/gate.sh
 ```
 
 Everywhere it builds `aes67-profile-conf` and runs its suite. On Linux it also

@@ -321,7 +321,7 @@ target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
 
 # Test: this driver's SAP against the AES67 Linux daemon's rules for taking
-# it. The daemon is vendored under packages/aes67-linux-driver, so its receive
+# it. The daemon is vendored under packages/aes67-linux-daemon, so its receive
 # path is mirrored from source rather than guessed at; support/DaemonSap holds
 # the mirror.
 add_executable(TestDaemonSAPInterop

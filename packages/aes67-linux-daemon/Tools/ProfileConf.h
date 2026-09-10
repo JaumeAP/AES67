@@ -1,6 +1,6 @@
 //
 // ProfileConf.h
-// aes67-linux-driver
+// aes67-linux-daemon
 // Turning a compatibility profile into the daemon's configuration file.
 //
 // The daemon has its own daemon.conf and its own defaults, and this does not

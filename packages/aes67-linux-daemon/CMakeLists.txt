@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(aes67_linux_driver LANGUAGES CXX)
+project(aes67_linux_daemon LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,8 +55,8 @@ target_compile_definitions(aes67-profile-conf PRIVATE
     AES67_DEFAULT_DAEMON_CONF="${AES67_LINUX_DAEMON_DIR}/daemon/daemon.conf")
 target_compile_options(aes67-profile-conf PRIVATE -Wall -Wextra -Wpedantic)
 
-option(AES67_LINUX_DRIVER_TESTS "Build the test suite" ON)
-if(AES67_LINUX_DRIVER_TESTS)
+option(AES67_LINUX_DAEMON_TESTS "Build the test suite" ON)
+if(AES67_LINUX_DAEMON_TESTS)
     enable_testing()
 
     # doctest lives once, at the root of the monorepo. This branch is what
@@ -81,17 +81,18 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # The daemon talks to the kernel module over netlink and the module is a
     # Linux kernel module. Configuring either anywhere else would mean a build
     # that succeeds without having compiled what matters.
-    message(STATUS "aes67-linux-driver: not Linux, the daemon is not built")
+    message(STATUS "aes67-linux-daemon: not Linux, the daemon is not built")
     return()
 endif()
 
 # The upstream daemon reads these as cache entries; build.sh passes the same
 # ones on the command line.
-# The module is a submodule of this package in its own right, pinned at the
-# commit the daemon pins. The daemon's own copy is still there, three levels
-# down, and building against one while reading the other is how the two come
-# to differ without anyone noticing: this is the one both do.
-set(RAVENNA_ALSA_LKM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm"
+# The module is its own package, packages/ravenna-alsa-lkm, and this is the
+# checkout the daemon is built against: one pin, one copy, read from where it
+# lives rather than copied here.
+set(AES67_LINUX_MODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ravenna-alsa-lkm"
+    CACHE PATH "Directory holding the kernel module package")
+set(RAVENNA_ALSA_LKM_DIR "${AES67_LINUX_MODULE_DIR}/external/ravenna-alsa-lkm"
     CACHE PATH "Directory holding the RAVENNA ALSA kernel module sources")
 set(CPP_HTTPLIB_DIR "${AES67_LINUX_DAEMON_DIR}/3rdparty/cpp-httplib"
     CACHE PATH "Directory holding cpp-httplib")
@@ -104,14 +105,3 @@ set(FAKE_DRIVER OFF CACHE BOOL "Use the fake driver instead of RAVENNA")
 
 add_subdirectory("${AES67_LINUX_DAEMON_DIR}/daemon"
                  "${CMAKE_CURRENT_BINARY_DIR}/aes67-daemon")
-
-# The kernel module is built by the kernel's own build system, not by CMake.
-# It is a target here so that one command builds both halves, and it is not
-# part of ALL: building a module wants the running kernel's headers, which a
-# container or a cross build may not have.
-add_custom_target(ravenna-alsa-lkm
-    COMMAND ${CMAKE_COMMAND} -E echo "Building the RAVENNA ALSA kernel module"
-    COMMAND make -C "${RAVENNA_ALSA_LKM_DIR}/driver"
-    WORKING_DIRECTORY "${RAVENNA_ALSA_LKM_DIR}/driver"
-    COMMENT "RAVENNA ALSA kernel module"
-    VERBATIM)

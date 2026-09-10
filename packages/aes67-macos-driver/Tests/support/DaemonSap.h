@@ -4,7 +4,7 @@
 // The SAP packet the AES67 Linux daemon writes, and the one it accepts.
 //
 // Mirrors SAP::send and SAP::receive in the vendored daemon
-// (packages/aes67-linux-driver/external/aes67-linux-daemon/daemon/sap.cpp),
+// (packages/aes67-linux-daemon/external/aes67-linux-daemon/daemon/sap.cpp),
 // which cannot be called from here: they are methods of a class holding a
 // Boost.Asio socket and an io_service. What they put on the wire, and what
 // they refuse to take off it, is a handful of bytes at fixed offsets, and

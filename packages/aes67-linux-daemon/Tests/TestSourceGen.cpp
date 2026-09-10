@@ -1,6 +1,6 @@
 //
 // TestSourceGen.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 // What a profile writes into the daemon's sources, and what it refuses.
 //
 

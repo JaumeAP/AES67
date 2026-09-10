@@ -1,6 +1,6 @@
 //
 // ConfCheck.cpp
-// aes67-linux-driver
+// aes67-linux-daemon
 //
 
 #include "Tools/ConfCheck.h"

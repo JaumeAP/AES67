@@ -4,7 +4,7 @@
 // What the RAVENNA ALSA kernel module accepts from a grandmaster.
 //
 // Mirrors process_PTP_packet in the Merging module vendored in this
-// repository, packages/aes67-linux-driver/external/ravenna-alsa-lkm/
+// repository, packages/aes67-linux-daemon/external/ravenna-alsa-lkm/
 // driver/PTP.c:229-470. That code cannot be called
 // from here: it is kernel C, it reads whole UDP frames out of a netfilter
 // hook and it keeps its state in a device structure. What it decides, though,

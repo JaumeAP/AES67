@@ -14,22 +14,26 @@ set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 daemon="external/aes67-linux-daemon"
+# The kernel module is the package next door, and the daemon is built against
+# that checkout: see CMakeLists.txt.
+module="../ravenna-alsa-lkm/external/ravenna-alsa-lkm"
 
 echo "==> Submodule"
 for path in "$daemon/daemon/CMakeLists.txt" \
             "$daemon/3rdparty/cpp-httplib/httplib.h" \
-            "external/ravenna-alsa-lkm/driver/Makefile"; do
+            "$module/driver/Makefile"; do
     if [[ ! -f "$path" ]]; then
         echo "FAIL: $path missing - run: git submodule update --init --recursive" >&2
         exit 1
     fi
 done
-echo "==> daemon $(git -C "$daemon" rev-parse --short HEAD), module $(git -C external/ravenna-alsa-lkm rev-parse --short HEAD) checked out"
+echo "==> daemon $(git -C "$daemon" rev-parse --short HEAD), module $(git -C "$module" rev-parse --short HEAD) checked out"
 
-# The module is pinned once, here. The daemon used to pin it again under its
-# own 3rdparty/, which is what the fork this package tracks removed: two
-# checkouts of one repository, free to drift, with only one ever compiled. If
-# a rebase onto upstream ever brings that submodule back, this says so.
+# The module is pinned once, by packages/ravenna-alsa-lkm. The daemon used to
+# pin it again under its own 3rdparty/, which is what the fork this package
+# tracks removed: two checkouts of one repository, free to drift, with only one
+# ever compiled. If a rebase onto upstream ever brings that submodule back,
+# this says so.
 if git -C "$daemon" rev-parse HEAD:3rdparty/ravenna-alsa-lkm > /dev/null 2>&1; then
     echo "FAIL: the daemon pins the RAVENNA module again; this package pins it" >&2
     exit 1
@@ -47,7 +51,7 @@ ctest --test-dir build --output-on-failure -R "ProfileConf|ConfCheck|SourceGen|D
     echo "FAIL: tests" >&2; exit 1; }
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "==> Not Linux: the daemon and the kernel module were not built"
+    echo "==> Not Linux: the daemon was not built"
     echo "==> PASS"
     exit 0
 fi

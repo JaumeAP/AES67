@@ -193,7 +193,7 @@ std::vector<uint8_t> SAPAnnouncer::buildPacket(const std::string& sdp, uint16_t 
     // not optional to be heard: the AES67 Linux daemon accepts a packet only
     // when the sixteen bytes at offset 8 are exactly "application/sdp\0"
     // (external/aes67-linux-daemon/daemon/sap.cpp:115, in this repository
-    // under packages/aes67-linux-driver), so without it every announcement
+    // under packages/aes67-linux-daemon), so without it every announcement
     // this driver made was dropped by the daemon without a word. Dante
     // Controller writes it too. Our own SAPListener skips a NUL-terminated
     // type before the body, so the round trip is unchanged.

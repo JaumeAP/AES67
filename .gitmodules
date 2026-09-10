@@ -1,10 +1,10 @@
 [submodule "external/doctest"]
 	path = external/doctest
 	url = https://github.com/doctest/doctest.git
-[submodule "packages/aes67-linux-driver/external/aes67-linux-daemon"]
-	path = packages/aes67-linux-driver/external/aes67-linux-daemon
+[submodule "packages/aes67-linux-daemon/external/aes67-linux-daemon"]
+	path = packages/aes67-linux-daemon/external/aes67-linux-daemon
 	url = https://github.com/JaumeAP/aes67-linux-daemon.git
 	branch = no-vendored-lkm
-[submodule "packages/aes67-linux-driver/external/ravenna-alsa-lkm"]
-	path = packages/aes67-linux-driver/external/ravenna-alsa-lkm
+[submodule "packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm"]
+	path = packages/ravenna-alsa-lkm/external/ravenna-alsa-lkm
 	url = https://github.com/bondagit/ravenna-alsa-lkm.git
