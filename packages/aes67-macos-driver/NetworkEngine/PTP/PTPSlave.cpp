@@ -1333,7 +1333,6 @@ void PTPSlave::calculateOffsetAndDelay() {
     }
 
     int64_t offset = 0;
-    int64_t delay = 0;
 
     if (haveDelay) {
         // Full four-timestamp calculation
@@ -1343,7 +1342,7 @@ void PTPSlave::calculateOffsetAndDelay() {
         int64_t slave2m = t4Ns - t3Ns;           // t4 - t3
 
         offset = (ms2slave - slave2m) / 2;
-        delay  = (ms2slave + slave2m) / 2;
+        const int64_t delay = (ms2slave + slave2m) / 2;
 
         storeFilteredPathDelay(delay);
     } else {

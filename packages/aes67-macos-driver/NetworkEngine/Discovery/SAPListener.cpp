@@ -445,7 +445,9 @@ SAPAnnouncement SAPListener::parseAnnouncement(const char* data, size_t length,
     // does not recognise; the description a UI shows, or a file writes,
     // began with "application/sdp". An SDP starts with "v=", so a payload
     // that does not is looked at for a type first.
-    if (payloadLen >= 2 && !(data[payloadStart] == 'v' && data[payloadStart + 1] == '=')) {
+    // Line 436 already refused anything shorter than five bytes, so the two
+    // this reads are there.
+    if (data[payloadStart] != 'v' || data[payloadStart + 1] != '=') {
         const size_t probe = std::min<size_t>(payloadLen, 64);
         const char* nul = static_cast<const char*>(
             std::memchr(data + payloadStart, '\0', probe));

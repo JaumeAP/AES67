@@ -1,6 +1,7 @@
 #include "Resampler.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 // For this implementation, we'll use a simple linear interpolation resampler
 // In a production environment, you would use a high-quality resampling library like libsamplerate
@@ -13,7 +14,7 @@ public:
         : inputRate_(inputRate), outputRate_(outputRate), channels_(channels) {
         ratio_ = outputRate_ / inputRate_;
         bufferSize_ = 4096; // Default buffer size
-        buffer_ = new float[static_cast<size_t>(bufferSize_) * static_cast<size_t>(channels_)];
+        buffer_.resize(static_cast<size_t>(bufferSize_) * static_cast<size_t>(channels_));
         bufferPos_ = 0;
         lastSample_.resize(channels_);
         for (int i = 0; i < channels_; ++i) {
@@ -21,22 +22,14 @@ public:
         }
     }
 
-    // Not copyable. This object owns a float buffer allocated with new[], and the compiler's copy would
-    // duplicate the handle rather than the resource: two objects freeing one
-    // allocation. Nothing copies it today; this is what keeps that true.
-    SimpleResampler(const SimpleResampler&) = delete;
-    SimpleResampler& operator=(const SimpleResampler&) = delete;
-    
-    ~SimpleResampler() {
-        delete[] buffer_;
-    }
-    
+    // The buffer is a vector, so copying, moving and destroying this object are
+    // all the compiler's business: there is no handle to duplicate and nothing
+    // to free by hand.
+
     int process(const float* input, int inputFrames, float* output, int outputFrames, bool endOfInput) {
         // Simple linear interpolation resampling algorithm
         int outputIndex = 0;
         double inputIndex = 0.0;
-        int inputIndexInt = 0;
-        double fraction = 0.0;
         
         // Copy new input to our internal buffer
         for (int i = 0; i < inputFrames && bufferPos_ < bufferSize_; ++i) {
@@ -48,8 +41,8 @@ public:
         
         // Perform resampling using linear interpolation
         while (outputIndex < outputFrames && inputIndex < bufferPos_) {
-            inputIndexInt = static_cast<int>(inputIndex);
-            fraction = inputIndex - inputIndexInt;
+            const int inputIndexInt = static_cast<int>(inputIndex);
+            const double fraction = inputIndex - inputIndexInt;
             
             // Linear interpolation between adjacent samples
             for (int ch = 0; ch < channels_; ++ch) {
@@ -77,8 +70,8 @@ public:
             // size_t throughout: these are a pointer offset and a byte count,
             // and an int product truncates before the widening rather than
             // after it.
-            memmove(buffer_,
-                   buffer_ + static_cast<size_t>(inputIndex) * static_cast<size_t>(channels_),
+            memmove(buffer_.data(),
+                   buffer_.data() + static_cast<size_t>(inputIndex) * static_cast<size_t>(channels_),
                    static_cast<size_t>(remaining) * static_cast<size_t>(channels_) * sizeof(float));
         }
         bufferPos_ = remaining;
@@ -104,7 +97,7 @@ private:
     double ratio_;
     
     // Internal buffering
-    float* buffer_;
+    std::vector<float> buffer_;
     int bufferSize_;
     int bufferPos_;
     

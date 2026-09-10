@@ -367,7 +367,9 @@ double PTPClock::getClockDriftRatio() const {
                               static_cast<int64_t>(oldest.ptpTimeNs);
 
         // Need sufficient time span for accurate calculation
-        if (localTimeDiff > static_cast<int64_t>(kMinDriftCalcIntervalNs) && localTimeDiff > 0) {
+        // kMinDriftCalcIntervalNs is positive, so clearing it is already
+        // proof the span is positive.
+        if (localTimeDiff > static_cast<int64_t>(kMinDriftCalcIntervalNs)) {
             double ratio = static_cast<double>(ptpTimeDiff) / static_cast<double>(localTimeDiff);
 
             // Clamp to reasonable bounds

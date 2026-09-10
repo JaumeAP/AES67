@@ -139,14 +139,9 @@ StreamID StreamManager::addStream(const SDPSession& sdp, const ChannelMapping& m
     managed.mapping = completeMapping;
     managed.isTransmit = false;
 
-    // Create RTP receiver
+    // Create RTP receiver. createReceiver ends in make_unique and either
+    // returns an object or throws, so there is no null to test for.
     managed.receiver = createReceiver(sdp, completeMapping);
-    if (!managed.receiver) {
-        AES67_LOGF("StreamManager::addStream: failed to create RTP receiver for '%s'",
-                   sdp.sessionName.c_str());
-        mapper_.removeMapping(id);
-        return StreamID::null();
-    }
 
     // Only start receiver if IO is active (a Core Audio client has called StartIO).
     // Otherwise the stream is created dormant and will be started by setIOActive(true).
@@ -384,14 +379,9 @@ StreamID StreamManager::createTxStream(
     managed.mapping = completeMapping;
     managed.isTransmit = true;
 
-    // Create RTP transmitter
+    // Create RTP transmitter. Same as the receiver above: make_unique either
+    // returns an object or throws.
     managed.transmitter = createTransmitter(sdp, completeMapping, /*networkInterface=*/"", sourcePort);
-    if (!managed.transmitter) {
-        AES67_LOGF("StreamManager::createTxStream: failed to create RTP transmitter for '%s'",
-                   name.c_str());
-        mapper_.removeMapping(id);
-        return StreamID::null();
-    }
 
     // Only start transmitter if IO is active (a Core Audio client has called StartIO).
     // Otherwise the stream is created dormant and will be started by setIOActive(true).
@@ -1282,11 +1272,6 @@ bool StreamManager::loadSavedStreams() {
         // Create RTP receiver or transmitter (only start if IO is active)
         if (managed.isTransmit) {
             managed.transmitter = createTransmitter(config.sdp, config.mapping, config.networkInterface);
-            if (!managed.transmitter) {
-                mapper_.removeMapping(id);
-                failedCount++;
-                continue;
-            }
             if (ioActive_.load() && !managed.transmitter->start()) {
                 mapper_.removeMapping(id);
                 failedCount++;
@@ -1294,11 +1279,6 @@ bool StreamManager::loadSavedStreams() {
             }
         } else {
             managed.receiver = createReceiver(config.sdp, config.mapping, config.jitterBufferDepth, config.networkInterface);
-            if (!managed.receiver) {
-                mapper_.removeMapping(id);
-                failedCount++;
-                continue;
-            }
             if (ioActive_.load() && !managed.receiver->start()) {
                 mapper_.removeMapping(id);
                 failedCount++;

@@ -170,6 +170,7 @@ ConnectionAPIServer::Reply NodeAPIRouter::route(const std::string& method,
 
     if (!wantsOne) {
         std::vector<std::string> datas;
+        datas.reserve(objects.size());
         for (const auto& object : objects) datas.push_back(object.second);
         return {200, "application/json", jsonArrayOf(datas)};
     }

@@ -249,34 +249,33 @@ void AES67Device::Initialize() {
     // that refuses to load because a multicast join failed.
     if (activeProfile.usesSap) {
         sapListener_ = std::make_unique<SAPListener>();
-        if (sapListener_) {
-            // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
-            // source re-announces with changed transport, re-point any receive
-            // stream bound to it. Parsing happens here, off the audio path; the
-            // match/re-subscribe is StreamManager's job.
-            sapListener_->registerAnnouncementCallback(
-                [this](const SAPAnnouncement& a) {
-                    if (a.isDeletion || a.sessionDescription.empty()) return;
-                    if (!streamManager_) return;
-                    auto parsed = SDPParser::parseString(a.sessionDescription);
-                    if (!parsed) return;
-                    // The announcement has to come from the host it claims to
-                    // describe. Without this, any machine on the network can
-                    // re-point a live receiver at its own multicast group by
-                    // announcing a session that borrows the name and origin of a
-                    // real one (2026-09-04 audit). It does not survive a spoofed
-                    // source IP, but it removes the case that needs nothing but a
-                    // socket.
-                    if (parsed->originAddress.empty() ||
-                        parsed->originAddress != a.sourceAddress) {
-                        AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
-                                   "— ignored for sink-follow",
-                                   a.sourceAddress.c_str(), parsed->originAddress.c_str());
-                        return;
-                    }
-                    streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
-                });
-        }
+        // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
+        // source re-announces with changed transport, re-point any receive
+        // stream bound to it. Parsing happens here, off the audio path; the
+        // match/re-subscribe is StreamManager's job.
+        sapListener_->registerAnnouncementCallback(
+            [this](const SAPAnnouncement& a) {
+                if (a.isDeletion || a.sessionDescription.empty()) return;
+                if (!streamManager_) return;
+                auto parsed = SDPParser::parseString(a.sessionDescription);
+                if (!parsed) return;
+                // The announcement has to come from the host it claims to
+                // describe. Without this, any machine on the network can
+                // re-point a live receiver at its own multicast group by
+                // announcing a session that borrows the name and origin of a
+                // real one (2026-09-04 audit). It does not survive a spoofed
+                // source IP, but it removes the case that needs nothing but a
+                // socket.
+                if (parsed->originAddress.empty() ||
+                    parsed->originAddress != a.sourceAddress) {
+                    AES67_LOGF("AES67Device: SAP announcement from %s claims origin '%s' "
+                               "— ignored for sink-follow",
+                               a.sourceAddress.c_str(), parsed->originAddress.c_str());
+                    return;
+                }
+                streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
+            });
+
         if (sapListener_->initialize() && sapListener_->start()) {
             AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
         } else {

@@ -258,8 +258,9 @@ std::optional<RTSPResponse> RTSPClient::parseResponse(const std::string& respons
 
     // Parse headers
     while (std::getline(stream, line) && line != "\r" && !line.empty()) {
-        // Remove \r if present
-        if (!line.empty() && line.back() == '\r') {
+        // Remove \r if present. The loop condition already stopped on an
+        // empty line, so there is a back() to look at.
+        if (line.back() == '\r') {
             line.pop_back();
         }
 
