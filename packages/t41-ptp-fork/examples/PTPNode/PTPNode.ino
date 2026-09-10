@@ -1,5 +1,4 @@
 #include <t41-ptp.h>
-#include "Profiles/PtpProfiles.h"
 #include <QNEthernet.h>
 
 byte mac[6];
@@ -42,17 +41,12 @@ void setup()
 Serial.begin(2000000);
   pinMode(13, OUTPUT);
 
-  // The AES67 media profile, by name, from the profiles package this
-  // repository keeps as data: eight Sync a second (matching
-  // SYNC_INTERVAL_US), one Announce, domain 0. The library holds no table of
-  // its own; this is the five numbers it is handed, and the same five the
-  // macOS driver reads from the same file.
-  const AES67::PtpProfile* profile = AES67::ptpProfileByName("aes67");
-  ptp.applyProfile({profile->settings.domainNumber,
-                    profile->settings.majorSdoId,
-                    profile->settings.logSyncInterval,
-                    profile->settings.logAnnounceInterval,
-                    profile->settings.logMinDelayReqInterval});
+  // The AES67 media profile, written out: domain 0, majorSdoId 0, eight Sync
+  // a second (matching SYNC_INTERVAL_US), one Announce, Delay_Req eight. The
+  // library holds no table of its own and this sketch has only the library,
+  // so the five numbers are here. A sketch built beside AES67's profiles
+  // package can read the same five from Profiles/PtpProfiles.h instead.
+  ptp.applyProfile({0, 0, -3, 0, -3});
 
   // Setup networking
   qindesign::network::Ethernet.setHostname("t41ptpnode");

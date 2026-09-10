@@ -423,14 +423,13 @@ public:
     // applyProfile() switch holding what AES67 and 802.1AS expect, and that
     // was a list of somebody else's numbers living inside a port.
     //
-    // The tables are their own package, packages/aes67-profiles, which is
-    // freestanding on purpose: Profiles/PtpProfiles.h has no std::string, no
-    // allocation and no operating system, so this firmware includes it as
-    // readily as the macOS driver does. Both sides then agree by construction
-    // rather than by two copies that match today.
-    //
-    // A sketch that has only this library and not that package writes the five
-    // numbers itself. They are five numbers.
+    // The tables are their own package, packages/aes67-profiles, and this
+    // library does not reach for them: it builds on its own, with nothing
+    // beside it, so what it is handed is five numbers and where they came
+    // from is the caller's business. A sketch built next to that package can
+    // read Profiles/PtpProfiles.h -- freestanding headers, no std::string, no
+    // allocation, no operating system -- and pass what it finds; a sketch
+    // without it writes the five numbers itself. They are five numbers.
     //
     // It sets ONLY these: the delay mechanism is chosen when the object is
     // built (`p2p`), the transport by which class is used -- l3PTP for AES67,
