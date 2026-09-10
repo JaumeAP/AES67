@@ -37,7 +37,7 @@ void ResourceCleanupManager::performCleanup() {
     }
     
     // Execute cleanup functions
-    for (auto& cleanupFunc : localCleanupFunctions) {
+    for (const auto& cleanupFunc : localCleanupFunctions) {
         try {
             cleanupFunc();
         } catch (const std::exception& e) {

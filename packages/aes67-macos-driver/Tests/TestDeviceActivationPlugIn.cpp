@@ -35,9 +35,9 @@ namespace {
 /// AES67_DEVICE_ACTIVATION_PATH for as long as this object lives.
 class ScopedActivation {
 public:
-    explicit ScopedActivation(const std::string& name, const char* contents) {
-        dir_ = std::filesystem::temp_directory_path() /
-               ("aes67-plugin-" + name + "-" + std::to_string(::getpid()));
+    explicit ScopedActivation(const std::string& name, const char* contents)
+        : dir_(std::filesystem::temp_directory_path() /
+               ("aes67-plugin-" + name + "-" + std::to_string(::getpid()))) {
         std::filesystem::create_directories(dir_);
         path_ = (dir_ / "device_active.json").string();
         if (contents) {

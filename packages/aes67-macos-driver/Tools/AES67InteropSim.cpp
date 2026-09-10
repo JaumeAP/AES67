@@ -9,6 +9,7 @@
 // a real bug: our SDP parser rejected the daemon's RFC 7273 bare-domain
 // ts-refclk form (now fixed; regression-pinned in TestSDPParser).
 //
+#include <exception>
 #include "Driver/SDPParser.h"
 #include "Profiles/CompatibilityProfile.h"
 #include "NetworkEngine/ProfileAdapter.h"
@@ -25,7 +26,7 @@ static void ok(const char* layer, bool cond, const std::string& detail){
     printf("  [%s] %s -- %s\n", cond?"OK":"XX", layer, detail.c_str());
     if(!cond) fails++;
 }
-int main(){
+int run(){
     printf("\n=== INTEROP SIM: macOS driver <-> aes67-linux-daemon (RAVENNA) ===\n\n");
     const std::string daemonSDP =
         "v=0\r\n"
@@ -46,7 +47,7 @@ int main(){
     auto parsed = SDPParser::parseString(daemonSDP);
     ok("SDP parse", parsed.has_value(), "our SDPParser accepts the daemon's SDP");
     if(parsed){
-        auto& s=*parsed;
+        const auto& s=*parsed;
         ok("sample rate", std::abs(s.sampleRate-48000.0)<1, "48000 Hz");
         ok("encoding", s.encoding=="L24", "L24 ("+s.encoding+")");
         ok("channels", s.numChannels==8, std::to_string(s.numChannels)+" ch");
@@ -98,4 +99,15 @@ int main(){
        "a standards parser reads it back");
     printf("\n=== RESULT: %s (%d checks failed) ===\n", fails==0?"THEY CONNECT":"MISMATCH", fails);
     return fails==0?0:1;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main() {
+    try {
+        return run();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

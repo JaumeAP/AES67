@@ -35,9 +35,9 @@ namespace {
 struct TempConfig {
     std::string path;
 
-    explicit TempConfig(const std::string& contents) {
-        path = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp")
-             + "/aes67-ptp-master-test.json";
+    explicit TempConfig(const std::string& contents)
+        : path(std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp")
+             + "/aes67-ptp-master-test.json") {
         std::ofstream out(path);
         out << contents;
         out.close();

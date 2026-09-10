@@ -207,7 +207,7 @@ TEST_CASE("Resampler Upsample") {
     Resampler resampler(48000, 96000, 2);
 
     // Create input: 48 frames of silence
-    float input[48 * 2] = {0.0f};
+    const float input[48 * 2] = {0.0f};
     float output[128 * 2] = {0.0f};
 
     // Process
@@ -225,7 +225,7 @@ TEST_CASE("Resampler Downsample") {
     Resampler resampler(96000, 48000, 2);
 
     // Create input: 96 frames of silence
-    float input[96 * 2] = {0.0f};
+    const float input[96 * 2] = {0.0f};
     float output[96 * 2] = {0.0f};
 
     // Process
@@ -243,7 +243,7 @@ TEST_CASE("Resampler Mono To Stereo") {
     Resampler resampler(48000, 48000, 1);
 
     // Create input: 48 frames mono
-    float input[48] = {0.0f};
+    const float input[48] = {0.0f};
     float output[48] = {0.0f};
 
     // Process
@@ -260,7 +260,7 @@ TEST_CASE("Resampler Reset") {
 
     Resampler resampler(48000, 96000, 2);
 
-    float input[48 * 2] = {0.0f};
+    const float input[48 * 2] = {0.0f};
     float output[128 * 2] = {0.0f};
 
     // Process once

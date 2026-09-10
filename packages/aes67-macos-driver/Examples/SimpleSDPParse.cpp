@@ -4,6 +4,8 @@
 // Simple example demonstrating SDP parsing
 //
 
+#include <exception>
+#include <cstdio>
 #include "Driver/SDPParser.h"
 #include <algorithm>
 #include <iostream>
@@ -49,7 +51,7 @@ void printSDPSession(const SDPSession& session) {
     printSeparator();
 }
 
-int main(int argc, char* argv[]) {
+int run(int argc, char* argv[]) {
     std::cout << "\n=== AES67 SDP Parser - Simple Example ===\n\n";
 
     if (argc < 2) {
@@ -150,4 +152,15 @@ int main(int argc, char* argv[]) {
     std::cout << "\n";
 
     return 0;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main(int argc, char* argv[]) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

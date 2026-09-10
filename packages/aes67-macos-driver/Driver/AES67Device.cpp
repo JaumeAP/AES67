@@ -326,13 +326,22 @@ void AES67Device::Initialize() {
             : NetworkInterfaceDetection::getInterfaceIPAddress(sapInterface);
         sapAnnouncer_ = std::make_unique<SAPAnnouncer>();
         if (sapAnnouncer_->initialize(sapAddress) &&
-            sapAnnouncer_->start([this, sapAddress]() {
+            sapAnnouncer_->start([this, sapAddress]() noexcept {
+                // The announcer calls this from its own thread and does not
+                // catch: an exception escaping here is std::terminate inside
+                // coreaudiod. An announcement round that fails is worth
+                // skipping, not worth taking the audio down.
                 std::vector<std::string> sdps;
-                if (!streamManager_) return sdps;
-                for (SDPSession session : streamManager_->getTransmitSessions()) {
-                    if (session.originAddress.empty()) session.originAddress = sapAddress;
-                    std::string sdp = SDPParser::generate(session);
-                    if (!sdp.empty()) sdps.push_back(std::move(sdp));
+                try {
+                    if (!streamManager_) return sdps;
+                    for (SDPSession session : streamManager_->getTransmitSessions()) {
+                        if (session.originAddress.empty()) session.originAddress = sapAddress;
+                        std::string sdp = SDPParser::generate(session);
+                        if (!sdp.empty()) sdps.push_back(std::move(sdp));
+                    }
+                } catch (const std::exception& e) {
+                    AES67_LOGF("AES67Device: SAP announcement round failed: %s", e.what());
+                    sdps.clear();
                 }
                 return sdps;
             })) {
@@ -756,7 +765,7 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
                                         return nmosIdFor("receiver", sdp.sessionName) == receiverId;
                                     });
     if (match == sessions.end()) return false;
-    const SDPSession target = *match;
+    const SDPSession& target = *match;
 
     // A patch with no activation is staged and not applied. This driver
     // keeps no staged state, so saying yes to it would be a promise it

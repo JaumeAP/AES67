@@ -5,6 +5,7 @@
 //
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <numeric>
 #include "doctest.h"
 
 #include "NetworkEngine/StreamManager.h"
@@ -138,10 +139,11 @@ TEST_CASE("Maximum Streams") {
     }
 
     // Calculate total channels
-    uint16_t totalChannels = 0;
-    for (const auto& stream : streams) {
-        totalChannels += stream.numChannels;
-    }
+    const uint16_t totalChannels = std::accumulate(
+        streams.begin(), streams.end(), uint16_t{0},
+        [](uint16_t sum, const auto& stream) {
+            return static_cast<uint16_t>(sum + stream.numChannels);
+        });
     CHECK(totalChannels == 128);
 
     std::cout << "PASS" << std::endl;

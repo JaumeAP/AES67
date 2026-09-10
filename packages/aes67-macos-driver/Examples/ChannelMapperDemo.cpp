@@ -4,6 +4,8 @@
 // Demonstration of Stream-to-Channel Mapping
 //
 
+#include <exception>
+#include <cstdio>
 #include "NetworkEngine/StreamChannelMapper.h"
 #include "Driver/SDPParser.h"
 #include <iostream>
@@ -101,7 +103,7 @@ void printStreamList(const StreamChannelMapper& mapper) {
     std::cout << std::right;
 }
 
-int main() {
+int run() {
     std::cout << "\n=== AES67 Channel Mapper - Demo ===\n";
 
     StreamChannelMapper mapper;
@@ -276,4 +278,15 @@ int main() {
     std::cout << "  • Broadcast mixing (aggregate multiple sources)\n\n";
 
     return 0;
+}
+
+// main only guards run(): a tool that dies on an uncaught exception prints
+// "libc++abi: terminating" and nothing about what it was doing.
+int main() {
+    try {
+        return run();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

@@ -39,7 +39,7 @@ static OSStatus inputCallback(void* inRefCon,
     if (status != noErr) return status;
 
     // Analyze samples
-    Float32* samples = (Float32*)bufferList.mBuffers[0].mData;
+    const auto* samples = static_cast<const Float32*>(bufferList.mBuffers[0].mData);
     size_t count = inNumberFrames * 2;
 
     double localPeak = 0.0;

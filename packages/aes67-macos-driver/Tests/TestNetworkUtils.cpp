@@ -17,6 +17,7 @@
 //
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
 #include "doctest.h"
 
 #include "NetworkEngine/NetworkUtils.h"
@@ -114,10 +115,8 @@ TEST_CASE("The interfaces this reports are real ones with real addresses") {
     // The name-only list is the same set or a superset of it: an interface
     // with no IPv4 address still exists.
     for (const auto& entry : pairs) {
-        bool found = false;
-        for (const auto& name : names) {
-            if (name == entry.first) { found = true; break; }
-        }
+        const bool found = std::any_of(names.begin(), names.end(),
+                                       [&](const auto& name) { return name == entry.first; });
         CHECK(found);
     }
 }

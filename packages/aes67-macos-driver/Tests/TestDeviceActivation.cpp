@@ -29,9 +29,9 @@ namespace {
 /// object.
 class ScopedActivationPath {
 public:
-    explicit ScopedActivationPath(const std::string& name) {
-        dir_ = std::filesystem::temp_directory_path() /
-               ("aes67-activation-" + name + "-" + std::to_string(::getpid()));
+    explicit ScopedActivationPath(const std::string& name)
+        : dir_(std::filesystem::temp_directory_path() /
+               ("aes67-activation-" + name + "-" + std::to_string(::getpid()))) {
         std::filesystem::create_directories(dir_);
         path_ = (dir_ / "device_active.json").string();
         ::setenv("AES67_DEVICE_ACTIVATION_PATH", path_.c_str(), 1);

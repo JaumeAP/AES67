@@ -66,6 +66,7 @@ TEST_CASE("Persisted Stream Config Creation") {
     config.mapping = createTestMapping();
 
     CHECK(!config.sdp.sessionName.empty());
+    CHECK(config.mapping.streamChannelCount == 2);
     CHECK(config.enabled == true);
 
     std::cout << "PASS" << std::endl;
@@ -97,9 +98,10 @@ TEST_CASE("Persisted Stream Config Validation") {
 TEST_CASE("Persisted Stream Config Metadata") {
     std::cout << "Test: PersistedStreamConfig metadata... ";
 
+    // The stream and its mapping are what the metadata below hangs off; this
+    // case is about the metadata, and the Creation case above is where the
+    // two of them are checked.
     PersistedStreamConfig config;
-    config.sdp = createTestSDP();
-    config.mapping = createTestMapping();
     config.description = "Test configuration";
     config.createdTimestamp = 1234567890;
     config.modifiedTimestamp = 1234567900;
@@ -108,6 +110,7 @@ TEST_CASE("Persisted Stream Config Metadata") {
 
     CHECK(config.description == "Test configuration");
     CHECK(config.createdTimestamp == 1234567890);
+    CHECK(config.modifiedTimestamp == 1234567900);
     CHECK(config.jitterBufferDepth == 512);
     CHECK(config.networkInterface == "en0");
 

@@ -6,6 +6,7 @@
 // reporter aggregation + timeout. Header-only, no sockets.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
 #include "doctest.h"
 
 #include "NetworkEngine/Discovery/RTCPReceiverTable.h"
@@ -56,7 +57,9 @@ TEST_CASE("Parse Compound S Rplus SDES") {
     auto r = RTCPReceiverTable::parse(v.data(), v.size());
     CHECK(r.valid);
     CHECK((r.reporterSSRCs.size()==1 && r.reporterSSRCs[0]==0x11223344));
-    bool found=false; for(auto&c:r.cnames) if(c.first==0x11223344 && c.second=="amp-1") found=true;
+    const bool found = std::any_of(r.cnames.begin(), r.cnames.end(), [](const auto& c) {
+        return c.first == 0x11223344 && c.second == "amp-1";
+    });
     CHECK(found);
     std::cout << "PASS" << std::endl;
 }
@@ -67,7 +70,7 @@ TEST_CASE("Malformed No Crash") {
     for(int i=0;i<200000;i++){
         size_t len = rng()%40;
         std::vector<uint8_t> v(len);
-        for(auto&b:v) b=(uint8_t)rng();
+        std::generate(v.begin(), v.end(), [&rng] { return static_cast<uint8_t>(rng()); });
         auto r = RTCPReceiverTable::parse(v.empty()?nullptr:v.data(), len); (void)r;
     }
     // A version!=2 packet is rejected.
