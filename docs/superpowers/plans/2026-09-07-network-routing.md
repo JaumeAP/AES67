@@ -1,5 +1,14 @@
 # Network Routing Implementation Plan
 
+> **Status: done.** The boxes below were never ticked, so this read as pending
+> work; it is not. What the plan describes is in the tree: the IS-04 Node API
+> and the `_nmos-node._tcp` advertisement in `packages/aes67-ravenna`
+> (`Ravenna/NodeApi.*`, `Ravenna/DnsSd.h`), the driver serving both
+> (`Driver/AES67Device.cpp`, covered by `Tests/TestNodeAPI.cpp`), and the
+> Manager's side in `ManagerApp/Views/RoutingMatrixView.swift` with
+> `NmosResources.swift` under `ManagerApp/Tests/NmosResourcesTests.swift`.
+> Kept as the record of why it is shaped the way it is.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The Manager finds every NMOS node on the link, shows a senders-by-receivers matrix across all of them, and a click connects a receiver to a sender over IS-05; this Mac's driver is one of those nodes.

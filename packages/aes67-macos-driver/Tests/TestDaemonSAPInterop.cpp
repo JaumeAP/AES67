@@ -3,9 +3,9 @@
 // AES67 macOS Driver - Tests
 // This driver's SAP against the AES67 Linux daemon's rules for taking it.
 //
-// The daemon is vendored in this repository
-// (packages/aes67-linux-daemon/external/aes67-linux-daemon), so its receive
-// path is readable rather than guessed at, and support/DaemonSap mirrors it.
+// The daemon is bondagit/aes67-linux-daemon, read from its own checkout
+// rather than guessed at -- it is not vendored here -- and support/DaemonSap
+// mirrors its receive path.
 // This suite is what says whether the two speak: it found that they did not.
 //
 

@@ -8,14 +8,16 @@
 #
 #   packages/aes67-profiles/scripts/gate.sh      build, test, self-containment
 #   packages/aes67-core/scripts/gate.sh          build, test, platform contract
+#   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
 #   packages/ravenna-alsa-lkm/scripts/gate.sh    the kernel module, on Linux with headers
-#   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
 #   packages/t41-ptp/scripts/gate.sh             host tests
 #
-# aes67-core runs before the driver on purpose: the driver builds the core in
-# and its failures are harder to read than the core's own.
+# aes67-core and aes67-ravenna run before the driver on purpose: the driver
+# builds both in, and their failures are harder to read through it than on
+# their own. aes67-ravenna used to run after it, which is the one place this
+# order did not follow its own rule.
 #
 # .githooks/pre-push runs this. Opt in per clone with
 # `git config core.hooksPath .githooks`, since hook configuration is local and
@@ -45,10 +47,10 @@ run() {
 
 run "aes67-profiles"     packages/aes67-profiles/scripts/gate.sh
 run "aes67-core"         packages/aes67-core/scripts/gate.sh
+run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 run "ravenna-alsa-lkm"   packages/ravenna-alsa-lkm/scripts/gate.sh
-run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "t41-ptp"            packages/t41-ptp/scripts/gate.sh
 
 echo
