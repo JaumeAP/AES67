@@ -27,7 +27,7 @@ file inside the subtree is the one that governs it.
 | `packages/t41-ptp-fork` | [IMS-AS-LUH/t41-ptp](https://github.com/IMS-AS-LUH/t41-ptp), through the fork [JaumeAP/t41-ptp](https://github.com/JaumeAP/t41-ptp) | MIT | `LICENSE` |
 | `packages/t41-ptp-fork/libraries/QNEthernet` | [ssilverman/QNEthernet](https://github.com/ssilverman/QNEthernet), through the fork [JaumeAP/QNEthernet](https://github.com/JaumeAP/QNEthernet) branch `multicast-ttl` | MIT | `LICENSE` |
 | `packages/t41-ptp-fork/libraries/QNEthernet/src/lwip` | [lwIP](https://savannah.nongnu.org/projects/lwip/), bundled by QNEthernet | BSD 3-clause, in the header of every file | per-file headers |
-| `packages/t41-ptp-fork/libraries/Time` | [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), Michael Margolis | LGPL-2.1-or-later | `COPYING` |
+| `packages/t41-ptp-fork/libraries/Time` | [PaulStoffregen/Time](https://github.com/PaulStoffregen/Time), Michael Margolis, submodule at `a18e50d` (v1.6.1) | LGPL-2.1-or-later | none shipped: the notice is in the header of every source file |
 
 ## Notes
 
@@ -37,8 +37,10 @@ file inside the subtree is the one that governs it.
   chance of the two drifting while reporting the same version string.
 - `packages/t41-ptp-fork/libraries/Time` says in every source file that the reader
   "should have received a copy of the GNU Lesser General Public License", and
-  upstream ships none. The `COPYING` in that directory is the licence text
-  from gnu.org, added here so the copy exists.
+  upstream ships none. It is a submodule now: the directory is upstream's own
+  checkout and nothing can be added to it here, so the copy this repository
+  used to carry beside it is gone. The licence is at
+  https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt.
 - Combining GPL-3.0 code with the MIT and BSD components above is what those
   licences allow; their notices are retained. The LGPL-2.1 component is used
   as a library and is not modified here.
