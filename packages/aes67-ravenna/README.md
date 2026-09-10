@@ -8,20 +8,6 @@ RAVENNA does not stream over RTSP. What it uses RTSP for is one question --
 stream that is already on the wire whether anybody asked or not. Discovery is
 DNS-SD over mDNS. Those two things are this package, and nothing else is.
 
-## ravennakit, under `external/`
-
-[`soundondigital/ravennakit`](https://github.com/soundondigital/ravennakit) is a
-C++ implementation of the same ground this package covers -- RAVENNA and
-ST 2110-30, RTSP, DNS-SD, SDP, RTP/RTCP, IS-04 and IS-05 -- and it is a
-submodule here, pinned at `v0.22.0`. Nothing builds against it yet: it is a
-checkout to work from, and no target in this package or any other names it.
-
-Two things to know before that changes. It is AGPL-3.0 (a commercial licence is
-offered as an alternative), which GPLv3 section 13 lets this GPL-3.0 tree
-combine with -- and the AGPL's network clause then travels inside whatever links
-it. And it is not this package's origin: none of the code here came from it,
-which the NOTICE and `git log` both say.
-
 ## What it is not
 
 Not a Dante emulation. Dante's discovery, control and transport are

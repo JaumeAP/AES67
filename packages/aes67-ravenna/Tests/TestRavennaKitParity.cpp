@@ -5,14 +5,22 @@
 // This project's SDP against a second implementation's, on the same bytes.
 //
 // The vectors and every expected value below are ravennakit's own, from
-// external/ravennakit/test/ravennakit/sdp/sdp_session_description.test.cpp
-// (AGPL-3.0, Sound on Digital; see NOTICE). They are worth taking rather than
-// inventing because that suite carries a capture from a real device -- a
-// Merging Anubis -- and states field by field what it means. A test written
-// here from the same RFCs would agree with this project's reading of them by
-// construction, which is the one thing a parity test must not do.
+// test/ravennakit/sdp/sdp_session_description.test.cpp of
+// soundondigital/ravennakit at v0.22.0 (AGPL-3.0, Sound on Digital). They are
+// worth taking rather than inventing because that suite carries a capture
+// from a real device -- a Merging Anubis -- and states field by field what it
+// means. A test written here from the same RFCs would agree with this
+// project's reading of them by construction, which is the one thing a parity
+// test must not do.
 //
-// The line numbers cited are that file's, at the pinned v0.22.0.
+// That repository was a submodule of this package for a day and is not any
+// more: nothing built against it, and a 3.3 MB AGPL checkout that no target
+// compiles is a licence obligation waiting for somebody to link it by
+// accident. The line numbers cited below are still its, at v0.22.0. To read
+// them again:
+//
+//   git clone --depth 1 --branch v0.22.0 \
+//     https://github.com/soundondigital/ravennakit.git
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
