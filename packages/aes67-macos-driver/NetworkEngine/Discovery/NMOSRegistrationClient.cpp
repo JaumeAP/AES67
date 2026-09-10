@@ -4,6 +4,7 @@
 //
 
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
+#include "NetworkEngine/JsonEscape.h"
 
 #include "NetworkEngine/Discovery/HTTPClient.h"
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
@@ -19,16 +20,6 @@
 namespace AES67 {
 
 namespace {
-
-std::string jsonEscape(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"' || c == '\\') out.push_back('\\');
-        out.push_back(c);
-    }
-    return out;
-}
 
 } // namespace
 

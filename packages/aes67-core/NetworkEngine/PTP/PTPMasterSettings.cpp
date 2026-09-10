@@ -1,17 +1,15 @@
 #include "PTPMasterSettings.h"
+#include "NetworkEngine/JsonEscape.h"
+#include "Profiles/ConfigPaths.h"
 #include "../../Driver/DebugLog.h"
 
 #include <cctype>
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
-#include <pwd.h>
 #include <regex>
 #include <sstream>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace AES67 {
 
@@ -29,49 +27,15 @@ PTPMasterSettingsManager::~PTPMasterSettingsManager() = default;
 std::string PTPMasterSettingsManager::getConfigPath() const { return configPath_; }
 
 std::vector<std::string> PTPMasterSettingsManager::getConfigSearchPaths() {
-    std::vector<std::string> paths;
-
-    const char* envPath = std::getenv("AES67_PTP_MASTER_CONFIG_PATH");
-    if (envPath && envPath[0] != '\0') paths.push_back(envPath);
-
-    const char* home = std::getenv("HOME");
-    if (!home) {
-        struct passwd* pw = getpwuid(getuid());
-        if (pw) home = pw->pw_dir;
-    }
-    if (home && home[0] != '\0') {
-        paths.push_back(std::string(home) + "/Library/Application Support/AES67Driver/" + kDefaultConfigFile);
-    }
-
-    paths.push_back("/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile));
-    return paths;
+    return configSearchPaths("AES67_PTP_MASTER_CONFIG_PATH", kDefaultConfigFile);
 }
 
 std::string PTPMasterSettingsManager::findExistingConfig() {
-    for (const auto& path : getConfigSearchPaths()) {
-        struct stat st;
-        if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) return path;
-    }
-    return "";
+    return AES67::findExistingConfig("AES67_PTP_MASTER_CONFIG_PATH", kDefaultConfigFile);
 }
 
 bool PTPMasterSettingsManager::ensureConfigDirectoryExists() {
-    size_t lastSlash = configPath_.find_last_of('/');
-    if (lastSlash == std::string::npos) return false;
-    std::string dir = configPath_.substr(0, lastSlash);
-
-    struct stat st;
-    if (stat(dir.c_str(), &st) == 0) return S_ISDIR(st.st_mode);
-
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    if (ec) {
-        AES67_LOGF("PTPMasterSettingsManager: Failed to create directory '%s': %s",
-                   dir.c_str(), ec.message().c_str());
-        return false;
-    }
-    chmod(dir.c_str(), 0755);
-    return true;
+    return ensureParentDirectory(configPath_, "PTPMasterSettingsManager");
 }
 
 namespace {
@@ -118,16 +82,6 @@ std::optional<bool> extractBoolField(const std::string& json, const std::string&
         return match[1].str() == "true";
     }
     return std::nullopt;
-}
-
-std::string jsonEscape(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"' || c == '\\') out.push_back('\\');
-        out.push_back(c);
-    }
-    return out;
 }
 
 } // namespace
