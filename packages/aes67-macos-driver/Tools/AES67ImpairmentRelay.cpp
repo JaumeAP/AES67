@@ -27,7 +27,8 @@
 //   --burst-every <ms>  Period between burst starts (default: 10000)
 //   --delay-ms <ms>     Fixed extra delay applied to every packet (default: 0)
 //   --jitter-ms <ms>    Uniform +/- jitter added to the delay (default: 0)
-//   --reorder <pct>     Extra packets given a one-packet-time head start (default: 0)
+//   --reorder <pct>     Packets given a head start on the queue (default: 0)
+//   --reorder-ms <ms>   How big that head start is (default: 1.5)
 //   --seed <n>          Random seed, for a repeatable run (default: 1)
 //   --duration <sec>    Duration in seconds (default: 0 = infinite)
 //
@@ -41,7 +42,6 @@
 #include <string>
 #include <vector>
 #include <queue>
-#include <random>
 #include <atomic>
 #include <chrono>
 
@@ -52,6 +52,7 @@
 #include <poll.h>
 
 #include "NetworkEngine/RTP/SimpleRTP.h"
+#include "Tools/ImpairmentPolicy.h"
 
 // -- Globals --
 static std::atomic<bool> g_running{true};
@@ -138,6 +139,7 @@ int run(int argc, char* argv[]) {
     double      delayMs     = 0.0;
     double      jitterMs    = 0.0;
     double      reorderPercent = 0.0;
+    double      reorderHeadStartMs = AES67::Impairment::kDefaultReorderHeadStartMs;
     unsigned    seed        = 1;
     int         duration    = 0;
 
@@ -154,6 +156,7 @@ int run(int argc, char* argv[]) {
         else if (arg == "--delay-ms" && i + 1 < argc)     delayMs = atof(argv[++i]);
         else if (arg == "--jitter-ms" && i + 1 < argc)    jitterMs = atof(argv[++i]);
         else if (arg == "--reorder" && i + 1 < argc)      reorderPercent = atof(argv[++i]);
+        else if (arg == "--reorder-ms" && i + 1 < argc)   reorderHeadStartMs = atof(argv[++i]);
         else if (arg == "--seed" && i + 1 < argc)         seed = static_cast<unsigned>(atoi(argv[++i]));
         else if (arg == "--duration" && i + 1 < argc)     duration = atoi(argv[++i]);
         else if (arg == "--help" || arg == "-h") {
@@ -171,7 +174,8 @@ int run(int argc, char* argv[]) {
                 "  --burst-every <ms>  Period between burst starts (default: 10000)\n"
                 "  --delay-ms <ms>     Fixed extra delay on every packet (default: 0)\n"
                 "  --jitter-ms <ms>    Uniform +/- jitter added to the delay (default: 0)\n"
-                "  --reorder <pct>     Packets given a one-packet-time head start (default: 0)\n"
+                "  --reorder <pct>     Packets given a head start on the queue (default: 0)\n"
+                "  --reorder-ms <ms>   How big that head start is (default: 1.5)\n"
                 "  --seed <n>          Random seed, for a repeatable run (default: 1)\n"
                 "  --duration <sec>    Duration in seconds (default: 0 = infinite)\n",
                 argv[0]);
@@ -210,7 +214,8 @@ int run(int argc, char* argv[]) {
         fprintf(stderr, "  Burst:     %d ms blackout every %d ms\n", burstMs, burstEveryMs);
     }
     fprintf(stderr, "  Delay:     %.1f ms +/- %.1f ms jitter\n", delayMs, jitterMs);
-    fprintf(stderr, "  Reorder:   %.2f%%\n", reorderPercent);
+    fprintf(stderr, "  Reorder:   %.2f%% with a %.2f ms head start\n",
+            reorderPercent, reorderHeadStartMs);
     fprintf(stderr, "  Duration:  %s\n",
             duration > 0 ? (std::to_string(duration) + "s").c_str() : "infinite");
     fprintf(stderr, "\nPress Ctrl+C to stop.\n\n");
@@ -235,9 +240,15 @@ int run(int argc, char* argv[]) {
     constexpr size_t kMaxPacketSize = 20000;
     std::vector<uint8_t> recvBuffer(kMaxPacketSize);
 
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<double> unit(0.0, 100.0);
-    std::uniform_real_distribution<double> jitterDist(-jitterMs, jitterMs);
+    AES67::Impairment::Settings settings;
+    settings.lossPercent = lossPercent;
+    settings.burstMs = burstMs;
+    settings.burstEveryMs = burstEveryMs;
+    settings.delayMs = delayMs;
+    settings.jitterMs = jitterMs;
+    settings.reorderPercent = reorderPercent;
+    settings.reorderHeadStartMs = reorderHeadStartMs;
+    AES67::Impairment::Policy policy(settings, seed);
 
     std::priority_queue<PendingPacket, std::vector<PendingPacket>, DueTimeGreater> pending;
 
@@ -272,30 +283,17 @@ int run(int argc, char* argv[]) {
             if (bytes > 0) {
                 ++received;
 
-                // Burst blackout wins over uniform loss: inside the window
-                // nothing gets through at all.
-                bool inBurst = false;
-                if (burstMs > 0) {
-                    auto sinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        Clock::now() - startTime).count();
-                    inBurst = (sinceStart % burstEveryMs) < burstMs;
-                }
+                const auto sinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    Clock::now() - startTime).count();
+                const AES67::Impairment::Decision decision = policy.decide(sinceStart);
 
-                if (inBurst) {
+                if (decision.droppedByBurst) {
                     ++droppedBurst;
-                } else if (lossPercent > 0.0 && unit(rng) < lossPercent) {
+                } else if (decision.droppedByLoss) {
                     ++droppedUniform;
                 } else {
-                    double offsetMs = delayMs;
-                    if (jitterMs > 0.0) offsetMs += jitterDist(rng);
-                    // A "reordered" packet is sent one packet time (1 ms)
-                    // earlier than its neighbours, which puts it ahead of the
-                    // packet before it whenever the delay is at least that.
-                    if (reorderPercent > 0.0 && unit(rng) < reorderPercent) {
-                        offsetMs -= 1.0;
-                        ++reordered;
-                    }
-                    if (offsetMs < 0.0) offsetMs = 0.0;
+                    const double offsetMs = decision.offsetMs;
+                    if (decision.reordered) ++reordered;
 
                     PendingPacket packet;
                     packet.dueTime = Clock::now() +

@@ -390,10 +390,30 @@ target_include_directories(TestPTPMasterBoxInterop PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
+# The last case compares this file's hand-written messages against the ones
+# t41-ptp emits when it runs, so the model cannot drift from the library.
+target_compile_definitions(TestPTPMasterBoxInterop PRIVATE
+    T41_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../t41-ptp/test/fixtures/t41-master.txt"
+)
+
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_net)
 
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
+
+# Test: what AES67ImpairmentRelay does to a packet, without the sockets.
+# Tools/ImpairmentPolicy.h is the relay's decision, separated so the order it
+# sends packets in can be asserted rather than inferred from a receiver.
+add_executable(TestImpairmentPolicy
+    TestImpairmentPolicy.cpp
+)
+
+target_include_directories(TestImpairmentPolicy PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+target_link_libraries(TestImpairmentPolicy PRIVATE doctest_headers)
+target_compile_features(TestImpairmentPolicy PRIVATE cxx_std_17)
 
 # Test: this slave against the bytes t41-ptp emits when it runs, replayed
 # from a fixture its own host build generates (make -C test fixture there).
@@ -708,6 +728,7 @@ add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME PTPT41Interop COMMAND TestPTPT41Interop)
+add_test(NAME ImpairmentPolicy COMMAND TestImpairmentPolicy)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME NodeAPI COMMAND TestNodeAPI)

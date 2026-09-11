@@ -25,6 +25,15 @@
 // more and would go in the same shape: bytes in through deliverMessage(),
 // state out through the getters.
 //
+// What keeps the replay honest is the last case in this file: the same
+// builders, given the library's own default parameters, have to produce the
+// bytes the library produces when it runs -- read from
+// packages/t41-ptp/test/fixtures/t41-master.txt, which its host build
+// generates. The cases before that one exercise the box's DEPLOYED profile
+// (logSyncInterval -3, logAnnounceInterval 0, clockClass 13 once locked),
+// which the bare library defaults in that fixture do not carry, so they stay
+// hand-built on purpose. TestPTPT41Interop.cpp replays the fixture itself.
+//
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
@@ -33,6 +42,9 @@
 
 #include <array>
 #include <cstdint>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 using namespace AES67;
@@ -162,6 +174,64 @@ PTPSlaveConfig boxFacingConfig() {
     config.domain = 0;              // the box's every profile is domain 0
     config.interfaceName = "lo0";   // never opened: nothing here calls start()
     return config;
+}
+
+/// One line of the fixture t41-ptp's host build generates: the message it
+/// sent, and whether it went out on the event socket.
+struct EmittedMessage {
+    std::string name;
+    bool onEventSocket{false};
+    std::vector<uint8_t> bytes;
+};
+
+std::vector<EmittedMessage> generatedFixture() {
+    std::vector<EmittedMessage> messages;
+    std::ifstream file(T41_FIXTURE_PATH);
+    if (!file.is_open()) return messages;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream fields(line);
+        std::string name, socketName, hex;
+        fields >> name >> socketName >> hex;
+        if (hex.empty()) continue;
+
+        EmittedMessage message;
+        message.name = name;
+        message.onEventSocket = (socketName == "event");
+        for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+            message.bytes.push_back(
+                static_cast<uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
+        }
+        messages.push_back(std::move(message));
+    }
+    return messages;
+}
+
+EmittedMessage firstNamed(const std::vector<EmittedMessage>& messages, const std::string& name) {
+    for (const EmittedMessage& message : messages) {
+        if (message.name == name) return message;
+    }
+    return EmittedMessage{};
+}
+
+std::array<uint8_t, 8> clockIdentityOf(const std::vector<uint8_t>& message) {
+    std::array<uint8_t, 8> identity{};
+    for (size_t i = 0; i < identity.size(); ++i) identity[i] = message[20 + i];
+    return identity;
+}
+
+uint16_t sequenceOf(const std::vector<uint8_t>& message) {
+    return static_cast<uint16_t>((message[30] << 8) | message[31]);
+}
+
+uint64_t timestampOf(const std::vector<uint8_t>& message) {
+    uint64_t seconds = 0;
+    for (int i = 0; i < 6; ++i) seconds = (seconds << 8) | message[34 + static_cast<size_t>(i)];
+    uint32_t nanos = 0;
+    for (int i = 0; i < 4; ++i) nanos = (nanos << 8) | message[40 + static_cast<size_t>(i)];
+    return seconds * 1000000000ULL + nanos;
 }
 
 PTPDiagnostics diagnosticsOf(const PTPSlave& slave) {
@@ -294,6 +364,40 @@ TEST_CASE("gPTP traffic on the same domain is left alone") {
 
     CHECK(slave.getSdoIdMismatchCount() == 1);
     CHECK_FALSE(diagnosticsOf(slave).isConnected);
+}
+
+TEST_CASE("The hand-written messages are the ones the library really emits") {
+    // The builders above model PTPBase::initPTPMessage and friends. Given the
+    // parameters the library uses when nothing configures it, they have to
+    // come out byte for byte as the library's own output: anything else means
+    // this file has drifted from the implementation it claims to mirror, and
+    // every case above is then testing a message no box ever sends.
+    const std::vector<EmittedMessage> emitted = generatedFixture();
+    REQUIRE_FALSE(emitted.empty());
+
+    const EmittedMessage announceEmitted = firstNamed(emitted, "Announce");
+    const EmittedMessage syncEmitted = firstNamed(emitted, "Sync");
+    const EmittedMessage followUpEmitted = firstNamed(emitted, "Follow_Up");
+    REQUIRE(announceEmitted.bytes.size() == 64);
+    REQUIRE(syncEmitted.bytes.size() == 44);
+    REQUIRE(followUpEmitted.bytes.size() == 44);
+
+    const std::array<uint8_t, 8> libraryClockId = clockIdentityOf(announceEmitted.bytes);
+
+    CHECK(announce(libraryClockId, announceEmitted.bytes[48],
+                   announceEmitted.bytes[47], announceEmitted.bytes[52],
+                   static_cast<int8_t>(announceEmitted.bytes[33]),
+                   announceEmitted.bytes[49],
+                   static_cast<uint16_t>((announceEmitted.bytes[50] << 8) |
+                                         announceEmitted.bytes[51]),
+                   sequenceOf(announceEmitted.bytes)) == announceEmitted.bytes);
+
+    CHECK(sync(libraryClockId, sequenceOf(syncEmitted.bytes),
+               static_cast<int8_t>(syncEmitted.bytes[33])) == syncEmitted.bytes);
+
+    CHECK(followUp(libraryClockId, sequenceOf(followUpEmitted.bytes),
+                   timestampOf(followUpEmitted.bytes),
+                   static_cast<int8_t>(followUpEmitted.bytes[33])) == followUpEmitted.bytes);
 }
 
 TEST_CASE("Each message is only taken on the port that carries it") {

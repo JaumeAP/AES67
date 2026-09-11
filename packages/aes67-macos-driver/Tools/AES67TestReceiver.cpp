@@ -14,7 +14,8 @@
 // the timestamp step between consecutive packets. A sender that changes
 // sample rate or encoding mid-flight keeps the same address and port, so
 // without these the receiver decodes the new bytes with the old format and
-// reports nothing.
+// reports nothing. Each packet is decoded by its own payload type for the
+// same reason; --encoding is the expectation it is reported against.
 //
 // Usage:
 //   ./AES67TestReceiver [options]
@@ -231,7 +232,6 @@ int run(int argc, char* argv[]) {
         return 1;
     }
 
-    size_t bytesPerSample = (encoding == "L16") ? 2 : 3;
 
     fprintf(stderr, "AES67 Test Receiver\n");
     fprintf(stderr, "  Multicast: %s:%u\n", multicastIP.c_str(), port);
@@ -355,10 +355,20 @@ int run(int argc, char* argv[]) {
         source.prevTimestamp = packet.header.timestamp;
         source.havePrev = true;
 
-        // Decode and analyze audio levels
-        size_t numSamples = packet.payloadSize / bytesPerSample;
+        // Decode and analyze audio levels. The format comes from the packet's
+        // own payload type, not from --encoding: a sender that switches L24
+        // to L16 keeps its address and port, and decoding the new bytes with
+        // the configured format turns a detected change into wrong audio
+        // statistics. --encoding stays the expectation this is reported
+        // against, and an unknown payload type falls back to it.
+        const bool packetIsL16 =
+            packet.header.payloadType == AES67::RTP::PT_AES67_L16 ||
+            (packet.header.payloadType != AES67::RTP::PT_AES67_L24 && encoding == "L16");
+        const size_t packetBytesPerSample = packetIsL16 ? 2 : 3;
+
+        size_t numSamples = packet.payloadSize / packetBytesPerSample;
         if (numSamples > 0 && numSamples <= kMaxSamplesPerPacket) {
-            if (encoding == "L16") {
+            if (packetIsL16) {
                 AES67::RTP::L16Codec::decode(packet.payload, packet.payloadSize,
                                               decodeBuffer.data());
             } else {
