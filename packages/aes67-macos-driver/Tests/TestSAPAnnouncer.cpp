@@ -57,7 +57,7 @@ TEST_CASE("What we announce is what a listener reads") {
     CHECK_FALSE(heard.isDeletion);
     CHECK(heard.sessionDescription == kSDP);
     CHECK(heard.sessionName == "Driver Out 1");
-    CHECK(heard.multicastAddress == "239.69.0.1/32");
+    CHECK(heard.multicastAddress == "239.69.0.1");
     CHECK(heard.port == 5004);
     CHECK(heard.msgIdHash == hash);
     CHECK(heard.originatingSource == 0xC0A80114u);  // 192.168.1.20, host order
@@ -141,7 +141,7 @@ TEST_CASE("Two sessions announce under two identities") {
     CHECK(first.msgIdHash != other.msgIdHash);
     CHECK(first.sessionName == "Driver Out 1");
     CHECK(other.sessionName == "Driver Out 2");
-    CHECK(other.multicastAddress == "239.69.0.2/32");
+    CHECK(other.multicastAddress == "239.69.0.2");
 }
 
 TEST_CASE("An unknown interface announces as 0.0.0.0, and still parses") {

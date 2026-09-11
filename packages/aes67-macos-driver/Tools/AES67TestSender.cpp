@@ -76,24 +76,45 @@ static std::string buildSDP(const std::string& multicastIP, uint16_t port,
     return sdp;
 }
 
-static std::vector<uint8_t> buildSAPPacket(const std::string& sdp) {
+/// RFC 2974 SS 6 message identifier hash: 16 bits that, with the originating
+/// source, name "the precise version of this announcement". FNV-1a over the
+/// SDP folded to 16 bits, so a description that changes gets a new identity.
+/// Never 0: that value means the announcer supplied no hash, and a receiver
+/// then falls back to matching on the session name.
+static uint16_t sapMessageIdHash(const std::string& sdp) {
+    uint32_t hash = 2166136261u;
+    for (char c : sdp) {
+        hash ^= static_cast<uint8_t>(c);
+        hash *= 16777619u;
+    }
+    const uint16_t folded = static_cast<uint16_t>((hash >> 16) ^ (hash & 0xFFFFu));
+    return folded == 0 ? uint16_t{1} : folded;
+}
+
+static std::vector<uint8_t> buildSAPPacket(const std::string& sdp, uint32_t originatingSource) {
     // SAP header (RFC 2974):
     // Byte 0: V=1 (bits 5-7), A=0, R=0, T=0(announce), E=0, C=0 → 0x20
     // Byte 1: Auth length = 0
-    // Bytes 2-3: Message ID hash (arbitrary)
-    // Bytes 4-7: Originating source (127.0.0.1)
+    // Bytes 2-3: Message ID hash, over this SDP
+    // Bytes 4-7: Originating source, this announcer's own address
     // Then: optional "application/sdp\0" content-type, then SDP payload
+    //
+    // Both used to be constants (0x0001 and 127.0.0.1), which gave every
+    // announcer on the network the same SAP identity: two senders describing
+    // two different streams looked to a receiver like one session whose
+    // description kept changing, and it could hold only one of them.
+
+    const uint16_t msgIdHash = sapMessageIdHash(sdp);
 
     std::vector<uint8_t> pkt;
     pkt.push_back(0x20);  // V=1, all other bits 0
     pkt.push_back(0x00);  // auth length = 0
-    pkt.push_back(0x00);  // msg id hash high
-    pkt.push_back(0x01);  // msg id hash low
-    // Originating source: 127.0.0.1
-    pkt.push_back(127);
-    pkt.push_back(0);
-    pkt.push_back(0);
-    pkt.push_back(1);
+    pkt.push_back(static_cast<uint8_t>(msgIdHash >> 8));
+    pkt.push_back(static_cast<uint8_t>(msgIdHash & 0xFF));
+    pkt.push_back(static_cast<uint8_t>((originatingSource >> 24) & 0xFF));
+    pkt.push_back(static_cast<uint8_t>((originatingSource >> 16) & 0xFF));
+    pkt.push_back(static_cast<uint8_t>((originatingSource >> 8) & 0xFF));
+    pkt.push_back(static_cast<uint8_t>(originatingSource & 0xFF));
     // SDP payload (no content-type header — matches what SAPListener expects)
     std::transform(sdp.begin(), sdp.end(), std::back_inserter(pkt),
                    [](char c) { return static_cast<uint8_t>(c); });
@@ -104,10 +125,10 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
                             uint16_t channels, uint32_t sampleRate,
                             const std::string& encoding, uint8_t payloadType,
                             const std::string& interfaceIP, uint32_t ptimeUs) {
-    // Build SAP packet once (SDP is static)
+    // Build the SDP once; the SAP packet waits until the socket can say which
+    // address this announcer is sending from.
     std::string sdp = buildSDP(multicastIP, port, channels, sampleRate,
                                encoding, payloadType, ptimeUs);
-    std::vector<uint8_t> sapPacket = buildSAPPacket(sdp);
 
     // Create UDP socket for SAP
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -138,11 +159,39 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
     sapAddr.sin_addr.s_addr = inet_addr("224.2.127.254");
     sapAddr.sin_port = htons(9875);
 
-    fprintf(stderr, "SAP: announcing on 224.2.127.254:9875 every 30s\n");
+    // The originating source is this announcer's own address, so ask the
+    // kernel which one it will use rather than assuming. connect() on a UDP
+    // socket only fixes the destination, which is where every announcement
+    // goes anyway.
+    uint32_t originatingSource = 0;
+    const bool connected =
+        connect(sockfd, reinterpret_cast<struct sockaddr*>(&sapAddr), sizeof(sapAddr)) == 0;
+    if (connected) {
+        struct sockaddr_in local;
+        socklen_t localLen = sizeof(local);
+        if (getsockname(sockfd, reinterpret_cast<struct sockaddr*>(&local), &localLen) == 0) {
+            originatingSource = ntohl(local.sin_addr.s_addr);
+        }
+    }
+    if (originatingSource == 0 && !interfaceIP.empty()) {
+        originatingSource = ntohl(inet_addr(interfaceIP.c_str()));
+    }
+
+    const std::vector<uint8_t> sapPacket = buildSAPPacket(sdp, originatingSource);
+
+    fprintf(stderr, "SAP: announcing on 224.2.127.254:9875 every 30s"
+            " (origin %u.%u.%u.%u)\n",
+            (originatingSource >> 24) & 0xFF, (originatingSource >> 16) & 0xFF,
+            (originatingSource >> 8) & 0xFF, originatingSource & 0xFF);
 
     while (g_running) {
-        ssize_t sent = sendto(sockfd, sapPacket.data(), sapPacket.size(), 0,
-                              reinterpret_cast<struct sockaddr*>(&sapAddr), sizeof(sapAddr));
+        // A connected UDP socket refuses sendto() with a destination
+        // (EISCONN on macOS), so the send has to match how the socket was set
+        // up above.
+        ssize_t sent = connected
+            ? send(sockfd, sapPacket.data(), sapPacket.size(), 0)
+            : sendto(sockfd, sapPacket.data(), sapPacket.size(), 0,
+                     reinterpret_cast<struct sockaddr*>(&sapAddr), sizeof(sapAddr));
         if (sent < 0) {
             fprintf(stderr, "SAP: send failed (errno=%d)\n", errno);
         }

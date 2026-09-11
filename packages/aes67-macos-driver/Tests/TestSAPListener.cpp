@@ -66,7 +66,7 @@ TEST_CASE("An announcement yields the session it describes") {
 
     CHECK(announced.sessionDescription == kSDP);
     CHECK(announced.sessionName == "Studio Mic 1");
-    CHECK(announced.multicastAddress == "239.1.1.1/32");
+    CHECK(announced.multicastAddress == "239.1.1.1");
     CHECK(announced.port == 5004);
     CHECK(announced.sourceAddress == "192.168.1.50");
     CHECK_FALSE(announced.isDeletion);
@@ -188,6 +188,30 @@ TEST_CASE("A body without a trailing newline still parses") {
 
     CHECK(announced.sessionName == "Last Line");
     CHECK(announced.port == 5008);
+}
+
+TEST_CASE("A multicast connection address keeps the address and drops the TTL") {
+    // RFC 4566 SS 5.7: a multicast `c=` line is <address>/<ttl>[/<count>].
+    // The whole string used to come out as the address, which no receiver
+    // can join -- inet_addr() rejects "239.1.1.1/32".
+    const std::string withTtl =
+        "v=0\r\ns=TTL\r\nc=IN IP4 239.1.1.7/32\r\nm=audio 5004 RTP/AVP 97\r\n";
+    CHECK(parse(buildSAP(withTtl)).multicastAddress == "239.1.1.7");
+
+    const std::string withCount =
+        "v=0\r\ns=Layers\r\nc=IN IP4 239.1.1.8/32/4\r\nm=audio 5004 RTP/AVP 97\r\n";
+    CHECK(parse(buildSAP(withCount)).multicastAddress == "239.1.1.8");
+
+    // A unicast address carries no suffix and must come through untouched.
+    const std::string unicast =
+        "v=0\r\ns=Unicast\r\nc=IN IP4 192.168.1.7\r\nm=audio 5004 RTP/AVP 97\r\n";
+    CHECK(parse(buildSAP(unicast)).multicastAddress == "192.168.1.7");
+
+    // Same again on the last line of a body with no trailing newline: that
+    // is a second copy of the parsing, and it had the same defect.
+    const std::string unterminated =
+        "v=0\r\ns=Last\r\nm=audio 5004 RTP/AVP 97\r\nc=IN IP4 239.1.1.9/16";
+    CHECK(parse(buildSAP(unterminated)).multicastAddress == "239.1.1.9");
 }
 
 TEST_CASE("A media port that is not a number does not become one") {

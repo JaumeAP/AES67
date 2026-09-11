@@ -93,7 +93,7 @@ TEST_CASE("What the daemon sends, this driver's listener reads") {
     CHECK_FALSE(heard.isDeletion);
     CHECK(heard.sessionDescription == kSDP);
     CHECK(heard.sessionName == "Driver Out 1");
-    CHECK(heard.multicastAddress == "239.69.0.1/32");
+    CHECK(heard.multicastAddress == "239.69.0.1");
     CHECK(heard.port == 5004);
 }
 

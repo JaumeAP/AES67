@@ -274,6 +274,21 @@ private:
 
 namespace {
 
+/// The connection address out of an SDP `c=` line, without the multicast
+/// suffix. RFC 4566 SS 5.7 writes a multicast connection as
+/// `<base address>/<ttl>[/<number of addresses>]`, so `c=IN IP4
+/// 239.1.1.1/32` names the group 239.1.1.1 with a TTL of 32 -- and the
+/// whole string, TTL included, is not an address any receiver can join.
+/// The TTL is dropped rather than recorded: nothing here acts on it.
+std::string connectionAddress(const std::string& line) {
+    const size_t addrStart = line.rfind(' ');
+    if (addrStart == std::string::npos) return {};
+    std::string address = line.substr(addrStart + 1);
+    const size_t suffix = address.find('/');
+    if (suffix != std::string::npos) address.resize(suffix);
+    return address;
+}
+
 /// Pull the session name, connection address and media port out of an SDP
 /// body. Free function rather than a member: parseAnnouncement is static, and
 /// this is the only thing it needs.
@@ -294,11 +309,8 @@ void parseSDPInfo(const std::string& sdp, SAPAnnouncement& announcement) {
         }
         // Parse connection information
         else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
-            // Format: c=IN IP4 <address>
-            size_t addrStart = line.rfind(' ');
-            if (addrStart != std::string::npos) {
-                announcement.multicastAddress = line.substr(addrStart + 1);
-            }
+            // Format: c=<nettype> <addrtype> <address>[/<ttl>[/<count>]]
+            announcement.multicastAddress = connectionAddress(line);
         }
         // Parse media information
         else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
@@ -339,10 +351,7 @@ void parseSDPInfo(const std::string& sdp, SAPAnnouncement& announcement) {
         }
         // Parse connection information
         else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
-            size_t addrStart = line.rfind(' ');
-            if (addrStart != std::string::npos) {
-                announcement.multicastAddress = line.substr(addrStart + 1);
-            }
+            announcement.multicastAddress = connectionAddress(line);
         }
         // Parse media information
         else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
