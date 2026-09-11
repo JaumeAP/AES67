@@ -12,6 +12,7 @@
 //   --channels <n>    Expected channels (default: 8)
 //   --encoding <enc>  L16 or L24 (default: L24)
 //   --duration <sec>  Duration in seconds (default: 10, 0 = infinite)
+//   --interface <ip>  Local interface IP to join the group on (default: system)
 //
 
 #include <exception>
@@ -50,6 +51,7 @@ int run(int argc, char* argv[]) {
     uint16_t    channels    = 8;
     std::string encoding    = "L24";
     int         duration    = 10;    // seconds (0 = infinite)
+    std::string interfaceIP;         // empty = let the system choose
 
     // Parse arguments
     for (int i = 1; i < argc; ++i) {
@@ -59,6 +61,7 @@ int run(int argc, char* argv[]) {
         else if (arg == "--channels" && i + 1 < argc)  channels = static_cast<uint16_t>(atoi(argv[++i]));
         else if (arg == "--encoding" && i + 1 < argc)  encoding = argv[++i];
         else if (arg == "--duration" && i + 1 < argc)  duration = atoi(argv[++i]);
+        else if (arg == "--interface" && i + 1 < argc) interfaceIP = argv[++i];
         else if (arg == "--help" || arg == "-h") {
             fprintf(stderr,
                 "AES67 Test Receiver - receives RTP multicast and reports statistics\n\n"
@@ -68,7 +71,8 @@ int run(int argc, char* argv[]) {
                 "  --port <port>     RTP port (default: 5004)\n"
                 "  --channels <n>    Expected channels (default: 8)\n"
                 "  --encoding <enc>  L16 or L24 (default: L24)\n"
-                "  --duration <sec>  Duration in seconds (default: 10, 0 = infinite)\n",
+                "  --duration <sec>  Duration in seconds (default: 10, 0 = infinite)\n"
+                "  --interface <ip>  Local interface IP to join on (default: system)\n",
                 argv[0]);
             return 0;
         } else {
@@ -92,6 +96,7 @@ int run(int argc, char* argv[]) {
     fprintf(stderr, "AES67 Test Receiver\n");
     fprintf(stderr, "  Multicast: %s:%u\n", multicastIP.c_str(), port);
     fprintf(stderr, "  Expected:  %s, %u channels\n", encoding.c_str(), channels);
+    fprintf(stderr, "  Interface: %s\n", interfaceIP.empty() ? "system default" : interfaceIP.c_str());
     fprintf(stderr, "  Duration:  %s\n", duration > 0 ? (std::to_string(duration) + "s").c_str() : "infinite");
     fprintf(stderr, "\nPress Ctrl+C to stop.\n\n");
 
@@ -101,7 +106,8 @@ int run(int argc, char* argv[]) {
 
     // Open RTP receive socket
     AES67::RTP::RTPSocket rtpSocket;
-    if (!rtpSocket.openReceiver(multicastIP.c_str(), port)) {
+    if (!rtpSocket.openReceiver(multicastIP.c_str(), port,
+                                interfaceIP.empty() ? nullptr : interfaceIP.c_str())) {
         fprintf(stderr, "Error: failed to open RTP receiver on %s:%u\n",
                 multicastIP.c_str(), port);
         return 1;

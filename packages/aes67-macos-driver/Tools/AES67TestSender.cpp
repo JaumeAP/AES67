@@ -14,6 +14,7 @@
 //   --encoding <enc>  L16 or L24 (default: L24)
 //   --freq <hz>       Sine wave frequency (default: 1000)
 //   --duration <sec>  Duration in seconds (default: 60, 0 = infinite)
+//   --interface <ip>  Local interface IP to send the multicast on (default: system)
 //   --no-sap          Disable SAP announcements
 //
 
@@ -92,7 +93,8 @@ static std::vector<uint8_t> buildSAPPacket(const std::string& sdp) {
 
 static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
                             uint16_t channels, uint32_t sampleRate,
-                            const std::string& encoding, uint8_t payloadType) {
+                            const std::string& encoding, uint8_t payloadType,
+                            const std::string& interfaceIP) {
     // Build SAP packet once (SDP is static)
     std::string sdp = buildSDP(multicastIP, port, channels, sampleRate,
                                encoding, payloadType);
@@ -108,6 +110,18 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
     // Set multicast TTL
     uint8_t ttl = 32;
     setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
+
+    // Announce on the same interface the audio goes out on, or the kernel
+    // picks the default route and the announcement misses the audio network.
+    if (!interfaceIP.empty()) {
+        struct in_addr ifaceAddr;
+        memset(&ifaceAddr, 0, sizeof(ifaceAddr));
+        ifaceAddr.s_addr = inet_addr(interfaceIP.c_str());
+        if (setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &ifaceAddr, sizeof(ifaceAddr)) < 0) {
+            fprintf(stderr, "SAP: IP_MULTICAST_IF %s failed (errno=%d)\n",
+                    interfaceIP.c_str(), errno);
+        }
+    }
 
     struct sockaddr_in sapAddr;
     memset(&sapAddr, 0, sizeof(sapAddr));
@@ -145,6 +159,7 @@ int run(int argc, char* argv[]) {
     double      freq        = 1000.0;
     int         duration    = 60;    // seconds (0 = infinite)
     bool        enableSAP   = true;
+    std::string interfaceIP;         // empty = let the system choose
 
     // Parse arguments
     for (int i = 1; i < argc; ++i) {
@@ -156,6 +171,7 @@ int run(int argc, char* argv[]) {
         else if (arg == "--encoding" && i + 1 < argc) encoding = argv[++i];
         else if (arg == "--freq" && i + 1 < argc)  freq = atof(argv[++i]);
         else if (arg == "--duration" && i + 1 < argc) duration = atoi(argv[++i]);
+        else if (arg == "--interface" && i + 1 < argc) interfaceIP = argv[++i];
         else if (arg == "--no-sap")                 enableSAP = false;
         else if (arg == "--help" || arg == "-h") {
             fprintf(stderr,
@@ -169,6 +185,7 @@ int run(int argc, char* argv[]) {
                 "  --encoding <enc>  L16 or L24 (default: L24)\n"
                 "  --freq <hz>       Sine wave frequency (default: 1000)\n"
                 "  --duration <sec>  Duration in seconds (default: 60, 0 = infinite)\n"
+                "  --interface <ip>  Local interface IP to send on (default: system)\n"
                 "  --no-sap          Disable SAP announcements\n",
                 argv[0]);
             return 0;
@@ -198,6 +215,7 @@ int run(int argc, char* argv[]) {
     fprintf(stderr, "  Format:    %s/%u/%u\n", encoding.c_str(), sampleRate, channels);
     fprintf(stderr, "  Sine:      %.0f Hz\n", freq);
     fprintf(stderr, "  Duration:  %s\n", duration > 0 ? (std::to_string(duration) + "s").c_str() : "infinite");
+    fprintf(stderr, "  Interface: %s\n", interfaceIP.empty() ? "system default" : interfaceIP.c_str());
     fprintf(stderr, "  SAP:       %s\n", enableSAP ? "enabled" : "disabled");
     fprintf(stderr, "  Packet:    %u samples/pkt, %zu bytes/pkt\n",
             samplesPerPacket,
@@ -212,12 +230,14 @@ int run(int argc, char* argv[]) {
     std::thread sapThread;
     if (enableSAP) {
         sapThread = std::thread(sapAnnounceLoop, multicastIP, port,
-                                channels, sampleRate, encoding, payloadType);
+                                channels, sampleRate, encoding, payloadType,
+                                interfaceIP);
     }
 
     // Open RTP transmit socket
     AES67::RTP::RTPSocket rtpSocket;
-    if (!rtpSocket.openTransmitter(multicastIP.c_str(), port)) {
+    if (!rtpSocket.openTransmitter(multicastIP.c_str(), port,
+                                   interfaceIP.empty() ? nullptr : interfaceIP.c_str())) {
         fprintf(stderr, "Error: failed to open RTP socket on %s:%u\n",
                 multicastIP.c_str(), port);
         g_running = false;

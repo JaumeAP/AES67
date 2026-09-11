@@ -55,6 +55,20 @@ target_include_directories(DanteInteropSim PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(DanteInteropSim PRIVATE aes67_net)
 target_compile_features(DanteInteropSim PRIVATE cxx_std_17)
 
+# AES67 Impairment Relay: degrades a live stream (loss, bursts, delay, jitter,
+# reordering) between two multicast groups, so the receive path can be stressed
+# without root and without touching the machine's packet filter.
+add_executable(AES67ImpairmentRelay
+    AES67ImpairmentRelay.cpp
+    ../NetworkEngine/RTP/SimpleRTP.cpp
+    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../NetworkEngine/NetworkUtils.cpp
+)
+target_include_directories(AES67ImpairmentRelay PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(AES67ImpairmentRelay PRIVATE aes67_net)
+target_compile_features(AES67ImpairmentRelay PRIVATE cxx_std_17)
+target_link_libraries(AES67ImpairmentRelay PRIVATE "-framework Accelerate")
+
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against
 # no driver code, so it validates what is installed, not this build tree.
@@ -71,6 +85,7 @@ endif()
 message(STATUS "Tools configured:")
 message(STATUS "  - AES67TestSender")
 message(STATUS "  - AES67TestReceiver")
+message(STATUS "  - AES67ImpairmentRelay")
 message(STATUS "  - HALValidate")
 message(STATUS "")
 message(STATUS "Run test sender:")
