@@ -69,6 +69,13 @@ target_link_libraries(AES67ImpairmentRelay PRIVATE aes67_net)
 target_compile_features(AES67ImpairmentRelay PRIVATE cxx_std_17)
 target_link_libraries(AES67ImpairmentRelay PRIVATE "-framework Accelerate")
 
+# AES67 SAP Monitor: hears SAP announcements and says what they describe, so
+# that what the announcers emit can be checked from outside them.
+add_executable(AES67SAPMonitor AES67SAPMonitor.cpp)
+target_include_directories(AES67SAPMonitor PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(AES67SAPMonitor PRIVATE aes67_net)
+target_compile_features(AES67SAPMonitor PRIVATE cxx_std_17)
+
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against
 # no driver code, so it validates what is installed, not this build tree.
@@ -86,6 +93,7 @@ message(STATUS "Tools configured:")
 message(STATUS "  - AES67TestSender")
 message(STATUS "  - AES67TestReceiver")
 message(STATUS "  - AES67ImpairmentRelay")
+message(STATUS "  - AES67SAPMonitor")
 message(STATUS "  - HALValidate")
 message(STATUS "")
 message(STATUS "Run test sender:")

@@ -3,6 +3,19 @@
 // Standalone CLI tool: receives RTP multicast packets and reports statistics
 // for verifying the driver's TX path (Core Audio -> Network).
 //
+// Packet accounting follows RFC 3550 SS A.1/A.3, per synchronisation source:
+// an extended sequence number with a cycle count, loss as expected minus
+// received, and reordering counted apart from duplication. The earlier
+// counters compared each packet with the one before it, which made a
+// reordered stream report loss it had not suffered -- under 20 ms of jitter,
+// 118k packets arrived intact and were reported as 336k gaps.
+//
+// It also watches what the stream says it is: payload type, payload size and
+// the timestamp step between consecutive packets. A sender that changes
+// sample rate or encoding mid-flight keeps the same address and port, so
+// without these the receiver decodes the new bytes with the old format and
+// reports nothing.
+//
 // Usage:
 //   ./AES67TestReceiver [options]
 //
@@ -25,6 +38,9 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include <map>
+#include <deque>
+#include <set>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -41,6 +57,130 @@ static std::atomic<bool> g_running{true};
 static void signalHandler(int) {
     g_running = false;
 }
+
+namespace {
+
+// RFC 3550 SS A.1 constants.
+constexpr uint32_t kRtpSeqMod    = 1u << 16;
+constexpr uint16_t kMaxDropout   = 3000;   // forward jump treated as a restart
+constexpr uint16_t kMaxMisorder  = 100;    // backward jump treated as reordering
+constexpr size_t   kSeenWindow   = 8192;   // extended sequence numbers kept
+
+// What one synchronisation source has sent, and what arrived of it.
+struct SourceStats {
+    // RFC 3550 SS A.1 sequence state.
+    uint32_t baseSeq{0};
+    uint32_t maxSeq{0};
+    uint32_t cycles{0};
+    uint32_t badSeq{kRtpSeqMod + 1};
+    uint64_t received{0};
+
+    uint64_t duplicates{0};
+    uint64_t outOfOrder{0};
+    uint64_t restarts{0};       // sequence started over: a new sender on the group
+
+    // Recently seen extended sequence numbers, so that a late packet is told
+    // apart from a repeated one. Bounded: a window, not the whole history.
+    std::set<uint64_t>   seen;
+    std::deque<uint64_t> seenOrder;
+
+    // What the stream claims to be. First value wins; every later change is
+    // counted and the new value recorded.
+    uint8_t  payloadType{0};
+    uint64_t payloadTypeChanges{0};
+    std::set<uint8_t> payloadTypesSeen;
+
+    size_t   payloadSize{0};
+    uint64_t payloadSizeChanges{0};
+
+    uint32_t timestampStep{0};      // frames per packet, as the sender counts them
+    uint64_t timestampStepChanges{0};
+    std::set<uint32_t> timestampStepsSeen;
+
+    uint16_t prevSeq{0};
+    uint32_t prevTimestamp{0};
+    bool     havePrev{false};
+
+    uint64_t payloadBytes{0};
+
+    void initSeq(uint16_t seq) {
+        baseSeq = seq;
+        maxSeq  = seq;
+        cycles  = 0;
+        badSeq  = kRtpSeqMod + 1;
+        received = 0;
+        seen.clear();
+        seenOrder.clear();
+    }
+
+    void remember(uint64_t extendedSeq) {
+        seen.insert(extendedSeq);
+        seenOrder.push_back(extendedSeq);
+        if (seenOrder.size() > kSeenWindow) {
+            seen.erase(seenOrder.front());
+            seenOrder.pop_front();
+        }
+    }
+
+    uint64_t extendedMax() const { return static_cast<uint64_t>(cycles) + maxSeq; }
+
+    uint64_t expected() const { return extendedMax() - baseSeq + 1; }
+
+    // Loss is what the sequence numbers say was sent minus what arrived.
+    // Duplicates can push received past expected, hence the signed result.
+    int64_t lost() const {
+        return static_cast<int64_t>(expected()) - static_cast<int64_t>(received);
+    }
+};
+
+// RFC 3550 SS A.1 update_seq(), with duplicates and reordering separated.
+void updateSeq(SourceStats& source, uint16_t seq) {
+    const uint16_t udelta = static_cast<uint16_t>(seq - source.maxSeq);
+
+    if (udelta < kMaxDropout) {
+        // In order, possibly with a gap in front of it.
+        if (seq < source.maxSeq) {
+            source.cycles += kRtpSeqMod;   // sequence number wrapped
+        }
+        source.maxSeq = seq;
+    } else if (udelta <= kRtpSeqMod - kMaxMisorder) {
+        // Too far forward to be a gap: either the sender restarted or this is
+        // a different stream on the same address. Two in a row settle it.
+        if (seq == source.badSeq) {
+            source.initSeq(seq);
+            ++source.restarts;
+        } else {
+            source.badSeq = (seq + 1) & (kRtpSeqMod - 1);
+            ++source.outOfOrder;
+            ++source.received;
+            return;
+        }
+    } else {
+        // Behind the highest seen: late or repeated, decided by the window.
+        uint64_t extended = static_cast<uint64_t>(source.cycles) + seq;
+        if (extended > source.extendedMax()) {
+            extended -= kRtpSeqMod;        // arrived before its own wrap
+        }
+        if (source.seen.count(extended) > 0) {
+            ++source.duplicates;
+        } else {
+            ++source.outOfOrder;
+            source.remember(extended);
+        }
+        ++source.received;
+        return;
+    }
+
+    const uint64_t extended = static_cast<uint64_t>(source.cycles) + seq;
+    if (source.seen.count(extended) > 0) {
+        ++source.duplicates;
+    } else {
+        source.remember(extended);
+    }
+    ++source.received;
+}
+
+} // namespace
 
 // -- Main --
 
@@ -128,10 +268,7 @@ int run(int argc, char* argv[]) {
     // Statistics
     uint64_t packetCount = 0;
     uint64_t totalPayloadBytes = 0;
-    uint16_t lastSeqNum = 0;
-    uint64_t seqGaps = 0;
-    uint64_t seqDups = 0;
-    bool firstPacket = true;
+    std::map<uint32_t, SourceStats> sources;   // keyed by SSRC
     double peakLevel = 0.0;
     uint64_t nonZeroSamples = 0;
     uint64_t totalSamples = 0;
@@ -169,21 +306,54 @@ int run(int argc, char* argv[]) {
         ++packetCount;
         totalPayloadBytes += packet.payloadSize;
 
-        // Check sequence continuity
-        uint16_t seqNum = packet.header.sequenceNumber;
-        if (!firstPacket) {
-            uint16_t expected = static_cast<uint16_t>(lastSeqNum + 1);
-            if (seqNum != expected) {
-                int16_t diff = static_cast<int16_t>(seqNum - expected);
-                if (diff > 0) {
-                    seqGaps += diff;
-                } else {
-                    ++seqDups;
-                }
-            }
+        // Account for this packet against its own source. Two senders on one
+        // group are two sources, not one stream full of holes.
+        const uint32_t ssrc   = packet.header.ssrc;
+        const uint16_t seqNum = packet.header.sequenceNumber;
+        auto entry = sources.find(ssrc);
+        if (entry == sources.end()) {
+            SourceStats fresh;
+            fresh.initSeq(seqNum);
+            fresh.payloadType = packet.header.payloadType;
+            fresh.payloadTypesSeen.insert(packet.header.payloadType);
+            fresh.payloadSize = packet.payloadSize;
+            entry = sources.emplace(ssrc, std::move(fresh)).first;
+            ++entry->second.received;
+            entry->second.remember(seqNum);
+        } else {
+            updateSeq(entry->second, seqNum);
         }
-        lastSeqNum = seqNum;
-        firstPacket = false;
+        SourceStats& source = entry->second;
+        source.payloadBytes += packet.payloadSize;
+
+        // What the stream says it is, and whether that has changed under us.
+        if (packet.header.payloadType != source.payloadType) {
+            ++source.payloadTypeChanges;
+            source.payloadType = packet.header.payloadType;
+        }
+        source.payloadTypesSeen.insert(packet.header.payloadType);
+
+        if (packet.payloadSize != source.payloadSize) {
+            ++source.payloadSizeChanges;
+            source.payloadSize = packet.payloadSize;
+        }
+
+        // The timestamp step between consecutive packets is the frame count
+        // per packet: it doubles when the sender switches 48 kHz to 96 kHz at
+        // the same packet time, which nothing else in the packet reveals.
+        if (source.havePrev && seqNum == static_cast<uint16_t>(source.prevSeq + 1)) {
+            const uint32_t step = packet.header.timestamp - source.prevTimestamp;
+            if (source.timestampStep == 0) {
+                source.timestampStep = step;
+            } else if (step != source.timestampStep) {
+                ++source.timestampStepChanges;
+                source.timestampStep = step;
+            }
+            source.timestampStepsSeen.insert(step);
+        }
+        source.prevSeq = seqNum;
+        source.prevTimestamp = packet.header.timestamp;
+        source.havePrev = true;
 
         // Decode and analyze audio levels
         size_t numSamples = packet.payloadSize / bytesPerSample;
@@ -210,9 +380,17 @@ int run(int argc, char* argv[]) {
         if (sinceReport.count() >= 1000) {
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
             double pctNonZero = totalSamples > 0 ? (100.0 * nonZeroSamples / totalSamples) : 0.0;
-            fprintf(stderr, "\r  [%llds] pkts=%llu  gaps=%llu  dups=%llu  bytes=%llu  "
-                    "non-zero=%.1f%%  peak=%.4f",
-                    elapsed, packetCount, seqGaps, seqDups, totalPayloadBytes,
+            int64_t lostSoFar = 0;
+            uint64_t reorderedSoFar = 0, duplicateSoFar = 0;
+            for (const auto& pair : sources) {
+                lostSoFar      += pair.second.lost();
+                reorderedSoFar += pair.second.outOfOrder;
+                duplicateSoFar += pair.second.duplicates;
+            }
+            fprintf(stderr, "\r  [%llds] pkts=%llu  src=%zu  lost=%lld  reorder=%llu  "
+                    "dup=%llu  non-zero=%.1f%%  peak=%.4f",
+                    elapsed, packetCount, sources.size(),
+                    static_cast<long long>(lostSoFar), reorderedSoFar, duplicateSoFar,
                     pctNonZero, peakLevel);
             fflush(stderr);
             lastReportTime = now;
@@ -229,14 +407,71 @@ int run(int argc, char* argv[]) {
     fprintf(stderr, "  Duration:       %.1f seconds\n", elapsedMs / 1000.0);
     fprintf(stderr, "  Packets:        %llu\n", packetCount);
     fprintf(stderr, "  Payload bytes:  %llu\n", totalPayloadBytes);
-    fprintf(stderr, "  Seq gaps:       %llu\n", seqGaps);
-    fprintf(stderr, "  Seq duplicates: %llu\n", seqDups);
+    fprintf(stderr, "  Sources:        %zu\n", sources.size());
 
     if (packetCount > 0) {
         double avgPktRate = (packetCount * 1000.0) / elapsedMs;
         fprintf(stderr, "  Packet rate:    %.1f pkt/s\n", avgPktRate);
     }
 
+    const uint8_t expectedPayloadType = (encoding == "L16") ? AES67::RTP::PT_AES67_L16
+                                                            : AES67::RTP::PT_AES67_L24;
+    uint64_t totalReordered = 0, totalDuplicates = 0, totalRestarts = 0;
+    uint64_t totalFormatChanges = 0, totalWrongPayloadType = 0;
+    int64_t  totalLost = 0;
+
+    for (const auto& pair : sources) {
+        const SourceStats& source = pair.second;
+        const double lossPercent = source.expected() > 0
+            ? (100.0 * static_cast<double>(source.lost()) / static_cast<double>(source.expected()))
+            : 0.0;
+
+        fprintf(stderr, "\n  Source 0x%08X\n", pair.first);
+        fprintf(stderr, "    Expected:     %llu\n", source.expected());
+        fprintf(stderr, "    Received:     %llu\n", source.received);
+        fprintf(stderr, "    Lost:         %lld (%.3f%%)\n",
+                static_cast<long long>(source.lost()), lossPercent);
+        fprintf(stderr, "    Reordered:    %llu\n", source.outOfOrder);
+        fprintf(stderr, "    Duplicated:   %llu\n", source.duplicates);
+        fprintf(stderr, "    Seq restarts: %llu\n", source.restarts);
+
+        fprintf(stderr, "    Payload type: %u", source.payloadType);
+        if (source.payloadTypesSeen.size() > 1) {
+            fprintf(stderr, " (changed %llu times, seen:", source.payloadTypeChanges);
+            for (uint8_t seenType : source.payloadTypesSeen) fprintf(stderr, " %u", seenType);
+            fprintf(stderr, ")");
+        }
+        if (source.payloadTypesSeen.count(expectedPayloadType) == 0) {
+            fprintf(stderr, "  [expected %u for %s]", expectedPayloadType, encoding.c_str());
+            ++totalWrongPayloadType;
+        }
+        fprintf(stderr, "\n");
+
+        fprintf(stderr, "    Payload size: %zu bytes", source.payloadSize);
+        if (source.payloadSizeChanges > 0) {
+            fprintf(stderr, " (changed %llu times)", source.payloadSizeChanges);
+        }
+        fprintf(stderr, "\n");
+
+        fprintf(stderr, "    Frames/pkt:   %u", source.timestampStep);
+        if (source.timestampStepsSeen.size() > 1) {
+            fprintf(stderr, " (changed %llu times, seen:", source.timestampStepChanges);
+            for (uint32_t step : source.timestampStepsSeen) fprintf(stderr, " %u", step);
+            fprintf(stderr, ")");
+        }
+        fprintf(stderr, "\n");
+
+        totalLost       += source.lost();
+        totalReordered  += source.outOfOrder;
+        totalDuplicates += source.duplicates;
+        totalRestarts   += source.restarts;
+        totalFormatChanges += source.payloadTypeChanges + source.payloadSizeChanges +
+                              source.timestampStepChanges;
+    }
+
+    fprintf(stderr, "\n  Lost total:     %lld\n", static_cast<long long>(totalLost));
+    fprintf(stderr, "  Reordered:      %llu\n", totalReordered);
+    fprintf(stderr, "  Duplicated:     %llu\n", totalDuplicates);
     fprintf(stderr, "  Total samples:  %llu\n", totalSamples);
     if (totalSamples > 0) {
         double pctNonZero = 100.0 * nonZeroSamples / totalSamples;
@@ -256,6 +491,21 @@ int run(int argc, char* argv[]) {
         fprintf(stderr, "  Check: audio is routed to driver output channels 9-16\n");
     } else {
         fprintf(stderr, "\n  AUDIO DETECTED!\n");
+    }
+
+    // These are the things that used to pass unnoticed: a second sender on the
+    // group, and a stream that changes what it is without changing where it is.
+    if (sources.size() > 1) {
+        fprintf(stderr, "  MULTIPLE SOURCES ON THIS GROUP (%zu SSRCs)\n", sources.size());
+    }
+    if (totalFormatChanges > 0) {
+        fprintf(stderr, "  STREAM FORMAT CHANGED MID-FLIGHT (%llu changes)\n", totalFormatChanges);
+    }
+    if (totalWrongPayloadType > 0) {
+        fprintf(stderr, "  PAYLOAD TYPE NEVER MATCHED --encoding %s\n", encoding.c_str());
+    }
+    if (totalRestarts > 0) {
+        fprintf(stderr, "  SEQUENCE RESTARTED (%llu times)\n", totalRestarts);
     }
     fprintf(stderr, "========================================\n");
 

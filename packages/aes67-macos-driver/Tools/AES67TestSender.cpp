@@ -13,6 +13,8 @@
 //   --rate <hz>       Sample rate (default: 48000)
 //   --encoding <enc>  L16 or L24 (default: L24)
 //   --freq <hz>       Sine wave frequency (default: 1000)
+//   --ptime-us <us>   Packet time in microseconds (default: 1000)
+//   --ssrc <hex>      RTP SSRC (default: random, per RFC 3550)
 //   --duration <sec>  Duration in seconds (default: 60, 0 = infinite)
 //   --interface <ip>  Local interface IP to send the multicast on (default: system)
 //   --no-sap          Disable SAP announcements
@@ -31,6 +33,7 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <random>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -39,6 +42,7 @@
 
 // Use the project's RTP header for consistency
 #include "NetworkEngine/RTP/SimpleRTP.h"
+#include "NetworkEngine/RTP/PacketBudget.h"
 
 // ── Globals ──────────────────────────────────────────────────────────
 static std::atomic<bool> g_running{true};
@@ -51,7 +55,8 @@ static void signalHandler(int) {
 
 static std::string buildSDP(const std::string& multicastIP, uint16_t port,
                             uint16_t channels, uint32_t sampleRate,
-                            const std::string& encoding, uint8_t payloadType) {
+                            const std::string& encoding, uint8_t payloadType,
+                            uint32_t ptimeUs) {
     std::string sdp;
     sdp += "v=0\r\n";
     sdp += "o=- 1 1 IN IP4 127.0.0.1\r\n";
@@ -62,7 +67,11 @@ static std::string buildSDP(const std::string& multicastIP, uint16_t port,
            std::to_string(payloadType) + "\r\n";
     sdp += "a=rtpmap:" + std::to_string(payloadType) + " " + encoding + "/" +
            std::to_string(sampleRate) + "/" + std::to_string(channels) + "\r\n";
-    sdp += "a=ptime:1\r\n";
+    // ptime is milliseconds, and 125 us is a legal AES67 packet time, so it
+    // has to be written as a fraction rather than truncated to an integer.
+    char ptimeText[32];
+    snprintf(ptimeText, sizeof(ptimeText), "%g", static_cast<double>(ptimeUs) / 1000.0);
+    sdp += "a=ptime:" + std::string(ptimeText) + "\r\n";
     sdp += "a=recvonly\r\n";
     return sdp;
 }
@@ -94,10 +103,10 @@ static std::vector<uint8_t> buildSAPPacket(const std::string& sdp) {
 static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
                             uint16_t channels, uint32_t sampleRate,
                             const std::string& encoding, uint8_t payloadType,
-                            const std::string& interfaceIP) {
+                            const std::string& interfaceIP, uint32_t ptimeUs) {
     // Build SAP packet once (SDP is static)
     std::string sdp = buildSDP(multicastIP, port, channels, sampleRate,
-                               encoding, payloadType);
+                               encoding, payloadType, ptimeUs);
     std::vector<uint8_t> sapPacket = buildSAPPacket(sdp);
 
     // Create UDP socket for SAP
@@ -160,6 +169,8 @@ int run(int argc, char* argv[]) {
     int         duration    = 60;    // seconds (0 = infinite)
     bool        enableSAP   = true;
     std::string interfaceIP;         // empty = let the system choose
+    uint32_t    ptimeUs     = 1000;  // 1 ms, the AES67 default packet time
+    uint32_t    ssrc        = 0;     // 0 = pick a random one below
 
     // Parse arguments
     for (int i = 1; i < argc; ++i) {
@@ -172,6 +183,8 @@ int run(int argc, char* argv[]) {
         else if (arg == "--freq" && i + 1 < argc)  freq = atof(argv[++i]);
         else if (arg == "--duration" && i + 1 < argc) duration = atoi(argv[++i]);
         else if (arg == "--interface" && i + 1 < argc) interfaceIP = argv[++i];
+        else if (arg == "--ptime-us" && i + 1 < argc) ptimeUs = static_cast<uint32_t>(atoi(argv[++i]));
+        else if (arg == "--ssrc" && i + 1 < argc)   ssrc = static_cast<uint32_t>(strtoul(argv[++i], nullptr, 0));
         else if (arg == "--no-sap")                 enableSAP = false;
         else if (arg == "--help" || arg == "-h") {
             fprintf(stderr,
@@ -184,6 +197,8 @@ int run(int argc, char* argv[]) {
                 "  --rate <hz>       Sample rate (default: 48000)\n"
                 "  --encoding <enc>  L16 or L24 (default: L24)\n"
                 "  --freq <hz>       Sine wave frequency (default: 1000)\n"
+                "  --ptime-us <us>   Packet time in microseconds (default: 1000)\n"
+                "  --ssrc <hex>      RTP SSRC (default: random, per RFC 3550)\n"
                 "  --duration <sec>  Duration in seconds (default: 60, 0 = infinite)\n"
                 "  --interface <ip>  Local interface IP to send on (default: system)\n"
                 "  --no-sap          Disable SAP announcements\n",
@@ -207,8 +222,40 @@ int run(int argc, char* argv[]) {
 
     uint8_t payloadType = (encoding == "L16") ? AES67::RTP::PT_AES67_L16
                                                : AES67::RTP::PT_AES67_L24;
-    size_t bytesPerSample = (encoding == "L16") ? 2 : 3;
-    uint32_t samplesPerPacket = sampleRate / 1000;  // 1ms packets
+    size_t bytesPerSample = AES67::PacketBudget::bytesPerSample(encoding);
+    uint32_t samplesPerPacket =
+        AES67::PacketBudget::framesPerPacket(sampleRate, ptimeUs, 0);
+
+    if (samplesPerPacket == 0) {
+        fprintf(stderr, "Error: %u us at %u Hz carries no samples\n", ptimeUs, sampleRate);
+        return 1;
+    }
+
+    // A packet that does not fit one Ethernet frame is fragmented by IP, and
+    // this driver's own receiver drops anything over the frame size. Refusing
+    // it here, with the packet time that would fit, beats sending 18 kB
+    // datagrams that only survive on loopback.
+    if (!AES67::PacketBudget::fits(channels, bytesPerSample, samplesPerPacket)) {
+        const size_t packetBytes =
+            AES67::PacketBudget::rtpPacketBytes(channels, bytesPerSample, samplesPerPacket);
+        const uint32_t maxFrames =
+            AES67::PacketBudget::maxFramesPerPacket(channels, bytesPerSample);
+        const uint16_t maxChannels =
+            AES67::PacketBudget::maxChannelsPerPacket(bytesPerSample, samplesPerPacket);
+        fprintf(stderr,
+                "Error: %u channels of %s at %u Hz and %u us make a %zu-byte RTP packet, "
+                "over the %zu-byte limit.\n",
+                channels, encoding.c_str(), sampleRate, ptimeUs, packetBytes,
+                AES67::PacketBudget::kMaxRtpPacketBytes);
+        if (maxFrames > 0) {
+            const uint32_t maxPtimeUs = static_cast<uint32_t>(
+                (static_cast<uint64_t>(maxFrames) * 1000000ULL) / sampleRate);
+            fprintf(stderr, "       %u channels fit at %u us (%u samples per packet).\n",
+                    channels, maxPtimeUs, maxFrames);
+        }
+        fprintf(stderr, "       %u us fits %u channels.\n", ptimeUs, maxChannels);
+        return 1;
+    }
 
     fprintf(stderr, "AES67 Test Sender\n");
     fprintf(stderr, "  Multicast: %s:%u\n", multicastIP.c_str(), port);
@@ -217,6 +264,7 @@ int run(int argc, char* argv[]) {
     fprintf(stderr, "  Duration:  %s\n", duration > 0 ? (std::to_string(duration) + "s").c_str() : "infinite");
     fprintf(stderr, "  Interface: %s\n", interfaceIP.empty() ? "system default" : interfaceIP.c_str());
     fprintf(stderr, "  SAP:       %s\n", enableSAP ? "enabled" : "disabled");
+    fprintf(stderr, "  Ptime:     %u us\n", ptimeUs);
     fprintf(stderr, "  Packet:    %u samples/pkt, %zu bytes/pkt\n",
             samplesPerPacket,
             static_cast<size_t>(samplesPerPacket) * channels * bytesPerSample);
@@ -231,7 +279,7 @@ int run(int argc, char* argv[]) {
     if (enableSAP) {
         sapThread = std::thread(sapAnnounceLoop, multicastIP, port,
                                 channels, sampleRate, encoding, payloadType,
-                                interfaceIP);
+                                interfaceIP, ptimeUs);
     }
 
     // Open RTP transmit socket
@@ -253,14 +301,22 @@ int run(int argc, char* argv[]) {
     // RTP state
     uint16_t sequenceNumber = 0;
     uint32_t timestamp = 0;
-    uint32_t ssrc = 0x12345678;  // fixed SSRC for test tool
+    // RFC 3550 SS 8: an SSRC is picked at random, so that two senders on the
+    // same group are told apart. A fixed one made every instance of this tool
+    // collide with every other by construction.
+    if (ssrc == 0) {
+        std::random_device entropy;
+        std::uniform_int_distribution<uint32_t> pick(1, 0xFFFFFFFFu);
+        ssrc = pick(entropy);
+    }
+    fprintf(stderr, "  SSRC:      0x%08X\n\n", ssrc);
 
     // Sine wave state
     double phase = 0.0;
     const double phaseIncrement = 2.0 * M_PI * freq / sampleRate;
 
     // Paced transmit loop (sleep_until pattern)
-    auto packetInterval = std::chrono::microseconds(1000); // 1ms
+    auto packetInterval = std::chrono::microseconds(ptimeUs);
     auto nextTransmitTime = std::chrono::steady_clock::now();
     auto startTime = std::chrono::steady_clock::now();
 
