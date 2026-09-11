@@ -10,6 +10,7 @@
 //   ravenna-announce --interface en0 --address 192.168.1.50
 //                    [--name "Mix A"] [--group 239.69.1.10] [--port 5004]
 //                    [--channels 2] [--rtsp-port 8554] [--host box.local]
+//                    [--rate 48000] [--encoding L24]
 //                    [--device-channel 0] [--ptime-us 1000]
 //                    [--ptp-gmid 00-1D-C1-FF-FE-00-00-01] [--ptp-domain 0]
 //                    [--nmos-port 8080]
@@ -19,6 +20,8 @@
 // onto the receiver's staged endpoint, activate it, and the channels are
 // assigned through aes67-core's StreamChannelMapper.
 //
+#include "NetworkEngine/RTP/PacketBudget.h"
+#include "NetworkEngine/RTP/RTPHeader.h"
 #include "NetworkEngine/StreamChannelMapper.h"
 #include "Ravenna/ChannelMappingApi.h"
 #include "Ravenna/ConnectionApi.h"
@@ -54,6 +57,7 @@ void usage() {
                  "                        [--name TEXT] [--group A.B.C.D] [--port N]\n"
                  "                        [--channels N] [--rtsp-port N] [--host NAME]\n"
                  "                        [--device-channel N] [--ptime-us N]\n"
+                 "                        [--rate N] [--encoding L16|L24]\n"
                  "                        [--ptp-gmid ID] [--ptp-domain N]\n"
                  "                        [--nmos-port N]\n");
 }
@@ -101,6 +105,8 @@ int main(int argc, char** argv) {
     uint16_t channels = 2;
     uint16_t deviceChannel = 0;
     uint32_t ptimeUs = 1000;
+    uint32_t sampleRate = 48000;
+    std::string encoding = "L24";
     std::string ptpGrandmaster;
     int ptpDomain = 0;
     uint16_t nmosPort = 8080;
@@ -120,6 +126,8 @@ int main(int argc, char** argv) {
         else if (option == "--rtsp-port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } rtspPort = static_cast<uint16_t>(*n); }
         else if (option == "--channels") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } channels = static_cast<uint16_t>(*n); }
         else if (option == "--device-channel") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } deviceChannel = static_cast<uint16_t>(*n); }
+        else if (option == "--rate") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } sampleRate = static_cast<uint32_t>(*n); }
+        else if (option == "--encoding") { if (!need()) { usage(); return 2; } encoding = value; }
         else if (option == "--ptime-us") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } ptimeUs = static_cast<uint32_t>(*n); }
         else if (option == "--ptp-gmid") { if (!need()) { usage(); return 2; } ptpGrandmaster = value; }
         else if (option == "--ptp-domain") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } ptpDomain = static_cast<int>(*n); }
@@ -143,6 +151,18 @@ int main(int argc, char** argv) {
     session.sdp.port = streamPort;
     session.sdp.numChannels = channels;
     session.sdp.ptimeUs = ptimeUs;
+    session.sdp.sampleRate = sampleRate;
+    session.sdp.encoding = encoding;
+    // The payload type has to be the one the stream actually carries, not a
+    // constant: a receiver binds the format to it, and announcing 96 for a
+    // stream sent as 97 describes a session nobody can play.
+    session.sdp.payloadType = RTP::payloadTypeFor(encoding);
+    // a=framecount, RAVENNA's own extension: how many samples per channel one
+    // packet holds. RAVENNA gear reads it rather than deriving the number
+    // from a=ptime, and at 125 us it is the difference between six samples
+    // and a rounding argument. Left out of every announcement until now,
+    // because SDPParser::generate omits the line when the field is 0.
+    session.sdp.framecount = PacketBudget::framesPerPacket(sampleRate, ptimeUs, 0);
     session.sdp.direction = "sendonly";
     // a=ts-refclk, RFC 7273: which clock the timestamps are against. Without
     // it the SDP says when a packet was taken and not by whose clock, and a

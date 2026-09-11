@@ -53,7 +53,10 @@ struct SDPSession {
     std::string mediaType{"audio"};
     uint16_t port{5004};
     std::string transport{"RTP/AVP"};
-    uint8_t payloadType{96};        // Dynamic payload type
+    // Dynamic payload type. The default pairs with the default encoding
+    // below (L24); RTP::payloadTypeFor() is what keeps the two in step
+    // wherever a session is built rather than parsed.
+    uint8_t payloadType{97};
 
     // Audio format (a=rtpmap)
     std::string encoding{"L24"};    // L16, L24, or AM824

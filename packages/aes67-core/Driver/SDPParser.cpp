@@ -6,6 +6,8 @@
 
 #include "SDPParser.h"
 
+#include "NetworkEngine/RTP/RTPHeader.h"
+
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -674,7 +676,7 @@ SDPSession SDPParser::createDefaultTxSession(
     session.mediaType = "audio";
     session.port = port;
     session.transport = "RTP/AVP";
-    session.payloadType = 96;
+    session.payloadType = RTP::payloadTypeFor(encoding);
 
     session.encoding = encoding;
     session.sampleRate = sampleRate;

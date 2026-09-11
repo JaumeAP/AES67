@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 #include <cstddef>
 
 namespace AES67 {
@@ -119,6 +120,18 @@ constexpr uint8_t PT_DYNAMIC = 96;  // Dynamic payload types start here
 //
 constexpr uint8_t PT_AES67_L16 = 96;
 constexpr uint8_t PT_AES67_L24 = 97;
+
+/// The payload type this driver puts on the wire for an encoding, and the
+/// one it writes into the SDP that describes it. A dynamic payload type is
+/// whatever `a=rtpmap` says it is, so any value in 96-127 is legal -- but a
+/// repository that picks 97 in one place and 96 in another announces one
+/// number and sends the other, which is how a stream ends up described
+/// correctly and still refused. Unknown encodings get PT_DYNAMIC.
+constexpr uint8_t payloadTypeFor(std::string_view encoding) {
+    if (encoding == "L16") return PT_AES67_L16;
+    if (encoding == "L24") return PT_AES67_L24;
+    return PT_DYNAMIC;
+}
 
 }  // namespace RTP
 }  // namespace AES67
