@@ -137,6 +137,43 @@ int main(int argc, char** argv) {
 
     if (interfaceName.empty() || addressText.empty()) { usage(); return 2; }
 
+    // An announcement for a stream that cannot be sent is worse than no
+    // announcement: a receiver accepts the session, subscribes, and waits for
+    // packets that will never come whole -- our own transmitter refuses the
+    // configuration, and any receiver drops what exceeds the frame. Refuse it
+    // here too, with the packet time that would fit.
+    const size_t bytesPerSample = PacketBudget::bytesPerSample(encoding);
+    if (bytesPerSample == 0) {
+        (void)std::fprintf(stderr, "unknown encoding: %s (L16, L24 or AM824)\n",
+                           encoding.c_str());
+        return 2;
+    }
+    const uint32_t framesPerPacket = PacketBudget::framesPerPacket(sampleRate, ptimeUs, 0);
+    if (framesPerPacket == 0) {
+        (void)std::fprintf(stderr, "%u us at %u Hz carries no samples\n", ptimeUs, sampleRate);
+        return 2;
+    }
+    if (!PacketBudget::fits(channels, bytesPerSample, framesPerPacket)) {
+        const size_t packetBytes =
+            PacketBudget::rtpPacketBytes(channels, bytesPerSample, framesPerPacket);
+        const uint32_t maxFrames = PacketBudget::maxFramesPerPacket(channels, bytesPerSample);
+        (void)std::fprintf(stderr,
+                           "%u channels of %s at %u Hz and %u us make a %zu-byte RTP packet, "
+                           "over the %zu-byte limit\n",
+                           static_cast<unsigned>(channels), encoding.c_str(), sampleRate,
+                           ptimeUs, packetBytes, PacketBudget::kMaxRtpPacketBytes);
+        if (maxFrames > 0) {
+            (void)std::fprintf(stderr, "  %u channels fit at %u us\n",
+                               static_cast<unsigned>(channels),
+                               static_cast<uint32_t>((static_cast<uint64_t>(maxFrames) * 1000000ULL)
+                                                     / sampleRate));
+        }
+        (void)std::fprintf(stderr, "  %u us fits %u channels\n", ptimeUs,
+                           static_cast<unsigned>(
+                               PacketBudget::maxChannelsPerPacket(bytesPerSample, framesPerPacket)));
+        return 2;
+    }
+
     uint32_t address = 0;
     if (!addressFrom(addressText, address)) {
         std::fprintf(stderr, "not an IPv4 address: %s\n", addressText.c_str());
@@ -162,7 +199,7 @@ int main(int argc, char** argv) {
     // from a=ptime, and at 125 us it is the difference between six samples
     // and a rounding argument. Left out of every announcement until now,
     // because SDPParser::generate omits the line when the field is 0.
-    session.sdp.framecount = PacketBudget::framesPerPacket(sampleRate, ptimeUs, 0);
+    session.sdp.framecount = framesPerPacket;
     session.sdp.direction = "sendonly";
     // a=ts-refclk, RFC 7273: which clock the timestamps are against. Without
     // it the SDP says when a packet was taken and not by whose clock, and a
