@@ -395,6 +395,27 @@ target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_net)
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
 
+# Test: this slave against the bytes t41-ptp emits when it runs, replayed
+# from a fixture its own host build generates (make -C test fixture there).
+# The sibling suite TestPTPMasterBoxInterop covers the same ground with bytes
+# written by hand from reading that library's source; this one cannot go
+# stale the same way.
+add_executable(TestPTPT41Interop
+    TestPTPT41Interop.cpp
+)
+
+target_include_directories(TestPTPT41Interop PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+target_compile_definitions(TestPTPT41Interop PRIVATE
+    T41_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../t41-ptp/test/fixtures/t41-master.txt"
+)
+
+target_link_libraries(TestPTPT41Interop PRIVATE aes67_net)
+target_link_libraries(TestPTPT41Interop PRIVATE doctest_headers)
+target_compile_features(TestPTPT41Interop PRIVATE cxx_std_17)
+
 # Test: this driver's SAP against the AES67 Linux daemon's rules for taking
 # it. The daemon is bondagit/aes67-linux-daemon, built from its own checkout
 # and no longer carried in this tree; support/DaemonSap mirrors its receive
@@ -686,6 +707,7 @@ add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
+add_test(NAME PTPT41Interop COMMAND TestPTPT41Interop)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME NodeAPI COMMAND TestNodeAPI)
