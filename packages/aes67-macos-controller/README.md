@@ -16,12 +16,27 @@ Controller from Virtual Soundcard the same way, for the same reason.
    announcements, `_rtsp._tcp` services described over RTSP DESCRIBE, and
    NMOS IS-04 senders, merged into one list by the session's own identity. A
    session found three ways is one row that says so.
-2. **Routing.** Every NMOS node as one matrix — senders across, receivers
+2. **Devices.** Every NMOS node, what it will let a controller use (IS-05,
+   IS-08, or nothing) and the clock it follows with its lock state.
+3. **Routing.** Every NMOS node as one matrix — senders across, receivers
    down, a click on a crosspoint connects or disconnects over IS-05.
+4. **Channels.** The IS-08 grid for the devices that map channels: inputs
+   across, outputs down, a click sets a crosspoint and a click on the one
+   already set mutes it.
+5. **Link.** Everything on the segment, whoever made it and however it makes
+   itself known — registered services (`_rtsp._tcp`, `_nmos-node._tcp`,
+   `_nmos-register._tcp`, Dante's `_netaudio-*._udp`, `_ravenna._tcp`) and PTP
+   clocks. This is where gear appears that nothing here can control: a Dante
+   device shows its registration, and Dolby Atmos Connect, which announces
+   nothing at all because it is configured by hand end to end, shows its
+   clock. Browsing a registration is not speaking a protocol.
 
 ## What it does not do
 
-No driver, no Core Audio, no audio path. It installs nothing and needs nothing
+Nothing here talks Dante's protocol, or configures a Dolby processor, or
+renames a device: listing is not control, and the protocols that would allow
+it are either licensed or do not exist. No driver, no Core Audio, no audio
+path. It installs nothing and needs nothing
 installed. On a machine that also runs this project's driver, both listen on
 the SAP port at once; that is what `SO_REUSEPORT` is there for.
 

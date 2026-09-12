@@ -30,6 +30,8 @@ struct ControllerWindow: View {
                 .tabItem { Label("Routing", systemImage: "square.grid.3x3") }
             ChannelGridView(nmos: nmos)
                 .tabItem { Label("Channels", systemImage: "slider.horizontal.3") }
+            LinkView(discovery: discovery)
+                .tabItem { Label("Link", systemImage: "network") }
         }
         .frame(minWidth: 760, minHeight: 520)
         .onAppear {

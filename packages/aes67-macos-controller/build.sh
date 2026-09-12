@@ -71,6 +71,7 @@ swiftc -o AES67Controller \
   "$MANAGER/Views/RoutingMatrixView.swift" \
   Models/DiscoveryService.swift \
   Views/DeviceListView.swift \
+  Views/LinkView.swift \
   Views/ChannelGridView.swift \
   Views/ControllerWindow.swift \
   AES67ControllerApp.swift
