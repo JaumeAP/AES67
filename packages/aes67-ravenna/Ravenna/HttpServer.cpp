@@ -122,8 +122,13 @@ std::string buildHttpResponse(int status, const std::string& contentType,
     response << "Content-Type: " << contentType << "\r\n";
     response << "Content-Length: " << body.size() << "\r\n";
     // IS-05 controllers are often browser based, and a device that answers
-    // without this is a device they cannot read.
+    // without these is a device they cannot read: a preflight that comes back
+    // without Allow-Headers fails the request before it is sent, which is
+    // what the AMWA test suite catches and what a browser does silently.
     response << "Access-Control-Allow-Origin: *\r\n";
+    response << "Access-Control-Allow-Methods: GET, PUT, POST, PATCH, DELETE, HEAD, OPTIONS\r\n";
+    response << "Access-Control-Allow-Headers: Content-Type, Accept, Authorization\r\n";
+    response << "Access-Control-Max-Age: 3600\r\n";
     response << "Connection: close\r\n";
     response << "\r\n";
     response << body;

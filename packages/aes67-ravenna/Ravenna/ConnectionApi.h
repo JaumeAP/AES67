@@ -120,7 +120,6 @@ private:
 /// transport file wrapper, and a controller reads exactly those names.
 /// `includeSenderId` is what makes this a receiver's state: a sender is the
 /// far end of somebody else's subscription and carries a receiver_id instead.
-JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile,
-                      bool includeSenderId = false);
+JsonValue stateAsJson(const ConnectionState& state, bool forSender);
 
 }  // namespace AES67::Ravenna

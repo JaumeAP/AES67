@@ -56,10 +56,15 @@ static void signalHandler(int) {
 static std::string buildSDP(const std::string& multicastIP, uint16_t port,
                             uint16_t channels, uint32_t sampleRate,
                             const std::string& encoding, uint8_t payloadType,
-                            uint32_t ptimeUs) {
+                            uint32_t ptimeUs, uint32_t sessionId,
+                            const std::string& originAddress) {
     std::string sdp;
     sdp += "v=0\r\n";
-    sdp += "o=- 1 1 IN IP4 127.0.0.1\r\n";
+    // The origin is what identifies a session (RFC 4566 SS 5.2), and a
+    // constant one made two senders on different groups merge into a single
+    // entry in any directory that keys on it -- including this driver's.
+    sdp += "o=- " + std::to_string(sessionId) + " 1 IN IP4 " +
+           (originAddress.empty() ? std::string("127.0.0.1") : originAddress) + "\r\n";
     sdp += "s=AES67 Test Stream\r\n";
     sdp += "c=IN IP4 " + multicastIP + "/32\r\n";
     sdp += "t=0 0\r\n";
@@ -124,11 +129,12 @@ static std::vector<uint8_t> buildSAPPacket(const std::string& sdp, uint32_t orig
 static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
                             uint16_t channels, uint32_t sampleRate,
                             const std::string& encoding, uint8_t payloadType,
-                            const std::string& interfaceIP, uint32_t ptimeUs) {
+                            const std::string& interfaceIP, uint32_t ptimeUs,
+                            uint32_t sessionId) {
     // Build the SDP once; the SAP packet waits until the socket can say which
     // address this announcer is sending from.
     std::string sdp = buildSDP(multicastIP, port, channels, sampleRate,
-                               encoding, payloadType, ptimeUs);
+                               encoding, payloadType, ptimeUs, sessionId, interfaceIP);
 
     // Create UDP socket for SAP
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -323,12 +329,26 @@ int run(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
+    // RFC 3550 SS 8: an SSRC is picked at random, so that two senders on the
+    // same group are told apart. A fixed one made every instance of this tool
+    // collide with every other by construction.
+    if (ssrc == 0) {
+        std::random_device entropy;
+        std::uniform_int_distribution<uint32_t> pick(1, 0xFFFFFFFFu);
+        ssrc = pick(entropy);
+    }
+    fprintf(stderr, "  SSRC:      0x%08X\n\n", ssrc);
+
+    // Chosen before the announcer starts: the SDP's o= session id is this
+    // number, and an announcement carrying a zero would be an identity two
+    // senders shared -- which is the merge this was meant to stop.
+
     // Start SAP announcer thread
     std::thread sapThread;
     if (enableSAP) {
         sapThread = std::thread(sapAnnounceLoop, multicastIP, port,
                                 channels, sampleRate, encoding, payloadType,
-                                interfaceIP, ptimeUs);
+                                interfaceIP, ptimeUs, ssrc);
     }
 
     // Open RTP transmit socket
@@ -350,15 +370,6 @@ int run(int argc, char* argv[]) {
     // RTP state
     uint16_t sequenceNumber = 0;
     uint32_t timestamp = 0;
-    // RFC 3550 SS 8: an SSRC is picked at random, so that two senders on the
-    // same group are told apart. A fixed one made every instance of this tool
-    // collide with every other by construction.
-    if (ssrc == 0) {
-        std::random_device entropy;
-        std::uniform_int_distribution<uint32_t> pick(1, 0xFFFFFFFFu);
-        ssrc = pick(entropy);
-    }
-    fprintf(stderr, "  SSRC:      0x%08X\n\n", ssrc);
 
     // Sine wave state
     double phase = 0.0;

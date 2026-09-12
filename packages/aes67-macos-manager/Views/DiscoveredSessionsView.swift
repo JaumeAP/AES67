@@ -185,10 +185,19 @@ struct DiscoveredSessionsView: View {
         let rate = Self.sampleRateFromRtpmap(sdp) ?? UInt32(driverManager.currentDeviceSampleRate)
         let encoding = sdp.contains("L16") ? "L16" : "L24"
 
+        // A transport file can say anything, including m=audio 70000: an
+        // unchecked UInt16() on that traps and takes the app with it.
+        guard let port = UInt16(exactly: session.port) else {
+            driverManager.showAlert(title: "Cannot add that session",
+                                    message: "Its description names port \(session.port), which "
+                                           + "is not a UDP port.")
+            return
+        }
+
         driverManager.addStream(
             name: session.name.isEmpty ? "Discovered session" : session.name,
             multicastIP: session.multicastAddress,
-            port: UInt16(session.port),
+            port: port,
             numChannels: UInt16(channels),
             sampleRate: rate,
             encoding: encoding,

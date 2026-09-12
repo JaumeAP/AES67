@@ -229,15 +229,22 @@ private:
     // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
     std::unique_ptr<RTSafeStreamInterface> rtInterface_;
 
-    // SAP discovery. Runs for the driver's whole life once Initialize()
-    // starts it — passive listening only, it announces nothing.
-    std::unique_ptr<SAPListener> sapListener_;
     /// Every session on the network, however it was found: what SAP
     /// announces and what registers `_rtsp._tcp` and describes itself over
     /// RTSP, merged by the session's own identity. This is what the
     /// discovery gateway publishes, so the Manager app sees one list
     /// instead of the SAP half.
     SessionDirectory sessionDirectory_;
+
+    // Declared BEFORE the discoverers that write into it: members are
+    // destroyed in reverse order, so this outlives them. It used to be
+    // declared after sapListener_, whose receive thread is not stopped by the
+    // destructor and whose callback calls offer() -- an announcement arriving
+    // while coreaudiod tore the device down wrote into a destroyed mutex.
+
+    // SAP discovery. Runs for the driver's whole life once Initialize()
+    // starts it — passive listening only, it announces nothing.
+    std::unique_ptr<SAPListener> sapListener_;
     /// mDNS/DNS-SD browsing plus the DESCRIBE that turns a service into a
     /// session — the discovery half SAP does not cover. Declared next to
     /// sapListener_ so both are destroyed before streamManager_, which
@@ -298,6 +305,18 @@ private:
     /// by its manual.
     bool applySenderConnectionPatch(const std::string& senderId,
                                     const ConnectionPatch& patch);
+
+    /// A sender a controller switched off, kept so it can be switched on
+    /// again: removing the stream takes it out of getTransmitSessions(), and
+    /// a sender the API can no longer see is a crosspoint that goes off once
+    /// and never back on.
+    struct StoppedSender {
+        SDPSession sdp;
+        ChannelMapping mapping;
+        uint16_t sourcePort{0};
+    };
+    mutable std::mutex stoppedSendersMutex_;
+    std::map<std::string, StoppedSender> stoppedSenders_;
 
     bool subscribeSpareReceiver(const std::string& receiverId,
                                 const ConnectionPatch& patch);

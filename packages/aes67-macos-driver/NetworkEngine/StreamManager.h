@@ -259,6 +259,10 @@ public:
     // Get mapping for a stream
     std::optional<ChannelMapping> getMapping(const StreamID& id) const;
 
+    /// The local UDP port a transmit stream was bound to, or 0 when the
+    /// kernel chose it. Nothing for a receive stream or an id that is gone.
+    std::optional<uint16_t> getSourcePort(const StreamID& id) const;
+
     // Get all mappings
     std::vector<ChannelMapping> getAllMappings() const;
 
@@ -451,6 +455,11 @@ private:
         std::unique_ptr<RTPTransmitter> transmitter;
         StreamInfo info;
         bool isTransmit{false};
+        /// The local UDP port a transmitter was bound to, 0 when the kernel
+        /// chose one. Kept because it is not in the SDP and not derivable:
+        /// under the Dolby scheme the source port is what identifies a flow,
+        /// so re-creating a flow without it puts two flows on one port.
+        uint16_t sourcePort{0};
     };
 
     // Validation helpers

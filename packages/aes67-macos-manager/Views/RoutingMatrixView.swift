@@ -246,12 +246,11 @@ struct RoutingMatrixView: View {
             if isThisSender {
                 controller.stop(sender: column.sender)
             } else {
-                // Moving the feed: the sender that had it is stopped first,
-                // because two senders on one destination is a collision and
-                // not a route.
-                if let feeding { controller.stop(sender: feeding) }
-                controller.send(sender: column.sender,
-                                to: sink.multicastAddress, port: sink.port)
+                // Moving the feed: the sender that had it is stopped first and
+                // the move waits for that, because two senders on one
+                // destination is a collision and not a route.
+                controller.move(from: feeding, to: column.sender,
+                                destination: sink.multicastAddress, port: sink.port)
             }
         } label: {
             ZStack {

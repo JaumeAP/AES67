@@ -188,10 +188,51 @@ TEST_CASE("A scheduled activation is refused rather than forgotten") {
     CHECK(response.status == 501);
 }
 
-TEST_CASE("Active is read-only and bulk says it is not implemented") {
+TEST_CASE("Active is read-only, and bulk is a method that is not served") {
     ConnectionApi api = apiWithOne();
     CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/active/"), "{}").status == 405);
-    CHECK(api.handle("POST", path("/bulk/receivers"), "[]").status == 501);
+
+    // 405 and not 501: IS-05 defines the bulk endpoints, so the resource is
+    // there and it is the method that is not served. A 501 says the resource
+    // itself is unimplemented, which is what the AMWA suite objected to.
+    CHECK(api.handle("POST", path("/bulk/receivers"), "[]").status == 405);
+    CHECK(api.handle("POST", path("/bulk/senders"), "[]").status == 405);
+    // And the listings are listings: the one above them, and the empty one
+    // each endpoint answers a GET with.
+    CHECK(api.handle("GET", path("/bulk/"), "").status == 200);
+    CHECK(api.handle("GET", path("/bulk/senders"), "").status == 200);
+    CHECK(api.handle("GET", path("/bulk/receivers"), "").status == 200);
+}
+
+TEST_CASE("A leg's constraints name the parameters that leg has") {
+    // IS-05 SS 4.2: a controller reads this to know what it may stage, and an
+    // empty object told it there was nothing to stage at all.
+    ConnectionApi api = apiWithOne();
+    const ApiResponse receiver =
+        api.handle("GET", path("/single/receivers/receiver-1/constraints/"), "");
+    CHECK(receiver.status == 200);
+    CHECK(receiver.body.find("destination_port") != std::string::npos);
+    CHECK(receiver.body.find("multicast_ip") != std::string::npos);
+
+    const ApiResponse sender =
+        api.handle("GET", path("/single/senders/sender-1/constraints/"), "");
+    CHECK(sender.status == 200);
+    CHECK(sender.body.find("destination_port") != std::string::npos);
+    CHECK(sender.body.find("destination_ip") != std::string::npos);
+}
+
+TEST_CASE("A sender's state is a sender's shape, not a receiver's") {
+    // The schemas differ and the suite checks both: a sender carries
+    // receiver_id and no transport file, a receiver carries sender_id and the
+    // file it was given.
+    ConnectionApi api = apiWithOne();
+    const ApiResponse sender = api.handle("GET", path("/single/senders/sender-1/staged/"), "");
+    CHECK(sender.body.find("receiver_id") != std::string::npos);
+    CHECK(sender.body.find("transport_file") == std::string::npos);
+
+    const ApiResponse receiver = api.handle("GET", path("/single/receivers/receiver-1/staged/"), "");
+    CHECK(receiver.body.find("sender_id") != std::string::npos);
+    CHECK(receiver.body.find("transport_file") != std::string::npos);
 }
 
 TEST_CASE("What does not exist is a 404, and it says which") {

@@ -30,24 +30,6 @@ if ! AES67_BUILD_DIR=build ./run-tests.sh; then
   exit 1
 fi
 
-echo "==> Installer"
-if ! ./build-installer.sh --force > build/installer.log 2>&1; then
-  tail -20 build/installer.log >&2
-  echo "FAIL: build-installer.sh" >&2
-  exit 1
-fi
-test -x AES67Install.app/Contents/MacOS/AES67Install || {
-  echo "FAIL: no executable in the installer bundle" >&2
-  exit 1
-}
-# What it carries decides what its ticks can do, and which languages it speaks.
-for carried in AES67Manager.app AES67Controller.app ca.lproj es.lproj en.lproj; do
-  test -e "AES67Install.app/Contents/Resources/$carried" || {
-    echo "FAIL: the installer carries no $carried" >&2
-    exit 1
-  }
-done
-
 echo "==> Uninstaller"
 if ! ./build-uninstaller.sh --force > build/uninstaller.log 2>&1; then
   tail -20 build/uninstaller.log >&2
@@ -89,6 +71,25 @@ test -x AES67Manager.app/Contents/MacOS/AES67Manager || {
 #   fuzz         NmosResources, fed JSON a node this Mac does not own
 #   coverage     line coverage of the tested Swift, printed only
 # ---------------------------------------------------------------------------
+echo "==> Installer"
+if ! ./build-installer.sh --force > build/installer.log 2>&1; then
+  tail -20 build/installer.log >&2
+  echo "FAIL: build-installer.sh" >&2
+  exit 1
+fi
+test -x AES67Install.app/Contents/MacOS/AES67Install || {
+  echo "FAIL: no executable in the installer bundle" >&2
+  exit 1
+}
+# What it carries decides what its ticks can do, and which languages it speaks.
+for carried in AES67Manager.app AES67Controller.app ca.lproj es.lproj en.lproj; do
+  test -e "AES67Install.app/Contents/Resources/$carried" || {
+    echo "FAIL: the installer carries no $carried" >&2
+    exit 1
+  }
+done
+
+
 if [ "${AES67_ANALYSE:-0}" = "1" ]; then
   # Found the way the C++ packages find it: neither cppcheck nor clang-tidy
   # ships with the Command Line Tools. CPPCHECK=/path overrides.
@@ -123,8 +124,10 @@ if [ "${AES67_ANALYSE:-0}" = "1" ]; then
   xcrun swiftc -g -Onone -swift-version 5 -warnings-as-errors \
     -sanitize=address -sanitize=undefined \
     -o build/ManagerAppTests-san \
-    Models/PrivilegedScript.swift Models/NmosResources.swift \
-    Tests/PrivilegedScriptTests.swift Tests/NmosResourcesTests.swift Tests/main.swift \
+    Models/PrivilegedScript.swift Models/NmosResources.swift Models/SessionList.swift \
+    Uninstaller/UninstallPlan.swift \
+    Tests/PrivilegedScriptTests.swift Tests/NmosResourcesTests.swift \
+    Tests/SessionListTests.swift Tests/main.swift \
     || { echo "FAIL: sanitizer build" >&2; exit 1; }
   UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" build/ManagerAppTests-san \
     || { echo "FAIL: tests under sanitizers" >&2; exit 1; }
@@ -139,8 +142,10 @@ if [ "${AES67_ANALYSE:-0}" = "1" ]; then
   xcrun swiftc -g -Onone -swift-version 5 \
     -profile-generate -profile-coverage-mapping \
     -o build/ManagerAppTests-cov \
-    Models/PrivilegedScript.swift Models/NmosResources.swift \
-    Tests/PrivilegedScriptTests.swift Tests/NmosResourcesTests.swift Tests/main.swift \
+    Models/PrivilegedScript.swift Models/NmosResources.swift Models/SessionList.swift \
+    Uninstaller/UninstallPlan.swift \
+    Tests/PrivilegedScriptTests.swift Tests/NmosResourcesTests.swift \
+    Tests/SessionListTests.swift Tests/main.swift \
     || { echo "FAIL: coverage build" >&2; exit 1; }
   ( cd build && LLVM_PROFILE_FILE=coverage.profraw ./ManagerAppTests-cov > /dev/null ) \
     || { echo "FAIL: tests under coverage" >&2; exit 1; }

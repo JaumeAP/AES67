@@ -15,6 +15,30 @@ namespace AES67 {
 
 namespace {
 
+/// A Bonjour instance name inside a URL path. RAVENNA sessions are called
+/// things like "Studio Mic 1", and a space in a request line ends the URL:
+/// the device answers 400 and the gear this class exists to find never
+/// reaches the directory. RFC 3986 SS 3.3: everything outside the unreserved
+/// set and the path-safe sub-delims is percent-encoded.
+std::string percentEncoded(const std::string& text) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(text.size());
+    for (unsigned char c : text) {
+        const bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                                (c >= '0' && c <= '9') || c == '-' || c == '.' ||
+                                c == '_' || c == '~';
+        if (unreserved) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back('%');
+            out.push_back(kHex[c >> 4]);
+            out.push_back(kHex[c & 0x0F]);
+        }
+    }
+    return out;
+}
+
 /// The default fetcher: a DESCRIBE through SDPFetcher, which owns the
 /// timeouts and the size cap. A function pointer rather than a call inside
 /// describe() so a test can put anything at the other end.
@@ -51,7 +75,8 @@ RTSPSessionDiscovery::DescribeResult RTSPSessionDiscovery::describe(const MDNSSe
     // with an error and is simply not listed, which is better than listing
     // a session nobody can fetch.
     const std::string url = "rtsp://" + service.address + ":" +
-                            std::to_string(service.port) + "/by-name/" + service.name;
+                            std::to_string(service.port) + "/by-name/" +
+                            percentEncoded(service.name);
 
     std::string error;
     const std::string sdp = fetch(url, error);

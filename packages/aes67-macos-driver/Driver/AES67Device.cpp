@@ -785,8 +785,25 @@ bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
                                     [&](const SDPSession& sdp) {
                                         return nmosIdFor("sender", sdp.sessionName) == senderId;
                                     });
-    if (match == sessions.end()) return false;
-    const SDPSession current = *match;
+
+    SDPSession current;
+    ChannelMapping stoppedMapping;
+    uint16_t stoppedSourcePort = 0;
+    bool wasStopped = false;
+    if (match != sessions.end()) {
+        current = *match;
+    } else {
+        // A sender this driver stopped when a controller asked it to. It is
+        // still a sender -- it is simply not transmitting -- and starting it
+        // again is what the next patch is for.
+        std::lock_guard<std::mutex> lock(stoppedSendersMutex_);
+        const auto stopped = stoppedSenders_.find(senderId);
+        if (stopped == stoppedSenders_.end()) return false;
+        current = stopped->second.sdp;
+        stoppedMapping = stopped->second.mapping;
+        stoppedSourcePort = stopped->second.sourcePort;
+        wasStopped = true;
+    }
 
     if (!patch.activateImmediate) return false;
 
@@ -798,8 +815,22 @@ bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
                                           return info.name == current.sessionName;
                                       });
     if (patch.masterEnable.has_value() && !*patch.masterEnable) {
-        if (running != active.end()) return streamManager_->removeStream(running->id);
-        return true;
+        if (running == active.end()) return true;   // already stopped
+        // Remembered before it goes, so the same sender can be started again
+        // at the same place: removing the stream takes it out of
+        // getTransmitSessions(), and a sender the API can no longer see is a
+        // crosspoint that can be switched off once and never on.
+        {
+            std::lock_guard<std::mutex> lock(stoppedSendersMutex_);
+            StoppedSender stopped;
+            stopped.sdp = current;
+            if (const auto mapping = streamManager_->getMapping(running->id)) {
+                stopped.mapping = *mapping;
+            }
+            stopped.sourcePort = streamManager_->getSourcePort(running->id).value_or(0);
+            stoppedSenders_[senderId] = stopped;
+        }
+        return streamManager_->removeStream(running->id);
     }
 
     // Where it should transmit now. A transport file is a description of the
@@ -818,10 +849,9 @@ bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
     }
     if (patch.port.has_value()) port = *patch.port;
 
-    if (address == current.connectionAddress && port == current.port) {
+    if (!wasStopped && address == current.connectionAddress && port == current.port) {
         return true;   // already transmitting where it was asked to
     }
-    if (running == active.end()) return false;
 
     // Re-addressing is remove and re-create: a transmitter's socket carries
     // its destination, and the flow builder is what knows how a profile
@@ -830,16 +860,35 @@ bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
     // address and destination port are fixed by its manual, and the per-flow
     // SOURCE ports are what identify the flows. Nothing can be patched onto
     // that device; the only end a controller can configure is this one.
-    const auto mapping = streamManager_->getMapping(running->id);
-    if (!mapping) return false;
-    const ChannelMapping wantedMapping = *mapping;
+    ChannelMapping wantedMapping = stoppedMapping;
+    if (!wasStopped) {
+        const auto mapping = streamManager_->getMapping(running->id);
+        if (!mapping) return false;
+        wantedMapping = *mapping;
+    }
     const uint16_t channels = current.numChannels;
     const std::string name = current.sessionName;
 
-    if (!streamManager_->removeStream(running->id)) return false;
+    if (!wasStopped && !streamManager_->removeStream(running->id)) return false;
 
+    // createTxStream, not createTxStreamFlows: this is ONE flow, and the flow
+    // builder numbers the flows it creates from zero. Re-addressing flow 2 of
+    // four through it gave that flow flow 0's source port, which under the
+    // Dolby scheme -- where the source port is what identifies a flow --
+    // collided with the flow still running beside it. The source port is the
+    // one this flow already had.
+    const uint16_t sourcePort = wasStopped
+        ? stoppedSourcePort
+        : streamManager_->getSourcePort(running->id).value_or(0);
+    const StreamID createdId = streamManager_->createTxStream(
+        name, address, port, channels, wantedMapping, sourcePort);
     const std::vector<StreamID> created =
-        streamManager_->createTxStreamFlows(name, address, port, channels, wantedMapping);
+        createdId.isNull() ? std::vector<StreamID>{} : std::vector<StreamID>{createdId};
+
+    if (!created.empty() && wasStopped) {
+        std::lock_guard<std::mutex> lock(stoppedSendersMutex_);
+        stoppedSenders_.erase(senderId);
+    }
     if (created.empty()) {
         AES67_LOGF("AES67Device: sender '%s' could not be re-addressed to %s:%u — "
                    "it is now down", name.c_str(), address.c_str(), port);
@@ -1091,6 +1140,8 @@ AES67Device::~AES67Device() {
     if (rtcpMonitor_) rtcpMonitor_->stop();
     // Same reason as the observers above: the browser's thread can call
     // back, so it stops before anything it might reach is torn down.
+    // Both discoverers stopped before anything they write into goes away.
+    if (sapListener_) sapListener_->stop();
     if (rtspDiscovery_) rtspDiscovery_->stop();
     if (rtspServer_) rtspServer_->stop();
     // Telling the registry beats leaving it to time us out: a controller

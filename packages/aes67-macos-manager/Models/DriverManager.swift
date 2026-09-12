@@ -1159,7 +1159,10 @@ class DriverManager: ObservableObject {
 
     /// `openLoginItems` adds a button that opens the Login Items pane, for the
     /// one case where the message is asking the user to go there.
-    private func showAlert(title: String, message: String, openLoginItems: Bool = false) {
+    /// Not private: the discovery window refuses a session whose description
+    /// names a port that is not one, and says so the same way everything else
+    /// here does.
+    func showAlert(title: String, message: String, openLoginItems: Bool = false) {
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = title

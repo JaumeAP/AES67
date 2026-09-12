@@ -193,6 +193,23 @@ final class NmosController: NSObject, ObservableObject {
     /// source. The driver applies it by re-creating the transmit stream at
     /// that destination, which is also what assigns the per-flow source ports
     /// that scheme identifies flows by.
+    /// Stops `previous` and only then points `sender` at the destination.
+    ///
+    /// Two PATCHes from two detached tasks race, and the one that loses can be
+    /// the stop -- which leaves both senders on one address, the collision the
+    /// ordering exists to avoid.
+    func move(from previous: NmosSender?, to sender: NmosSender,
+              destination multicastAddress: String, port: Int) {
+        Task { [weak self] in
+            guard let self else { return }
+            if let previous {
+                await self.stopSending(previous)
+            }
+            await self.sendTo(sender, multicastAddress: multicastAddress, port: port)
+            self.refresh()
+        }
+    }
+
     func send(sender: NmosSender, to multicastAddress: String, port: Int) {
         guard let node = nodes.first(where: { $0.id == sender.nodeId }),
               let root = node.connectionRoot else {
@@ -259,6 +276,35 @@ final class NmosController: NSObject, ObservableObject {
                 self.lastError = error.localizedDescription
             }
             self.refresh()
+        }
+    }
+
+    private func stopSending(_ sender: NmosSender) async {
+        guard let node = nodes.first(where: { $0.id == sender.nodeId }),
+              let root = node.connectionRoot else { return }
+        inFlight.insert(sender.id)
+        defer { inFlight.remove(sender.id) }
+        do {
+            try await patch(root.appendingPathComponent("single/senders/\(sender.id)/staged"),
+                            body: NmosPatch.stopSending())
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func sendTo(_ sender: NmosSender, multicastAddress: String, port: Int) async {
+        guard let node = nodes.first(where: { $0.id == sender.nodeId }),
+              let root = node.connectionRoot else {
+            lastError = "That sender is on a node without a connection API."
+            return
+        }
+        inFlight.insert(sender.id)
+        defer { inFlight.remove(sender.id) }
+        do {
+            try await patch(root.appendingPathComponent("single/senders/\(sender.id)/staged"),
+                            body: NmosPatch.sendTo(multicastAddress: multicastAddress, port: port))
+        } catch {
+            lastError = error.localizedDescription
         }
     }
 

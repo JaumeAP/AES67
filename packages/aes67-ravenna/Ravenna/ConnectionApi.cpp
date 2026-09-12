@@ -65,8 +65,15 @@ std::vector<std::string> segmentsOf(const std::string& path) {
 
 }  // namespace
 
-JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile,
-                      bool includeSenderId) {
+/// One resource's state, in the shape IS-05 defines for it.
+///
+/// The two shapes are not the same and the schema says so: a SENDER carries
+/// `receiver_id` and no transport file -- it is the thing being described,
+/// not the thing being told -- and a RECEIVER carries `sender_id` and the
+/// transport file it was given. Writing a sender's own SDP into its staged
+/// response failed validation for "transport_file was unexpected", and its
+/// missing receiver_id failed another test outright.
+JsonValue stateAsJson(const ConnectionState& state, bool forSender) {
     JsonObject activation;
     activation["mode"] = state.activationMode == "null" ? JsonValue()
                                                         : JsonValue(state.activationMode);
@@ -82,11 +89,15 @@ JsonValue stateAsJson(const ConnectionState& state, bool includeTransportFile,
     // one is how a controller ends up waiting for a stream nobody sends.
     object["transport_params"] = JsonValue(JsonArray{JsonValue(JsonObject{})});
 
-    if (includeSenderId) {
+    if (forSender) {
+        // Which receiver asked for this sender, when a controller said. Null
+        // is the normal answer and a legal one.
+        object["receiver_id"] = state.senderId.empty() ? JsonValue() : JsonValue(state.senderId);
+    } else {
         object["sender_id"] = state.senderId.empty() ? JsonValue() : JsonValue(state.senderId);
     }
 
-    if (includeTransportFile) {
+    if (!forSender) {
         JsonObject file;
         if (state.transportFile.empty()) {
             file["data"] = JsonValue();
@@ -211,7 +222,7 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
     if (activationMode.empty()) {
         // Staged and not activated, which is the normal first half of the
         // exchange: a controller stages, checks, then activates.
-        return jsonResponse(200, stateAsJson(found->second.staged, true, true));
+        return jsonResponse(200, stateAsJson(found->second.staged, /*forSender=*/false));
     }
 
     if (staged.masterEnable && staged.transportFile.empty()) {
@@ -236,7 +247,7 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
     found->second.staged.activationMode = "null";
     found->second.staged.activationTime.clear();
 
-    return jsonResponse(200, stateAsJson(found->second.active, true, true));
+    return jsonResponse(200, stateAsJson(found->second.active, /*forSender=*/false));
 }
 
 ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::string& body) {
@@ -272,7 +283,7 @@ ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::s
     staged.transportFile = found->second.sdp;
     found->second.staged = staged;
 
-    if (activationMode.empty()) return jsonResponse(200, stateAsJson(found->second.staged, true));
+    if (activationMode.empty()) return jsonResponse(200, stateAsJson(found->second.staged, /*forSender=*/true));
 
     ConnectionState active = staged;
     active.activationMode = "activate_immediate";
@@ -281,7 +292,7 @@ ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::s
     found->second.staged.activationMode = "null";
     found->second.staged.activationTime.clear();
 
-    return jsonResponse(200, stateAsJson(found->second.active, true));
+    return jsonResponse(200, stateAsJson(found->second.active, /*forSender=*/true));
 }
 
 ApiResponse ConnectionApi::handle(const std::string& method, const std::string& path,
@@ -300,10 +311,21 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
     }
 
     if (segments[0] == "bulk") {
-        // Not implemented, and said so: a controller that gets a 501 uses the
-        // single endpoints, while one that gets a 404 may decide the device
-        // is broken.
-        return errorResponse(501, "bulk is not implemented; use single/");
+        // The resource exists and the method is what is not supported, which
+        // is 405 and not 501: IS-05's bulk endpoints are defined, this device
+        // serves no POST to them, and a 501 there says the whole resource is
+        // unimplemented. GET is answered as the listing it is.
+        if (segments.size() == 1) return listResponse({"senders/", "receivers/"});
+        if (segments.size() == 2 &&
+            (segments[1] == "senders" || segments[1] == "receivers")) {
+            // GET is a listing of what has been staged in bulk, which here is
+            // nothing: an empty array is the true answer and the one a
+            // controller can read. POST is the method this device does not
+            // serve, and 405 says so without claiming the resource is absent.
+            if (method == "GET") return jsonResponse(200, JsonValue(JsonArray{}));
+            return errorResponse(405, "bulk staging is not served here; use single/");
+        }
+        return errorResponse(404, "no such resource");
     }
 
     if (segments[0] != "single") return errorResponse(404, "no such resource");
@@ -357,10 +379,25 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
 
     if (leaf == "constraints") {
         if (method != "GET") return errorResponse(405, "only GET here");
-        // One leg, and no constraints on it beyond that. Empty is a valid
-        // answer and an honest one: this device has nothing to restrict that
-        // the transport file does not already say.
-        return jsonResponse(200, JsonValue(JsonArray{JsonValue(JsonObject{})}));
+        // IS-05 SS 4.2: the constraints of a leg name every transport
+        // parameter that leg has, even when the device constrains none of
+        // them -- a controller reads this to know what it may stage, and an
+        // empty object told it nothing existed. The values here are the
+        // parameters this transport actually carries, with no bounds on them
+        // beyond the ones the schema already sets.
+        JsonObject leg;
+        leg["destination_port"] = JsonValue(JsonObject{});
+        leg["rtp_enabled"] = JsonValue(JsonObject{});
+        if (isSender) {
+            leg["source_ip"] = JsonValue(JsonObject{});
+            leg["source_port"] = JsonValue(JsonObject{});
+            leg["destination_ip"] = JsonValue(JsonObject{});
+        } else {
+            leg["source_ip"] = JsonValue(JsonObject{});
+            leg["interface_ip"] = JsonValue(JsonObject{});
+            leg["multicast_ip"] = JsonValue(JsonObject{});
+        }
+        return jsonResponse(200, JsonValue(JsonArray{JsonValue(leg)}));
     }
 
     if (leaf == "transportfile") {
@@ -380,11 +417,12 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
             if (isSender) {
                 const ConnectionSender& sender = senders_[id];
                 return jsonResponse(200, stateAsJson(wantStaged ? sender.staged : sender.active,
-                                                     true));
+                                                    /*forSender=*/true));
             }
             const ConnectionReceiver& receiver = receivers_[id];
             return jsonResponse(
-                200, stateAsJson(wantStaged ? receiver.staged : receiver.active, true, true));
+                200, stateAsJson(wantStaged ? receiver.staged : receiver.active,
+                                 /*forSender=*/false));
         }
 
         if (method == "PATCH") {

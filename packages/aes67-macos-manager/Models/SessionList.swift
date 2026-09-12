@@ -73,8 +73,17 @@ struct UnifiedSession: Identifiable, Equatable {
     let nmosSenderId: String?
 
     /// The destination is the identity here: two routes describing one flow
-    /// agree on where the audio is, whatever they disagree on elsewhere.
-    var id: String { "\(multicastAddress):\(port)" }
+    /// agree on where the audio is, whatever they disagree on elsewhere. A
+    /// session with no destination has none to agree on -- an NMOS sender
+    /// whose transport file could not be read -- so it is identified by the
+    /// sender it came from, or every unreadable one would collapse into a
+    /// single row.
+    var id: String {
+        guard !multicastAddress.isEmpty, port > 0 else {
+            return "sender:" + (nmosSenderId ?? name)
+        }
+        return "\(multicastAddress):\(port)"
+    }
 
     var routeLabel: String {
         routes.isEmpty ? "—" : routes.map(\.label).joined(separator: " + ")

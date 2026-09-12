@@ -32,8 +32,13 @@ struct TempConfig {
     std::string path;
 
     explicit TempConfig(const std::string& contents) {
-        path = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") +
-               "aes67-discovery-test.json";
+        // TMPDIR ends in a slash on macOS and is unset on the Linux that
+        // builds this package, where the concatenation used to produce
+        // /tmpaes67-discovery-test.json at the filesystem root -- unwritable,
+        // and the failure looked like the settings manager's.
+        std::string directory = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
+        if (directory.empty() || directory.back() != '/') directory += '/';
+        path = directory + "aes67-discovery-test.json";
         if (!contents.empty()) {
             std::ofstream file(path);
             file << contents;

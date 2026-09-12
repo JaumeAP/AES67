@@ -382,6 +382,7 @@ StreamID StreamManager::createTxStream(
     // Create RTP transmitter. Same as the receiver above: make_unique either
     // returns an object or throws.
     managed.transmitter = createTransmitter(sdp, completeMapping, /*networkInterface=*/"", sourcePort);
+    managed.sourcePort = sourcePort;
 
     // Only start transmitter if IO is active (a Core Audio client has called StartIO).
     // Otherwise the stream is created dormant and will be started by setIOActive(true).
@@ -779,6 +780,13 @@ size_t StreamManager::updateReceiveStreamsFromAnnouncement(const SDPSession& ann
         }
     }
     return followed;
+}
+
+std::optional<uint16_t> StreamManager::getSourcePort(const StreamID& id) const {
+    std::lock_guard<std::mutex> lock(streamsMutex_);
+    const auto it = streams_.find(id);
+    if (it == streams_.end() || !it->second.isTransmit) return std::nullopt;
+    return it->second.sourcePort;
 }
 
 std::optional<StreamInfo> StreamManager::getStreamInfo(const StreamID& id) const {
