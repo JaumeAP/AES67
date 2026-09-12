@@ -485,6 +485,82 @@ class DriverManager: ObservableObject {
         }
     }
 
+    // MARK: - Discovery Routes
+    //
+    // Whether discovery follows the active profile or runs every route
+    // regardless of it (NetworkEngine/DiscoverySettings.h). Same file
+    // convention and same privileged path as the activation flag above, and
+    // for the same reason: the driver reads it from inside coreaudiod, whose
+    // HOME is not the logged-in user's, so a copy under ~/Library would never
+    // be seen.
+
+    private static let discoveryPath =
+        "/Library/Application Support/AES67Driver/discovery.json"
+
+    /// True when the installation has asked to be findable every way. Absent
+    /// file means false, which is what the profile alone deciding looks like.
+    @Published var discoveryRunsEveryRoute: Bool = false
+
+    func loadDiscoverySettings() {
+        guard let data = FileManager.default.contents(atPath: Self.discoveryPath),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let every = obj["runEveryRoute"] as? Bool else {
+            discoveryRunsEveryRoute = false
+            return
+        }
+        discoveryRunsEveryRoute = every
+    }
+
+    /// Writes the flag and restarts Core Audio so the plug-in is constructed
+    /// again and reads it. Like every other startup-read setting here, there
+    /// is no live channel into a running driver.
+    func setDiscoveryRunsEveryRoute(_ every: Bool) {
+        let directory = (Self.discoveryPath as NSString).deletingLastPathComponent
+        let json = "{\n  \"runEveryRoute\": \(every ? "true" : "false")\n}\n"
+
+        // Staged unprivileged and copied into place by the privileged script,
+        // never echoed from inside it: a shell command is an AppleScript
+        // string literal, and JSON is double quotes and newlines.
+        let staged = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("aes67-discovery-\(UUID().uuidString).json")
+        do {
+            try json.write(to: staged, atomically: true, encoding: .utf8)
+        } catch {
+            showAlert(title: "Discovery Setting Failed",
+                      message: "Could not write the setting: \(error.localizedDescription)")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: staged) }
+
+        let q = PrivilegedScript.shellQuoted
+        guard let source = PrivilegedScript.adminShell([
+            "mkdir -p \(q(directory))",
+            "/bin/cp \(q(staged.path)) \(q(Self.discoveryPath))",
+            "chown root:wheel \(q(Self.discoveryPath))",
+            "chmod 644 \(q(Self.discoveryPath))",
+            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+        ]) else {
+            showAlert(title: "Discovery Setting Failed",
+                      message: "The command could not be built. This is a defect, not something "
+                             + "to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+
+        if let error = error {
+            showAlert(title: "Discovery Setting Failed",
+                      message: "Could not change the setting: "
+                             + "\(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+        }
+        // Read back rather than trusting the write: the switch shows what the
+        // driver will actually see.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.loadDiscoverySettings()
+        }
+    }
+
     // MARK: - PTP Master Clock Source
     //
     // This is the one piece of PTP master configuration that's real, not

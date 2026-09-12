@@ -175,6 +175,29 @@ struct NetworkSettings: View {
                       : "")
             }
 
+            // What the profile decides is the format; being findable is the
+            // installation's call. Off, discovery is whatever the active
+            // profile speaks -- SAP for Dante, DNS-SD and RTSP for RAVENNA,
+            // nothing at all for Dolby, which is configured by hand. On, all
+            // of them run, which is what a room with two ecosystems on one
+            // switch needs in order to be visible to both controllers.
+            Section("Discovery") {
+                Toggle("Run every discovery route, whatever the profile",
+                       isOn: Binding(get: { driverManager.discoveryRunsEveryRoute },
+                                     set: { driverManager.setDiscoveryRunsEveryRoute($0) }))
+                Text(driverManager.discoveryRunsEveryRoute
+                     ? "SAP, DNS-SD with RTSP and NMOS all run. The profile still decides the "
+                       + "formats."
+                     : "Discovery follows the active profile: "
+                       + "\(driverManager.activeCompatibilityProfile.name).")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("Changing this restarts Core Audio and asks for an administrator password: "
+                     + "the driver reads the setting when Core Audio builds it.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section("Multicast Defaults") {
                 HStack {
                     Text("Default TTL")
@@ -196,6 +219,7 @@ struct NetworkSettings: View {
         .padding()
         .onAppear {
             availableInterfaces = getNetworkInterfaces()
+            driverManager.loadDiscoverySettings()
         }
     }
 

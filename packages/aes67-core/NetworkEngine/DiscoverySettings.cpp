@@ -34,10 +34,16 @@ bool extractBool(const std::string& json, const std::string& key, bool& out) {
 } // namespace
 
 DiscoverySettingsManager::DiscoverySettingsManager() {
-    configPath_ = findExistingConfig(kConfigPathEnvVar, kDefaultConfigFile);
+    // /Library ahead of the per-user copy, for the same reason the device
+    // activation flag does it: this is written through an administrator
+    // prompt and read by a driver constructed inside coreaudiod, whose HOME
+    // is not the logged-in user's. A stray copy under some home directory
+    // must not decide whether a room is findable.
+    constexpr bool kSystemBeforeHome = true;
+    configPath_ = findExistingConfig(kConfigPathEnvVar, kDefaultConfigFile, kSystemBeforeHome);
     if (configPath_.empty()) {
         const std::vector<std::string> paths =
-            configSearchPaths(kConfigPathEnvVar, kDefaultConfigFile);
+            configSearchPaths(kConfigPathEnvVar, kDefaultConfigFile, kSystemBeforeHome);
         configPath_ = paths.empty()
             ? std::string("/Library/Application Support/AES67Driver/") + kDefaultConfigFile
             : paths.front();
