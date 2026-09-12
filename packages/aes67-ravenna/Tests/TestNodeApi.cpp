@@ -282,3 +282,73 @@ TEST_CASE("The instance name is one label, whatever the node is labelled") {
     // The host name keeps its dots: that is the name the A record answers to.
     CHECK(advertised.hostName == "box.local");
 }
+
+TEST_CASE("IS-04 reports the subscriptions IS-05 was told to make") {
+    // The two APIs answer the same question -- who is connected to whom --
+    // and IS-04's half was written out by hand as null, so a controller that
+    // made a route with IS-05 read IS-04 afterwards and saw nothing routed.
+    SessionCatalogue catalogue;
+    std::string error;
+    REQUIRE(catalogue.add(sessionNamed("Mix A"), error));
+
+    ConnectionApi connections;
+
+    ConnectionSender sender;
+    sender.id = "5cd71600-d803-50aa-a55c-d2489b9545e9";
+    sender.label = "Mix A";  // what joins it to the catalogue's session
+    sender.sdp = "v=0\r\no=- 1 1 IN IP4 192.168.1.50\r\ns=Mix A\r\n"
+                 "c=IN IP4 239.69.1.10/32\r\nt=0 0\r\nm=audio 5004 RTP/AVP 96\r\n";
+    connections.addSender(sender);
+
+    ConnectionReceiver receiver;
+    receiver.id = "receiver-1";
+    receiver.label = "Inputs 1-2";
+    connections.addReceiver(receiver);
+
+    NodeApi node(identity(), catalogue, connections);
+
+    SUBCASE("nothing routed yet, and both ends say so") {
+        const JsonValue senders = bodyOf(node.handle("GET", path("/senders/"), ""));
+        REQUIRE(senders.asArray().size() == 1);
+        CHECK(senders.asArray()[0]["subscription"]["receiver_id"].isNull());
+        // This sender streams whether or not anyone asked for it.
+        CHECK(senders.asArray()[0]["subscription"]["active"].asBool() == true);
+
+        const JsonValue receivers = bodyOf(node.handle("GET", path("/receivers/"), ""));
+        CHECK(receivers.asArray()[0]["subscription"]["sender_id"].isNull());
+    }
+
+    SUBCASE("a route made over IS-05 shows up on both ends") {
+        JsonObject file;
+        file["data"] = JsonValue(sender.sdp);
+        file["type"] = JsonValue("application/sdp");
+        JsonObject connect;
+        connect["sender_id"] = JsonValue(sender.id);
+        connect["master_enable"] = JsonValue(true);
+        connect["transport_file"] = JsonValue(file);
+        connect["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+        REQUIRE(connections
+                    .handle("PATCH",
+                            std::string(kConnectionApiRoot) +
+                                "/single/receivers/receiver-1/staged/",
+                            JsonValue(connect).serialise())
+                    .status == 200);
+
+        JsonObject subscribe;
+        subscribe["receiver_id"] = JsonValue("receiver-1");
+        subscribe["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+        REQUIRE(connections
+                    .handle("PATCH",
+                            std::string(kConnectionApiRoot) + "/single/senders/" + sender.id +
+                                "/staged/",
+                            JsonValue(subscribe).serialise())
+                    .status == 200);
+
+        const JsonValue senders = bodyOf(node.handle("GET", path("/senders/"), ""));
+        CHECK(senders.asArray()[0]["subscription"]["receiver_id"].asString() == "receiver-1");
+
+        const JsonValue receivers = bodyOf(node.handle("GET", path("/receivers/"), ""));
+        CHECK(receivers.asArray()[0]["subscription"]["sender_id"].asString() == sender.id);
+        CHECK(receivers.asArray()[0]["subscription"]["active"].asBool() == true);
+    }
+}
