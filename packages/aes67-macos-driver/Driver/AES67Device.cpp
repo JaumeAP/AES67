@@ -297,7 +297,14 @@ void AES67Device::Initialize() {
                 streamManager_->updateReceiveStreamsFromAnnouncement(*parsed);
             });
 
-        if (sapListener_->initialize() && sapListener_->start()) {
+        // Joined on the interface the audio is on, the way RTPSocket joins:
+        // INADDR_ANY leaves the choice to the routing table, which on a
+        // machine whose audio network is a second interface is the wrong one.
+        const std::string sapListenInterface = NetworkInterfaceDetection::detectPTPInterface();
+        const std::string sapListenAddress = sapListenInterface.empty()
+            ? std::string{}
+            : NetworkInterfaceDetection::getInterfaceIPAddress(sapListenInterface);
+        if (sapListener_->initialize(sapListenAddress) && sapListener_->start()) {
             AES67_LOG("AES67Device: SAP discovery listening on 224.2.127.254:9875");
         } else {
             AES67_LOG("AES67Device: SAP discovery unavailable — continuing without it");

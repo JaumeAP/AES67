@@ -65,8 +65,16 @@ public:
     SAPListener();
     ~SAPListener();
     
-    // Initialize the SAP listener
-    bool initialize();
+    /// Initialize the SAP listener.
+    ///
+    /// `interfaceIP` is the local address of the interface to join the SAP
+    /// groups on -- the same one the audio is on. Empty means INADDR_ANY,
+    /// which is what this always did and what leaves the choice to the
+    /// kernel's routing table: on a machine whose audio network is a second
+    /// interface, that listened on the wrong one, and on loopback it heard
+    /// nothing at all while RTPSocket, which has always joined on the
+    /// configured interface, heard everything.
+    bool initialize(const std::string& interfaceIP = std::string());
     
     // Start listening for SAP announcements
     bool start();

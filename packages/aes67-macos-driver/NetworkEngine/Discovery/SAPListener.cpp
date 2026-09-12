@@ -25,7 +25,7 @@ public:
         stop();
     }
     
-    bool initialize() {
+    bool initialize(const std::string& interfaceIP) {
         // Create UDP socket
         sockFd_ = socket(AF_INET, SOCK_DGRAM, 0);
         if (sockFd_ < 0) {
@@ -74,12 +74,26 @@ public:
         //    the listener couldn't hear it.
         // Joining at least one must succeed; a group that fails to join is
         // logged and skipped rather than failing the whole listener.
+        // The interface to join on: the one the audio is on when the caller
+        // named it, and the kernel's choice when it did not.
+        in_addr joinInterface{};
+        joinInterface.s_addr = htonl(INADDR_ANY);
+        if (!interfaceIP.empty()) {
+            const in_addr_t parsed = inet_addr(interfaceIP.c_str());
+            if (parsed != INADDR_NONE) {
+                joinInterface.s_addr = parsed;
+            } else {
+                std::cerr << "SAP: interface address '" << interfaceIP
+                          << "' is not an IPv4 literal — joining on any interface" << '\n';
+            }
+        }
+
         const char* groups[] = {"224.2.127.254", "239.255.255.255"};
         int joined = 0;
         for (const char* group : groups) {
             struct ip_mreq mreq;
             mreq.imr_multiaddr.s_addr = inet_addr(group);
-            mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+            mreq.imr_interface = joinInterface;
             if (setsockopt(sockFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == 0) {
                 ++joined;
             } else {
@@ -94,8 +108,7 @@ public:
 
         // Keep those memberships alive across an interface flap.
         for (const char* group : groups) {
-            in_addr any{}; any.s_addr = htonl(INADDR_ANY);
-            rejoiner_.add(sockFd_, group, any);
+            rejoiner_.add(sockFd_, group, joinInterface);
         }
 
         return true;
@@ -492,8 +505,8 @@ SAPListener::SAPListener() : pimpl_(std::make_unique<Impl>()) {
 
 SAPListener::~SAPListener() = default;
 
-bool SAPListener::initialize() {
-    return pimpl_->initialize();
+bool SAPListener::initialize(const std::string& interfaceIP) {
+    return pimpl_->initialize(interfaceIP);
 }
 
 bool SAPListener::start() {

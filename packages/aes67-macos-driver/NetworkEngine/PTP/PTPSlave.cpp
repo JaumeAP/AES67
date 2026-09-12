@@ -188,15 +188,24 @@ void PTPSlave::stop() {
 
     running_.store(false, std::memory_order_release);
 
-    // Close sockets to unblock recv()
-    closeSockets();
-
+    // Join first, close after. Closing here to unblock recv() was a data
+    // race on eventSocket_ and generalSocket_ -- plain ints written by this
+    // thread while receiveThread() read them to build its fd_set
+    // (ThreadSanitizer, TestPTPClock) -- and worse than a race in principle:
+    // a descriptor closed while another thread is about to select() on it can
+    // be reused by the kernel for something else before that thread notices.
+    // Nothing needs the close to unblock anything: the receive loop polls
+    // running_ on a 250 ms select timeout and the delay-request loop on a
+    // 50 ms sleep, so the join costs a quarter of a second at most -- and it
+    // cost that before too, since a closed socket wakes neither of them.
     if (receiveThread_.joinable()) {
         receiveThread_.join();
     }
     if (delayReqThread_.joinable()) {
         delayReqThread_.join();
     }
+
+    closeSockets();
 
     locked_.store(false, std::memory_order_release);
 
