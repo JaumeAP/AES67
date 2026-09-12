@@ -1,7 +1,10 @@
 #include "Ravenna/ConnectionApi.h"
 
+#include "Driver/SDPParser.h"
+
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <ctime>
 
 namespace AES67::Ravenna {
@@ -63,6 +66,121 @@ std::vector<std::string> segmentsOf(const std::string& path) {
     return segments;
 }
 
+/// The transport parameters of one leg, in the names IS-05 gives them for
+/// urn:x-nmos:transport:rtp.mcast -- the same names `constraints` publishes --
+/// read out of the transport file. An empty object here told a controller
+/// nothing, and these are what it reads back to see where a connection went.
+///
+/// "auto" is IS-05's own word for a value the device picks. A sender's source
+/// port and a receiver's interface are not in an SDP, and this device gives a
+/// controller no way to choose either.
+JsonObject transportParamsFromSdp(const std::string& sdp, bool forSender, bool rtpEnabled) {
+    std::optional<SDPSession> session;
+    if (!sdp.empty()) session = SDPParser::parseString(sdp);
+
+    // An address the session does not carry is null, not an empty string: the
+    // schema takes null for "this device has not been told", and "" for an
+    // address that is not one.
+    const auto address = [](const std::string& value) {
+        return value.empty() ? JsonValue() : JsonValue(value);
+    };
+
+    JsonObject leg;
+    leg["rtp_enabled"] = JsonValue(rtpEnabled);
+    if (forSender) {
+        leg["source_ip"] = session ? address(session->originAddress) : JsonValue();
+        leg["source_port"] = JsonValue("auto");
+        leg["destination_ip"] = session ? address(session->connectionAddress) : JsonValue();
+    } else {
+        // The source this receiver filters on, a=source-filter, and null when
+        // the sender named none, which means any source on the group.
+        leg["source_ip"] = session ? address(session->sourceAddress) : JsonValue();
+        leg["interface_ip"] = JsonValue("auto");
+        leg["multicast_ip"] = session ? address(session->connectionAddress) : JsonValue();
+    }
+    leg["destination_port"] =
+        session ? JsonValue(static_cast<int>(session->port)) : JsonValue();
+    return leg;
+}
+
+/// Whether this transport has a parameter of that name on that side. What
+/// `constraints` publishes and what a PATCH may name are the same list, and a
+/// controller naming anything else has misunderstood the device.
+bool isKnownTransportParam(const std::string& name, bool forSender) {
+    if (name == "rtp_enabled" || name == "source_ip" || name == "destination_port") return true;
+    return forSender ? (name == "source_port" || name == "destination_ip")
+                     : (name == "interface_ip" || name == "multicast_ip");
+}
+
+/// Reads a PATCHed `transport_params` and folds it into the overrides a state
+/// carries. False, with `error` filled, when it is not something this
+/// transport can take -- IS-05 sec 5 answers that with a 400 rather than
+/// taking the request and dropping what it did not understand.
+bool applyTransportParams(const JsonValue& params, bool forSender, JsonObject& overrides,
+                          std::string& error) {
+    if (!params.isArray()) {
+        error = "transport_params has to be an array";
+        return false;
+    }
+    // One leg, because one stream. A controller staging two has the wrong
+    // device, and taking the first would connect half of what it asked for.
+    if (params.asArray().size() != 1) {
+        error = "this device has one leg, not " + std::to_string(params.asArray().size());
+        return false;
+    }
+    const JsonValue& leg = params.asArray().front();
+    if (!leg.isObject()) {
+        error = "each leg has to be an object";
+        return false;
+    }
+
+    for (const auto& [name, value] : leg.asObject()) {
+        if (!isKnownTransportParam(name, forSender)) {
+            error = "no transport parameter called " + name;
+            return false;
+        }
+        // Null is a controller dropping what it had fixed, whichever name it
+        // is: the value goes back to the transport file's, so there is no
+        // type to check against.
+        if (value.isNull()) continue;
+
+        if (name == "rtp_enabled") {
+            if (!value.isBool()) {
+                error = "rtp_enabled has to be a boolean";
+                return false;
+            }
+        } else if (name == "destination_port" || name == "source_port") {
+            // A port is a number or the word "auto", which asks the device to
+            // pick one.
+            const bool picksItself = value.isString() && value.asString() == "auto";
+            if (!picksItself && !value.isNumber()) {
+                error = name + " has to be a port number or \"auto\"";
+                return false;
+            }
+            if (value.isNumber() && (value.asNumber() < 0 || value.asNumber() > 65535)) {
+                error = name + " is outside the port range";
+                return false;
+            }
+        } else if (!value.isString()) {
+            error = name + " has to be an address, or null to let the file say";
+            return false;
+        }
+    }
+
+    // Written only once the whole leg has been read, so a leg with one bad
+    // name leaves nothing half-applied.
+    for (const auto& [name, value] : leg.asObject()) {
+        // Null is how a controller drops what it fixed: the parameter goes
+        // back to whatever the transport file says.
+        if (value.isNull()) {
+            overrides.erase(name);
+        } else {
+            overrides[name] = value;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 /// One resource's state, in the shape IS-05 defines for it.
@@ -87,12 +205,18 @@ JsonValue stateAsJson(const ConnectionState& state, bool forSender) {
     // One leg, because one stream: IS-05 carries an array here so a device
     // with a redundant pair can describe both, and saying two when there is
     // one is how a controller ends up waiting for a stream nobody sends.
-    object["transport_params"] = JsonValue(JsonArray{JsonValue(JsonObject{})});
+    JsonObject leg = transportParamsFromSdp(state.transportFile, forSender, state.masterEnable);
+    // What a controller fixed by PATCH wins over what the transport file
+    // says, which is the order IS-05 sets: the file fills the parameters in
+    // and the controller corrects them afterwards.
+    for (const auto& [name, value] : state.transportParams) leg[name] = value;
+    object["transport_params"] = JsonValue(JsonArray{JsonValue(leg)});
 
     if (forSender) {
         // Which receiver asked for this sender, when a controller said. Null
         // is the normal answer and a legal one.
-        object["receiver_id"] = state.senderId.empty() ? JsonValue() : JsonValue(state.senderId);
+        object["receiver_id"] =
+            state.receiverId.empty() ? JsonValue() : JsonValue(state.receiverId);
     } else {
         object["sender_id"] = state.senderId.empty() ? JsonValue() : JsonValue(state.senderId);
     }
@@ -199,6 +323,14 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
         }
     }
 
+    if (patch.has("transport_params")) {
+        std::string reason;
+        if (!applyTransportParams(patch["transport_params"], /*forSender=*/false,
+                                  staged.transportParams, reason)) {
+            return errorResponse(400, reason);
+        }
+    }
+
     std::string activationMode;
     if (patch.has("activation")) {
         const JsonValue& activation = patch["activation"];
@@ -257,12 +389,35 @@ ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::s
     JsonValue patch;
     std::string error;
     if (!parseJson(body, patch, error)) return errorResponse(400, "the body is not JSON: " + error);
+    if (!patch.isObject()) return errorResponse(400, "the body has to be an object");
 
     ConnectionState staged = found->second.staged;
     if (patch.has("master_enable")) {
         const JsonValue& enable = patch["master_enable"];
         if (!enable.isBool()) return errorResponse(400, "master_enable has to be a boolean");
         staged.masterEnable = enable.asBool();
+    }
+
+    if (patch.has("receiver_id")) {
+        // The far end of the subscription, which a controller sets when it
+        // routes this sender somewhere. Null is how it says "nobody", the
+        // same way a receiver is cleared with a null sender_id.
+        const JsonValue& receiverId = patch["receiver_id"];
+        if (receiverId.isNull()) {
+            staged.receiverId.clear();
+        } else if (receiverId.isString()) {
+            staged.receiverId = receiverId.asString();
+        } else {
+            return errorResponse(400, "receiver_id has to be a string or null");
+        }
+    }
+
+    if (patch.has("transport_params")) {
+        std::string reason;
+        if (!applyTransportParams(patch["transport_params"], /*forSender=*/true,
+                                  staged.transportParams, reason)) {
+            return errorResponse(400, reason);
+        }
     }
 
     std::string activationMode;

@@ -334,3 +334,149 @@ TEST_CASE("A receiver reports which sender it was connected to") {
                      R"({"sender_id":7})")
               .status == 400);
 }
+
+TEST_CASE("A sender's transport parameters are the ones its own SDP announces") {
+    // IS-05 sec 4: transport_params is what a controller reads to see where a
+    // stream actually goes. An empty object there is schema-valid and useless,
+    // and the suite reads these back after every connection it makes.
+    ConnectionApi api = apiWithOne();
+
+    const JsonValue staged = bodyOf(api.handle("GET", path("/single/senders/sender-1/staged/"), ""));
+    REQUIRE(staged["transport_params"].isArray());
+    REQUIRE(staged["transport_params"].asArray().size() == 1);
+
+    const JsonValue& leg = staged["transport_params"].asArray().front();
+    CHECK(leg["source_ip"].asString() == "192.168.1.50");       // o=
+    CHECK(leg["destination_ip"].asString() == "239.69.1.10");   // c=
+    CHECK(leg["destination_port"].asNumber() == 5004);          // m=
+    // Not in an SDP and not a controller's to choose here.
+    CHECK(leg["source_port"].asString() == "auto");
+    CHECK(leg["rtp_enabled"].asBool() == false);
+}
+
+TEST_CASE("A receiver's transport parameters come from the file it was given") {
+    ConnectionApi api = apiWithOne();
+
+    // Before anything is staged there is nothing to report, and null is how
+    // the schema says so.
+    const JsonValue empty = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/staged/"), ""));
+    CHECK(empty["transport_params"].asArray().front()["multicast_ip"].isNull());
+
+    JsonObject file;
+    file["data"] = JsonValue(kSdp);
+    file["type"] = JsonValue("application/sdp");
+    JsonObject connect;
+    connect["master_enable"] = JsonValue(true);
+    connect["transport_file"] = JsonValue(file);
+    connect["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+    REQUIRE(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                       JsonValue(connect).serialise())
+                .status == 200);
+
+    const JsonValue active = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/active/"), ""));
+    const JsonValue& leg = active["transport_params"].asArray().front();
+    CHECK(leg["multicast_ip"].asString() == "239.69.1.10");
+    CHECK(leg["destination_port"].asNumber() == 5004);
+    CHECK(leg["interface_ip"].asString() == "auto");
+    CHECK(leg["rtp_enabled"].asBool() == true);
+    // This SDP names no a=source-filter, so the receiver takes the group from
+    // any source and says so.
+    CHECK(leg["source_ip"].isNull());
+}
+
+TEST_CASE("What a controller fixes wins over the transport file, and null gives it back") {
+    ConnectionApi api = apiWithOne();
+
+    JsonObject file;
+    file["data"] = JsonValue(kSdp);
+    file["type"] = JsonValue("application/sdp");
+    REQUIRE(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                       JsonValue(JsonObject{{"transport_file", JsonValue(file)}}).serialise())
+                .status == 200);
+
+    const ApiResponse fixed =
+        api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                   R"({"transport_params":[{"destination_port":5006,"interface_ip":"10.0.0.7"}]})");
+    REQUIRE(fixed.status == 200);
+    const JsonValue leg = bodyOf(fixed)["transport_params"].asArray().front();
+    CHECK(leg["destination_port"].asNumber() == 5006);
+    CHECK(leg["interface_ip"].asString() == "10.0.0.7");
+    // Untouched, so still the file's.
+    CHECK(leg["multicast_ip"].asString() == "239.69.1.10");
+
+    const ApiResponse released =
+        api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                   R"({"transport_params":[{"destination_port":null}]})");
+    REQUIRE(released.status == 200);
+    CHECK(bodyOf(released)["transport_params"].asArray().front()["destination_port"].asNumber() ==
+          5004);
+}
+
+TEST_CASE("A transport_params a controller cannot have meant is a 400") {
+    ConnectionApi api = apiWithOne();
+    const std::string receiver = path("/single/receivers/receiver-1/staged/");
+    const std::string sender = path("/single/senders/sender-1/staged/");
+
+    // Not an array, and one leg is what this device has.
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":{}})").status == 400);
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{},{}]})").status == 400);
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[7]})").status == 400);
+
+    // A name this transport does not have, and one that belongs to the other
+    // side: constraints publishes the list and a PATCH may not go past it.
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{"bit_rate":3}]})").status == 400);
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{"destination_ip":"239.1.1.1"}]})")
+              .status == 400);
+    CHECK(api.handle("PATCH", sender, R"({"transport_params":[{"multicast_ip":"239.1.1.1"}]})")
+              .status == 400);
+
+    // Right names, wrong values.
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{"rtp_enabled":"yes"}]})").status ==
+          400);
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{"destination_port":70000}]})")
+              .status == 400);
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{"interface_ip":7}]})").status ==
+          400);
+
+    // "auto" is a port: it asks the device to pick.
+    CHECK(api.handle("PATCH", receiver, R"({"transport_params":[{"destination_port":"auto"}]})")
+              .status == 200);
+
+    // A leg with one bad name changes nothing, not even the names beside it.
+    CHECK(api.handle("PATCH", receiver,
+                     R"({"transport_params":[{"interface_ip":"10.0.0.7","bit_rate":3}]})")
+              .status == 400);
+    const JsonValue staged = bodyOf(api.handle("GET", receiver, ""));
+    CHECK(staged["transport_params"].asArray().front()["interface_ip"].asString() == "auto");
+}
+
+TEST_CASE("A sender reports, and takes, which receiver asked for it") {
+    // IS-05 sec 6: receiver_id on a sender is the other half of sender_id on a
+    // receiver. It was reported from the receiver's own field, so every sender
+    // read back as subscribed to itself, and no PATCH could set it.
+    ConnectionApi api = apiWithOne();
+    const std::string sender = path("/single/senders/sender-1/staged/");
+
+    CHECK(bodyOf(api.handle("GET", sender, ""))["receiver_id"].isNull());
+
+    const ApiResponse set = api.handle(
+        "PATCH", sender, R"({"receiver_id":"a3b2c1d0-0000-5000-8000-000000000001"})");
+    REQUIRE(set.status == 200);
+    CHECK(bodyOf(set)["receiver_id"].asString() == "a3b2c1d0-0000-5000-8000-000000000001");
+
+    // And it survives an activation, which is where a controller reads it.
+    REQUIRE(api.handle("PATCH", sender,
+                       R"({"activation":{"mode":"activate_immediate"}})")
+                .status == 200);
+    CHECK(bodyOf(api.handle("GET", path("/single/senders/sender-1/active/"), ""))["receiver_id"]
+              .asString() == "a3b2c1d0-0000-5000-8000-000000000001");
+
+    // Null is how a controller says the subscription is over.
+    REQUIRE(api.handle("PATCH", sender, R"({"receiver_id":null})").status == 200);
+    CHECK(bodyOf(api.handle("GET", sender, ""))["receiver_id"].isNull());
+
+    CHECK(api.handle("PATCH", sender, R"({"receiver_id":7})").status == 400);
+    // And a body that is not an object is not a patch at all, on this side as
+    // much as on the receiver's.
+    CHECK(api.handle("PATCH", sender, "[]").status == 400);
+}
