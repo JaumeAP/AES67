@@ -2,13 +2,19 @@
 #
 # build-dmg.sh
 # AES67 macOS Driver
-# Wraps AES67Manager.app in a disk image.
+# Wraps AES67Manager.app, and AES67Controller.app beside it, in a disk image.
 #
 # That is the whole of the delivery. There is no package that writes to
-# /Library or /usr/local: the app carries the driver, the PTP daemon and the
-# daemon's LaunchDaemon as resources and puts them down itself, asking for
+# /Library or /usr/local: the Manager carries the driver, the PTP daemon and
+# the daemon's LaunchDaemon as resources and puts them down itself, asking for
 # privileges once, when the Install button is pressed. What the user does with
-# this image is drag one app into Applications.
+# this image is drag the apps into Applications.
+#
+# Two applications, one image, because they are one delivery and two jobs: the
+# Manager is about this machine, the Controller about the network, and the
+# Controller needs nothing installed to be useful. Whoever only routes a plant
+# drags that one and never presses Install; the image says so in its own
+# message rather than leaving it to be guessed.
 #
 set -e
 
@@ -21,6 +27,7 @@ DRIVER_PACKAGE="$(cd "$SCRIPT_DIR/../aes67-macos-driver" && pwd)"
 BUILD_DIR="${AES67_BUILD_DIR:-$DRIVER_PACKAGE/build}"
 
 APP="$SCRIPT_DIR/AES67Manager.app"
+CONTROLLER_APP="$SCRIPT_DIR/../aes67-macos-controller/AES67Controller.app"
 VERSION="$(sed -n 's/^\([0-9][0-9.]*\)-build.*/\1/p' "$DRIVER_PACKAGE/VERSION.txt")"
 OUTPUT_DIR="$BUILD_DIR/dmg"
 STAGING_DIR="$OUTPUT_DIR/staging"
@@ -43,6 +50,17 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$STAGING_DIR"
 
 ditto "$APP" "$STAGING_DIR/AES67Manager.app"
+
+# The Controller is carried when it has been built, and its absence is a
+# warning rather than a failure: it is a separate package with its own gate,
+# and an image with the Manager alone is still the delivery it always was.
+if [ -d "$CONTROLLER_APP" ]; then
+    ditto "$CONTROLLER_APP" "$STAGING_DIR/AES67Controller.app"
+else
+    echo "WARNING: $CONTROLLER_APP not found — the image will carry the Manager alone."
+    echo "         Build it with ../aes67-macos-controller/build.sh"
+fi
+
 ln -s /Applications "$STAGING_DIR/Applications"
 
 hdiutil create \
@@ -56,11 +74,18 @@ rm -rf "$STAGING_DIR"
 echo ""
 echo "Disk image: $DMG"
 echo ""
-echo "Drag AES67Manager.app to Applications, open it, and press Install."
+echo "Drag the apps to Applications."
+echo ""
+echo "AES67Manager.app is this machine's: open it and press Install."
 echo "The app asks for an administrator password once, then puts down:"
 echo "  /Library/Audio/Plug-Ins/HAL/AES67Driver.driver"
 echo "  /usr/local/libexec/aes67ptpd"
 echo "  /Library/LaunchDaemons/com.aes67driver.ptpd.plist"
 echo ""
-echo "This image is UNSIGNED. To sign the app before packaging it:"
+echo ""
+echo "AES67Controller.app is the network's: sessions and NMOS crosspoints, for"
+echo "routing a plant. It installs nothing and needs nothing installed."
+echo ""
+echo "This image is UNSIGNED. To sign the apps before packaging them:"
 echo "  codesign --force --deep --sign \"Developer ID Application: Your Name\" \"$APP\""
+echo "  codesign --force --deep --sign \"Developer ID Application: Your Name\" \"$CONTROLLER_APP\""

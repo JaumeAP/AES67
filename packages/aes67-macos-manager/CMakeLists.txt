@@ -72,6 +72,14 @@ add_custom_target(dmg
     VERBATIM
 )
 
+# The image carries the Controller too, so it has to be built first when this
+# build knows about it. Standalone there is no such target and build-dmg.sh
+# says what it could not find, the same way it does for the driver's
+# artifacts.
+if(TARGET ControllerApp)
+    add_dependencies(dmg ControllerApp)
+endif()
+
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/AES67Manager.app
     DESTINATION "/Applications"
     USE_SOURCE_PERMISSIONS
