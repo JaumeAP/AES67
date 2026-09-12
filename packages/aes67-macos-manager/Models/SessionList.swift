@@ -100,6 +100,17 @@ struct NmosSessionCandidate: Equatable {
 /// onto one of these configures the SOURCE -- our sender is re-addressed to
 /// where that unit already listens. The device is found by the one thing it
 /// does put on the network unasked: its PTP clock.
+/// A source that cannot be configured either: gear announcing nothing and
+/// answering nothing, seen only by its clock. A Dolby processor feeding a
+/// room is one -- it is a PTP master, and what it sends is set on the unit.
+struct FixedSource: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let multicastAddress: String
+    let port: Int
+    let note: String
+}
+
 struct FixedSink: Identifiable, Equatable {
     let id: String
     let label: String
@@ -115,6 +126,50 @@ struct FixedSink: Identifiable, Equatable {
     /// port, and source ports stepped per eight-channel flow by the sender.
     static let atmosConnectAddress = "239.81.83.67"
     static let atmosConnectPort = 6517
+}
+
+/// What a crosspoint can be, by which of its two ends can be told anything.
+///
+/// A device with no control protocol -- a Dolby Atmos Connect unit, whose
+/// address and ports are on a sticker -- is fixed: it answers nothing and
+/// takes no instruction. Everything follows from how many ends of a
+/// crosspoint are like that:
+///
+///  - both ends fixed: read-only. Neither side can be told anything, so the
+///    controller reports the pairing and changes nothing.
+///  - one end fixed: programmed from the other end, which is the one that can
+///    be told where to send or where to listen. It stays connected, and it
+///    stays changeable: pointing that end somewhere else is a normal edit.
+///  - neither end fixed: IS-05 both ways, which is the ordinary case.
+enum CrosspointKind: Equatable {
+    case readOnly          // nothing here can be configured
+    case programmable      // one end, or both, can be told what to do
+}
+
+enum FixedSinkRouting {
+    /// Which sender, if any, is transmitting at a fixed sink right now.
+    ///
+    /// A device with no control protocol cannot say what it is receiving, so
+    /// the only evidence is the other end: a sender whose active destination
+    /// is that address and port.
+    static func senderFeeding(_ sink: FixedSink, among senders: [NmosSender]) -> NmosSender? {
+        senders.first { sender in
+            sender.enabled
+                && sender.destination == sink.multicastAddress
+                && sender.destinationPort == sink.port
+        }
+    }
+
+    /// A crosspoint between a source and a fixed sink.
+    ///
+    /// Programmable whenever the source is one of ours: it is the end that
+    /// can be told where to send, and it can be told again later -- a
+    /// connection made this way is not frozen, it is simply held at the end
+    /// that can hold it. Read-only when the source is fixed too, because then
+    /// there is nothing on either side to instruct.
+    static func kind(sourceIsFixed: Bool) -> CrosspointKind {
+        sourceIsFixed ? .readOnly : .programmable
+    }
 }
 
 enum SessionList {

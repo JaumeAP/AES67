@@ -45,13 +45,32 @@ struct ControllerWindow: View {
             }
     }
 
+    /// The sources that answer to nobody: a PTP master that announces nothing
+    /// is a unit sending where its own configuration says -- a Dolby
+    /// processor feeding a room. One of our receivers can be pointed at it,
+    /// because that end can be told where to listen; a fixed sink cannot, and
+    /// the matrix shows that pairing as read only.
+    private var fixedSources: [FixedSource] {
+        discovery.ptpParticipants
+            .filter { $0.role == "master" }
+            .map { peer in
+                FixedSource(id: peer.clockId,
+                            label: "PTP source \(peer.clockId)",
+                            multicastAddress: FixedSink.atmosConnectAddress,
+                            port: FixedSink.atmosConnectPort,
+                            note: "A clock master that announces nothing: a unit configured by "
+                                + "hand. Where it sends is set on the unit, so a receiver of ours "
+                                + "is the end that can be told to listen there.")
+            }
+    }
+
     var body: some View {
         TabView {
             DeviceListView(nmos: nmos)
                 .tabItem { Label("Devices", systemImage: "square.stack.3d.up") }
             sessionList
                 .tabItem { Label("Sessions", systemImage: "antenna.radiowaves.left.and.right") }
-            RoutingMatrixView(fixedSinks: fixedSinks)
+            RoutingMatrixView(fixedSinks: fixedSinks, fixedSources: fixedSources)
                 .tabItem { Label("Routing", systemImage: "square.grid.3x3") }
             ChannelGridView(nmos: nmos)
                 .tabItem { Label("Channels", systemImage: "slider.horizontal.3") }

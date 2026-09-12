@@ -82,3 +82,66 @@ func runSessionListTests() {
     let driverOnly = SessionList.merge(driverSessions: [announced], nmosCandidates: [])
     check(driverOnly.first?.routes == [.sap, .rtsp], "the driver's own routes are kept")
 }
+
+// MARK: - Fixed sinks
+//
+// Gear with no control protocol: a Dolby Atmos Connect unit listens where its
+// manual says and answers nothing. A crosspoint onto one configures the
+// source, and once it is made the row is settled — undoing it would mean
+// telling that device something, and there is nothing there to tell.
+
+private func senderAt(_ id: String, destination: String, port: Int,
+                      enabled: Bool = true) -> NmosSender {
+    NmosSender(id: id, label: "Sender \(id)", nodeId: "n-1", channels: 8,
+               destination: destination, destinationPort: port, enabled: enabled)
+}
+
+func runFixedSinkTests() {
+    let sink = FixedSink(id: "clk-1", label: "PTP sink", 
+                         multicastAddress: FixedSink.atmosConnectAddress,
+                         port: FixedSink.atmosConnectPort, note: "")
+
+    // The default a crosspoint sends to is the one in the profile.
+    check(sink.multicastAddress == "239.81.83.67", "the Atmos Connect factory address")
+    check(sink.port == 6517, "and its fixed destination port")
+
+    // Nobody transmitting there: any sender may be pointed at it.
+    let idle = [senderAt("a", destination: "", port: 0, enabled: false),
+                senderAt("b", destination: "239.69.0.1", port: 5004)]
+    check(FixedSinkRouting.senderFeeding(sink, among: idle) == nil, "a free sink has no feeder")
+    check(FixedSinkRouting.kind(sourceIsFixed: false) == .programmable, "and takes a connection")
+
+    // One addressed at it: that is the feeder. The row is not frozen by it --
+    // the connection is held at the end that can hold it, and that end can be
+    // told again.
+    let taken = idle + [senderAt("c", destination: "239.81.83.67", port: 6517)]
+    check(FixedSinkRouting.senderFeeding(sink, among: taken)?.id == "c", "the sender feeding it")
+
+    // What decides whether a crosspoint can be worked at all is how many of
+    // its ends answer to anybody.
+    check(FixedSinkRouting.kind(sourceIsFixed: false) == .programmable,
+          "one end ours: programmed from ours, and changeable")
+    check(FixedSinkRouting.kind(sourceIsFixed: true) == .readOnly,
+          "both ends fixed: nothing to tell on either side")
+
+    // A sender addressed there but switched off is not feeding anything.
+    let disabled = [senderAt("d", destination: "239.81.83.67", port: 6517, enabled: false)]
+    check(FixedSinkRouting.senderFeeding(sink, among: disabled) == nil,
+          "master_enable false is not a connection")
+
+    // The port is part of the identity: the same address on another port is
+    // another destination.
+    let otherPort = [senderAt("e", destination: "239.81.83.67", port: 5004)]
+    check(FixedSinkRouting.senderFeeding(sink, among: otherPort) == nil,
+          "same address, another port, another sink")
+
+    // And what IS-05 reports for a sender is read the sender's way.
+    let active = """
+    {"master_enable": true,
+     "transport_params": [{"destination_ip": "239.81.83.67", "destination_port": 6517}]}
+    """.data(using: .utf8)!
+    let read = try? NmosDecoding.senderActive(active)
+    check(read?.destination == "239.81.83.67", "destination_ip, not multicast_ip")
+    check(read?.port == 6517, "and its port")
+    check(read?.masterEnable == true, "and whether it is on")
+}

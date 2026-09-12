@@ -18,6 +18,12 @@ struct RoutingMatrixView: View {
     /// Controller passes what its PTP observer found.
     var fixedSinks: [FixedSink] = []
 
+    /// Sources that answer to nobody either: a Dolby processor is a PTP
+    /// master and what it sends is set on the unit. A crosspoint between one
+    /// of these and a fixed sink has no end that can be told anything, and
+    /// the matrix says so instead of offering a button.
+    var fixedSources: [FixedSource] = []
+
     @StateObject private var controller = NmosController()
     @Environment(\.dismiss) private var dismiss
 
@@ -82,12 +88,18 @@ struct RoutingMatrixView: View {
                     ForEach(controller.matrix.columns) { column in
                         columnHeader(column)
                     }
+                    ForEach(fixedSources) { source in
+                        fixedSourceHeader(source)
+                    }
                 }
                 ForEach(controller.matrix.rows) { row in
                     HStack(spacing: 0) {
                         rowHeader(row)
                         ForEach(controller.matrix.columns) { column in
                             cell(row: row, column: column)
+                        }
+                        ForEach(fixedSources) { source in
+                            fixedSourceCell(row: row, source: source)
                         }
                     }
                 }
@@ -96,6 +108,9 @@ struct RoutingMatrixView: View {
                         fixedSinkHeader(sink)
                         ForEach(controller.matrix.columns) { column in
                             fixedSinkCell(sink: sink, column: column)
+                        }
+                        ForEach(fixedSources) { source in
+                            fixedPairCell(sink: sink, source: source)
                         }
                     }
                 }
@@ -138,6 +153,55 @@ struct RoutingMatrixView: View {
         .opacity(row.reachable ? 1 : 0.5)
     }
 
+    private func fixedSourceHeader(_ source: FixedSource) -> some View {
+        VStack(spacing: 2) {
+            Spacer()
+            Text("fixed source").font(.caption2).foregroundColor(.secondary).lineLimit(1)
+            Text(source.label).font(.caption).lineLimit(1)
+        }
+        .fixedSize()
+        .rotationEffect(.degrees(-90), anchor: .bottomLeading)
+        .frame(width: cellSize, height: columnHeaderHeight, alignment: .bottomLeading)
+        .help(source.note)
+    }
+
+    /// One of our receivers against a source that answers nothing: the
+    /// receiver is the end that can be told where to listen, so this is
+    /// programmable -- and stays so.
+    private func fixedSourceCell(row: RoutingMatrix.Row, source: FixedSource) -> some View {
+        let listening = row.receiver.activeSenderId == nil
+            && row.receiver.masterEnable
+        let pending = controller.inFlight.contains(row.id)
+        return Button {
+            guard !pending, row.writable, row.reachable else { return }
+            controller.listen(receiver: row.receiver,
+                              at: source.multicastAddress, port: source.port,
+                              label: source.label)
+        } label: {
+            ZStack {
+                Rectangle()
+                    .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                    .background(Rectangle().fill(Color.clear))
+                if pending {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(width: cellSize, height: cellSize)
+        }
+        .buttonStyle(.plain)
+        .disabled(!row.writable || !row.reachable)
+        .help(row.writable
+              ? "Point \(row.label) at \(source.label): \(source.multicastAddress):\(source.port). "
+                + "That device answers nothing, so this end holds the connection — and can be "
+                + "pointed elsewhere later."
+              : "\(row.label) is read-only: its node serves no connection API.")
+        .opacity(listening ? 1 : 1)
+    }
+
     private func fixedSinkHeader(_ sink: FixedSink) -> some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
@@ -146,30 +210,65 @@ struct RoutingMatrixView: View {
                     .font(.caption2).foregroundColor(.secondary).lineLimit(1)
             }
             Spacer()
-            Text("fixed").font(.caption2).foregroundColor(.secondary)
+            if let feeding = FixedSinkRouting.senderFeeding(sink, among: allSenders) {
+                Text("fed by \(feeding.label)").font(.caption2).foregroundColor(.secondary)
+                    .lineLimit(1)
+            } else {
+                Text("free").font(.caption2).foregroundColor(.secondary)
+            }
         }
         .padding(.horizontal, 6)
         .frame(width: rowHeaderWidth, height: cellSize, alignment: .leading)
         .help(sink.note)
     }
 
+    /// Every sender on every node, which is what a fixed sink's row is read
+    /// against: the device cannot say what it is receiving, so the evidence
+    /// is which sender is addressed at it.
+    private var allSenders: [NmosSender] {
+        controller.nodes.flatMap { $0.senders }
+    }
+
     /// A crosspoint onto a fixed sink patches the SENDER: the destination
     /// cannot be told anything, so what changes is where the source
-    /// transmits. There is no "on" state to show, because nothing on that
-    /// device reports back -- what the cell offers is "send this here".
+    /// transmits.
+    ///
+    /// And once it is set, the row is settled. Unpicking it would mean
+    /// telling that device something, and there is nothing there to tell --
+    /// its address and ports are on a sticker, not in an API. So a taken row
+    /// shows who feeds it and takes no more clicks; a free row takes one, to
+    /// make the connection that will then be fixed.
+    /// A crosspoint between one of our senders and a fixed sink. The sink
+    /// cannot be told anything, so the sender is the end that holds the
+    /// connection -- and holding it is not freezing it: clicking the one that
+    /// feeds stops it, clicking another moves the feed there.
     private func fixedSinkCell(sink: FixedSink, column: RoutingMatrix.Column) -> some View {
+        let feeding = FixedSinkRouting.senderFeeding(sink, among: allSenders)
+        let isThisSender = feeding?.id == column.sender.id
         let pending = controller.inFlight.contains(column.sender.id)
         return Button {
             guard !pending, column.reachable else { return }
-            controller.send(sender: column.sender,
-                            to: sink.multicastAddress, port: sink.port)
+            if isThisSender {
+                controller.stop(sender: column.sender)
+            } else {
+                // Moving the feed: the sender that had it is stopped first,
+                // because two senders on one destination is a collision and
+                // not a route.
+                if let feeding { controller.stop(sender: feeding) }
+                controller.send(sender: column.sender,
+                                to: sink.multicastAddress, port: sink.port)
+            }
         } label: {
             ZStack {
                 Rectangle()
                     .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
-                    .background(Rectangle().fill(Color.clear))
+                    .background(Rectangle().fill(isThisSender ? Color.accentColor : Color.clear))
                 if pending {
                     ProgressView().controlSize(.mini)
+                } else if isThisSender {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
                 } else {
                     Image(systemName: "arrow.right")
                         .font(.system(size: 9))
@@ -180,7 +279,38 @@ struct RoutingMatrixView: View {
         }
         .buttonStyle(.plain)
         .disabled(!column.reachable)
-        .help("Send \(column.label) to \(sink.label) at \(sink.multicastAddress):\(sink.port)")
+        .help(helpText(sink: sink, column: column, feeding: feeding, isThisSender: isThisSender))
+    }
+
+    /// A crosspoint between two devices that answer to nobody. Nothing here
+    /// can be configured from anywhere: both ends are set on their own units.
+    private func fixedPairCell(sink: FixedSink, source: FixedSource) -> some View {
+        ZStack {
+            Rectangle()
+                .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                .background(Rectangle().fill(Color.secondary.opacity(0.08)))
+            Image(systemName: "lock")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+        }
+        .frame(width: cellSize, height: cellSize)
+        .help("\(source.label) and \(sink.label) both answer nothing: neither end can be told "
+            + "where to send or where to listen, so this pairing is set on the units and read "
+            + "only here.")
+    }
+
+    private func helpText(sink: FixedSink, column: RoutingMatrix.Column,
+                          feeding: NmosSender?, isThisSender: Bool) -> String {
+        if isThisSender {
+            return "\(column.label) feeds \(sink.label) at \(sink.multicastAddress):"
+                 + "\(sink.port). Click to stop it; click another sender to move the feed."
+        }
+        if let feeding {
+            return "\(sink.label) is fed by \(feeding.label). Clicking here moves the feed to "
+                 + "\(column.label): one sender per destination, because two on one address is "
+                 + "a collision."
+        }
+        return "Send \(column.label) to \(sink.label) at \(sink.multicastAddress):\(sink.port)"
     }
 
     private func cell(row: RoutingMatrix.Row, column: RoutingMatrix.Column) -> some View {

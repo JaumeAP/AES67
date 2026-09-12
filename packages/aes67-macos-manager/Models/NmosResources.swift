@@ -15,6 +15,11 @@ struct NmosSender: Identifiable, Equatable {
     let nodeId: String
     /// From the sender's flow's source, when the chain is intact.
     let channels: Int?
+    /// IS-05 `active`: where this sender is transmitting right now. Empty
+    /// when the node serves no connection API, or the sender is disabled.
+    var destination: String = ""
+    var destinationPort: Int = 0
+    var enabled: Bool = false
 }
 
 struct NmosReceiver: Identifiable, Equatable {
@@ -243,6 +248,19 @@ enum NmosDecoding {
         }
     }
 
+    /// IS-05 `active` for a SENDER: where it is transmitting. A sender's
+    /// transport parameters name the destination rather than a group to join,
+    /// which is the same difference that makes a sender's patch say
+    /// `destination_ip` where a receiver's says `multicast_ip`.
+    static func senderActive(_ data: Data) throws
+        -> (destination: String, port: Int, masterEnable: Bool) {
+        let active = try object(data)
+        let params = (active["transport_params"] as? [[String: Any]] ?? []).first ?? [:]
+        return (params["destination_ip"] as? String ?? "",
+                params["destination_port"] as? Int ?? 0,
+                active["master_enable"] as? Bool ?? false)
+    }
+
     static func active(_ data: Data) throws -> (senderId: String?, masterEnable: Bool) {
         let active = try object(data)
         return (active["sender_id"] as? String, active["master_enable"] as? Bool ?? false)
@@ -289,6 +307,42 @@ enum NmosPatch {
         let body: [String: Any] = [
             "master_enable": true,
             "transport_params": [["destination_ip": multicastAddress, "destination_port": port]],
+            "activation": ["mode": "activate_immediate"],
+        ]
+        return try! JSONSerialization.data(withJSONObject: body)
+    }
+
+    /// Stops a sender transmitting, without moving it.
+    static func stopSending() -> Data {
+        let body: [String: Any] = [
+            "master_enable": false,
+            "activation": ["mode": "activate_immediate"],
+        ]
+        return try! JSONSerialization.data(withJSONObject: body)
+    }
+
+    /// Points a receiver at a destination nobody describes.
+    ///
+    /// Gear configured by hand announces nothing and serves no SDP, so one is
+    /// built from what its convention says: AES67's own defaults at the
+    /// address and port the unit is set to. A receiver that already exists
+    /// could be moved with transport parameters alone; a free one needs a
+    /// description, and this is the only one there is to give.
+    static func listenAt(multicastAddress: String, port: Int, label: String) -> Data {
+        var sdp = "v=0\r\n"
+        sdp += "o=- 1 1 IN IP4 " + multicastAddress + "\r\n"
+        sdp += "s=" + label + "\r\n"
+        sdp += "c=IN IP4 " + multicastAddress + "/32\r\n"
+        sdp += "t=0 0\r\n"
+        sdp += "m=audio " + String(port) + " RTP/AVP 97\r\n"
+        sdp += "a=rtpmap:97 L24/48000/8\r\n"
+        sdp += "a=ptime:1\r\n"
+        sdp += "a=recvonly\r\n"
+
+        let body: [String: Any] = [
+            "master_enable": true,
+            "transport_params": [["multicast_ip": multicastAddress, "destination_port": port]],
+            "transport_file": ["data": sdp, "type": "application/sdp"],
             "activation": ["mode": "activate_immediate"],
         ]
         return try! JSONSerialization.data(withJSONObject: body)

@@ -196,6 +196,54 @@ final class NmosController: NSObject, ObservableObject {
         }
     }
 
+    /// Stops a sender: master_enable false, applied immediately. What undoes
+    /// a feed into gear that cannot be told anything.
+    func stop(sender: NmosSender) {
+        guard let node = nodes.first(where: { $0.id == sender.nodeId }),
+              let root = node.connectionRoot else {
+            lastError = "That sender is on a node without a connection API."
+            return
+        }
+        inFlight.insert(sender.id)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.inFlight.remove(sender.id) }
+            do {
+                try await self.patch(root.appendingPathComponent("single/senders/\(sender.id)/staged"),
+                                     body: NmosPatch.stopSending())
+            } catch {
+                self.lastError = error.localizedDescription
+            }
+            self.refresh()
+        }
+    }
+
+    /// Points a receiver at an address nobody advertises: gear that announces
+    /// nothing still transmits somewhere, and this is the end that can be told
+    /// to listen there. The description is built from what that convention
+    /// says, since the device itself serves none.
+    func listen(receiver: NmosReceiver, at multicastAddress: String, port: Int, label: String) {
+        guard let node = nodes.first(where: { $0.id == receiver.nodeId }),
+              let root = node.connectionRoot else {
+            lastError = "That receiver is on a node without a connection API."
+            return
+        }
+        inFlight.insert(receiver.id)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.inFlight.remove(receiver.id) }
+            do {
+                try await self.patch(
+                    root.appendingPathComponent("single/receivers/\(receiver.id)/staged"),
+                    body: NmosPatch.listenAt(multicastAddress: multicastAddress, port: port,
+                                             label: label))
+            } catch {
+                self.lastError = error.localizedDescription
+            }
+            self.refresh()
+        }
+    }
+
     func disconnect(receiver: NmosReceiver) {
         guard let receiverNode = nodes.first(where: { $0.id == receiver.nodeId }),
               let receiverRoot = receiverNode.connectionRoot else { return }
@@ -288,6 +336,19 @@ final class NmosController: NSObject, ObservableObject {
                 nodeId: node.id)
             node.receivers = try NmosDecoding.receivers(try await getData(root.appendingPathComponent("receivers")), nodeId: node.id)
             if let connectionRoot = node.connectionRoot {
+                // Where each sender is transmitting. A fixed sink -- gear
+                // that cannot be told anything -- is shown as taken by
+                // whichever sender is already addressed at it, and that is
+                // the only way to know: the device itself reports nothing.
+                for index in node.senders.indices {
+                    if let active = try? NmosDecoding.senderActive(try await getData(
+                           connectionRoot.appendingPathComponent(
+                               "single/senders/\(node.senders[index].id)/active"))) {
+                        node.senders[index].destination = active.destination
+                        node.senders[index].destinationPort = active.port
+                        node.senders[index].enabled = active.masterEnable
+                    }
+                }
                 for index in node.receivers.indices {
                     let active = try NmosDecoding.active(try await getData(
                         connectionRoot.appendingPathComponent("single/receivers/\(node.receivers[index].id)/active")))
