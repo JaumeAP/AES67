@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-project(aes67_linux_ptpd LANGUAGES CXX)
+# C as well as C++: the RAVENNA module's own PTP.c is compiled into one test,
+# so that what it decides is exercised rather than mirrored.
+project(aes67_linux_ptpd LANGUAGES C CXX)
 
 # Instrumentation, for the analysis half of the gate. Both are off by default
 # and both are applied once for the whole tree: a package built as another's
@@ -115,13 +117,23 @@ if(BUILD_TESTS)
         endforeach()
 
         # What this daemon sends, against the rules of a real slave: the
-        # RAVENNA ALSA kernel module, vendored under external/ravenna-alsa-lkm,
-        # mirrored in Tests/support/RavennaSlave from its own PTP.c.
+        # RAVENNA ALSA kernel module, vendored under external/ravenna-alsa-lkm.
+        #
+        # The module's own PTP receive path, compiled into the test rather
+        # than mirrored in C++ beside it: Tests/support/lkm holds the handful
+        # of kernel names PTP.c uses, and RavennaSlave.cpp is the shim that
+        # frames a payload the way a netfilter hook delivers one. An upstream
+        # change now breaks this test instead of quietly outdating a comment.
+        set(lkm_driver ${CMAKE_CURRENT_SOURCE_DIR}/../../external/ravenna-alsa-lkm/driver)
         add_executable(TestRavennaSlaveInterop
             Tests/TestRavennaSlaveInterop.cpp
             Tests/support/RavennaSlave.cpp
+            ${lkm_driver}/PTP.c
         )
-        target_include_directories(TestRavennaSlaveInterop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Tests)
+        target_include_directories(TestRavennaSlaveInterop PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/Tests
+            ${CMAKE_CURRENT_SOURCE_DIR}/Tests/support/lkm
+            ${lkm_driver})
         target_link_libraries(TestRavennaSlaveInterop PRIVATE aes67_ptp_wire doctest_headers)
         add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
         set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)

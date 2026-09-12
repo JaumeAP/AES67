@@ -3,23 +3,21 @@
 // aes67-linux-ptpd - Tests
 // What the RAVENNA ALSA kernel module accepts from a grandmaster.
 //
-// Mirrors process_PTP_packet in the Merging module vendored in this
-// repository, external/ravenna-alsa-lkm/
-// driver/PTP.c:229-470. That code cannot be called
-// from here: it is kernel C, it reads whole UDP frames out of a netfilter
-// hook and it keeps its state in a device structure. What it decides, though,
-// is a handful of tests on fixed offsets, and those are what this holds -- so
-// this daemon's Announce, Sync and Follow_Up can be held against a real
-// slave's rules rather than against IEEE 1588 alone.
+// The interface to process_PTP_packet in the Merging module vendored in this
+// repository, external/ravenna-alsa-lkm/driver/PTP.c:229-508. That file is
+// kernel C: it reads whole UDP frames out of a netfilter hook and keeps its
+// state in a device structure. It is compiled as it stands and called through
+// the shim in RavennaSlave.cpp, so this daemon's Announce, Sync and Follow_Up
+// are held against the real slave's own code rather than against IEEE 1588
+// alone, and an upstream change shows up as a failing test.
 //
-// A mirror drifts when upstream moves. The suite that uses it names the lines
-// it came from, and the constants below carry the module's own values.
+// The constants below are the module's own values, repeated here for the
+// cases that reason about its timeouts without feeding it a packet.
 //
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
 
 namespace AES67::LinuxPtpd::Tests {
 
@@ -44,11 +42,21 @@ inline constexpr size_t kMinSyncBytes = 44;
 
 /// The slave's state: what it was configured with, and what it has elected.
 struct SlaveState {
+    /// The module's own TClock_PTP, made on first use. Opaque here so the
+    /// test needs none of the module's headers.
+    void* impl = nullptr;
     uint8_t configuredDomain = 0;
     uint64_t masterClockIdentity = 0;  ///< 0 until an Announce elects one.
     uint64_t grandmasterIdentity = 0;
     uint16_t lastSyncSequenceId = 0;
+    /// The module's own m_ui64T2, the arrival time it kept for the last Sync
+    /// it took, in the unit PTP.c stores it: the counter clock divided by
+    /// NS_2_REF_UNIT. A Sync the module ignores leaves it where it was.
+    uint64_t syncArrivalTime = 0;
     bool haveSync = false;
+    /// The PTP half of the module's lock, m_usPTPLockCounter == 0. The other
+    /// half, m_usTICLockCounter, only moves in the audio frame timer, which
+    /// does not run here, so GetLockStatus would never say PTPLS_LOCKED.
     bool locked = false;
 };
 
@@ -57,7 +65,6 @@ struct SlaveVerdict {
     bool used = false;        ///< false is the module's DR_PACKET_NOT_USED.
     bool elected = false;     ///< this Announce elected or kept a master
     bool lockReset = false;   ///< a Sync gap reset the internal lock
-    std::string reason;       ///< why it was not used, when it was not
 };
 
 /// One PTP payload, as the module would see it arriving on the event or the
@@ -69,5 +76,13 @@ SlaveVerdict feed(SlaveState& state, const uint8_t* data, size_t length,
 /// True when the module would wait for a Follow_Up rather than take the
 /// Sync's own origin timestamp (PTP.c:437, IS_PTP_TWO_STEP).
 bool syncIsTwoStep(const uint8_t* data);
+
+/// Moves the counter clock the module reads, in nanoseconds, which is what
+/// the kernel's get_clock_time hands it: a test that wants time to pass says
+/// so rather than waiting for it.
+void setCounterTime(uint64_t timeNs);
+
+/// Releases the module clock a state carries.
+void destroy(SlaveState& state);
 
 } // namespace AES67::LinuxPtpd::Tests

@@ -7,8 +7,8 @@
 // (external/ravenna-alsa-lkm), and it is stricter than IEEE 1588: it elects
 // one master and drops everything else, it wants the domain it was configured
 // with, and it drops its lock when Sync sequence numbers are not contiguous.
-// support/RavennaSlave mirrors those rules from PTP.c; this feeds them the
-// bytes PtpWire actually builds.
+// support/RavennaSlave compiles the module's own PTP.c and wraps it; this
+// feeds it the bytes PtpWire actually builds.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
@@ -76,6 +76,24 @@ SlaveVerdict give(SlaveState& state, const std::vector<uint8_t>& message,
     return feed(state, message.data(), message.size(), port);
 }
 
+/// The Sync interval the messages above declare, logSyncInterval -3.
+constexpr uint64_t kSyncIntervalNs = 125'000'000;
+constexpr uint64_t kFirstOriginNs = 1'700'000'000'000'000'000ull;
+
+/// One two-step exchange, which is what this daemon actually sends: the Sync
+/// on the event port and then the Follow_Up carrying the departure time on
+/// the general port, with the module's counter clock moved on by the
+/// interval. The Sync alone decides nothing about the lock -- ProcessT1, the
+/// only place that lowers m_usPTPLockCounter (PTP.c:541), runs off the
+/// Follow_Up -- so four of these are what take the module from unlocked to
+/// locked. The verdict returned is the Sync's.
+SlaveVerdict exchange(SlaveState& state, const PortContext& port, uint16_t sequenceId) {
+    setCounterTime(sequenceId * kSyncIntervalNs);
+    const SlaveVerdict verdict = give(state, sync(port, sequenceId), 319);
+    give(state, followUp(port, sequenceId, kFirstOriginNs + sequenceId * kSyncIntervalNs));
+    return verdict;
+}
+
 } // namespace
 
 TEST_CASE("The module elects this grandmaster and follows its Sync") {
@@ -83,16 +101,14 @@ TEST_CASE("The module elects this grandmaster and follows its Sync") {
     SlaveState slave;
 
     const SlaveVerdict elected = give(slave, announce(port, 1));
-    INFO("refused because: ", elected.reason);
     REQUIRE(elected.used);
     CHECK(elected.elected);
     CHECK(slave.masterClockIdentity != 0);
     CHECK(slave.grandmasterIdentity == slave.masterClockIdentity);
 
     for (uint16_t sequenceId = 1; sequenceId <= 8; ++sequenceId) {
-        const auto message = sync(port, sequenceId);
-        const SlaveVerdict verdict = feed(slave, message.data(), message.size(), 319);
-        INFO("Sync ", sequenceId, " refused because: ", verdict.reason);
+        const SlaveVerdict verdict = exchange(slave, port, sequenceId);
+        INFO("Sync ", sequenceId);
         CHECK(verdict.used);
         CHECK_FALSE(verdict.lockReset);
     }
@@ -106,9 +122,8 @@ TEST_CASE("Our Sync is two-step, so the module waits for the Follow_Up") {
 
     SlaveState slave;
     give(slave, announce(port, 1));
-    const auto follow = followUp(port, 1, 1'700'000'000'000'000'000ull);
+    const auto follow = followUp(port, 1, kFirstOriginNs);
     const SlaveVerdict verdict = give(slave, follow);
-    INFO("refused because: ", verdict.reason);
     CHECK(verdict.used);
 }
 
@@ -121,7 +136,6 @@ TEST_CASE("An Announce on another domain is dropped, and no master is elected") 
     CHECK(verdict.used);          // read
     CHECK_FALSE(verdict.elected); // and put down
     CHECK(slave.masterClockIdentity == 0);
-    CHECK(verdict.reason.find("domain") != std::string::npos);
 }
 
 TEST_CASE("A slave configured for the Dolby domain takes only that domain") {
@@ -132,36 +146,48 @@ TEST_CASE("A slave configured for the Dolby domain takes only that domain") {
     CHECK(give(slave, announce(masterPort(109), 2)).elected);
 }
 
-TEST_CASE("A Sync from another clock is dropped") {
+TEST_CASE("A Sync from another clock moves nothing the module keeps") {
     const PortContext ours = masterPort();
     SlaveState slave;
     give(slave, announce(ours, 1));
+    exchange(slave, ours, 1);
+
+    const uint16_t sequenceBefore = slave.lastSyncSequenceId;
+    const uint64_t arrivalBefore = slave.syncArrivalTime;
 
     PortContext other = ours;
     other.clockIdentity.id = {0xB8, 0x27, 0xEB, 0xFF, 0xFE, 0x09, 0x09, 0x09};
 
-    const SlaveVerdict verdict = give(slave, sync(other, 2), 319);
-    CHECK_FALSE(verdict.used);
-    CHECK(verdict.reason.find("not the elected master") != std::string::npos);
+    // Far enough on that an arrival time taken from this Sync could not come
+    // out equal to the one already stored.
+    setCounterTime(2 * kSyncIntervalNs);
+    give(slave, sync(other, 2), 319);
+
+    // The module takes this packet off the netfilter hook rather than leaving
+    // it -- DR_RTP_PACKET_USED, PTP.c:392 -- and then does nothing with it:
+    // neither the sequence it follows nor the arrival time it keeps moves.
+    CHECK(slave.lastSyncSequenceId == sequenceBefore);
+    CHECK(slave.syncArrivalTime == arrivalBefore);
 }
 
 TEST_CASE("A gap wider than the hysteresis resets the lock, a narrower one does not") {
     const PortContext port = masterPort();
     SlaveState slave;
     give(slave, announce(port, 1));
-    give(slave, sync(port, 1), 319);
-    give(slave, sync(port, 2), 319);
+    for (uint16_t sequenceId = 1; sequenceId <= 4; ++sequenceId) {
+        exchange(slave, port, sequenceId);
+    }
     REQUIRE(slave.locked);
 
     SUBCASE("four apart, which is the module's own hysteresis, keeps it") {
-        const SlaveVerdict verdict = give(slave, sync(port, 6), 319);
+        const SlaveVerdict verdict = give(slave, sync(port, 8), 319);
         CHECK(verdict.used);
         CHECK_FALSE(verdict.lockReset);
         CHECK(slave.locked);
     }
 
     SUBCASE("five apart drops it") {
-        const SlaveVerdict verdict = give(slave, sync(port, 7), 319);
+        const SlaveVerdict verdict = give(slave, sync(port, 9), 319);
         CHECK(verdict.used);
         CHECK(verdict.lockReset);
         CHECK_FALSE(slave.locked);
