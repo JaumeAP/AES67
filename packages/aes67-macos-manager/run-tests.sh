@@ -23,6 +23,7 @@ swiftc -o "$BIN" \
     -swift-version 5 \
     -warnings-as-errors \
     Models/PrivilegedScript.swift \
+    Uninstaller/UninstallPlan.swift \
     Models/NmosResources.swift \
     Models/SessionList.swift \
     Tests/PrivilegedScriptTests.swift \

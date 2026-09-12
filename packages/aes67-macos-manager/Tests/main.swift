@@ -8,6 +8,7 @@
 import Foundation
 
 runPrivilegedScriptTests()
+runUninstallPlanTests()
 runNmosResourcesTests()
 runSessionListTests()
 runNmosClockAndChannelMapTests()

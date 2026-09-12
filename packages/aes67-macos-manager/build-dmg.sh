@@ -2,7 +2,8 @@
 #
 # build-dmg.sh
 # AES67 macOS Driver
-# Wraps AES67Manager.app, and AES67Controller.app beside it, in a disk image.
+# Wraps the three applications in a disk image: AES67Manager.app,
+# AES67Controller.app and AES67Uninstall.app.
 #
 # That is the whole of the delivery. There is no package that writes to
 # /Library or /usr/local: the Manager carries the driver, the PTP daemon and
@@ -10,11 +11,13 @@
 # privileges once, when the Install button is pressed. What the user does with
 # this image is drag the apps into Applications.
 #
-# Two applications, one image, because they are one delivery and two jobs: the
-# Manager is about this machine, the Controller about the network, and the
-# Controller needs nothing installed to be useful. Whoever only routes a plant
-# drags that one and never presses Install; the image says so in its own
-# message rather than leaving it to be guessed.
+# Three applications, one image, because they are one delivery and three jobs:
+# the Manager is about this machine, the Controller about the network, and the
+# Uninstaller about getting the first one off again. The Controller needs
+# nothing installed to be useful, and whoever only routes a plant drags that
+# one and never presses Install. The Uninstaller is separate on purpose:
+# removing should not require opening the thing being removed, or having it
+# still there at all.
 #
 set -e
 
@@ -28,6 +31,7 @@ BUILD_DIR="${AES67_BUILD_DIR:-$DRIVER_PACKAGE/build}"
 
 APP="$SCRIPT_DIR/AES67Manager.app"
 CONTROLLER_APP="$SCRIPT_DIR/../aes67-macos-controller/AES67Controller.app"
+UNINSTALL_APP="$SCRIPT_DIR/AES67Uninstall.app"
 VERSION="$(sed -n 's/^\([0-9][0-9.]*\)-build.*/\1/p' "$DRIVER_PACKAGE/VERSION.txt")"
 OUTPUT_DIR="$BUILD_DIR/dmg"
 STAGING_DIR="$OUTPUT_DIR/staging"
@@ -61,6 +65,13 @@ else
     echo "         Build it with ../aes67-macos-controller/build.sh"
 fi
 
+if [ -d "$UNINSTALL_APP" ]; then
+    ditto "$UNINSTALL_APP" "$STAGING_DIR/AES67Uninstall.app"
+else
+    echo "WARNING: $UNINSTALL_APP not found — the image will carry no uninstaller."
+    echo "         Build it with ./build-uninstaller.sh"
+fi
+
 ln -s /Applications "$STAGING_DIR/Applications"
 
 hdiutil create \
@@ -86,6 +97,10 @@ echo ""
 echo "AES67Controller.app is the network's: sessions and NMOS crosspoints, for"
 echo "routing a plant. It installs nothing and needs nothing installed."
 echo ""
+echo "AES67Uninstall.app takes the driver, the PTP daemon and the settings back"
+echo "off the machine, and can be run without the Manager being there."
+echo ""
 echo "This image is UNSIGNED. To sign the apps before packaging them:"
 echo "  codesign --force --deep --sign \"Developer ID Application: Your Name\" \"$APP\""
 echo "  codesign --force --deep --sign \"Developer ID Application: Your Name\" \"$CONTROLLER_APP\""
+echo "  codesign --force --deep --sign \"Developer ID Application: Your Name\" \"$UNINSTALL_APP\""

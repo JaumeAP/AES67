@@ -30,6 +30,17 @@ if ! AES67_BUILD_DIR=build ./run-tests.sh; then
   exit 1
 fi
 
+echo "==> Uninstaller"
+if ! ./build-uninstaller.sh --force > build/uninstaller.log 2>&1; then
+  tail -20 build/uninstaller.log >&2
+  echo "FAIL: build-uninstaller.sh" >&2
+  exit 1
+fi
+test -x AES67Uninstall.app/Contents/MacOS/AES67Uninstall || {
+  echo "FAIL: no executable in the uninstaller bundle" >&2
+  exit 1
+}
+
 echo "==> App"
 if ! ./build.sh --force > build/build.log 2>&1; then
   tail -20 build/build.log >&2

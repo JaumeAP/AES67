@@ -47,6 +47,15 @@ if(TARGET aes67ptpd)
     add_dependencies(ManagerApp aes67ptpd)
 endif()
 
+# The uninstaller: a third application, built the same way and part of ALL,
+# because an image that ships without it ships a machine nobody can clean.
+add_custom_target(UninstallApp ALL
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-uninstaller.sh
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building AES67 Uninstall (SwiftUI)"
+    VERBATIM
+)
+
 option(BUILD_TESTS "Register the app's host tests with CTest" ON)
 if(BUILD_TESTS)
     enable_testing()
@@ -68,7 +77,7 @@ add_custom_target(dmg
             ${CMAKE_CURRENT_SOURCE_DIR}/build-dmg.sh
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Building AES67Manager.dmg"
-    DEPENDS ManagerApp
+    DEPENDS ManagerApp UninstallApp
     VERBATIM
 )
 

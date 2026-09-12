@@ -134,3 +134,53 @@ func runPrivilegedScriptTests() {
 
 
 }
+
+// MARK: - The uninstaller's command
+//
+// This runs as root with one administrator prompt, so what it contains is
+// worth pinning: the right paths, in an order that leaves the machine
+// consistent, and nothing that could not be carried through AppleScript.
+
+func runUninstallPlanTests() {
+    let plain = UninstallPlan.commands(removingApplications: false)
+
+    check(plain.contains { $0.contains("/Library/Audio/Plug-Ins/HAL/AES67Driver.driver") },
+          "the driver bundle is removed")
+    check(plain.contains { $0.contains("/Library/Application Support/AES67Driver") },
+          "and the settings the driver reads as root")
+    check(plain.contains { $0.contains("launchctl bootout system/com.aes67driver.ptpd") },
+          "the PTP daemon is stopped")
+    check(plain.first?.contains("bootout") == true,
+          "the daemon goes first, while what it needs is still there")
+    check(plain.last?.contains("kickstart -kp system/com.apple.audio.coreaudiod") == true,
+          "and Core Audio is restarted last, or the device stays until a reboot")
+
+    // A job that was never registered must not stop the rest.
+    check(plain.contains { $0.contains("bootout") && $0.contains("|| true") },
+          "an absent daemon is not a failure")
+
+    // The applications only when asked.
+    check(!plain.contains { $0.contains("/Applications/AES67Manager.app") },
+          "the apps are left alone by default")
+    let withApps = UninstallPlan.commands(removingApplications: true)
+    check(withApps.contains { $0.contains("/Applications/AES67Manager.app") },
+          "and removed when asked")
+    check(withApps.contains { $0.contains("/Applications/AES67Controller.app") },
+          "both of them")
+    check(withApps.last?.contains("kickstart") == true, "Core Audio still last")
+
+    // Every path is quoted, and the whole thing survives the trip through
+    // AppleScript.
+    check(UninstallPlan.script(removingApplications: true) != nil,
+          "the script can be built")
+    check(PrivilegedScript.isCarryable(withApps), "and carried")
+    check(UninstallPlan.script(removingApplications: false)?
+            .hasPrefix("do shell script \"") == true,
+          "as one administrator prompt")
+
+    // The per-user settings are not in the privileged half: deleting a file in
+    // the user's own home does not need a password.
+    check(!plain.contains { $0.contains("Library/Application Support/AES67Driver") &&
+                            $0.contains("~") },
+          "the user's own copy is removed without privileges")
+}
