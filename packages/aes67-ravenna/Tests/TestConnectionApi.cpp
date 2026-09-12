@@ -74,7 +74,7 @@ TEST_CASE("A sender serves its own SDP as the transport file") {
     CHECK(response.body == kSdp);
 
     CHECK(bodyOf(api.handle("GET", path("/single/senders/sender-1/transporttype/"), ""))
-              .asString() == kTransportRtpMulticast);
+              .asString() == kTransportRtp);
 }
 
 TEST_CASE("A receiver has no transport file to serve") {
@@ -178,30 +178,34 @@ TEST_CASE("A transport file that is not SDP is refused before the wire") {
     CHECK(response.body.find("application/sdp") != std::string::npos);
 }
 
-TEST_CASE("A scheduled activation is refused rather than forgotten") {
-    // Accepting one and never acting on it is a stream that a controller
-    // believes it has connected and nobody is sending.
+TEST_CASE("A scheduled activation needs a time, and a mode has to be one of the three") {
     ConnectionApi api = apiWithOne();
-    const ApiResponse response =
-        api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
-                   R"({"activation":{"mode":"activate_scheduled_absolute"}})");
-    CHECK(response.status == 501);
+
+    // Accepting a schedule with no time and never acting on it is a stream a
+    // controller believes it has connected and nobody is sending.
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     R"({"activation":{"mode":"activate_scheduled_absolute"}})")
+              .status == 400);
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     R"({"activation":{"mode":"activate_scheduled_relative","requested_time":"soon"}})")
+              .status == 400);
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     R"({"activation":{"mode":"activate_eventually"}})")
+              .status == 400);
 }
 
-TEST_CASE("Active is read-only, and bulk is a method that is not served") {
+TEST_CASE("Active is read-only, and bulk takes a POST and nothing else") {
     ConnectionApi api = apiWithOne();
     CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/active/"), "{}").status == 405);
 
-    // 405 and not 501: IS-05 defines the bulk endpoints, so the resource is
-    // there and it is the method that is not served. A 501 says the resource
-    // itself is unimplemented, which is what the AMWA suite objected to.
-    CHECK(api.handle("POST", path("/bulk/receivers"), "[]").status == 405);
-    CHECK(api.handle("POST", path("/bulk/senders"), "[]").status == 405);
-    // And the listings are listings: the one above them, and the empty one
-    // each endpoint answers a GET with.
+    // A bulk request is a batch of patches, not a resource: there is nothing
+    // to GET, and 405 says so on a resource that is plainly there.
+    CHECK(api.handle("GET", path("/bulk/senders"), "").status == 405);
+    CHECK(api.handle("GET", path("/bulk/receivers"), "").status == 405);
+    // The listing above them is a listing.
     CHECK(api.handle("GET", path("/bulk/"), "").status == 200);
-    CHECK(api.handle("GET", path("/bulk/senders"), "").status == 200);
-    CHECK(api.handle("GET", path("/bulk/receivers"), "").status == 200);
+    CHECK(api.handle("POST", path("/bulk/receivers"), "[]").status == 200);
+    CHECK(api.handle("POST", path("/bulk/senders"), "[]").status == 200);
 }
 
 TEST_CASE("A leg's constraints name the parameters that leg has") {
@@ -377,7 +381,9 @@ TEST_CASE("A receiver's transport parameters come from the file it was given") {
     const JsonValue& leg = active["transport_params"].asArray().front();
     CHECK(leg["multicast_ip"].asString() == "239.69.1.10");
     CHECK(leg["destination_port"].asNumber() == 5004);
-    CHECK(leg["interface_ip"].asString() == "auto");
+    // Activated, so the interface is the one actually in use rather than the
+    // request to pick one.
+    CHECK(leg["interface_ip"].asString() == "0.0.0.0");
     CHECK(leg["rtp_enabled"].asBool() == true);
     // This SDP names no a=source-filter, so the receiver takes the group from
     // any source and says so.
@@ -479,4 +485,153 @@ TEST_CASE("A sender reports, and takes, which receiver asked for it") {
     // And a body that is not an object is not a patch at all, on this side as
     // much as on the receiver's.
     CHECK(api.handle("PATCH", sender, "[]").status == 400);
+}
+
+TEST_CASE("A patch naming something this device has not is refused") {
+    // The AMWA suite sends {"bad": "data"} and expects a 400. Taking it,
+    // applying nothing and answering 200 leaves a controller believing it
+    // changed something.
+    ConnectionApi api = apiWithOne();
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     R"({"bad":"data"})")
+              .status == 400);
+    CHECK(api.handle("PATCH", path("/single/senders/sender-1/staged/"), R"({"bad":"data"})")
+              .status == 400);
+    // Each side refuses the other's names too.
+    CHECK(api.handle("PATCH", path("/single/senders/sender-1/staged/"),
+                     R"({"transport_file":{"data":null}})")
+              .status == 400);
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     R"({"receiver_id":null})")
+              .status == 400);
+}
+
+TEST_CASE("A scheduled activation is promised with a 202 and kept when its time comes") {
+    ConnectionApi api = apiWithOne();
+
+    JsonObject file;
+    file["data"] = JsonValue(kSdp);
+    file["type"] = JsonValue("application/sdp");
+    JsonObject schedule;
+    schedule["master_enable"] = JsonValue(true);
+    schedule["transport_file"] = JsonValue(file);
+    // Zero from now: due the moment it is made, so the mechanism is what is
+    // under test and not the clock.
+    schedule["activation"] = JsonValue(JsonObject{
+        {"mode", JsonValue("activate_scheduled_relative")},
+        {"requested_time", JsonValue("0:0")}});
+
+    const ApiResponse promised = api.handle(
+        "PATCH", path("/single/receivers/receiver-1/staged/"), JsonValue(schedule).serialise());
+    REQUIRE(promised.status == 202);
+
+    const JsonValue staged = bodyOf(promised);
+    CHECK(staged["activation"]["mode"].asString() == "activate_scheduled_relative");
+    CHECK(staged["activation"]["requested_time"].asString() == "0:0");
+    // The instant it is due, which is what a controller waits for.
+    CHECK(staged["activation"]["activation_time"].isString());
+
+    // Nothing reads this API without a request, so the next request is when a
+    // due activation happens.
+    const JsonValue active = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/active/"), ""));
+    CHECK(active["master_enable"].asBool() == true);
+    CHECK(active["transport_params"].asArray().front()["multicast_ip"].asString() ==
+          "239.69.1.10");
+
+    // And the staged activation is cleared, so it does not fire twice.
+    const JsonValue after = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/staged/"), ""));
+    CHECK(after["activation"]["mode"].isNull());
+    CHECK(after["activation"]["requested_time"].isNull());
+}
+
+TEST_CASE("An absolute activation already past happens at the next request") {
+    ConnectionApi api = apiWithOne();
+    const ApiResponse promised =
+        api.handle("PATCH", path("/single/senders/sender-1/staged/"),
+                   R"({"master_enable":true,
+                       "activation":{"mode":"activate_scheduled_absolute",
+                                     "requested_time":"1:0"}})");
+    REQUIRE(promised.status == 202);
+    CHECK(bodyOf(promised)["activation"]["requested_time"].asString() == "1:0");
+
+    const JsonValue active = bodyOf(api.handle("GET", path("/single/senders/sender-1/active/"), ""));
+    CHECK(active["master_enable"].asBool() == true);
+    CHECK(active["activation"]["mode"].asString() == "activate_scheduled_absolute");
+}
+
+TEST_CASE("What is active names what the device chose, not what it was asked to pick") {
+    // IS-05 sec 4: "auto" is a request. A controller reading it back off
+    // /active learns nothing about where the stream went.
+    ConnectionApi api = apiWithOne();
+    api.setInterfaceAddress("192.168.1.50");
+
+    const JsonValue staged = bodyOf(api.handle("GET", path("/single/senders/sender-1/staged/"), ""));
+    CHECK(staged["transport_params"].asArray().front()["source_port"].asString() == "auto");
+
+    REQUIRE(api.handle("PATCH", path("/single/senders/sender-1/staged/"),
+                       R"({"activation":{"mode":"activate_immediate"}})")
+                .status == 200);
+    const JsonValue senderActive =
+        bodyOf(api.handle("GET", path("/single/senders/sender-1/active/"), ""));
+    CHECK(senderActive["transport_params"].asArray().front()["source_port"].asNumber() == 5004);
+
+    JsonObject file;
+    file["data"] = JsonValue(kSdp);
+    file["type"] = JsonValue("application/sdp");
+    JsonObject connect;
+    connect["master_enable"] = JsonValue(true);
+    connect["transport_file"] = JsonValue(file);
+    connect["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+    REQUIRE(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                       JsonValue(connect).serialise())
+                .status == 200);
+
+    const JsonValue receiverActive =
+        bodyOf(api.handle("GET", path("/single/receivers/receiver-1/active/"), ""));
+    CHECK(receiverActive["transport_params"].asArray().front()["interface_ip"].asString() ==
+          "192.168.1.50");
+}
+
+TEST_CASE("A sender's transport file follows where it was told to send") {
+    // A controller is entitled to move a sender's destination and then read
+    // the SDP. One that still named the old group would send every receiver
+    // somewhere nothing arrives.
+    ConnectionApi api = apiWithOne();
+    REQUIRE(api.handle("PATCH", path("/single/senders/sender-1/staged/"),
+                       R"({"transport_params":[{"destination_port":5006}],
+                           "activation":{"mode":"activate_immediate"}})")
+                .status == 200);
+
+    const ApiResponse file =
+        api.handle("GET", path("/single/senders/sender-1/transportfile/"), "");
+    CHECK(file.status == 200);
+    CHECK(file.body.find("m=audio 5006") != std::string::npos);
+
+    const JsonValue active = bodyOf(api.handle("GET", path("/single/senders/sender-1/active/"), ""));
+    CHECK(active["transport_params"].asArray().front()["destination_port"].asNumber() == 5006);
+}
+
+TEST_CASE("Bulk stages every resource it names and answers for each one") {
+    ConnectionApi api = apiWithOne();
+
+    const std::string request =
+        R"([{"id":"receiver-1","params":{"transport_params":[{"destination_port":5008}]}},
+            {"id":"nobody","params":{"master_enable":true}}])";
+    const ApiResponse response = api.handle("POST", path("/bulk/receivers"), request);
+    REQUIRE(response.status == 200);
+
+    const JsonValue answers = bodyOf(response);
+    REQUIRE(answers.isArray());
+    REQUIRE(answers.asArray().size() == 2);
+    CHECK(answers.asArray()[0]["id"].asString() == "receiver-1");
+    CHECK(answers.asArray()[0]["code"].asNumber() == 200);
+    // One that fails does not take the batch down with it: the answer says
+    // which one, and with what the single endpoint would have said.
+    CHECK(answers.asArray()[1]["id"].asString() == "nobody");
+    CHECK(answers.asArray()[1]["code"].asNumber() == 404);
+
+    const JsonValue staged = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/staged/"), ""));
+    CHECK(staged["transport_params"].asArray().front()["destination_port"].asNumber() == 5008);
+
+    CHECK(api.handle("POST", path("/bulk/senders"), R"({"id":"sender-1"})").status == 400);
 }

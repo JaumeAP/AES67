@@ -27,6 +27,7 @@
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/HttpServer.h"
 #include "Ravenna/MdnsResponder.h"
+#include "Ravenna/NmosRoot.h"
 #include "Ravenna/NodeApi.h"
 #include "Ravenna/ReceiverRouting.h"
 #include "Ravenna/RtspServer.h"
@@ -232,6 +233,9 @@ int main(int argc, char** argv) {
     // where the channels get assigned.
     StreamChannelMapper mapper;
     ConnectionApi connections;
+    // The interface a receiver ends up using, which IS-05 has to name on its
+    // active endpoint: only the host knows which one that is.
+    connections.setInterfaceAddress(addressText);
 
     ConnectionSender nmosSender;
     // UUID-shaped, because a controller that validates an IS-04 id rejects
@@ -292,6 +296,8 @@ int main(int argc, char** argv) {
     HttpServer nmos([&connections, &channelMapping, &nodeApi](const std::string& method,
                                                               const std::string& path,
                                                               const std::string& body) {
+        // Above the APIs: which ones this device has, and which versions.
+        if (auto above = nmosRootListing(method, path)) return *above;
         if (path.rfind(kChannelMappingApiRoot, 0) == 0) {
             return channelMapping.handle(method, path, body);
         }
