@@ -68,7 +68,9 @@ TEST_CASE("A resolved service is described and becomes a session") {
         RTSPSessionDiscovery::describe(resolvedService(), &answersWithSdp);
 
     REQUIRE(result.ok);
-    CHECK(g_lastUrl == "rtsp://192.168.1.50:8554/by-name/Studio Mic 1");
+    // Percent-encoded, RFC 3986 SS 3.3: a space in a request line ends the
+    // URL, and "Studio Mic 1" is what RAVENNA sessions are actually called.
+    CHECK(g_lastUrl == "rtsp://192.168.1.50:8554/by-name/Studio%20Mic%201");
 
     // What the app needs comes out of the description, not out of the
     // service: the address the audio is actually on is in the SDP, and the
