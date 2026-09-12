@@ -33,12 +33,22 @@ public:
             return false;
         }
         
-        // Enable SO_REUSEADDR to allow reusing the port
+        // SO_REUSEADDR and SO_REUSEPORT both, the way RTPSocket does it. The
+        // SAP port is shared by everything on the machine that listens for
+        // announcements -- this driver inside coreaudiod and the controller
+        // application beside it, which runs the same discovery itself because
+        // it must work where no driver is installed. On macOS REUSEADDR alone
+        // is not enough for that: the second process to bind 9875 was refused
+        // outright, and its session list stayed empty with nothing to say why.
         int opt = 1;
         if (setsockopt(sockFd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
             std::cerr << "Failed to set socket options" << '\n';
             close(sockFd_);
             return false;
+        }
+        if (setsockopt(sockFd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+            std::cerr << "SAP: SO_REUSEPORT refused — another listener on this machine "
+                         "will not be able to share the port" << '\n';
         }
 
         // A 1 s receive timeout so the listen loop wakes periodically even on a

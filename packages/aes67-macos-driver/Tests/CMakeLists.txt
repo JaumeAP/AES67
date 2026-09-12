@@ -401,6 +401,20 @@ target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_net)
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
 
+# Test: the C face of that discovery, which is what the controller
+# application links against -- it has no driver and no Core Audio.
+add_executable(TestDiscoveryBridge
+    TestDiscoveryBridge.cpp
+)
+
+target_include_directories(TestDiscoveryBridge PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+target_link_libraries(TestDiscoveryBridge PRIVATE aes67_net)
+target_link_libraries(TestDiscoveryBridge PRIVATE doctest_headers)
+target_compile_features(TestDiscoveryBridge PRIVATE cxx_std_17)
+
 # Test: the step from a registered _rtsp._tcp service to a session in the
 # directory, driven with a fetcher the test supplies rather than a device.
 add_executable(TestRTSPSessionDiscovery
@@ -759,6 +773,7 @@ add_test(NAME PTPT41Interop COMMAND TestPTPT41Interop)
 add_test(NAME ImpairmentPolicy COMMAND TestImpairmentPolicy)
 add_test(NAME SessionDirectory COMMAND TestSessionDirectory)
 add_test(NAME RTSPSessionDiscovery COMMAND TestRTSPSessionDiscovery)
+add_test(NAME DiscoveryBridge COMMAND TestDiscoveryBridge)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME NodeAPI COMMAND TestNodeAPI)

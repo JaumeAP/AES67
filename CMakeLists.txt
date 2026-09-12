@@ -56,6 +56,16 @@ set(AES67_MACOS_DRIVER_BUILD_DIR "${CMAKE_BINARY_DIR}/packages/aes67-macos-drive
     CACHE PATH "Directory holding the built driver bundle and PTP daemon" FORCE)
 add_subdirectory(packages/aes67-macos-manager)
 
+# The controller application: the crosspoint matrix and the session list, for
+# routing a plant from a machine that need not have the driver installed. It
+# links the driver's network library through a C bridge, so it is told where
+# this build put it.
+set(AES67_MACOS_CONTROLLER_DRIVER_BUILD_DIR "${CMAKE_BINARY_DIR}/packages/aes67-macos-driver"
+    CACHE PATH "Directory holding the built driver libraries for the controller" FORCE)
+set(AES67_MACOS_DRIVER_BUILD_DIR "${AES67_MACOS_CONTROLLER_DRIVER_BUILD_DIR}"
+    CACHE PATH "Directory holding the built driver bundle and PTP daemon" FORCE)
+add_subdirectory(packages/aes67-macos-controller)
+
 # After the driver, because it defines aes67_core and aes67_profiles and both
 # of these guard on the targets already existing. On a Mac this gives the PTP
 # wire library and its three suites and no daemon, which is what that package

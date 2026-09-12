@@ -11,6 +11,7 @@
 #   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
 #   packages/aes67-macos-manager/scripts/gate.sh  host tests, the app
+#   packages/aes67-macos-controller/scripts/gate.sh  the controller app
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
 #   packages/t41-ptp/scripts/gate.sh             host tests
 #
@@ -52,6 +53,7 @@ run "aes67-core"         packages/aes67-core/scripts/gate.sh
 run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
 run "aes67-macos-manager" packages/aes67-macos-manager/scripts/gate.sh
+run "aes67-macos-controller" packages/aes67-macos-controller/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 
 # The RAVENNA ALSA kernel module is a checkout, not a package: docs/ravenna-alsa-lkm.md
