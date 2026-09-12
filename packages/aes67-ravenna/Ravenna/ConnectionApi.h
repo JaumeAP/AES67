@@ -46,6 +46,16 @@ struct ConnectionState {
     /// controller reads back what a crosspoint was set to: a receiver that
     /// takes a stream and does not say whose looks unrouted.
     std::string senderId;
+    /// Which receiver a controller pointed at this sender, empty for none.
+    /// IS-05 sec 6 reports it as `receiver_id`, and it is not the field above
+    /// under another name: the two ends name each other, and one sender read
+    /// back as its own subscriber is how a controller loses track of a route.
+    std::string receiverId;
+    /// The transport parameters a controller fixed by PATCH, by name. IS-05
+    /// fills these from the transport file and then lets a controller correct
+    /// them, so a name here wins over what the SDP says and a name absent is
+    /// whatever the SDP gives.
+    JsonObject transportParams;
     /// activation.mode of the last change, "null" when it was never activated.
     std::string activationMode = "null";
     /// activation.activation_time, as IS-05 reports it: the time the change
