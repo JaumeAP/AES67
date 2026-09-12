@@ -258,8 +258,10 @@ JsonValue NodeApi::senders() const {
         const auto session = catalogue_.session(name);
         if (!session) continue;
 
+        const std::string id = senderIdFor(name);
+
         JsonObject sender;
-        sender["id"] = JsonValue(senderIdFor(name));
+        sender["id"] = JsonValue(id);
         sender["version"] = JsonValue(versionNow());
         sender["label"] = JsonValue(name);
         sender["description"] = JsonValue("");
@@ -272,9 +274,22 @@ JsonValue NodeApi::senders() const {
         // controller takes it from here and gives it to a receiver.
         sender["manifest_href"] =
             JsonValue(base + std::string(kConnectionApiRoot) + "/single/senders/" +
-                      senderIdFor(name) + "/transportfile/");
+                      id + "/transportfile/");
+        // Which receiver a controller subscribed to this sender, read out of
+        // IS-05 rather than written again here: the two APIs answer the same
+        // question, and answering it from two places is how they come to
+        // disagree. A session the connection API does not carry has nobody
+        // subscribed to it, which is null.
+        //
+        // `active` stays true because this sender does send: it is announced
+        // and streamed from the catalogue, and IS-05's master_enable on a
+        // sender is held here, not obeyed.
+        const auto connection = connections_.sender(id);
         sender["subscription"] = JsonValue(JsonObject{
-            {"receiver_id", JsonValue()}, {"active", JsonValue(true)}});
+            {"receiver_id", connection && !connection->active.receiverId.empty()
+                                ? JsonValue(connection->active.receiverId)
+                                : JsonValue()},
+            {"active", JsonValue(true)}});
         items.emplace_back(sender);
     }
     return JsonValue(items);
@@ -300,8 +315,14 @@ JsonValue NodeApi::receivers() const {
         receiver["format"] = JsonValue("urn:x-nmos:format:audio");
         receiver["caps"] = JsonValue(JsonObject{
             {"media_types", JsonValue(JsonArray{JsonValue("audio/L24"), JsonValue("audio/L16")})}});
+        // The sender this receiver was pointed at, from the same IS-05 state
+        // the connection API reports it from. Published as null while a
+        // controller had routed it, this said the crosspoint was never made.
         receiver["subscription"] = JsonValue(JsonObject{
-            {"sender_id", JsonValue()}, {"active", JsonValue(active)}});
+            {"sender_id", connection->active.senderId.empty()
+                              ? JsonValue()
+                              : JsonValue(connection->active.senderId)},
+            {"active", JsonValue(active)}});
         items.emplace_back(receiver);
     }
     return JsonValue(items);
