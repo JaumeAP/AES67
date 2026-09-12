@@ -66,23 +66,29 @@ bool transmitDirectionFor(const CompatibilityProfile& profile) {
 TEST_CASE("Each Profile Names The Discovery It Runs") {
     // The table, as a table. Every kind is listed on purpose: a kind added
     // without a row here inherits SAP-only from the defaults, which is right
-    // for a Dolby model and wrong for anything that speaks RTSP or NMOS.
+    // for nothing in particular -- Dolby models turn SAP off, since Atmos
+    // Connect neither announces nor listens for it, and anything speaking
+    // RTSP or NMOS has to say so.
     struct Row { CompatibilityProfileKind kind; bool sap, dnssd, nmos; };
     const Row rows[] = {
         {CompatibilityProfileKind::AES67,            true, true,  false},
         {CompatibilityProfileKind::RAVENNA,          true, true,  true},
-        {CompatibilityProfileKind::ST2110_30,        true, false, true},
-        {CompatibilityProfileKind::ST2110_30_LevelB, true, false, true},
-        {CompatibilityProfileKind::Dante,            true, false, false},
-        {CompatibilityProfileKind::Dolby,            true, false, false},
-        {CompatibilityProfileKind::DolbyLAN,         true, false, false},
-        {CompatibilityProfileKind::DolbyDAC3202,     true, false, false},
-        {CompatibilityProfileKind::DolbyDMA16,       true, false, false},
-        {CompatibilityProfileKind::DolbyDMA24,       true, false, false},
-        {CompatibilityProfileKind::DolbyDMA32,       true, false, false},
-        {CompatibilityProfileKind::DolbyCP850,       true, false, false},
-        {CompatibilityProfileKind::DolbyCP950,       true, false, false},
-        {CompatibilityProfileKind::DolbyCP950A,      true, false, false},
+        // ST 2110 is routed by IS-04/IS-05; the SDP reaches a receiver
+        // through the controller, never by announcement.
+        {CompatibilityProfileKind::ST2110_30,        false, false, true},
+        {CompatibilityProfileKind::ST2110_30_LevelB, false, false, true},
+        {CompatibilityProfileKind::Dante,            true,  false, false},
+        // Atmos Connect is configured by hand: fixed destination, source
+        // port per flow, and no discovery of any kind on the wire.
+        {CompatibilityProfileKind::Dolby,            false, false, false},
+        {CompatibilityProfileKind::DolbyLAN,         false, false, false},
+        {CompatibilityProfileKind::DolbyDAC3202,     false, false, false},
+        {CompatibilityProfileKind::DolbyDMA16,       false, false, false},
+        {CompatibilityProfileKind::DolbyDMA24,       false, false, false},
+        {CompatibilityProfileKind::DolbyDMA32,       false, false, false},
+        {CompatibilityProfileKind::DolbyCP850,       false, false, false},
+        {CompatibilityProfileKind::DolbyCP950,       false, false, false},
+        {CompatibilityProfileKind::DolbyCP950A,      false, false, false},
     };
     for (const auto& row : rows) {
         const auto profile = CompatibilityProfile::forKind(row.kind);
@@ -90,6 +96,23 @@ TEST_CASE("Each Profile Names The Discovery It Runs") {
         CHECK(profile.usesSap == row.sap);
         CHECK(profile.usesDnsSdRtsp == row.dnssd);
         CHECK(profile.usesNmos == row.nmos);
+    }
+}
+
+TEST_CASE("A Profile Whose Gear Discovers Nothing Runs Nothing") {
+    // Dolby is configured by hand end to end. Starting a SAP announcer under
+    // it put descriptions on a network where nothing reads them; the profile
+    // now says so, and AES67Device::Initialize() starts only what it says.
+    for (auto kind : {CompatibilityProfileKind::Dolby, CompatibilityProfileKind::DolbyLAN,
+                      CompatibilityProfileKind::DolbyDMA32, CompatibilityProfileKind::DolbyCP950}) {
+        const auto p = CompatibilityProfile::forKind(kind);
+        INFO(p.displayName);
+        CHECK_FALSE(p.usesSap);
+        CHECK_FALSE(p.usesDnsSdRtsp);
+        CHECK_FALSE(p.usesNmos);
+        // What it does use instead: one address, one destination port, and
+        // the source port stepped per flow.
+        CHECK(p.useFixedMulticastWithPerFlowSourcePort);
     }
 }
 

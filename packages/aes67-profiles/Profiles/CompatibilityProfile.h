@@ -170,11 +170,15 @@ struct CompatibilityProfile {
     /// AES67Device::Initialize() starts only what it says.
     ///
     /// SAP (RFC 2974) is AES67's own announcement and what Dante reads in
-    /// AES67 mode, so every profile keeps it. DNS-SD over mDNS with RTSP
-    /// DESCRIBE is RAVENNA's session layer; AES67 keeps it too, because
-    /// AES67 gear on a switch that filters SAP publishes `_rtsp._tcp` and is
-    /// otherwise invisible. NMOS IS-04/05/08 is ST 2110's control plane and
-    /// RAVENNA's optional one; nobody else speaks it.
+    /// AES67 mode, and RAVENNA gear announces it in AES67 mode too. Dolby
+    /// and ST 2110 do not: Atmos Connect is configured by hand end to end,
+    /// and an ST 2110 receiver is handed its SDP through IS-04/IS-05 -- so
+    /// those profiles turn it off rather than announce into a discovery
+    /// nobody on that network reads. DNS-SD over mDNS with RTSP DESCRIBE is
+    /// RAVENNA's session layer; AES67 keeps it too, because AES67 gear on a
+    /// switch that filters SAP publishes `_rtsp._tcp` and is otherwise
+    /// invisible. NMOS IS-04/05/08 is ST 2110's control plane and RAVENNA's
+    /// optional one; nobody else speaks it.
     bool usesSap{true};
     bool usesDnsSdRtsp{false};
     bool usesNmos{false};

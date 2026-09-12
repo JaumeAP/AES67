@@ -130,6 +130,11 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
 
     case CompatibilityProfileKind::ST2110_30:
         p.usesNmos = true; // IS-04/05 is how ST 2110 gear is routed
+        // And the only way: an ST 2110 receiver is given its SDP through
+        // IS-04/IS-05, not by listening for announcements. SAP on a 2110
+        // network is a local habit where it exists at all, and announcing
+        // into it from here describes sessions no controller is reading.
+        p.usesSap = false;
         p.displayName = "SMPTE ST 2110-30 (Level A)";
         // Level A: 48 kHz only, 1 ms packets, 1-8 channels, 16/24-bit.
         // See Docs/st2110_30_vs_aes67.md.
@@ -150,6 +155,11 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
 
     case CompatibilityProfileKind::ST2110_30_LevelB:
         p.usesNmos = true; // IS-04/05 is how ST 2110 gear is routed
+        // And the only way: an ST 2110 receiver is given its SDP through
+        // IS-04/IS-05, not by listening for announcements. SAP on a 2110
+        // network is a local habit where it exists at all, and announcing
+        // into it from here describes sessions no controller is reading.
+        p.usesSap = false;
         p.displayName = "SMPTE ST 2110-30 (Level B)";
         // Level B is Level A at 125 us instead of 1 ms — same 48 kHz, same
         // 16/24-bit, same 1-8 channels per stream. Emitting 125 us packets
@@ -268,6 +278,14 @@ CompatibilityProfile CompatibilityProfile::forKind(CompatibilityProfileKind kind
         // requiredMulticastPrefix is imposed. Matches the manuals.
         p.maxUnits = 1;                 // a single generic unit — no chaining
         p.usesLanAutoDetection = false; // minimal: configured by hand
+        // Atmos Connect is configured by hand, end to end: a fixed
+        // destination address and port, and a source port stepped per flow.
+        // No Dolby device announces over SAP, and none listens for it -- so
+        // under this profile the SAP announcer was emitting descriptions
+        // nobody reads onto a network whose own QoS, per the DMA manual, is
+        // switch queues rather than DSCP. The per-model profiles below
+        // inherit this, as they inherit everything else here.
+        p.usesSap = false;
         p.caveats =
             "The minimal Dolby profile — the parameters common to every Dolby "
             "Atmos Connect device, for one unit you configure by hand: 48/96 "
