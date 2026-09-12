@@ -551,6 +551,40 @@ struct ManagerFixture {
 
 } // namespace
 
+TEST_CASE("A Controller's Patch Is Not The Automatic Follow It Can Be Switched Off With") {
+    std::cout << "Test: setAutoSinkFollow(false) stops announcements and not a controller... ";
+    ManagerFixture fixture;
+    fixture.manager.setAutoSave(false);   // a test writes no configuration
+
+    SDPSession original = createTestSDP("Controller Patch", 5004, 2, 48000);
+    original.originAddress = "192.168.1.50";
+    const StreamID id = fixture.manager.addStream(original);
+    if (id.isNull()) {
+        // No multicast on this machine (a sandbox, or Local Network refused):
+        // the decision this case is about cannot be reached without a stream,
+        // and asserting on a manager that holds none would assert nothing.
+        std::cout << "SKIP (no stream could be added here)" << std::endl;
+        return;
+    }
+
+    SDPSession moved = original;
+    moved.connectionAddress = "239.69.9.9";
+
+    fixture.manager.setAutoSinkFollow(false);
+    CHECK(fixture.manager.updateReceiveStreamsFromAnnouncement(
+              moved, StreamManager::RepointTrigger::Announcement) == 0);
+
+    // The same move, asked for by a controller: applied, because the switch
+    // is about following announcements and not about obeying IS-05.
+    CHECK(fixture.manager.updateReceiveStreamsFromAnnouncement(
+              moved, StreamManager::RepointTrigger::Controller) == 1);
+
+    const std::vector<SDPSession> sessions = fixture.manager.getReceiveSessions();
+    REQUIRE(sessions.size() == 1);
+    CHECK(sessions.front().connectionAddress == "239.69.9.9");
+    std::cout << "PASS" << std::endl;
+}
+
 TEST_CASE("Sixty-Four Channels Are Accepted At 125 us Under RAVENNA") {
     std::cout << "Test: 64 channels of L24 at 125 us pass validation under RAVENNA... ";
     ManagerFixture fixture;

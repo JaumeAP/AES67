@@ -708,8 +708,14 @@ void StreamManager::setAutoSinkFollow(bool enabled) {
 }
 
 
-size_t StreamManager::updateReceiveStreamsFromAnnouncement(const SDPSession& announced) {
-    if (!autoSinkFollowEnabled_.load(std::memory_order_relaxed)) return 0;
+size_t StreamManager::updateReceiveStreamsFromAnnouncement(const SDPSession& announced,
+                                                           RepointTrigger trigger) {
+    // The switch is about following announcements, not about obeying a
+    // controller: a deliberate patch is applied whatever it says.
+    if (trigger == RepointTrigger::Announcement &&
+        !autoSinkFollowEnabled_.load(std::memory_order_relaxed)) {
+        return 0;
+    }
     if (announced.sessionName.empty()) return 0;
 
     struct Pending {

@@ -284,6 +284,17 @@ private:
 
     /// Applies one IS-05 patch to a receive stream. Runs on the
     /// Connection API's own thread, never on an audio one.
+    /// How many receivers this node advertises that are taking nothing.
+    /// They are what lets a controller subscribe this machine to a stream it
+    /// does not have, rather than only move a subscription it already has.
+    static constexpr size_t kSpareReceiverCount = 4;
+
+    /// The label and, through nmosIdFor(), the id of one of those.
+    static std::string spareReceiverName(size_t index);
+
+    bool subscribeSpareReceiver(const std::string& receiverId,
+                                const ConnectionPatch& patch);
+
     bool applyConnectionPatch(const std::string& receiverId, const ConnectionPatch& patch);
 
     /// What the Connection API serves, built from the same streams and the

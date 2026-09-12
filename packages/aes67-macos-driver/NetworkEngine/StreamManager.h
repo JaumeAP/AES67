@@ -288,9 +288,22 @@ public:
     // address when both sides carry one. A change in channel count is
     // deliberately NOT followed (it would force a device-channel re-map that
     // could collide with neighbouring streams) — skipped and logged instead.
-    // Returns how many receive streams were re-subscribed. No-op unless
-    // setAutoSinkFollow(true) (the default).
-    size_t updateReceiveStreamsFromAnnouncement(const SDPSession& announced);
+    // Returns how many receive streams were re-subscribed. An announcement
+    // is a no-op unless setAutoSinkFollow(true) (the default); a controller's
+    // patch is applied whatever that says.
+    /// Who asked for a re-point, which decides whether setAutoSinkFollow()
+    /// applies to it.
+    ///
+    /// An announcement is the automatic case: a source re-announced itself
+    /// and the sinks bound to it follow, which an installation can switch
+    /// off. A controller's patch is not that case -- somebody pressed a
+    /// crosspoint -- and a switch meant for the automatic behaviour used to
+    /// silently refuse it, leaving a controller with a button that did
+    /// nothing and no way to know why.
+    enum class RepointTrigger { Announcement, Controller };
+
+    size_t updateReceiveStreamsFromAnnouncement(const SDPSession& announced,
+                                              RepointTrigger trigger = RepointTrigger::Announcement);
 
     // Outcome of matching a SAP announcement against one stored receive
     // stream — the pure decision behind auto sink-follow, exposed static so
@@ -353,6 +366,7 @@ public:
     // Enable/disable auto sink-follow. On by default; a source that never
     // changes its SDP is unaffected either way.
     void setAutoSinkFollow(bool enabled);
+
 
     // Get stream info
     std::optional<StreamInfo> getStreamInfo(const StreamID& id) const;

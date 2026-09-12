@@ -772,6 +772,48 @@ std::vector<ConnectionSender> AES67Device::connectionSenders() {
     return senders;
 }
 
+bool AES67Device::subscribeSpareReceiver(const std::string& receiverId,
+                                         const ConnectionPatch& patch) {
+    // Nothing to disconnect: a free receiver is already taking nothing, and
+    // saying yes is what the controller asked for.
+    if (patch.masterEnable.has_value() && !*patch.masterEnable) return true;
+    if (!patch.activateImmediate) return false;
+
+    // Subscribing needs the description: transport parameters alone would
+    // move an address this receiver does not have.
+    if (!patch.transportFile.has_value()) return false;
+    const auto parsed = SDPParser::parseString(*patch.transportFile);
+    if (!parsed) return false;
+
+    SDPSession wanted = *parsed;
+    if (patch.multicastAddress.has_value() && !patch.multicastAddress->empty()) {
+        wanted.connectionAddress = *patch.multicastAddress;
+    }
+    if (patch.port.has_value()) wanted.port = *patch.port;
+
+    // Channels assigned automatically: the controller says which stream, the
+    // device says where it lands, and StreamManager persists both -- so the
+    // subscription is still there after this machine restarts.
+    const StreamID id = streamManager_->addStream(wanted);
+    if (id.isNull()) return false;
+
+    if (patch.senderId.has_value()) {
+        std::lock_guard<std::mutex> lock(receiverSenderIdsMutex_);
+        receiverSenderIds_[nmosIdFor("receiver", wanted.sessionName)] = *patch.senderId;
+        // The free receiver's own id stops meaning anything the moment it is
+        // taking something: what the controller sees next is the stream.
+        receiverSenderIds_.erase(receiverId);
+    }
+
+    AES67_LOGF("AES67Device: controller subscribed '%s' at %s:%u through a free receiver",
+               wanted.sessionName.c_str(), wanted.connectionAddress.c_str(), wanted.port);
+    return true;
+}
+
+std::string AES67Device::spareReceiverName(size_t index) {
+    return "Free receiver " + std::to_string(index + 1);
+}
+
 std::vector<ConnectionReceiver> AES67Device::connectionReceivers() {
     std::vector<ConnectionReceiver> receivers;
     if (!streamManager_) return receivers;
@@ -792,6 +834,20 @@ std::vector<ConnectionReceiver> AES67Device::connectionReceivers() {
         }
         receivers.push_back(std::move(receiver));
     }
+
+    // Receivers that are taking nothing yet. Without them this node
+    // advertises only the streams it already has, so a controller can move a
+    // subscription and never make one -- and a machine with no streams at all
+    // offers nothing to route onto, which is the state every machine starts
+    // in. NMOS receivers are a device's capability, not a list of what it
+    // happens to be doing.
+    for (size_t index = 0; index < kSpareReceiverCount; ++index) {
+        const std::string name = spareReceiverName(index);
+        ConnectionReceiver receiver;
+        receiver.id = nmosIdFor("receiver", name);
+        receiver.label = name;
+        receivers.push_back(std::move(receiver));
+    }
     return receivers;
 }
 
@@ -806,7 +862,16 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
                                     [&](const SDPSession& sdp) {
                                         return nmosIdFor("receiver", sdp.sessionName) == receiverId;
                                     });
-    if (match == sessions.end()) return false;
+    if (match == sessions.end()) {
+        // Not one of the streams that exist: it may be one of the free
+        // receivers, which is how a controller subscribes a machine that is
+        // taking nothing yet.
+        for (size_t index = 0; index < kSpareReceiverCount; ++index) {
+            if (nmosIdFor("receiver", spareReceiverName(index)) != receiverId) continue;
+            return subscribeSpareReceiver(receiverId, patch);
+        }
+        return false;
+    }
     const SDPSession& target = *match;
 
     // A patch with no activation is staged and not applied. This driver
@@ -855,7 +920,8 @@ bool AES67Device::applyConnectionPatch(const std::string& receiverId,
     // Re-pointing goes through the same path SAP's sink-follow uses, which
     // preserves the device-channel mapping and refuses a channel-count
     // change for the reason recorded there.
-    const bool repointed = streamManager_->updateReceiveStreamsFromAnnouncement(wanted) > 0;
+    const bool repointed = streamManager_->updateReceiveStreamsFromAnnouncement(
+        wanted, StreamManager::RepointTrigger::Controller) > 0;
 
     // Remember whose sender this is, so `active` can name it. Only once
     // the re-point took: recording an id for a patch that failed would
@@ -903,8 +969,18 @@ std::vector<NMOSReceiverResource> AES67Device::nmosReceiverResources() {
         receiver.description = sdp.sessionInfo;
         receiver.subscribedMulticastAddress = sdp.connectionAddress;
         // A receive stream that exists is a receiver that is taking
-        // something: this driver does not keep idle receivers around.
+        // something.
         receiver.active = true;
+        receivers.push_back(std::move(receiver));
+    }
+
+    // And the free ones, so a controller sees somewhere to put a stream on a
+    // machine that is taking nothing yet.
+    for (size_t index = 0; index < kSpareReceiverCount; ++index) {
+        NMOSReceiverResource receiver;
+        receiver.name = spareReceiverName(index);
+        receiver.description = "Not subscribed: patch a transport file here to subscribe";
+        receiver.active = false;
         receivers.push_back(std::move(receiver));
     }
     return receivers;
