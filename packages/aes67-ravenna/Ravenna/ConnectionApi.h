@@ -9,11 +9,11 @@
 // it is this API. A controller PATCHes a transport file onto a receiver's
 // staged endpoint, activates it, and the receiver joins.
 //
-// v1.1 of the Connection API, and the parts of it a device this size has:
-// single senders and receivers, immediate activation, and the transport file.
-// Scheduled activation is answered with a 400 saying so rather than accepted
-// and forgotten, and bulk is not implemented -- a controller that finds no
-// bulk endpoint uses the single ones.
+// v1.1 of the Connection API: single senders and receivers, the transport
+// file, the bulk endpoints, and all three activation modes. A scheduled one
+// is answered with a 202 and happens at the request that first arrives after
+// its time -- this API has no thread of its own, and nothing learns what is
+// active without asking.
 //
 // Platform-free: this decides what a request means and what the answer is,
 // and HttpServer.h is what puts it on a socket.
@@ -31,8 +31,14 @@
 namespace AES67::Ravenna {
 
 inline constexpr char kConnectionApiRoot[] = "/x-nmos/connection/v1.1";
-/// IS-05's name for what this carries: RTP over multicast.
+/// IS-04's name for what this carries: RTP over multicast. It is the value a
+/// node's sender and receiver resources publish as their `transport`.
 inline constexpr char kTransportRtpMulticast[] = "urn:x-nmos:transport:rtp.mcast";
+/// The same transport with the subclassification taken off, which is what
+/// IS-05's own transporttype endpoint answers: its schema is an enum of the
+/// four base URNs, and rtp.mcast is not one of them. A controller reads the
+/// multicast half from IS-04.
+inline constexpr char kTransportRtp[] = "urn:x-nmos:transport:rtp";
 
 /// What a sender or a receiver holds in each of its two states.
 struct ConnectionState {
@@ -58,9 +64,23 @@ struct ConnectionState {
     JsonObject transportParams;
     /// activation.mode of the last change, "null" when it was never activated.
     std::string activationMode = "null";
+    /// activation.requested_time, which only a scheduled activation carries:
+    /// the offset or the instant a controller asked for, echoed back.
+    std::string activationRequestedTime;
     /// activation.activation_time, as IS-05 reports it: the time the change
-    /// took effect, or empty when nothing has.
+    /// took effect, or the time a scheduled one is due, or empty when nothing
+    /// has happened.
     std::string activationTime;
+};
+
+/// A scheduled activation waiting for its moment. IS-05 sec 4 answers a
+/// scheduled request with a 202 and makes the change later, so this is what
+/// has been promised and when.
+struct PendingActivation {
+    bool waiting = false;
+    uint64_t dueSeconds = 0;   ///< TAI, as the activation time reports it
+    uint32_t dueNanos = 0;
+    ConnectionState state;     ///< what becomes active when the time comes
 };
 
 struct ConnectionSender {
@@ -69,6 +89,7 @@ struct ConnectionSender {
     std::string sdp;             ///< the transport file, always available
     ConnectionState staged;
     ConnectionState active;
+    PendingActivation pending;
 };
 
 struct ConnectionReceiver {
@@ -76,6 +97,7 @@ struct ConnectionReceiver {
     std::string label;
     ConnectionState staged;
     ConnectionState active;
+    PendingActivation pending;
 };
 
 /// One answer: a status, a content type and a body. Nothing here knows about
@@ -102,6 +124,12 @@ public:
         onActivation_ = std::move(callback);
     }
 
+    /// The address of the interface this device receives on. IS-05 lets a
+    /// receiver answer "auto" while nothing is activated, but what is active
+    /// has to name the interface it is actually using, and only the host
+    /// knows which that is.
+    void setInterfaceAddress(std::string address) { interfaceAddress_ = std::move(address); }
+
     std::optional<ConnectionSender> sender(const std::string& id) const;
     std::optional<ConnectionReceiver> receiver(const std::string& id) const;
 
@@ -119,10 +147,26 @@ public:
 private:
     ApiResponse patchStagedReceiver(const std::string& id, const std::string& body);
     ApiResponse patchStagedSender(const std::string& id, const std::string& body);
+    /// Answers a POST to /bulk/senders or /bulk/receivers by running each
+    /// entry through the single endpoint it stands for.
+    ApiResponse patchInBulk(bool forSenders, const std::string& body);
+    /// Fires every scheduled activation whose time has come. Called at the
+    /// top of every request, which is the only clock this API is driven by:
+    /// nothing reads a state without going through here first.
+    void applyDueActivations();
+    /// A state as the active endpoint has to report it, with every "auto"
+    /// resolved. A resource nobody has activated yet still answers /active,
+    /// and answering "auto" there tells a controller nothing about where the
+    /// stream is.
+    JsonValue activeAsJson(const ConnectionState& state, bool forSender) const;
+    void activateSender(ConnectionSender& sender, ConnectionState state);
+    bool activateReceiver(ConnectionReceiver& receiver, ConnectionState state,
+                          std::string& error);
 
     std::map<std::string, ConnectionSender> senders_;
     std::map<std::string, ConnectionReceiver> receivers_;
     ReceiverActivation onActivation_;
+    std::string interfaceAddress_;
 };
 
 /// The state as IS-05 reports it, which is not how it is held: the

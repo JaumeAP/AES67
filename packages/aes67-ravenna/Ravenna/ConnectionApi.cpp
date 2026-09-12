@@ -3,6 +3,8 @@
 #include "Driver/SDPParser.h"
 
 #include <algorithm>
+#include <cctype>
+#include <exception>
 #include <iterator>
 #include <optional>
 #include <ctime>
@@ -10,17 +12,12 @@
 namespace AES67::Ravenna {
 namespace {
 
-/// IS-05 carries times as TAI seconds and nanoseconds, "<seconds>:<nanos>".
-/// The clock underneath is the system's, which is UTC: the difference is the
-/// leap seconds, and a device with no traceable time cannot know them. So
-/// this reports what it has and the field means "when this took effect here",
-/// which is what a controller uses it for.
-std::string nowAsTaiString() {
-    struct timespec now {};
-    ::clock_gettime(CLOCK_REALTIME, &now);
-    return std::to_string(static_cast<long long>(now.tv_sec)) + ":" +
-           std::to_string(static_cast<long long>(now.tv_nsec));
-}
+/// IS-05 counts in TAI and the clock underneath is the system's, which is
+/// UTC. The difference is the leap seconds inserted since 1972, and a device
+/// with no traceable time cannot discover it: 37 is what it has been since
+/// 2017-01-01, and a controller scheduling an activation one second out would
+/// otherwise be told to wait thirty-eight.
+constexpr uint64_t kTaiMinusUtcSeconds = 37;
 
 ApiResponse jsonResponse(int status, const JsonValue& value) {
     ApiResponse response;
@@ -98,9 +95,203 @@ JsonObject transportParamsFromSdp(const std::string& sdp, bool forSender, bool r
         leg["interface_ip"] = JsonValue("auto");
         leg["multicast_ip"] = session ? address(session->connectionAddress) : JsonValue();
     }
+    // Not null: the schema takes a port number or the word "auto" and
+    // nothing else, so a device with no transport file yet says it has not
+    // chosen rather than saying nothing.
     leg["destination_port"] =
-        session ? JsonValue(static_cast<int>(session->port)) : JsonValue();
+        session ? JsonValue(static_cast<int>(session->port)) : JsonValue("auto");
     return leg;
+}
+
+/// IS-05's activation modes, which are the only three there are.
+constexpr char kActivateImmediate[] = "activate_immediate";
+constexpr char kActivateRelative[] = "activate_scheduled_relative";
+constexpr char kActivateAbsolute[] = "activate_scheduled_absolute";
+
+/// A TAI instant as IS-05 writes it, "<seconds>:<nanoseconds>".
+struct TaiTime {
+    uint64_t seconds = 0;
+    uint32_t nanos = 0;
+};
+
+constexpr uint32_t kNanosPerSecond = 1'000'000'000;
+
+TaiTime taiNow() {
+    struct timespec now {};
+    ::clock_gettime(CLOCK_REALTIME, &now);
+    return {static_cast<uint64_t>(now.tv_sec) + kTaiMinusUtcSeconds,
+            static_cast<uint32_t>(now.tv_nsec)};
+}
+
+std::string taiText(const TaiTime& time) {
+    return std::to_string(time.seconds) + ":" + std::to_string(time.nanos);
+}
+
+bool parseTai(const std::string& text, TaiTime& time) {
+    const size_t colon = text.find(':');
+    if (colon == std::string::npos || colon == 0 || colon + 1 == text.size()) return false;
+    const std::string seconds = text.substr(0, colon);
+    const std::string nanos = text.substr(colon + 1);
+    const auto digits = [](const std::string& part) {
+        return std::all_of(part.begin(), part.end(),
+                           [](unsigned char digit) { return std::isdigit(digit) != 0; });
+    };
+    if (!digits(seconds) || !digits(nanos)) return false;
+    // A controller that sends a number this device cannot hold is refused
+    // rather than wrapped into some other instant.
+    try {
+        time.seconds = std::stoull(seconds);
+        const unsigned long long fraction = std::stoull(nanos);
+        if (fraction >= kNanosPerSecond) return false;
+        time.nanos = static_cast<uint32_t>(fraction);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return true;
+}
+
+TaiTime taiSum(const TaiTime& left, const TaiTime& right) {
+    TaiTime sum{left.seconds + right.seconds, left.nanos + right.nanos};
+    if (sum.nanos >= kNanosPerSecond) {
+        sum.nanos -= kNanosPerSecond;
+        ++sum.seconds;
+    }
+    return sum;
+}
+
+bool taiReached(const TaiTime& due, const TaiTime& now) {
+    if (now.seconds != due.seconds) return now.seconds > due.seconds;
+    return now.nanos >= due.nanos;
+}
+
+/// The names a staged PATCH may carry at its top level. IS-05 sec 5 refuses a
+/// request it does not understand rather than taking it and applying the part
+/// it recognised, which would leave a controller believing it set something
+/// this device never read.
+bool isKnownPatchKey(const std::string& name, bool forSender) {
+    if (name == "master_enable" || name == "activation" || name == "transport_params") return true;
+    return forSender ? name == "receiver_id" : (name == "sender_id" || name == "transport_file");
+}
+
+/// Replaces every "auto" in a leg with the value this device actually uses.
+/// IS-05 sec 4: "auto" is a request, and what is active has to say what was
+/// chosen -- a controller reading "auto" back off /active learns nothing
+/// about where the stream went.
+void resolveAutoLeg(JsonObject& leg, bool forSender, const std::string& sdp,
+                    const std::string& interfaceAddress) {
+    std::optional<SDPSession> session;
+    if (!sdp.empty()) session = SDPParser::parseString(sdp);
+    const int mediaPort = session ? static_cast<int>(session->port) : 5004;
+    // The interface is unset only when nobody told this API which one the host
+    // receives on, and 0.0.0.0 is the honest answer for "any of them".
+    const std::string ownAddress =
+        interfaceAddress.empty() ? std::string("0.0.0.0") : interfaceAddress;
+
+    const auto isAuto = [&leg](const std::string& name) {
+        const auto found = leg.find(name);
+        return found != leg.end() && found->second.isString() &&
+               found->second.asString() == "auto";
+    };
+    const auto chose = [&leg](const std::string& name, const std::string& value) {
+        leg[name] = value.empty() ? JsonValue() : JsonValue(value);
+    };
+
+    if (isAuto("destination_port")) leg["destination_port"] = JsonValue(mediaPort);
+    if (forSender) {
+        // This device sends from the same port it sends to, which is what the
+        // SDP describes and what the wire carries.
+        if (isAuto("source_port")) leg["source_port"] = JsonValue(mediaPort);
+        if (isAuto("source_ip")) chose("source_ip", session ? session->originAddress : ownAddress);
+        if (isAuto("destination_ip") && session) chose("destination_ip", session->connectionAddress);
+    } else {
+        if (isAuto("interface_ip")) leg["interface_ip"] = JsonValue(ownAddress);
+        if (isAuto("multicast_ip")) chose("multicast_ip", session ? session->connectionAddress : "");
+        // A receiver asked to pick its own source filter takes any source on
+        // the group, which is what null means here.
+        if (isAuto("source_ip")) chose("source_ip", session ? session->sourceAddress : "");
+    }
+}
+
+/// Rewrites a sender's transport file so it describes where the stream is
+/// actually going. A controller is entitled to move a sender's destination
+/// and then read the SDP; one that still named the old group would send every
+/// receiver somewhere nothing arrives.
+void followSdpToLeg(std::string& sdp, const JsonObject& leg) {
+    if (sdp.empty()) return;
+    std::optional<SDPSession> session = SDPParser::parseString(sdp);
+    if (!session) return;
+
+    bool changed = false;
+    const auto destination = leg.find("destination_ip");
+    if (destination != leg.end() && destination->second.isString() &&
+        destination->second.asString() != "auto" &&
+        destination->second.asString() != session->connectionAddress) {
+        session->connectionAddress = destination->second.asString();
+        changed = true;
+    }
+    const auto port = leg.find("destination_port");
+    if (port != leg.end() && port->second.isNumber() &&
+        static_cast<uint16_t>(port->second.asNumber()) != session->port) {
+        session->port = static_cast<uint16_t>(port->second.asNumber());
+        changed = true;
+    }
+    if (!changed) return;
+
+    // The version moves with the content, which is how a receiver holding the
+    // old file knows this one replaced it (RFC 4566 sec 5.2).
+    ++session->sessionVersion;
+    sdp = SDPParser::generate(*session);
+}
+
+/// What an activation request asked for, once it has been read.
+struct ActivationRequest {
+    std::string mode;           ///< empty when the PATCH stages without activating
+    std::string requestedTime;  ///< only a scheduled activation carries one
+    TaiTime due;                ///< when a scheduled one happens
+};
+
+/// Reads the activation object of a staged PATCH. False, with `error` filled,
+/// when it is not an activation this device can carry out.
+bool readActivation(const JsonValue& patch, ActivationRequest& request, std::string& error) {
+    if (!patch.has("activation")) return true;
+
+    const JsonValue& activation = patch["activation"];
+    if (!activation.isObject()) {
+        error = "activation has to be an object";
+        return false;
+    }
+
+    const JsonValue& mode = activation["mode"];
+    if (mode.isNull()) return true;
+    if (!mode.isString()) {
+        error = "activation.mode has to be a string";
+        return false;
+    }
+    request.mode = mode.asString();
+    // An immediate activation carries no requested time, and the one it
+    // reports back is null.
+    if (request.mode == kActivateImmediate) return true;
+
+    const bool relative = request.mode == kActivateRelative;
+    if (!relative && request.mode != kActivateAbsolute) {
+        error = "no activation mode called " + request.mode;
+        return false;
+    }
+
+    const JsonValue& requested = activation["requested_time"];
+    if (!requested.isString()) {
+        error = request.mode + " needs a requested_time of \"<seconds>:<nanoseconds>\"";
+        return false;
+    }
+    TaiTime asked;
+    if (!parseTai(requested.asString(), asked)) {
+        error = "requested_time is not \"<seconds>:<nanoseconds>\": " + requested.asString();
+        return false;
+    }
+    request.requestedTime = requested.asString();
+    // Relative is an offset from now, absolute is the instant itself.
+    request.due = relative ? taiSum(taiNow(), asked) : asked;
+    return true;
 }
 
 /// Whether this transport has a parameter of that name on that side. What
@@ -195,7 +386,9 @@ JsonValue stateAsJson(const ConnectionState& state, bool forSender) {
     JsonObject activation;
     activation["mode"] = state.activationMode == "null" ? JsonValue()
                                                         : JsonValue(state.activationMode);
-    activation["requested_time"] = JsonValue();
+    activation["requested_time"] = state.activationRequestedTime.empty()
+                                       ? JsonValue()
+                                       : JsonValue(state.activationRequestedTime);
     activation["activation_time"] =
         state.activationTime.empty() ? JsonValue() : JsonValue(state.activationTime);
 
@@ -272,6 +465,78 @@ std::vector<std::string> ConnectionApi::receiverIds() const {
     return ids;
 }
 
+JsonValue ConnectionApi::activeAsJson(const ConnectionState& state, bool forSender) const {
+    ConnectionState resolved = state;
+    JsonObject leg = transportParamsFromSdp(state.transportFile, forSender, state.masterEnable);
+    for (const auto& [name, value] : state.transportParams) leg[name] = value;
+    resolveAutoLeg(leg, forSender, state.transportFile, interfaceAddress_);
+    resolved.transportParams = leg;
+    return stateAsJson(resolved, forSender);
+}
+
+void ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState state) {
+    // What is active has to say what this device chose, so the leg is worked
+    // out once here -- the file's values, the controller's on top, every
+    // "auto" resolved -- and stored whole.
+    JsonObject leg = transportParamsFromSdp(sender.sdp, /*forSender=*/true, state.masterEnable);
+    for (const auto& [name, value] : state.transportParams) leg[name] = value;
+    resolveAutoLeg(leg, /*forSender=*/true, sender.sdp, interfaceAddress_);
+    state.transportParams = leg;
+
+    // A sender's transport file describes where it sends, so it follows.
+    followSdpToLeg(sender.sdp, leg);
+    state.transportFile = sender.sdp;
+
+    sender.active = state;
+    sender.staged.transportFile = sender.sdp;
+    sender.staged.activationMode = "null";
+    sender.staged.activationRequestedTime.clear();
+    sender.staged.activationTime.clear();
+}
+
+bool ConnectionApi::activateReceiver(ConnectionReceiver& receiver, ConnectionState state,
+                                     std::string& error) {
+    JsonObject leg =
+        transportParamsFromSdp(state.transportFile, /*forSender=*/false, state.masterEnable);
+    for (const auto& [name, value] : state.transportParams) leg[name] = value;
+    resolveAutoLeg(leg, /*forSender=*/false, state.transportFile, interfaceAddress_);
+    state.transportParams = leg;
+
+    if (onActivation_ && !onActivation_(receiver.id, state.transportFile, state.masterEnable,
+                                        error)) {
+        return false;
+    }
+
+    receiver.active = state;
+    receiver.staged.activationMode = "null";
+    receiver.staged.activationRequestedTime.clear();
+    receiver.staged.activationTime.clear();
+    return true;
+}
+
+void ConnectionApi::applyDueActivations() {
+    const TaiTime now = taiNow();
+
+    for (auto& [id, sender] : senders_) {
+        if (!sender.pending.waiting) continue;
+        if (!taiReached({sender.pending.dueSeconds, sender.pending.dueNanos}, now)) continue;
+        const ConnectionState promised = sender.pending.state;
+        sender.pending = PendingActivation{};
+        activateSender(sender, promised);
+    }
+
+    for (auto& [id, receiver] : receivers_) {
+        if (!receiver.pending.waiting) continue;
+        if (!taiReached({receiver.pending.dueSeconds, receiver.pending.dueNanos}, now)) continue;
+        const ConnectionState promised = receiver.pending.state;
+        receiver.pending = PendingActivation{};
+        // A scheduled activation the host refuses has nobody left to tell:
+        // the answer went out with the 202. What was active stays active.
+        std::string refused;
+        activateReceiver(receiver, promised, refused);
+    }
+}
+
 ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std::string& body) {
     const auto found = receivers_.find(id);
     if (found == receivers_.end()) return errorResponse(404, "no receiver called " + id);
@@ -280,6 +545,11 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
     std::string error;
     if (!parseJson(body, patch, error)) return errorResponse(400, "the body is not JSON: " + error);
     if (!patch.isObject()) return errorResponse(400, "the body has to be an object");
+    for (const auto& [name, value] : patch.asObject()) {
+        if (!isKnownPatchKey(name, /*forSender=*/false)) {
+            return errorResponse(400, "a receiver has nothing called " + name);
+        }
+    }
 
     ConnectionState staged = found->second.staged;
 
@@ -331,27 +601,12 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
         }
     }
 
-    std::string activationMode;
-    if (patch.has("activation")) {
-        const JsonValue& activation = patch["activation"];
-        if (!activation.isObject()) return errorResponse(400, "activation has to be an object");
-
-        const JsonValue& mode = activation["mode"];
-        if (!mode.isNull()) {
-            if (!mode.isString()) return errorResponse(400, "activation.mode has to be a string");
-            activationMode = mode.asString();
-            if (activationMode != "activate_immediate") {
-                // Said plainly rather than accepted and dropped: a scheduled
-                // activation that never happens is worse than one refused.
-                return errorResponse(501, "only activate_immediate is implemented, not " +
-                                              activationMode);
-            }
-        }
-    }
+    ActivationRequest activation;
+    if (!readActivation(patch, activation, error)) return errorResponse(400, error);
 
     found->second.staged = staged;
 
-    if (activationMode.empty()) {
+    if (activation.mode.empty()) {
         // Staged and not activated, which is the normal first half of the
         // exchange: a controller stages, checks, then activates.
         return jsonResponse(200, stateAsJson(found->second.staged, /*forSender=*/false));
@@ -361,25 +616,27 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
         return errorResponse(400, "cannot enable a receiver with no transport file");
     }
 
-    if (onActivation_) {
-        std::string reason;
-        if (!onActivation_(id, staged.transportFile, staged.masterEnable, reason)) {
-            return errorResponse(400, "the receiver refused it: " + reason);
-        }
+    if (activation.mode != kActivateImmediate) {
+        // Promised, not done: IS-05 sec 4 answers 202, and the staged state
+        // carries the activation until its time comes.
+        ConnectionState promised = staged;
+        promised.activationMode = activation.mode;
+        promised.activationRequestedTime = activation.requestedTime;
+        promised.activationTime = taiText(activation.due);
+        found->second.staged = promised;
+        found->second.pending = {true, activation.due.seconds, activation.due.nanos, promised};
+        return jsonResponse(202, stateAsJson(promised, /*forSender=*/false));
     }
 
-    ConnectionState active = staged;
-    active.activationMode = "activate_immediate";
-    active.activationTime = nowAsTaiString();
-    found->second.active = active;
+    ConnectionState immediate = staged;
+    immediate.activationMode = kActivateImmediate;
+    immediate.activationRequestedTime.clear();
+    immediate.activationTime = taiText(taiNow());
+    if (!activateReceiver(found->second, immediate, error)) {
+        return errorResponse(400, "the receiver refused it: " + error);
+    }
 
-    // IS-05: what was staged moves to active and the staged activation is
-    // cleared, so a controller reading staged afterwards does not see an
-    // activation waiting to happen again.
-    found->second.staged.activationMode = "null";
-    found->second.staged.activationTime.clear();
-
-    return jsonResponse(200, stateAsJson(found->second.active, /*forSender=*/false));
+    return jsonResponse(200, activeAsJson(found->second.active, /*forSender=*/false));
 }
 
 ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::string& body) {
@@ -390,6 +647,11 @@ ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::s
     std::string error;
     if (!parseJson(body, patch, error)) return errorResponse(400, "the body is not JSON: " + error);
     if (!patch.isObject()) return errorResponse(400, "the body has to be an object");
+    for (const auto& [name, value] : patch.asObject()) {
+        if (!isKnownPatchKey(name, /*forSender=*/true)) {
+            return errorResponse(400, "a sender has nothing called " + name);
+        }
+    }
 
     ConnectionState staged = found->second.staged;
     if (patch.has("master_enable")) {
@@ -420,38 +682,74 @@ ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::s
         }
     }
 
-    std::string activationMode;
-    if (patch.has("activation") && patch["activation"].isObject()) {
-        const JsonValue& mode = patch["activation"]["mode"];
-        if (!mode.isNull()) {
-            if (!mode.isString()) return errorResponse(400, "activation.mode has to be a string");
-            activationMode = mode.asString();
-            if (activationMode != "activate_immediate") {
-                return errorResponse(501, "only activate_immediate is implemented, not " +
-                                              activationMode);
-            }
-        }
-    }
+    ActivationRequest activation;
+    if (!readActivation(patch, activation, error)) return errorResponse(400, error);
 
     // A sender's transport file is its own: it describes the stream this
     // device sends, and a controller does not get to rewrite it.
     staged.transportFile = found->second.sdp;
     found->second.staged = staged;
 
-    if (activationMode.empty()) return jsonResponse(200, stateAsJson(found->second.staged, /*forSender=*/true));
+    if (activation.mode.empty()) {
+        return jsonResponse(200, stateAsJson(found->second.staged, /*forSender=*/true));
+    }
 
-    ConnectionState active = staged;
-    active.activationMode = "activate_immediate";
-    active.activationTime = nowAsTaiString();
-    found->second.active = active;
-    found->second.staged.activationMode = "null";
-    found->second.staged.activationTime.clear();
+    if (activation.mode != kActivateImmediate) {
+        ConnectionState promised = staged;
+        promised.activationMode = activation.mode;
+        promised.activationRequestedTime = activation.requestedTime;
+        promised.activationTime = taiText(activation.due);
+        found->second.staged = promised;
+        found->second.pending = {true, activation.due.seconds, activation.due.nanos, promised};
+        return jsonResponse(202, stateAsJson(promised, /*forSender=*/true));
+    }
 
-    return jsonResponse(200, stateAsJson(found->second.active, /*forSender=*/true));
+    ConnectionState immediate = staged;
+    immediate.activationMode = kActivateImmediate;
+    immediate.activationRequestedTime.clear();
+    immediate.activationTime = taiText(taiNow());
+    activateSender(found->second, immediate);
+
+    return jsonResponse(200, activeAsJson(found->second.active, /*forSender=*/true));
+}
+
+ApiResponse ConnectionApi::patchInBulk(bool forSenders, const std::string& body) {
+    JsonValue request;
+    std::string error;
+    if (!parseJson(body, request, error)) return errorResponse(400, "the body is not JSON: " + error);
+    // IS-05 sec 4: a bulk request is an array of the same patches the single
+    // endpoints take, each with the id it goes to.
+    if (!request.isArray()) return errorResponse(400, "a bulk request is an array");
+
+    JsonArray answers;
+    answers.reserve(request.asArray().size());
+    for (const JsonValue& entry : request.asArray()) {
+        if (!entry.isObject() || !entry["id"].isString()) {
+            return errorResponse(400, "every entry in a bulk request needs an id and its params");
+        }
+        const std::string id = entry["id"].asString();
+        const std::string params = entry["params"].serialise();
+        const ApiResponse one = forSenders ? patchStagedSender(id, params)
+                                           : patchStagedReceiver(id, params);
+
+        // The answer is per resource: what the single endpoint would have
+        // said, so a controller can see which of them refused and why.
+        JsonObject answer;
+        answer["id"] = JsonValue(id);
+        answer["code"] = JsonValue(one.status);
+        answers.emplace_back(answer);
+    }
+    return jsonResponse(200, JsonValue(answers));
 }
 
 ApiResponse ConnectionApi::handle(const std::string& method, const std::string& path,
                                   const std::string& body) {
+    // Every scheduled activation whose time has come happens here, before
+    // anything is read or written. This API has no thread of its own, and a
+    // controller only learns what is active by asking, so the request that
+    // asks is the moment to catch up.
+    applyDueActivations();
+
     const std::string root = kConnectionApiRoot;
     if (path.rfind(root, 0) != 0) {
         return errorResponse(404, "this device serves " + root);
@@ -466,19 +764,15 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
     }
 
     if (segments[0] == "bulk") {
-        // The resource exists and the method is what is not supported, which
-        // is 405 and not 501: IS-05's bulk endpoints are defined, this device
-        // serves no POST to them, and a 501 there says the whole resource is
-        // unimplemented. GET is answered as the listing it is.
         if (segments.size() == 1) return listResponse({"senders/", "receivers/"});
         if (segments.size() == 2 &&
             (segments[1] == "senders" || segments[1] == "receivers")) {
-            // GET is a listing of what has been staged in bulk, which here is
-            // nothing: an empty array is the true answer and the one a
-            // controller can read. POST is the method this device does not
-            // serve, and 405 says so without claiming the resource is absent.
-            if (method == "GET") return jsonResponse(200, JsonValue(JsonArray{}));
-            return errorResponse(405, "bulk staging is not served here; use single/");
+            // IS-05 sec 4: /bulk/senders and /bulk/receivers take a POST and
+            // nothing else. There is no representation to GET -- a bulk
+            // request is a batch of patches, not a resource -- so GET is a
+            // 405 on a resource that is plainly there.
+            if (method != "POST") return errorResponse(405, "only POST here");
+            return patchInBulk(segments[1] == "senders", body);
         }
         return errorResponse(404, "no such resource");
     }
@@ -529,7 +823,11 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
 
     if (leaf == "transporttype") {
         if (method != "GET") return errorResponse(405, "only GET here");
-        return jsonResponse(200, JsonValue(std::string(kTransportRtpMulticast)));
+        // The base URN, with the subclassification taken off: this endpoint's
+        // schema is an enum of the four bases and rtp.mcast is not one of
+        // them. IS-04's own `transport` field is where the multicast half is
+        // published.
+        return jsonResponse(200, JsonValue(std::string(kTransportRtp)));
     }
 
     if (leaf == "constraints") {
@@ -571,13 +869,12 @@ ApiResponse ConnectionApi::handle(const std::string& method, const std::string& 
         if (method == "GET") {
             if (isSender) {
                 const ConnectionSender& sender = senders_[id];
-                return jsonResponse(200, stateAsJson(wantStaged ? sender.staged : sender.active,
-                                                    /*forSender=*/true));
+                return jsonResponse(200, wantStaged ? stateAsJson(sender.staged, true)
+                                                    : activeAsJson(sender.active, true));
             }
             const ConnectionReceiver& receiver = receivers_[id];
-            return jsonResponse(
-                200, stateAsJson(wantStaged ? receiver.staged : receiver.active,
-                                 /*forSender=*/false));
+            return jsonResponse(200, wantStaged ? stateAsJson(receiver.staged, false)
+                                                : activeAsJson(receiver.active, false));
         }
 
         if (method == "PATCH") {
