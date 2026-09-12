@@ -169,8 +169,6 @@ struct RoutingMatrixView: View {
     /// receiver is the end that can be told where to listen, so this is
     /// programmable -- and stays so.
     private func fixedSourceCell(row: RoutingMatrix.Row, source: FixedSource) -> some View {
-        let listening = row.receiver.activeSenderId == nil
-            && row.receiver.masterEnable
         let pending = controller.inFlight.contains(row.id)
         return Button {
             guard !pending, row.writable, row.reachable else { return }
@@ -199,7 +197,6 @@ struct RoutingMatrixView: View {
                 + "That device answers nothing, so this end holds the connection — and can be "
                 + "pointed elsewhere later."
               : "\(row.label) is read-only: its node serves no connection API.")
-        .opacity(listening ? 1 : 1)
     }
 
     private func fixedSinkHeader(_ sink: FixedSink) -> some View {

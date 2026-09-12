@@ -88,12 +88,30 @@ final class NmosController: NSObject, ObservableObject {
         }
         refreshing = true
         let targets = endpoints
+        // What is known now, read on the actor that owns it and handed to the
+        // reads, which run off it.
+        let known = nodes
         Task { [weak self] in
             guard let self else { return }
-            var read: [NmosNode] = []
-            for (name, endpoint) in targets {
-                read.append(await self.readNode(name: name, host: endpoint.host, port: endpoint.port))
+            // Every node at once. A plant is a dozen devices and each one is
+            // half a dozen requests deep; asking them one after another made
+            // a refresh take as long as the sum of the whole room, and the
+            // slowest box in it set the pace for all of them.
+            var read: [NmosNode] = await withTaskGroup(of: NmosNode.self) { group in
+                for (name, endpoint) in targets {
+                    let previous = known.first { $0.host == endpoint.host && $0.port == endpoint.port }
+                    group.addTask {
+                        await self.readNode(name: name, host: endpoint.host, port: endpoint.port,
+                                            previous: previous)
+                    }
+                }
+                var nodes: [NmosNode] = []
+                for await node in group { nodes.append(node) }
+                return nodes
             }
+            // Discovery order is whatever answers first, which is not an
+            // order to show anything in.
+            read.sort { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
             let candidates = await self.readSessionCandidates(from: read)
             self.publish(read)
             self.sessionCandidates = candidates
@@ -269,7 +287,10 @@ final class NmosController: NSObject, ObservableObject {
         var errorDescription: String? { text.map { "HTTP \(status): \($0)" } ?? "HTTP \(status)" }
     }
 
-    private func getData(_ url: URL) async throws -> Data {
+    // nonisolated: these touch nothing but `session`, which is a let, and
+    // being on the main actor gained nothing while costing the ability to run
+    // more than one of them at a time.
+    nonisolated private func getData(_ url: URL) async throws -> Data {
         let (data, response) = try await session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
@@ -278,7 +299,7 @@ final class NmosController: NSObject, ObservableObject {
         return data
     }
 
-    private func getText(_ url: URL) async throws -> String {
+    nonisolated private func getText(_ url: URL) async throws -> String {
         guard let text = String(data: try await getData(url), encoding: .utf8) else {
             throw NmosDecodingError.shape("transport file is not UTF-8")
         }
@@ -307,8 +328,11 @@ final class NmosController: NSObject, ObservableObject {
 
     /// Everything the matrix needs from one node. A node that fails at any
     /// step comes back unreachable with whatever was known before.
-    private func readNode(name: String, host: String, port: Int) async -> NmosNode {
-        let previous = nodes.first { $0.host == host && $0.port == port }
+    /// `previous` is what was known of this node before, passed in rather
+    /// than read here: this runs off the main actor so that a room's nodes
+    /// are read at once, and the published list belongs to that actor.
+    nonisolated private func readNode(name: String, host: String, port: Int,
+                                      previous: NmosNode?) async -> NmosNode {
         func unreachable() -> NmosNode {
             if var known = previous {
                 known.reachable = false
@@ -320,38 +344,89 @@ final class NmosController: NSObject, ObservableObject {
         }
         guard let root = URL(string: "http://\(host):\(port)/x-nmos/node/v1.3/") else { return unreachable() }
         do {
-            let selfData = try await getData(root.appendingPathComponent("self"))
+            // The six resources a node describes itself with, fetched
+            // together: they do not depend on each other.
+            async let selfBytes = getData(root.appendingPathComponent("self"))
+            async let devicesBytes = getData(root.appendingPathComponent("devices"))
+            async let sendersBytes = getData(root.appendingPathComponent("senders"))
+            async let flowsBytes = getData(root.appendingPathComponent("flows"))
+            async let sourcesBytes = getData(root.appendingPathComponent("sources"))
+            async let receiversBytes = getData(root.appendingPathComponent("receivers"))
+
+            let selfData = try await selfBytes
             let identity = try NmosDecoding.nodeSelf(selfData)
             var node = NmosNode(id: identity.id, label: identity.label, host: host, port: port)
             // Which clock this node follows, and whether it is locked to it:
             // the column a routing screen is read for as much as the grid.
             node.clocks = (try? NmosDecoding.clocks(nodeSelf: selfData)) ?? []
-            let devicesData = try await getData(root.appendingPathComponent("devices"))
+            let devicesData = try await devicesBytes
             node.connectionRoot = try NmosDecoding.connectionRoot(devices: devicesData)
             node.channelMappingRoot = try? NmosDecoding.channelMappingRoot(devices: devicesData)
             node.senders = try NmosDecoding.senders(
-                try await getData(root.appendingPathComponent("senders")),
-                flows: try await getData(root.appendingPathComponent("flows")),
-                sources: try await getData(root.appendingPathComponent("sources")),
+                try await sendersBytes,
+                flows: try await flowsBytes,
+                sources: try await sourcesBytes,
                 nodeId: node.id)
-            node.receivers = try NmosDecoding.receivers(try await getData(root.appendingPathComponent("receivers")), nodeId: node.id)
+            node.receivers = try NmosDecoding.receivers(try await receiversBytes, nodeId: node.id)
             if let connectionRoot = node.connectionRoot {
                 // Where each sender is transmitting. A fixed sink -- gear
                 // that cannot be told anything -- is shown as taken by
                 // whichever sender is already addressed at it, and that is
                 // the only way to know: the device itself reports nothing.
-                for index in node.senders.indices {
-                    if let active = try? NmosDecoding.senderActive(try await getData(
-                           connectionRoot.appendingPathComponent(
-                               "single/senders/\(node.senders[index].id)/active"))) {
-                        node.senders[index].destination = active.destination
-                        node.senders[index].destinationPort = active.port
-                        node.senders[index].enabled = active.masterEnable
+                // One request per sender and per receiver, all in flight at
+                // once rather than one behind the other: a 32-sender device
+                // was 64 sequential round trips of its own.
+                let senderIds = node.senders.map(\.id)
+                let senderActives: [String: (destination: String, port: Int, masterEnable: Bool)] =
+                    await withTaskGroup(
+                        of: (String, (destination: String, port: Int, masterEnable: Bool)?).self
+                    ) { group in
+                        for id in senderIds {
+                            group.addTask { [self] in
+                                let url = connectionRoot.appendingPathComponent(
+                                    "single/senders/\(id)/active")
+                                guard let data = try? await getData(url),
+                                      let active = try? NmosDecoding.senderActive(data) else {
+                                    return (id, nil)
+                                }
+                                return (id, active)
+                            }
+                        }
+                        var found: [String: (destination: String, port: Int, masterEnable: Bool)] = [:]
+                        for await (id, active) in group {
+                            if let active { found[id] = active }
+                        }
+                        return found
                     }
+                for index in node.senders.indices {
+                    guard let active = senderActives[node.senders[index].id] else { continue }
+                    node.senders[index].destination = active.destination
+                    node.senders[index].destinationPort = active.port
+                    node.senders[index].enabled = active.masterEnable
                 }
+
+                let receiverIds = node.receivers.map(\.id)
+                let receiverActives: [String: (senderId: String?, masterEnable: Bool)] =
+                    await withTaskGroup(of: (String, (senderId: String?, masterEnable: Bool)?).self) { group in
+                        for id in receiverIds {
+                            group.addTask { [self] in
+                                let url = connectionRoot.appendingPathComponent(
+                                    "single/receivers/\(id)/active")
+                                guard let data = try? await getData(url),
+                                      let active = try? NmosDecoding.active(data) else {
+                                    return (id, nil)
+                                }
+                                return (id, active)
+                            }
+                        }
+                        var found: [String: (senderId: String?, masterEnable: Bool)] = [:]
+                        for await (id, active) in group {
+                            if let active { found[id] = active }
+                        }
+                        return found
+                    }
                 for index in node.receivers.indices {
-                    let active = try NmosDecoding.active(try await getData(
-                        connectionRoot.appendingPathComponent("single/receivers/\(node.receivers[index].id)/active")))
+                    guard let active = receiverActives[node.receivers[index].id] else { continue }
                     node.receivers[index].activeSenderId = active.senderId
                     node.receivers[index].masterEnable = active.masterEnable
                 }
@@ -366,19 +441,39 @@ final class NmosController: NSObject, ObservableObject {
     /// root. A sender whose file cannot be read is still offered, with an
     /// empty description: the app lists it and refuses to subscribe rather
     /// than hiding a node that is plainly there.
-    private func readSessionCandidates(from read: [NmosNode]) async -> [NmosSessionCandidate] {
-        var candidates: [NmosSessionCandidate] = []
+    nonisolated private func readSessionCandidates(from read: [NmosNode]) async
+        -> [NmosSessionCandidate] {
+        struct Request { let senderId: String; let label: String; let host: String; let url: URL }
+        var requests: [Request] = []
         for node in read {
             guard let root = node.connectionRoot else { continue }
             for sender in node.senders {
-                let url = root.appendingPathComponent("single/senders/\(sender.id)/transportfile")
-                let sdp = (try? await self.getText(url)) ?? ""
-                candidates.append(NmosSessionCandidate(senderId: sender.id,
-                                                       label: sender.label,
-                                                       host: node.host,
-                                                       sdp: sdp))
+                requests.append(Request(
+                    senderId: sender.id, label: sender.label, host: node.host,
+                    url: root.appendingPathComponent("single/senders/\(sender.id)/transportfile")))
             }
         }
+
+        // Every transport file at once. One per sender on every node in the
+        // plant, and they were fetched one after another while the window
+        // waited.
+        var candidates: [NmosSessionCandidate] = await withTaskGroup(
+            of: NmosSessionCandidate.self
+        ) { group in
+            for request in requests {
+                group.addTask { [self] in
+                    let sdp = (try? await getText(request.url)) ?? ""
+                    return NmosSessionCandidate(senderId: request.senderId,
+                                                label: request.label,
+                                                host: request.host,
+                                                sdp: sdp)
+                }
+            }
+            var read: [NmosSessionCandidate] = []
+            for await candidate in group { read.append(candidate) }
+            return read
+        }
+        candidates.sort { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
         return candidates
     }
 
