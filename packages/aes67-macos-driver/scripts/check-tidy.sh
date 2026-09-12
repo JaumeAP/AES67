@@ -54,9 +54,18 @@ import json, sys, shlex
 
 src, dst = sys.argv[1], sys.argv[2]
 out = []
+# One entry per file. A source compiled into several targets -- PCMCodec.cpp
+# is in thirteen of them -- appears once per target, and clang-tidy runs once
+# per ENTRY, not once per file: the same file was analysed thirteen times with
+# thirteen nearly identical command lines, which is where the run's minutes
+# went and why its progress counter climbed past its own total.
+seen = set()
 for entry in json.load(open(src)):
     if "/external/" in entry["file"]:
         continue
+    if entry["file"] in seen:
+        continue
+    seen.add(entry["file"])
     if "command" in entry:
         parts = shlex.split(entry["command"])
         cleaned, skip = [], False
