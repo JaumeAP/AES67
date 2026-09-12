@@ -9,6 +9,7 @@ import Foundation
 
 runPrivilegedScriptTests()
 runNmosResourcesTests()
+runSessionListTests()
 
 print("\(checks) checks, \(failures) failures")
 exit(failures == 0 ? 0 : 1)

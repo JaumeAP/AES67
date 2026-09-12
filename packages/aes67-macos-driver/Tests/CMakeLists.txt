@@ -401,6 +401,34 @@ target_link_libraries(TestPTPMasterBoxInterop PRIVATE aes67_net)
 target_link_libraries(TestPTPMasterBoxInterop PRIVATE doctest_headers)
 target_compile_features(TestPTPMasterBoxInterop PRIVATE cxx_std_17)
 
+# Test: the step from a registered _rtsp._tcp service to a session in the
+# directory, driven with a fetcher the test supplies rather than a device.
+add_executable(TestRTSPSessionDiscovery
+    TestRTSPSessionDiscovery.cpp
+)
+
+target_include_directories(TestRTSPSessionDiscovery PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+target_link_libraries(TestRTSPSessionDiscovery PRIVATE aes67_net)
+target_link_libraries(TestRTSPSessionDiscovery PRIVATE doctest_headers)
+target_compile_features(TestRTSPSessionDiscovery PRIVATE cxx_std_17)
+
+# Test: the one list every discoverer arrives at -- SAP, RTSP and NMOS
+# sightings of the same session merged by the session's own identity.
+add_executable(TestSessionDirectory
+    TestSessionDirectory.cpp
+    ../NetworkEngine/Discovery/SessionDirectory.cpp
+)
+
+target_include_directories(TestSessionDirectory PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+target_link_libraries(TestSessionDirectory PRIVATE doctest_headers)
+target_compile_features(TestSessionDirectory PRIVATE cxx_std_17)
+
 # Test: what AES67ImpairmentRelay does to a packet, without the sockets.
 # Tools/ImpairmentPolicy.h is the relay's decision, separated so the order it
 # sends packets in can be asserted rather than inferred from a receiver.
@@ -729,6 +757,8 @@ add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME PTPT41Interop COMMAND TestPTPT41Interop)
 add_test(NAME ImpairmentPolicy COMMAND TestImpairmentPolicy)
+add_test(NAME SessionDirectory COMMAND TestSessionDirectory)
+add_test(NAME RTSPSessionDiscovery COMMAND TestRTSPSessionDiscovery)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME NodeAPI COMMAND TestNodeAPI)

@@ -256,7 +256,27 @@ void AES67Device::Initialize() {
         // match/re-subscribe is StreamManager's job.
         sapListener_->registerAnnouncementCallback(
             [this](const SAPAnnouncement& a) {
-                if (a.isDeletion || a.sessionDescription.empty()) return;
+                // Every announcement reaches the one directory, whether or
+                // not there is a receive stream to re-point: that list is
+                // what the Manager app offers to subscribe to, and a
+                // deletion is the announcer saying the session is finished.
+                if (a.isDeletion) {
+                    sessionDirectory_.forget(SessionDirectory::identityOf(
+                        a.sessionDescription, a.multicastAddress, a.port));
+                    return;
+                }
+                if (a.sessionDescription.empty()) return;
+
+                DiscoveredSessionEntry entry;
+                entry.sessionName = a.sessionName;
+                entry.sourceAddress = a.sourceAddress;
+                entry.multicastAddress = a.multicastAddress;
+                entry.port = a.port;
+                entry.ptpDomain = a.ptpDomain;
+                entry.sessionDescription = a.sessionDescription;
+                entry.sources = {DiscoverySource::SAP};
+                sessionDirectory_.offer(entry);
+
                 if (!streamManager_) return;
                 auto parsed = SDPParser::parseString(a.sessionDescription);
                 if (!parsed) return;
@@ -295,12 +315,12 @@ void AES67Device::Initialize() {
     // switch with SAP filtered still offers. Same posture as SAP: a
     // failure to start costs discovery, never audio.
     if (activeProfile.usesDnsSdRtsp) {
-        mdnsBrowser_ = std::make_unique<MDNSBrowser>(MDNSBrowser::kServiceTypeRTSP);
-        if (mdnsBrowser_->start()) {
-            AES67_LOG("AES67Device: mDNS discovery browsing _rtsp._tcp");
+        rtspDiscovery_ = std::make_unique<RTSPSessionDiscovery>(sessionDirectory_);
+        if (rtspDiscovery_->start()) {
+            AES67_LOG("AES67Device: mDNS discovery browsing _rtsp._tcp, describing what it finds");
         } else {
             AES67_LOG("AES67Device: mDNS discovery unavailable — continuing without it");
-            mdnsBrowser_.reset();
+            rtspDiscovery_.reset();
         }
     } else {
         AES67_LOGF("AES67Device: DNS-SD browsing not started: the %s profile does not use it", activeProfile.displayName.c_str());
@@ -893,7 +913,7 @@ AES67Device::~AES67Device() {
     if (rtcpMonitor_) rtcpMonitor_->stop();
     // Same reason as the observers above: the browser's thread can call
     // back, so it stops before anything it might reach is torn down.
-    if (mdnsBrowser_) mdnsBrowser_->stop();
+    if (rtspDiscovery_) rtspDiscovery_->stop();
     if (rtspServer_) rtspServer_->stop();
     // Telling the registry beats leaving it to time us out: a controller
     // showing a node that is gone is worse than one showing nothing.
@@ -1209,18 +1229,14 @@ CFPropertyListRef AES67Device::GetPTPDiagnosticsProperty() const {
 }
 
 CFPropertyListRef AES67Device::GetDiscoveredSessionsProperty() const {
-    // Non-RT, like the diagnostics property — SAPListener takes its own
-    // mutex, and getDiscoveredStreams() sweeps expired sessions as it
-    // reads, so what comes back is what's actually still being announced.
+    // Non-RT, like the diagnostics property — SessionDirectory takes its own
+    // mutex, and sessions() sweeps what has gone quiet as it reads, so what
+    // comes back is what is actually still on the network.
     CFMutableArrayRef array = CFArrayCreateMutable(
         kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
     if (!array) return nullptr;
 
-    if (!sapListener_) {
-        return array; // Discovery unavailable — an empty list, not a failure
-    }
-
-    for (const auto& session : sapListener_->getDiscoveredStreams()) {
+    for (const auto& session : sessionDirectory_.sessions()) {
         CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
             kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         if (!dict) continue;
@@ -1233,6 +1249,29 @@ CFPropertyListRef AES67Device::GetDiscoveredSessionsProperty() const {
         // The full SDP, so ManagerApp can add the stream without having to
         // re-derive anything the announcer already told us.
         SetCFString(dict, kSessionKeySDP, session.sessionDescription);
+
+        // How it was found, in the order it was first heard by each route.
+        // One session can carry both: gear that announces AND registers is
+        // common, and the app says so rather than showing it twice.
+        CFMutableArrayRef sources = CFArrayCreateMutable(
+            kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+        if (sources) {
+            for (DiscoverySource source : session.sources) {
+                CFStringRef name = CFStringCreateWithCString(
+                    kCFAllocatorDefault, discoverySourceName(source), kCFStringEncodingUTF8);
+                if (name) {
+                    CFArrayAppendValue(sources, name);
+                    CFRelease(name);
+                }
+            }
+            CFStringRef key = CFStringCreateWithCString(
+                kCFAllocatorDefault, kSessionKeySources, kCFStringEncodingUTF8);
+            if (key) {
+                CFDictionarySetValue(dict, key, sources);
+                CFRelease(key);
+            }
+            CFRelease(sources);
+        }
 
         CFArrayAppendValue(array, dict);
         CFRelease(dict); // array retains it

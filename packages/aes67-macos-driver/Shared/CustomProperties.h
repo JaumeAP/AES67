@@ -47,12 +47,18 @@ inline constexpr const char* kPTPDiagKeyCompetitorPriority2 = "competitorPriorit
 inline constexpr const char* kPTPDiagKeySyncMessagesReceived = "syncMessagesReceived";
 inline constexpr const char* kPTPDiagKeyAnnounceMessagesReceived = "announceMessagesReceived";
 
-// FourCharCode 'a67s' ("AES67 Sessions") — the SAP discovery gateway, same
+// FourCharCode 'a67s' ("AES67 Sessions") — the discovery gateway, same
 // mechanism as the diagnostics one above. Returns a CFArray of
-// CFDictionaries, one per session currently being announced on the
-// network, so ManagerApp can offer them instead of making the user type a
-// multicast address by hand. Sessions that stop being announced drop out
-// of the array on their own (SAPListener::kSessionTimeout).
+// CFDictionaries, one per session currently on the network, so ManagerApp
+// can offer them instead of making the user type a multicast address by
+// hand. Sessions that stop being refreshed drop out of the array on their
+// own (SessionDirectory::kSessionTimeout).
+//
+// Every discoverer feeds one list: SAP announcements and sessions found as
+// `_rtsp._tcp` services and described over RTSP. A session heard both ways
+// is one element that says so in `sources` -- it used to be SAP only, so
+// RAVENNA gear that registers a service and announces nothing reached the
+// driver and never reached the app.
 inline constexpr AudioObjectPropertySelector kDiscoveredSessionsPropertySelector = 0x61363773;
 
 // Keys in each element of that array. sessionName/sourceAddress/
@@ -63,6 +69,10 @@ inline constexpr const char* kSessionKeyMulticastAddress = "multicastAddress";
 inline constexpr const char* kSessionKeyPort = "port";
 inline constexpr const char* kSessionKeyPtpDomain = "ptpDomain";
 inline constexpr const char* kSessionKeySDP = "sdp";
+// How this session was found: a CFArray of CFStrings, "sap" and/or "rtsp"
+// (SessionDirectory::discoverySourceName). More than one when the same
+// session was heard more than one way.
+inline constexpr const char* kSessionKeySources = "sources";
 
 // FourCharCode 'a67e' ("AES67 Elements") - the passive-PTP peer gateway.
 // Returns a CFArray of CFDictionaries, one per distinct PTP clock identity

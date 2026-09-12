@@ -1,14 +1,18 @@
 //
 // DiscoveredSessionsView.swift
 // AES67 Manager
-// Sessions other devices are announcing over SAP, ready to add without
-// typing a multicast address by hand.
+// Every session on the network, ready to add without typing a multicast
+// address by hand — whichever way it was found.
 //
-// The list comes from the running driver (DriverManager's SAP discovery
-// gateway), which sweeps sessions that have stopped being announced — so
-// what's shown is what's actually on the network right now, not a
-// historical pile. Nothing here announces anything: this driver listens
-// only.
+// Three discoveries end up in this one list. The driver merges the two it
+// makes itself (SessionDirectory): SAP announcements, and `_rtsp._tcp`
+// services it describes over RTSP, which is how RAVENNA gear publishes and
+// what used never to reach this window. NMOS is the app's own, over IS-04,
+// and joins them here (SessionList.merge). A session found more than one way
+// is one row that says so, not three rows to pick between.
+//
+// What is shown is what is on the network now: the driver sweeps sessions
+// that stop being refreshed. Nothing here announces anything.
 //
 
 import SwiftUI
@@ -17,9 +21,20 @@ struct DiscoveredSessionsView: View {
     @EnvironmentObject var driverManager: DriverManager
     @Environment(\.dismiss) var dismiss
 
+    /// The NMOS half of the list. Its own controller, refreshed while this
+    /// window is open, exactly like the driver's half.
+    @StateObject private var nmos = NmosController()
+
+    /// The one list: what the driver heard, plus what NMOS offered, merged on
+    /// the destination the audio is on.
+    private var sessions: [UnifiedSession] {
+        SessionList.merge(driverSessions: driverManager.discoveredSessions,
+                          nmosCandidates: nmos.sessionCandidates)
+    }
+
     /// Sessions already added as streams, so the list can say so instead of
     /// letting the user add the same thing twice and get a rejection.
-    private func isAlreadyAdded(_ session: DriverManager.DiscoveredSession) -> Bool {
+    private func isAlreadyAdded(_ session: UnifiedSession) -> Bool {
         // Written out with explicit types rather than as a one-line `contains`
         // closure: the compact form mixed `Int(_:)` — which has a large
         // overload set — with `==` and `&&` inside a closure whose parameter
@@ -55,7 +70,11 @@ struct DiscoveredSessionsView: View {
             footer
         }
         .frame(minWidth: 560, minHeight: 420)
-        .onAppear { driverManager.refreshDiscoveredSessions() }
+        .onAppear {
+            driverManager.refreshDiscoveredSessions()
+            nmos.start()
+        }
+        .onDisappear { nmos.stop() }
         // While this window is open, keep it current. SAP announcers repeat
         // roughly every 30 s, so anything faster than this just burns
         // queries for the same answer.
@@ -70,7 +89,7 @@ struct DiscoveredSessionsView: View {
                 Text("Discovered Sessions")
                     .font(.title3)
                     .fontWeight(.semibold)
-                Text("Announced over SAP by other devices on this network")
+                Text("Found over SAP, RTSP and NMOS on this network")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -90,25 +109,29 @@ struct DiscoveredSessionsView: View {
             notice("\(driverManager.activeCompatibilityProfile.name) is transmit-only — this "
                  + "driver can't receive, so discovered sessions can't be added under it.",
                    icon: "lock.fill")
-        } else if driverManager.discoveredSessions.isEmpty {
-            notice("Nothing announced yet. Devices repeat their announcements every 30 seconds "
-                 + "or so, and a session disappears here once it stops being announced.",
+        } else if sessions.isEmpty {
+            notice("Nothing found yet. Devices repeat their announcements every 30 seconds or "
+                 + "so, registered services are asked again periodically, and a session "
+                 + "disappears here once it stops being either.",
                    icon: "antenna.radiowaves.left.and.right")
         } else {
-            List(driverManager.discoveredSessions) { session in
+            List(sessions) { session in
                 row(for: session)
             }
         }
     }
 
-    private func row(for session: DriverManager.DiscoveredSession) -> some View {
+    private func row(for session: UnifiedSession) -> some View {
         let added = isAlreadyAdded(session)
+        let where_: String = session.canSubscribe
+            ? "\(session.multicastAddress):\(session.port)"
+            : "no transport file"
         return HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.sessionName.isEmpty ? "(unnamed session)" : session.sessionName)
+                Text(session.name.isEmpty ? "(unnamed session)" : session.name)
                     .font(.body)
-                Text("\(session.multicastAddress):\(session.port)  ·  from \(session.sourceAddress)"
-                     + "  ·  PTP domain \(session.ptpDomain)")
+                Text("\(where_)  ·  from \(session.sourceAddress)"
+                     + "  ·  PTP domain \(session.ptpDomain)  ·  \(session.routeLabel)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -119,6 +142,7 @@ struct DiscoveredSessionsView: View {
                     .foregroundColor(.secondary)
             } else {
                 Button("Add") { add(session) }
+                    .disabled(!session.canSubscribe)
             }
         }
         .padding(.vertical, 4)
@@ -141,14 +165,16 @@ struct DiscoveredSessionsView: View {
 
     private var footer: some View {
         HStack {
-            Text(driverManager.discoveredSessions.isEmpty
+            Text(sessions.isEmpty
                  ? ""
-                 : "\(driverManager.discoveredSessions.count) session"
-                   + (driverManager.discoveredSessions.count == 1 ? "" : "s"))
+                 : "\(sessions.count) session" + (sessions.count == 1 ? "" : "s"))
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
-            Button("Refresh") { driverManager.refreshDiscoveredSessions() }
+            Button("Refresh") {
+                driverManager.refreshDiscoveredSessions()
+                nmos.refresh()
+            }
         }
         .padding()
     }
@@ -158,21 +184,21 @@ struct DiscoveredSessionsView: View {
     /// driver's own defaults where it didn't — the driver validates the
     /// result against the active profile either way, so a session that
     /// doesn't fit is refused with a reason rather than silently mangled.
-    private func add(_ session: DriverManager.DiscoveredSession) {
+    private func add(_ session: UnifiedSession) {
         let sdp = session.sdp
         let channels = Self.intValue(in: sdp, after: "L24/48000/") ?? Self.channelsFromRtpmap(sdp) ?? 8
         let rate = Self.sampleRateFromRtpmap(sdp) ?? UInt32(driverManager.currentDeviceSampleRate)
         let encoding = sdp.contains("L16") ? "L16" : "L24"
 
         driverManager.addStream(
-            name: session.sessionName.isEmpty ? "Discovered session" : session.sessionName,
+            name: session.name.isEmpty ? "Discovered session" : session.name,
             multicastIP: session.multicastAddress,
             port: UInt16(session.port),
             numChannels: UInt16(channels),
             sampleRate: rate,
             encoding: encoding,
             ptpDomain: session.ptpDomain,
-            description: "Discovered over SAP from \(session.sourceAddress)"
+            description: "Discovered over \(session.routeLabel) from \(session.sourceAddress)"
         )
     }
 

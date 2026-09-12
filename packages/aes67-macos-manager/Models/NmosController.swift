@@ -24,6 +24,12 @@ final class NmosController: NSObject, ObservableObject {
     @Published private(set) var matrix = RoutingMatrix.build(from: [])
     @Published private(set) var inFlight: Set<String> = []
     @Published private(set) var lastRead: Date? = nil
+    /// Every IS-04 sender with the transport file IS-05 serves for it, so the
+    /// sessions this app discovers over NMOS can join the one list the driver
+    /// publishes for what it hears itself (SessionList.merge). Read on every
+    /// refresh: a transport file is small, and a sender whose destination
+    /// changed is exactly what a list like this exists to show.
+    @Published private(set) var sessionCandidates: [NmosSessionCandidate] = []
     @Published var lastError: String? = nil
 
     /// NWBrowser, not NetServiceBrowser: the latter is deprecated as of
@@ -88,7 +94,9 @@ final class NmosController: NSObject, ObservableObject {
             for (name, endpoint) in targets {
                 read.append(await self.readNode(name: name, host: endpoint.host, port: endpoint.port))
             }
+            let candidates = await self.readSessionCandidates(from: read)
             self.publish(read)
+            self.sessionCandidates = candidates
             self.refreshing = false
             if self.refreshAgain {
                 self.refreshAgain = false
@@ -209,6 +217,26 @@ final class NmosController: NSObject, ObservableObject {
         } catch {
             return unreachable()
         }
+    }
+
+    /// The transport file of every sender on every node that has an IS-05
+    /// root. A sender whose file cannot be read is still offered, with an
+    /// empty description: the app lists it and refuses to subscribe rather
+    /// than hiding a node that is plainly there.
+    private func readSessionCandidates(from read: [NmosNode]) async -> [NmosSessionCandidate] {
+        var candidates: [NmosSessionCandidate] = []
+        for node in read {
+            guard let root = node.connectionRoot else { continue }
+            for sender in node.senders {
+                let url = root.appendingPathComponent("single/senders/\(sender.id)/transportfile")
+                let sdp = (try? await self.getText(url)) ?? ""
+                candidates.append(NmosSessionCandidate(senderId: sender.id,
+                                                       label: sender.label,
+                                                       host: node.host,
+                                                       sdp: sdp))
+            }
+        }
+        return candidates
     }
 
     private func publish(_ read: [NmosNode]) {

@@ -24,8 +24,10 @@ swiftc -o "$BIN" \
     -warnings-as-errors \
     Models/PrivilegedScript.swift \
     Models/NmosResources.swift \
+    Models/SessionList.swift \
     Tests/PrivilegedScriptTests.swift \
     Tests/NmosResourcesTests.swift \
+    Tests/SessionListTests.swift \
     Tests/main.swift
 
 "$BIN"

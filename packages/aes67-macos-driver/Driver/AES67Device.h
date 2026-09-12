@@ -11,7 +11,8 @@
 #include "Shared/RingBuffer.hpp"
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
-#include "NetworkEngine/Discovery/MDNSBrowser.h"
+#include "NetworkEngine/Discovery/RTSPSessionDiscovery.h"
+#include "NetworkEngine/Discovery/SessionDirectory.h"
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
 #include "NetworkEngine/Discovery/NodeAPIRouter.h"
@@ -231,12 +232,17 @@ private:
     // SAP discovery. Runs for the driver's whole life once Initialize()
     // starts it — passive listening only, it announces nothing.
     std::unique_ptr<SAPListener> sapListener_;
-    /// mDNS/DNS-SD browsing, the discovery half SAP does not cover:
-    /// professional gear publishes its sessions as `_rtsp._tcp` services
-    /// rather than (or as well as) shouting SDP over SAP. Declared next
-    /// to sapListener_ so both are destroyed before streamManager_, which
+    /// Every session on the network, however it was found: what SAP
+    /// announces and what registers `_rtsp._tcp` and describes itself over
+    /// RTSP, merged by the session's own identity. This is what the
+    /// discovery gateway publishes, so the Manager app sees one list
+    /// instead of the SAP half.
+    SessionDirectory sessionDirectory_;
+    /// mDNS/DNS-SD browsing plus the DESCRIBE that turns a service into a
+    /// session — the discovery half SAP does not cover. Declared next to
+    /// sapListener_ so both are destroyed before streamManager_, which
     /// their callbacks reach into (2026-08-31).
-    std::unique_ptr<MDNSBrowser> mdnsBrowser_;
+    std::unique_ptr<RTSPSessionDiscovery> rtspDiscovery_;
     /// Serves our own transmit streams' SDP over RTSP DESCRIBE, the
     /// complement of the browsing above: discovery is only half useful
     /// if nobody can ask US for a description (2026-08-31).

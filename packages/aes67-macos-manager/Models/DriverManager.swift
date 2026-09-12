@@ -1823,19 +1823,12 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     private static let kDiscoveredSessionsPropertySelector: AudioObjectPropertySelector = 0x61363773 // 'a67s'
 
     /// One AES67 session another device is announcing on the network.
-    struct DiscoveredSession: Identifiable, Equatable {
-        let sessionName: String
-        let sourceAddress: String
-        let multicastAddress: String
-        let port: Int
-        let ptpDomain: Int
-        /// The announcer's own SDP, complete — enough to add the stream
-        /// without asking the user to retype anything.
-        let sdp: String
-
-        /// Announcer + session name, which is what the driver dedupes on.
-        var id: String { "\(sourceAddress)|\(sessionName)" }
-    }
+    // The session types themselves are plain values and live in
+    // Models/SessionList.swift, where run-tests.sh can reach them without
+    // Core Audio. These names are what the rest of the app already calls
+    // them.
+    typealias DiscoveryRoute = SessionDiscoveryRoute
+    typealias DiscoveredSession = DiscoveredNetworkSession
 
     @Published var discoveredSessions: [DiscoveredSession] = []
 
@@ -2040,13 +2033,18 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         return entries.compactMap { entry in
             guard let name = entry["sessionName"] as? String,
                   let source = entry["sourceAddress"] as? String else { return nil }
+            // Older drivers publish no "sources" key at all; everything they
+            // list came from SAP, so that is what an absent key means.
+            let routes = (entry["sources"] as? [String] ?? ["sap"])
+                .compactMap { DiscoveryRoute(rawValue: $0) }
             return DiscoveredSession(
                 sessionName: name,
                 sourceAddress: source,
                 multicastAddress: entry["multicastAddress"] as? String ?? "",
                 port: (entry["port"] as? Int64).map(Int.init) ?? 5004,
                 ptpDomain: (entry["ptpDomain"] as? Int64).map(Int.init) ?? 0,
-                sdp: entry["sdp"] as? String ?? ""
+                sdp: entry["sdp"] as? String ?? "",
+                routes: routes.isEmpty ? [.sap] : routes
             )
         }
     }
