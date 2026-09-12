@@ -12,6 +12,12 @@
 import SwiftUI
 
 struct RoutingMatrixView: View {
+    /// Destinations that answer to nobody: gear with no control protocol,
+    /// which a crosspoint reaches by re-addressing the SOURCE. Empty in the
+    /// Manager, where the only thing being routed is this machine; the
+    /// Controller passes what its PTP observer found.
+    var fixedSinks: [FixedSink] = []
+
     @StateObject private var controller = NmosController()
     @Environment(\.dismiss) private var dismiss
 
@@ -85,6 +91,14 @@ struct RoutingMatrixView: View {
                         }
                     }
                 }
+                ForEach(fixedSinks) { sink in
+                    HStack(spacing: 0) {
+                        fixedSinkHeader(sink)
+                        ForEach(controller.matrix.columns) { column in
+                            fixedSinkCell(sink: sink, column: column)
+                        }
+                    }
+                }
             }
             .padding()
         }
@@ -122,6 +136,51 @@ struct RoutingMatrixView: View {
         .padding(.horizontal, 6)
         .frame(width: rowHeaderWidth, height: cellSize, alignment: .leading)
         .opacity(row.reachable ? 1 : 0.5)
+    }
+
+    private func fixedSinkHeader(_ sink: FixedSink) -> some View {
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sink.label).font(.caption).lineLimit(1)
+                Text("\(sink.multicastAddress):\(sink.port)")
+                    .font(.caption2).foregroundColor(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Text("fixed").font(.caption2).foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 6)
+        .frame(width: rowHeaderWidth, height: cellSize, alignment: .leading)
+        .help(sink.note)
+    }
+
+    /// A crosspoint onto a fixed sink patches the SENDER: the destination
+    /// cannot be told anything, so what changes is where the source
+    /// transmits. There is no "on" state to show, because nothing on that
+    /// device reports back -- what the cell offers is "send this here".
+    private func fixedSinkCell(sink: FixedSink, column: RoutingMatrix.Column) -> some View {
+        let pending = controller.inFlight.contains(column.sender.id)
+        return Button {
+            guard !pending, column.reachable else { return }
+            controller.send(sender: column.sender,
+                            to: sink.multicastAddress, port: sink.port)
+        } label: {
+            ZStack {
+                Rectangle()
+                    .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                    .background(Rectangle().fill(Color.clear))
+                if pending {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(width: cellSize, height: cellSize)
+        }
+        .buttonStyle(.plain)
+        .disabled(!column.reachable)
+        .help("Send \(column.label) to \(sink.label) at \(sink.multicastAddress):\(sink.port)")
     }
 
     private func cell(row: RoutingMatrix.Row, column: RoutingMatrix.Column) -> some View {

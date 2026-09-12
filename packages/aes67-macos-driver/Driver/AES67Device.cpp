@@ -523,6 +523,9 @@ void AES67Device::Initialize() {
                 [this] { return connectionReceivers(); },
                 [this](const std::string& id, const ConnectionPatch& patch) {
                     return applyConnectionPatch(id, patch);
+                },
+                [this](const std::string& id, const ConnectionPatch& patch) {
+                    return applySenderConnectionPatch(id, patch);
                 });
             if (connectionStarted) {
                 const std::string controlHref = connectionServer_->controlHref(apiHost);
@@ -770,6 +773,83 @@ std::vector<ConnectionSender> AES67Device::connectionSenders() {
         senders.push_back(std::move(sender));
     }
     return senders;
+}
+
+bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
+                                             const ConnectionPatch& patch) {
+    if (!streamManager_) return false;
+
+    // Which transmit stream this id names.
+    const std::vector<SDPSession> sessions = streamManager_->getTransmitSessions();
+    const auto match = std::find_if(sessions.begin(), sessions.end(),
+                                    [&](const SDPSession& sdp) {
+                                        return nmosIdFor("sender", sdp.sessionName) == senderId;
+                                    });
+    if (match == sessions.end()) return false;
+    const SDPSession current = *match;
+
+    if (!patch.activateImmediate) return false;
+
+    // master_enable false stops the sender. A stream that is not there is
+    // what the controller asked for, so saying yes to that is honest.
+    const std::vector<StreamInfo> active = streamManager_->getActiveStreams();
+    const auto running = std::find_if(active.begin(), active.end(),
+                                      [&](const StreamInfo& info) {
+                                          return info.name == current.sessionName;
+                                      });
+    if (patch.masterEnable.has_value() && !*patch.masterEnable) {
+        if (running != active.end()) return streamManager_->removeStream(running->id);
+        return true;
+    }
+
+    // Where it should transmit now. A transport file is a description of the
+    // destination as much as of the format, so its connection address and
+    // media port are taken; the transport params override either.
+    std::string address = current.connectionAddress;
+    uint16_t port = current.port;
+    if (patch.transportFile.has_value()) {
+        const auto parsed = SDPParser::parseString(*patch.transportFile);
+        if (!parsed) return false;
+        if (!parsed->connectionAddress.empty()) address = parsed->connectionAddress;
+        if (parsed->port != 0) port = parsed->port;
+    }
+    if (patch.multicastAddress.has_value() && !patch.multicastAddress->empty()) {
+        address = *patch.multicastAddress;
+    }
+    if (patch.port.has_value()) port = *patch.port;
+
+    if (address == current.connectionAddress && port == current.port) {
+        return true;   // already transmitting where it was asked to
+    }
+    if (running == active.end()) return false;
+
+    // Re-addressing is remove and re-create: a transmitter's socket carries
+    // its destination, and the flow builder is what knows how a profile
+    // addresses one. Under Dolby that is the whole point of patching a
+    // SENDER at all -- an Atmos Connect receiver has no control protocol, its
+    // address and destination port are fixed by its manual, and the per-flow
+    // SOURCE ports are what identify the flows. Nothing can be patched onto
+    // that device; the only end a controller can configure is this one.
+    const auto mapping = streamManager_->getMapping(running->id);
+    if (!mapping) return false;
+    const ChannelMapping wantedMapping = *mapping;
+    const uint16_t channels = current.numChannels;
+    const std::string name = current.sessionName;
+
+    if (!streamManager_->removeStream(running->id)) return false;
+
+    const std::vector<StreamID> created =
+        streamManager_->createTxStreamFlows(name, address, port, channels, wantedMapping);
+    if (created.empty()) {
+        AES67_LOGF("AES67Device: sender '%s' could not be re-addressed to %s:%u — "
+                   "it is now down", name.c_str(), address.c_str(), port);
+        return false;
+    }
+
+    AES67_LOGF("AES67Device: controller re-addressed sender '%s' to %s:%u (%u channels, %zu flow%s)",
+               name.c_str(), address.c_str(), port, channels, created.size(),
+               created.size() == 1 ? "" : "s");
+    return true;
 }
 
 bool AES67Device::subscribeSpareReceiver(const std::string& receiverId,

@@ -10,12 +10,15 @@
 // device resource can finally advertise a control instead of an empty
 // list.
 //
-// SENDERS ARE READ ONLY HERE. Their transport file — the SDP a receiver
-// needs — is served, and their staged and active endpoints answer, but a
-// PATCH to a sender is refused with 501. This driver's senders are
-// configured through its own settings and the app; pretending a
-// controller can re-address them would be a control that answers and does
-// not act.
+// A sender's transport file — the SDP a receiver needs — is served, and its
+// staged and active endpoints answer. A PATCH to a sender is applied when the
+// driver supplied a sender patcher, and refused with 501 when it did not.
+//
+// Re-addressing a sender is how a stream reaches gear that cannot be
+// configured over the network at all: Dolby Atmos Connect has no control
+// protocol, and its receiver's address, destination port and per-flow source
+// ports are fixed by its manual. Nothing can be patched onto that device, so
+// the only end a controller can configure is this one -- the source.
 //
 // Everything served here is reachable by anyone on the segment and runs
 // inside coreaudiod: the request size is bounded, no parse throws, and a
@@ -82,6 +85,12 @@ using ConnectionReceiverLister = std::function<std::vector<ConnectionReceiver>()
 /// which the controller sees as a 500 rather than a silent success.
 using ConnectionReceiverPatcher =
     std::function<bool(const std::string& receiverId, const ConnectionPatch&)>;
+/// Applies a patch to one sender: where it transmits. Absent (a default-
+/// constructed function) means senders stay read-only and a PATCH to one is
+/// answered 501, which is what this served before there was anywhere to
+/// send that could not answer for itself.
+using ConnectionSenderPatcher =
+    std::function<bool(const std::string& senderId, const ConnectionPatch&)>;
 
 class ConnectionAPIServer {
 public:
@@ -99,7 +108,8 @@ public:
 
     bool start(ConnectionSenderLister senders,
                ConnectionReceiverLister receivers,
-               ConnectionReceiverPatcher patcher);
+               ConnectionReceiverPatcher patcher,
+               ConnectionSenderPatcher senderPatcher = ConnectionSenderPatcher{});
     void stop();
     bool isRunning() const;
 

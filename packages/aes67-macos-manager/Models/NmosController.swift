@@ -167,6 +167,35 @@ final class NmosController: NSObject, ObservableObject {
         }
     }
 
+    /// Re-addresses a sender: where it transmits, patched through IS-05.
+    ///
+    /// This is the only way to route into gear that has no control protocol
+    /// of its own -- a Dolby Atmos Connect unit listens where its manual says
+    /// and answers nothing, so the end a controller can configure is the
+    /// source. The driver applies it by re-creating the transmit stream at
+    /// that destination, which is also what assigns the per-flow source ports
+    /// that scheme identifies flows by.
+    func send(sender: NmosSender, to multicastAddress: String, port: Int) {
+        guard let node = nodes.first(where: { $0.id == sender.nodeId }),
+              let root = node.connectionRoot else {
+            lastError = "That sender is on a node without a connection API."
+            return
+        }
+        inFlight.insert(sender.id)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.inFlight.remove(sender.id) }
+            do {
+                try await self.patch(root.appendingPathComponent("single/senders/\(sender.id)/staged"),
+                                     body: NmosPatch.sendTo(multicastAddress: multicastAddress,
+                                                            port: port))
+            } catch {
+                self.lastError = error.localizedDescription
+            }
+            self.refresh()
+        }
+    }
+
     func disconnect(receiver: NmosReceiver) {
         guard let receiverNode = nodes.first(where: { $0.id == receiver.nodeId }),
               let receiverRoot = receiverNode.connectionRoot else { return }

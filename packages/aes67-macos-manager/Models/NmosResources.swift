@@ -282,6 +282,18 @@ enum NmosPatch {
         return try! JSONSerialization.data(withJSONObject: body)
     }
 
+    /// Where a sender should transmit. IS-05 transport parameters, applied
+    /// immediately: the destination a device with no control protocol already
+    /// listens on.
+    static func sendTo(multicastAddress: String, port: Int) -> Data {
+        let body: [String: Any] = [
+            "master_enable": true,
+            "transport_params": [["destination_ip": multicastAddress, "destination_port": port]],
+            "activation": ["mode": "activate_immediate"],
+        ]
+        return try! JSONSerialization.data(withJSONObject: body)
+    }
+
     static func disconnect() -> Data {
         let body: [String: Any] = [
             "sender_id": NSNull(),

@@ -231,7 +231,15 @@ ConnectionPatch ConnectionAPIServer::parsePatch(const std::string& json) {
     // one, and IS-05 says a controller may send fewer than the receiver
     // declares, never more, so the first is the one that applies.
     const std::string params = firstObject(member(json, "transport_params"));
+    // A receiver's leg names the group it joins `multicast_ip`; a sender's
+    // names the group it transmits to `destination_ip` (IS-05 sender and
+    // receiver transport parameter schemas). One patch parser serves both, so
+    // it takes whichever the controller used -- reading only the receiver's
+    // name left a sender patch with no destination at all.
     patch.multicastAddress = stringField(params, "multicast_ip");
+    if (!patch.multicastAddress.has_value() || patch.multicastAddress->empty()) {
+        patch.multicastAddress = stringField(params, "destination_ip");
+    }
     patch.interfaceAddress = stringField(params, "interface_ip");
     if (auto port = numberField(params, "destination_port")) {
         if (*port > 0 && *port <= 65535) patch.port = static_cast<uint16_t>(*port);
@@ -257,11 +265,12 @@ public:
     ~Impl() { stop(); }
 
     bool start(ConnectionSenderLister senders, ConnectionReceiverLister receivers,
-               ConnectionReceiverPatcher patcher) {
+               ConnectionReceiverPatcher patcher, ConnectionSenderPatcher senderPatcher) {
         if (running_.load()) return false;
         senders_ = std::move(senders);
         receivers_ = std::move(receivers);
         patcher_ = std::move(patcher);
+        senderPatcher_ = std::move(senderPatcher);
 
         listen_ = ::socket(AF_INET, SOCK_STREAM, 0);
         if (listen_ < 0) return false;
@@ -324,6 +333,10 @@ public:
     bool patch(const std::string& id, const ConnectionPatch& patch) const {
         return patcher_ ? patcher_(id, patch) : false;
     }
+    bool hasSenderPatcher() const { return static_cast<bool>(senderPatcher_); }
+    bool patchSender(const std::string& id, const ConnectionPatch& patch) const {
+        return senderPatcher_ ? senderPatcher_(id, patch) : false;
+    }
 
 private:
     void run() {
@@ -378,6 +391,7 @@ private:
     ConnectionSenderLister senders_;
     ConnectionReceiverLister receivers_;
     ConnectionReceiverPatcher patcher_;
+    ConnectionSenderPatcher senderPatcher_;
 
     uint16_t requestedPort_{0};
     uint16_t boundPort_{0};
@@ -530,10 +544,23 @@ ConnectionAPIServer::Reply ConnectionAPIServer::Impl::route(const std::string& m
                 return {405, "application/json", "[]"};
             }
             if (isSender) {
-                // Senders are configured through this driver's own
-                // settings; a control that accepted the patch and did
-                // nothing would be worse than one that says no.
-                return {501, "application/json", "[]"};
+                // Where a sender transmits, when the driver gave us a way to
+                // change it. Without one the answer stays 501: a control that
+                // accepted the patch and did nothing would be worse than one
+                // that says no.
+                if (!hasSenderPatcher()) return {501, "application/json", "[]"};
+                const ConnectionPatch parsed = ConnectionAPIServer::parsePatch(body);
+                if (!patchSender(id, parsed)) {
+                    return {500, "application/json", "[]"};
+                }
+                const std::string multicast = parsed.multicastAddress.value_or(
+                    sender ? sender->multicastAddress : std::string());
+                const uint16_t answeredPort =
+                    parsed.port.value_or(sender ? sender->port : uint16_t{0});
+                return {200, "application/json",
+                        connectionResource("", parsed.masterEnable.value_or(true),
+                                           multicast, answeredPort,
+                                           sender ? sender->sourceAddress : std::string())};
             }
             const ConnectionPatch parsed = ConnectionAPIServer::parsePatch(body);
             if (!patch(id, parsed)) {
@@ -635,8 +662,10 @@ ConnectionAPIServer::ConnectionAPIServer(uint16_t port) : impl_(std::make_unique
 ConnectionAPIServer::~ConnectionAPIServer() = default;
 
 bool ConnectionAPIServer::start(ConnectionSenderLister senders, ConnectionReceiverLister receivers,
-                                ConnectionReceiverPatcher patcher) {
-    return impl_->start(std::move(senders), std::move(receivers), std::move(patcher));
+                                ConnectionReceiverPatcher patcher,
+                                ConnectionSenderPatcher senderPatcher) {
+    return impl_->start(std::move(senders), std::move(receivers), std::move(patcher),
+                        std::move(senderPatcher));
 }
 
 void ConnectionAPIServer::stop() { impl_->stop(); }

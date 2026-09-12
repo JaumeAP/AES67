@@ -92,6 +92,31 @@ struct NmosSessionCandidate: Equatable {
     let sdp: String
 }
 
+/// A destination that cannot be configured over the network at all.
+///
+/// Dolby Atmos Connect has no control protocol: its receiver's address, its
+/// destination port and its per-flow source ports are fixed by the manual and
+/// set on the unit by hand. Nothing can be patched onto it, so a crosspoint
+/// onto one of these configures the SOURCE -- our sender is re-addressed to
+/// where that unit already listens. The device is found by the one thing it
+/// does put on the network unasked: its PTP clock.
+struct FixedSink: Identifiable, Equatable {
+    let id: String
+    let label: String
+    /// Where the unit listens. The Atmos Connect factory default is
+    /// 239.81.83.67:6517, which installers override per auditorium -- so this
+    /// is what a crosspoint will send to, shown so it can be seen to be wrong.
+    let multicastAddress: String
+    let port: Int
+    let note: String
+
+    /// The default destination of a Dolby Atmos Connect unit, from the
+    /// compatibility profile: one multicast address, a fixed RTP destination
+    /// port, and source ports stepped per eight-channel flow by the sender.
+    static let atmosConnectAddress = "239.81.83.67"
+    static let atmosConnectPort = 6517
+}
+
 enum SessionList {
     /// Merges what the driver found with what NMOS offered.
     ///

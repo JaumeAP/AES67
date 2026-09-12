@@ -292,6 +292,13 @@ private:
     /// The label and, through nmosIdFor(), the id of one of those.
     static std::string spareReceiverName(size_t index);
 
+    /// Where a transmit stream sends. The only end a controller can
+    /// configure when the other one cannot answer for itself -- Dolby Atmos
+    /// Connect has no control protocol, and its address and ports are fixed
+    /// by its manual.
+    bool applySenderConnectionPatch(const std::string& senderId,
+                                    const ConnectionPatch& patch);
+
     bool subscribeSpareReceiver(const std::string& receiverId,
                                 const ConnectionPatch& patch);
 

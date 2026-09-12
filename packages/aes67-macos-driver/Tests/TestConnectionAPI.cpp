@@ -70,15 +70,29 @@ ConnectionReceiver testReceiver() {
 struct Fixture {
     ConnectionAPIServer server{0};
     std::vector<std::pair<std::string, ConnectionPatch>> patches;
+    std::vector<std::pair<std::string, ConnectionPatch>> senderPatches;
     bool patchAnswer{true};
+    bool senderPatchAnswer{true};
+    /// Whether the driver gave the server a way to re-address a sender. False
+    /// is what a driver that keeps its senders to itself looks like, and the
+    /// server answers 501 for it.
+    bool senderPatchable{false};
 
     bool start() {
+        ConnectionSenderPatcher senderPatcher;
+        if (senderPatchable) {
+            senderPatcher = [this](const std::string& id, const ConnectionPatch& patch) {
+                senderPatches.emplace_back(id, patch);
+                return senderPatchAnswer;
+            };
+        }
         return server.start([] { return std::vector<ConnectionSender>{testSender()}; },
                             [] { return std::vector<ConnectionReceiver>{testReceiver()}; },
                             [this](const std::string& id, const ConnectionPatch& patch) {
                                 patches.emplace_back(id, patch);
                                 return patchAnswer;
-                            });
+                            },
+                            std::move(senderPatcher));
     }
 };
 
@@ -139,11 +153,62 @@ TEST_CASE("A sender describes itself and refuses to be told what to do") {
     CHECK(active.body.find("\"destination_port\": 5004") != std::string::npos);
     CHECK(active.body.find("239.69.0.1") != std::string::npos);
 
-    // This driver's senders are configured through its own settings.
-    // Accepting the patch and doing nothing would look like a connection.
+    // A driver that gave no way to re-address its senders keeps saying so:
+    // accepting the patch and doing nothing would look like a connection.
     CHECK(api.route("PATCH", base() + "/single/senders/" + kSenderId + "/staged", "{}").status ==
           501);
     CHECK(fixture.patches.empty());
+    CHECK(fixture.senderPatches.empty());
+}
+
+TEST_CASE("A sender is re-addressed when the driver can do it") {
+    // Which is the only way to route into gear with no control protocol: a
+    // Dolby Atmos Connect unit listens where its manual says and answers
+    // nothing, so what a crosspoint configures is the source.
+    Fixture fixture;
+    fixture.senderPatchable = true;
+    REQUIRE(fixture.start());
+
+    const std::string body =
+        R"({"master_enable":true,)"
+        R"("transport_params":[{"destination_ip":"239.81.83.67","destination_port":6517}],)"
+        R"("activation":{"mode":"activate_immediate"}})";
+    const auto reply =
+        fixture.server.route("PATCH", base() + "/single/senders/" + kSenderId + "/staged", body);
+
+    CHECK(reply.status == 200);
+    REQUIRE(fixture.senderPatches.size() == 1);
+    CHECK(fixture.senderPatches.front().first == kSenderId);
+
+    const ConnectionPatch& patch = fixture.senderPatches.front().second;
+    // destination_ip is the sender's name for it; the receiver's is
+    // multicast_ip, and one parser reads both.
+    CHECK(patch.multicastAddress.value_or("") == "239.81.83.67");
+    CHECK(patch.port.value_or(0) == 6517);
+    CHECK(patch.activateImmediate);
+    CHECK(patch.masterEnable.value_or(false));
+
+    // And what it answers is where it was told to go, which is what a
+    // controller reads back.
+    CHECK(reply.body.find("239.81.83.67") != std::string::npos);
+    CHECK(reply.body.find("6517") != std::string::npos);
+
+    // The receivers' patcher is untouched: these are different resources.
+    CHECK(fixture.patches.empty());
+}
+
+TEST_CASE("A driver that refuses to re-address a sender is a 500") {
+    Fixture fixture;
+    fixture.senderPatchable = true;
+    fixture.senderPatchAnswer = false;
+    REQUIRE(fixture.start());
+
+    const auto reply = fixture.server.route(
+        "PATCH", base() + "/single/senders/" + kSenderId + "/staged",
+        R"({"transport_params":[{"destination_ip":"239.81.83.67"}],)"
+        R"("activation":{"mode":"activate_immediate"}})");
+    CHECK(reply.status == 500);
+    CHECK(fixture.senderPatches.size() == 1);
 }
 
 TEST_CASE("Patching a receiver reaches the driver") {
