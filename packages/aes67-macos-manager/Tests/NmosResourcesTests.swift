@@ -126,3 +126,87 @@ func runNmosResourcesTests() {
     check(withDown.cell(row: withDown.rows[1], column: withDown.columns[0]) == .unavailable, "an unreachable sender node greys the column")
     check(!withDown.columns[0].reachable, "column carries reachability")
 }
+
+// MARK: - Clocks and IS-08
+//
+// The two things a Dante Controller user looks for that device-level routing
+// does not answer: which clock everything is following, and what feeds each
+// output CHANNEL. IS-04 `self` carries the first, IS-08 the second.
+
+func runNmosClockAndChannelMapTests() {
+    // A node that is following a grandmaster says so, and the summary is what
+    // a device list shows in its clock column.
+    let selfWithPtp = """
+    {"id": "n-1", "label": "Console", "clocks": [
+      {"name": "clk0", "ref_type": "ptp", "traceable": true, "locked": true,
+       "version": "IEEE1588-2008", "gmid": "00-1d-c1-ff-fe-12-34-56"}]}
+    """.data(using: .utf8)!
+    let clocks = (try? NmosDecoding.clocks(nodeSelf: selfWithPtp)) ?? []
+    check(clocks.count == 1, "one clock decoded")
+    check(clocks.first?.refType == "ptp", "a PTP reference")
+    check(clocks.first?.locked == true, "locked")
+    check(clocks.first?.summary == "Locked to 00-1d-c1-ff-fe-12-34-56", "the clock column's text")
+
+    // A free-running node is not an error, and neither is one that declares
+    // no clock at all.
+    let internalClock = """
+    {"id": "n-2", "clocks": [{"name": "clk0", "ref_type": "internal"}]}
+    """.data(using: .utf8)!
+    check((try? NmosDecoding.clocks(nodeSelf: internalClock))?.first?.summary == "Internal",
+          "an internal clock says so")
+    let noClock = "{\"id\": \"n-3\"}".data(using: .utf8)!
+    check(((try? NmosDecoding.clocks(nodeSelf: noClock)) ?? []).isEmpty, "no clocks is empty, not a throw")
+
+    // IS-08 is found the way IS-05 is: a control on a device, by URN.
+    let devices = """
+    [{"id": "d-1", "controls": [
+       {"type": "urn:x-nmos:control:sr-ctrl/v1.1", "href": "http://host:8080/x-nmos/connection/v1.1"},
+       {"type": "urn:x-nmos:control:cm-ctrl/v1.0", "href": "http://host:8080/x-nmos/channelmapping/v1.0"}]}]
+    """.data(using: .utf8)!
+    check((try? NmosDecoding.channelMappingRoot(devices: devices))??.absoluteString
+          == "http://host:8080/x-nmos/channelmapping/v1.0/", "the IS-08 root, with its trailing slash")
+    check((try? NmosDecoding.connectionRoot(devices: devices))??.absoluteString
+          == "http://host:8080/x-nmos/connection/v1.1/", "and IS-05 is still found beside it")
+
+    // The grid's axes.
+    let io = """
+    {"inputs": {"in-1": {"properties": {"name": "Stream 1"},
+                          "channels": [{"label": "Left"}, {"label": "Right"}]}},
+     "outputs": {"out-1": {"properties": {"name": "Device Out"},
+                            "channels": [{"label": "Out 1"}, {"label": "Out 2"}]}}}
+    """.data(using: .utf8)!
+    let ports = try? NmosDecoding.channelMapIO(io)
+    check(ports?.inputs.first?.label == "Stream 1", "an input port's name")
+    check(ports?.inputs.first?.channels.count == 2, "with its channels")
+    check(ports?.inputs.first?.channels.first?.label == "Left", "labelled as the device labels them")
+    check(ports?.outputs.first?.channels.last?.id == "1", "channels are addressed by index")
+
+    // And what is actually connected in it.
+    let active = """
+    {"map": {"out-1": {"0": {"input": "in-1", "channel_index": 1},
+                        "1": {"input": null, "channel_index": null}}}}
+    """.data(using: .utf8)!
+    let map = NmosChannelMap(inputs: ports?.inputs ?? [], outputs: ports?.outputs ?? [],
+                             active: (try? NmosDecoding.channelMapActive(active)) ?? [:])
+    let source = map.source(ofOutput: "out-1", channel: 0)
+    check(source?.input == "in-1", "the input feeding an output channel")
+    check(source?.channel == 1, "and which of its channels")
+    check(map.source(ofOutput: "out-1", channel: 1) == nil, "a muted output channel has no source")
+
+    // The patch that changes one crosspoint, and the one that mutes it.
+    let connect = NmosPatch.mapChannel(output: "out-1", outputChannel: 0,
+                                       input: "in-1", inputChannel: 1)
+    let connectBody = (try? JSONSerialization.jsonObject(with: connect)) as? [String: Any]
+    let action = (connectBody?["action"] as? [String: Any])?["out-1"] as? [String: Any]
+    let entry = action?["0"] as? [String: Any]
+    check(entry?["input"] as? String == "in-1", "the patch names the input")
+    check(entry?["channel_index"] as? Int == 1, "and its channel")
+    check(((connectBody?["activation"] as? [String: Any])?["mode"] as? String) == "activate_immediate",
+          "applied immediately, like IS-05")
+
+    let mute = NmosPatch.mapChannel(output: "out-1", outputChannel: 0, input: nil, inputChannel: nil)
+    let muteBody = (try? JSONSerialization.jsonObject(with: mute)) as? [String: Any]
+    let muteAction = (muteBody?["action"] as? [String: Any])?["out-1"] as? [String: Any]
+    let muteEntry = muteAction?["0"] as? [String: Any]
+    check(muteEntry?["input"] is NSNull, "muting sends a null input")
+}

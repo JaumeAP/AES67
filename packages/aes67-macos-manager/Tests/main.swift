@@ -10,6 +10,7 @@ import Foundation
 runPrivilegedScriptTests()
 runNmosResourcesTests()
 runSessionListTests()
+runNmosClockAndChannelMapTests()
 
 print("\(checks) checks, \(failures) failures")
 exit(failures == 0 ? 0 : 1)

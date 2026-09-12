@@ -128,6 +128,45 @@ final class NmosController: NSObject, ObservableObject {
         }
     }
 
+    /// The IS-08 map of one node: what feeds every output channel, and the
+    /// ports both ends of the grid are drawn from. Empty for a node that maps
+    /// no channels, which is most gear -- IS-08 is optional, and a device that
+    /// routes whole streams and nothing finer declares no cm-ctrl control.
+    func channelMap(of node: NmosNode) async -> NmosChannelMap {
+        guard let root = node.channelMappingRoot else { return .empty }
+        do {
+            let io = try NmosDecoding.channelMapIO(try await getData(root.appendingPathComponent("io")))
+            let active = try NmosDecoding.channelMapActive(
+                try await getData(root.appendingPathComponent("map/active")))
+            return NmosChannelMap(inputs: io.inputs, outputs: io.outputs, active: active)
+        } catch {
+            lastError = error.localizedDescription
+            return .empty
+        }
+    }
+
+    /// Sets one crosspoint on a node's channel map, or mutes it when `input`
+    /// is nil. Immediate, like every other write here: a staged activation
+    /// nobody triggers is a routing change that silently did not happen.
+    func setCrosspoint(on node: NmosNode, output: String, outputChannel: Int,
+                       input: String?, inputChannel: Int?) async {
+        guard let root = node.channelMappingRoot else {
+            lastError = "\(node.label) maps no channels: it has no IS-08 control."
+            return
+        }
+        do {
+            // POST map/activate, not PATCH: IS-08 writes the map through an
+            // activation resource rather than by patching the map itself, and
+            // this repository's own server (Ravenna/ChannelMappingApi.cpp)
+            // answers 405 to anything else there.
+            try await post(root.appendingPathComponent("map/activate"),
+                           body: NmosPatch.mapChannel(output: output, outputChannel: outputChannel,
+                                                      input: input, inputChannel: inputChannel))
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     func disconnect(receiver: NmosReceiver) {
         guard let receiverNode = nodes.first(where: { $0.id == receiver.nodeId }),
               let receiverRoot = receiverNode.connectionRoot else { return }
@@ -169,9 +208,17 @@ final class NmosController: NSObject, ObservableObject {
         return text
     }
 
+    private func post(_ url: URL, body: Data) async throws {
+        try await send(url, method: "POST", body: body)
+    }
+
     private func patch(_ url: URL, body: Data) async throws {
+        try await send(url, method: "PATCH", body: body)
+    }
+
+    private func send(_ url: URL, method: String, body: Data) async throws {
         var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
         let (data, response) = try await session.data(for: request)
@@ -196,9 +243,15 @@ final class NmosController: NSObject, ObservableObject {
         }
         guard let root = URL(string: "http://\(host):\(port)/x-nmos/node/v1.3/") else { return unreachable() }
         do {
-            let identity = try NmosDecoding.nodeSelf(try await getData(root.appendingPathComponent("self")))
+            let selfData = try await getData(root.appendingPathComponent("self"))
+            let identity = try NmosDecoding.nodeSelf(selfData)
             var node = NmosNode(id: identity.id, label: identity.label, host: host, port: port)
-            node.connectionRoot = try NmosDecoding.connectionRoot(devices: try await getData(root.appendingPathComponent("devices")))
+            // Which clock this node follows, and whether it is locked to it:
+            // the column a routing screen is read for as much as the grid.
+            node.clocks = (try? NmosDecoding.clocks(nodeSelf: selfData)) ?? []
+            let devicesData = try await getData(root.appendingPathComponent("devices"))
+            node.connectionRoot = try NmosDecoding.connectionRoot(devices: devicesData)
+            node.channelMappingRoot = try? NmosDecoding.channelMappingRoot(devices: devicesData)
             node.senders = try NmosDecoding.senders(
                 try await getData(root.appendingPathComponent("senders")),
                 flows: try await getData(root.appendingPathComponent("flows")),

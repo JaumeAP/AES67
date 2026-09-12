@@ -22,10 +22,14 @@ struct ControllerWindow: View {
 
     var body: some View {
         TabView {
+            DeviceListView(nmos: nmos)
+                .tabItem { Label("Devices", systemImage: "square.stack.3d.up") }
             sessionList
                 .tabItem { Label("Sessions", systemImage: "antenna.radiowaves.left.and.right") }
             RoutingMatrixView()
                 .tabItem { Label("Routing", systemImage: "square.grid.3x3") }
+            ChannelGridView(nmos: nmos)
+                .tabItem { Label("Channels", systemImage: "slider.horizontal.3") }
         }
         .frame(minWidth: 760, minHeight: 520)
         .onAppear {

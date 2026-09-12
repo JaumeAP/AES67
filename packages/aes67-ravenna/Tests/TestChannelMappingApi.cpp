@@ -40,7 +40,7 @@ JsonValue bodyOf(const ApiResponse& response) {
 
 /// The device channel that a given input channel feeds, or -1.
 int deviceChannelOf(const JsonValue& map, const std::string& input, int channelIndex) {
-    const JsonValue& cells = map["action"][kDeviceOutputId];
+    const JsonValue& cells = map["map"][kDeviceOutputId];
     for (const auto& [channel, cell] : cells.asObject()) {
         if (cell["input"].isString() && cell["input"].asString() == input &&
             static_cast<int>(cell["channel_index"].asNumber(-1)) == channelIndex) {
@@ -66,11 +66,11 @@ TEST_CASE("io lists a connected receiver as an input and the device as the outpu
     REQUIRE(io["inputs"].asObject().count("receiver-1") == 1);
 
     const JsonValue& input = io["inputs"]["receiver-1"];
-    CHECK(input["name"].asString() == "Mix A");
+    CHECK(input["properties"]["name"].asString() == "Mix A");
     CHECK(input["channels"].asArray().size() == 4);
     CHECK(input["parent"]["type"].asString() == "receiver");
-    CHECK(input["block_size"].asNumber() == 1);
-    CHECK(input["reordering"].asBool());
+    CHECK(input["caps"]["block_size"].asNumber() == 1);
+    CHECK(input["caps"]["reordering"].asBool());
 
     const JsonValue& output = io["outputs"][kDeviceOutputId];
     CHECK(output["channels"].asArray().size() == 128);
@@ -88,14 +88,14 @@ TEST_CASE("The active map is what the matrix holds, not a second copy") {
     REQUIRE(routing.apply("receiver-1", sdpFor("Mix A", 2), true, outcome, why));
 
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(map["action"][kDeviceOutputId].asObject().size() == 128);
+    CHECK(map["map"][kDeviceOutputId].asObject().size() == 128);
 
     CHECK(deviceChannelOf(map, "receiver-1", 0) == outcome.deviceChannelStart);
     CHECK(deviceChannelOf(map, "receiver-1", 1) == outcome.deviceChannelStart + 1);
 
     // Every other cell is empty, and says so with nulls rather than with a
     // channel nobody feeds.
-    const JsonValue& far = map["action"][kDeviceOutputId]["100"];
+    const JsonValue& far = map["map"][kDeviceOutputId]["100"];
     CHECK(far["input"].isNull());
     CHECK(far["channel_index"].isNull());
 }
@@ -145,7 +145,7 @@ TEST_CASE("A cell emptied stops carrying anything") {
     REQUIRE(api.handle("POST", path("/map/activate"), body).status == 200);
 
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(map["action"][kDeviceOutputId][std::to_string(first)]["input"].isNull());
+    CHECK(map["map"][kDeviceOutputId][std::to_string(first)]["input"].isNull());
     // The other channel is untouched.
     CHECK(deviceChannelOf(map, "receiver-1", 1) == first + 1);
 }
@@ -169,7 +169,7 @@ TEST_CASE("Two inputs cannot end up on one device channel") {
     REQUIRE(api.handle("POST", path("/map/activate"), body).status == 200);
 
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    const JsonValue& cell = map["action"][kDeviceOutputId]["10"];
+    const JsonValue& cell = map["map"][kDeviceOutputId]["10"];
     REQUIRE(cell["input"].isString());
     CHECK(cell["input"].asString() == "receiver-2");
     CHECK(deviceChannelOf(map, "receiver-1", 0) != 10);

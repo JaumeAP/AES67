@@ -19,7 +19,7 @@ reverse-engineering a licensed protocol.
 | Channel labels | IS-04 source channels, IS-08 input channels | **Done** |
 | Device name, sample rate, encoding | IS-04 resources and the SDP | **Done**, read-only: nothing here renames a device over the network |
 | Finds devices without configuration | IS-04 peer-to-peer, `_nmos-node._tcp` over mDNS | **Done** |
-| A central registry every device reports to | IS-04 Registration API | **Not done.** A registry client is an HTTP client and a heartbeat |
+| A central registry every device reports to | IS-04 Registration API | **Done.** `packages/aes67-macos-driver/NetworkEngine/Discovery/NMOSRegistrationClient.h`, off unless the installation asks |
 | Routing presets, saved and recalled | Nothing standard: Audinate's own | **Not done** |
 | Latency, bandwidth, error counters | Nothing standard equivalent | **Not done.** The PTP daemon reports its own state once a second |
 | Device lock, identify, firmware | Nothing standard equivalent | **Not done** |
@@ -44,13 +44,36 @@ this can subscribe to what it publishes. What it cannot do is appear in Dante
 Controller's own device list, because that list is Dante's protocol and not
 AES67's.
 
-## What is still missing to route a plant from one screen
+## The controller
 
-Two things, and the second needs the first only to be pleasant:
+`packages/aes67-macos-controller` is the screen: a separate application,
+because routing a plant and managing this machine's audio device are different
+jobs with different audiences, and an installer should not have to install a
+driver to open a matrix. It shows
 
-1. **A registry client.** Peer-to-peer discovery finds what is on the link. A
-   plant with several subnets wants a registry, which means POSTing the node's
-   resources to `/x-nmos/registration/v1.3/resource` and heartbeating.
-2. **A controller.** Something that browses, draws the grid and writes to
-   IS-05 and IS-08. It is an application, not a package: everything it needs to
-   read and write is served already.
+1. **Devices** — every node, its senders and receivers, which of IS-05 and
+   IS-08 it will let a controller use, and the clock it follows with its lock
+   state. That last column is not decoration: a device passing audio while
+   locked to nothing drifts, which reads as a routing fault and is not one.
+2. **Sessions** — everything on the network however it announces itself, SAP
+   and RTSP found by the application itself through the driver's discovery
+   bridge, NMOS senders merged in by the destination their transport file
+   names.
+3. **Routing** — the IS-05 crosspoints, device by device.
+4. **Channels** — the IS-08 grid, channel by channel, for the devices that
+   declare a channel mapping control.
+
+Writing that client is what found three places where this repository's own
+IS-08 server did not match the specification a controller reads: `map/active`
+answered under the key `action`, which is what a POST to `map/activate` sends
+rather than what a GET returns, and `io` put a port's `name` and
+`description`, and its `block_size` and `reordering`, at the top level instead
+of under `properties` and `caps`. A grid drawn from the spec came out empty
+and unnamed. Fixed, with the suite holding the shapes.
+
+## What is still out of reach
+
+Presets, latency and error counters, device lock, identify and firmware are
+Audinate's own and have no standard equivalent to implement. Renaming a device
+over the network is not something IS-04 defines either -- what a controller
+shows there is what the device calls itself.

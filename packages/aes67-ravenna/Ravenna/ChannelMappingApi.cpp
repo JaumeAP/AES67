@@ -79,8 +79,13 @@ ApiResponse ChannelMappingApi::describeIo() const {
         if (!mapping) continue;
 
         JsonObject input;
-        input["name"] = JsonValue(mapping->streamName.empty() ? receiverId : mapping->streamName);
-        input["description"] = JsonValue("the stream receiver " + receiverId + " took");
+        // name and description live under "properties", and block_size and
+        // reordering under "caps": IS-08's io schema nests them, and a
+        // controller reading the spec found neither where this used to put
+        // them -- it fell back to showing the port's id for its name.
+        input["properties"] = JsonValue(JsonObject{
+            {"name", JsonValue(mapping->streamName.empty() ? receiverId : mapping->streamName)},
+            {"description", JsonValue("the stream receiver " + receiverId + " took")}});
         input["channels"] = channelLabels(mapping->streamChannelCount, "Channel");
         // IS-08 sec 4: which resource this input belongs to. It is the
         // receiver, and its id is the connection API's.
@@ -89,14 +94,15 @@ ApiResponse ChannelMappingApi::describeIo() const {
         // One channel at a time, and in any order: that is what the matrix
         // does, and claiming a block size it does not have would make a
         // controller draw a grid this device cannot honour.
-        input["block_size"] = JsonValue(1);
-        input["reordering"] = JsonValue(true);
+        input["caps"] = JsonValue(JsonObject{{"block_size", JsonValue(1)},
+                                             {"reordering", JsonValue(true)}});
         inputs[receiverId] = JsonValue(input);
     }
 
     JsonObject output;
-    output["name"] = JsonValue("Device channels");
-    output["description"] = JsonValue("the channels this device carries");
+    output["properties"] = JsonValue(JsonObject{
+        {"name", JsonValue("Device channels")},
+        {"description", JsonValue("the channels this device carries")}});
     output["channels"] = channelLabels(static_cast<uint16_t>(mapper_.getUsableChannelCount()),
                                        "Device");
     output["source_id"] = JsonValue();
@@ -155,10 +161,14 @@ ApiResponse ChannelMappingApi::activeMap() const {
     activation["activation_time"] =
         lastActivationTime_.empty() ? JsonValue() : JsonValue(lastActivationTime_);
 
-    JsonObject map;
-    map["action"] = JsonValue(action);
-    map["activation"] = JsonValue(activation);
-    return jsonResponse(200, JsonValue(map));
+    // "map", not "action": IS-08's map-active response holds the current map
+    // under that name, and "action" is what a POST to map/activate SENDS.
+    // Writing the request's name into the response left a controller reading
+    // an empty grid on a device whose channels were all connected.
+    JsonObject body;
+    body["map"] = JsonValue(action);
+    body["activation"] = JsonValue(activation);
+    return jsonResponse(200, JsonValue(body));
 }
 
 ApiResponse ChannelMappingApi::activate(const std::string& body) {
