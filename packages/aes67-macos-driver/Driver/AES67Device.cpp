@@ -11,6 +11,7 @@
 #include "Shared/CustomProperties.h"
 #include "NetworkEngine/DeviceChannelSettings.h"
 #include "NetworkEngine/AmplifierUnitSettings.h"
+#include "NetworkEngine/DiscoverySettings.h"
 #include "NetworkEngine/NMOSSettings.h"
 #include "NetworkEngine/PTP/PTPMasterSettings.h"
 #include "NetworkEngine/NetworkInterfaceDetection.h"
@@ -248,7 +249,21 @@ void AES67Device::Initialize() {
     // SAPAnnouncer. Failing to start is not fatal — discovery is a convenience,
     // and a driver that carries audio without it is far better than one
     // that refuses to load because a multicast join failed.
-    if (activeProfile.usesSap) {
+    // What discovery runs: the profile's own routes, widened when the
+    // installation has said so (DiscoverySettings). The setting never
+    // narrows -- a profile's routes always run -- because a plant that needs
+    // to be findable by two ecosystems at once should not have to adopt the
+    // media rules of whichever profile happens to speak all three.
+    const DiscoverySettings discoverySettings = DiscoverySettingsManager().load();
+    const bool runSap = activeProfile.usesSap || discoverySettings.runEveryRoute;
+    const bool runDnsSdRtsp = activeProfile.usesDnsSdRtsp || discoverySettings.runEveryRoute;
+    const bool runNmos = activeProfile.usesNmos || discoverySettings.runEveryRoute;
+    if (discoverySettings.runEveryRoute) {
+        AES67_LOGF("AES67Device: discovery override on — SAP, DNS-SD/RTSP and NMOS all run "
+                   "regardless of the %s profile", activeProfile.displayName.c_str());
+    }
+
+    if (runSap) {
         sapListener_ = std::make_unique<SAPListener>();
         // Auto sink-follow (RAVENNA auto_sinks_update): when a discovered
         // source re-announces with changed transport, re-point any receive
@@ -321,7 +336,7 @@ void AES67Device::Initialize() {
     // driver publishes sessions, and it is what an AES67 device on a
     // switch with SAP filtered still offers. Same posture as SAP: a
     // failure to start costs discovery, never audio.
-    if (activeProfile.usesDnsSdRtsp) {
+    if (runDnsSdRtsp) {
         rtspDiscovery_ = std::make_unique<RTSPSessionDiscovery>(sessionDirectory_);
         if (rtspDiscovery_->start()) {
             AES67_LOG("AES67Device: mDNS discovery browsing _rtsp._tcp, describing what it finds");
@@ -346,7 +361,7 @@ void AES67Device::Initialize() {
     // empty -- 0.0.0.0 in the header, "o=- <id> 1 IN IP4 " in the body --
     // because createTxStream() sets no origin and the announcer was
     // initialised without an interface (DanteInteropSim, 2026-09-07).
-    if (activeProfile.usesSap) {
+    if (runSap) {
         const std::string sapInterface = NetworkInterfaceDetection::detectPTPInterface();
         const std::string sapAddress = sapInterface.empty()
             ? std::string{}
@@ -392,7 +407,7 @@ void AES67Device::Initialize() {
     // not have: kUnprivilegedRTSPPort is what we actually bind, and it is
     // what the mDNS registration below advertises, so a client that
     // discovers us reaches the right port without assuming the default.
-    if (activeProfile.usesDnsSdRtsp) {
+    if (runDnsSdRtsp) {
         rtspServer_ = std::make_unique<RTSPServer>(kUnprivilegedRTSPPort);
         const bool rtspStarted = rtspServer_->start([this]() {
             std::vector<RTSPPublishedStream> published;
@@ -438,7 +453,7 @@ void AES67Device::Initialize() {
     // this machine in whatever reads the plant's registry, which is a
     // decision somebody makes rather than something a driver starts doing
     // on its own.
-    if (activeProfile.usesNmos) {
+    if (runNmos) {
         NMOSSettingsManager nmosSettingsManager;
         NMOSSettings nmosSettings = nmosSettingsManager.load();
 
