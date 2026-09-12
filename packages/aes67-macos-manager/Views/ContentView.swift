@@ -199,8 +199,7 @@ struct ContentView: View {
                     .labelsHidden()
                     .frame(width: 120)
                     .disabled(locked)
-                    .help("Which amplifier/interface in the chain this driver feeds — each unit "
-                        + "takes the next block of channels and source ports")
+                    .help("Which amplifier/interface in the chain this driver feeds — each unit takes the next block of channels and source ports")
                 }
 
                 Spacer()
@@ -226,8 +225,7 @@ struct ContentView: View {
                 Text(driverManager.activeCompatibilityProfile.caveats)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Selecting a profile only narrows what the driver accepts. "
-                   + "It is not a conformance claim.")
+                Text("Selecting a profile only narrows what the driver accepts. It is not a conformance claim.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -186,14 +186,11 @@ struct NetworkSettings: View {
                        isOn: Binding(get: { driverManager.discoveryRunsEveryRoute },
                                      set: { driverManager.setDiscoveryRunsEveryRoute($0) }))
                 Text(driverManager.discoveryRunsEveryRoute
-                     ? "SAP, DNS-SD with RTSP and NMOS all run. The profile still decides the "
-                       + "formats."
-                     : "Discovery follows the active profile: "
-                       + "\(driverManager.activeCompatibilityProfile.name).")
+                     ? "SAP, DNS-SD with RTSP and NMOS all run. The profile still decides the formats."
+                     : "Discovery follows the active profile: \(driverManager.activeCompatibilityProfile.name).")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("Changing this restarts Core Audio and asks for an administrator password: "
-                     + "the driver reads the setting when Core Audio builds it.")
+                Text("Changing this restarts Core Audio and asks for an administrator password: the driver reads the setting when Core Audio builds it.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

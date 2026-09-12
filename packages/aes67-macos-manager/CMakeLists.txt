@@ -47,6 +47,19 @@ if(TARGET aes67ptpd)
     add_dependencies(ManagerApp aes67ptpd)
 endif()
 
+# The installer: the program the image holds. It carries the Manager and the
+# Controller inside its own bundle, so it has to be built after both.
+add_custom_target(InstallerApp ALL
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-installer.sh --force
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building AES67 Install (SwiftUI)"
+    VERBATIM
+)
+add_dependencies(InstallerApp ManagerApp)
+if(TARGET ControllerApp)
+    add_dependencies(InstallerApp ControllerApp)
+endif()
+
 # The uninstaller: a third application, built the same way and part of ALL,
 # because an image that ships without it ships a machine nobody can clean.
 add_custom_target(UninstallApp ALL
@@ -77,7 +90,7 @@ add_custom_target(dmg
             ${CMAKE_CURRENT_SOURCE_DIR}/build-dmg.sh
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Building AES67Manager.dmg"
-    DEPENDS ManagerApp UninstallApp
+    DEPENDS ManagerApp UninstallApp InstallerApp
     VERBATIM
 )
 

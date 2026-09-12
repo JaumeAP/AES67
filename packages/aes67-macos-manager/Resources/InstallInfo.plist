@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <!-- The languages this bundle carries. macOS picks by the system's own
+         language: the .lproj directories beside this file are what it looks
+         in, and a language it has none of falls back to the development
+         region, which is the English the sources are written in. -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ca</string>
+        <string>es</string>
+    </array>
+    <key>CFBundleName</key>
+    <string>AES67 Install</string>
+    <key>CFBundleDisplayName</key>
+    <string>AES67 Install</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.aes67.install</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>AES67Install</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>

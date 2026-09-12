@@ -30,8 +30,7 @@ struct LinkView: View {
             header
             Divider()
             if discovery.services.isEmpty && discovery.ptpParticipants.isEmpty {
-                notice("Nothing seen yet. Devices register their services and announce their "
-                     + "clocks on their own schedule; a quiet segment takes a few seconds.")
+                notice("Nothing seen yet. Devices register their services and announce their clocks on their own schedule; a quiet segment takes a few seconds.")
             } else {
                 List {
                     if !discovery.services.isEmpty {
@@ -52,9 +51,7 @@ struct LinkView: View {
                             ForEach(discovery.ptpParticipants) { peer in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("\(peer.clockId)  ·  \(peer.roleDescription)")
-                                    Text("OUI \(peer.oui)  ·  from \(peer.sourceIp)  ·  domain "
-                                       + "\(peer.domain)  ·  \(peer.messageCount) messages  ·  "
-                                       + "seen \(peer.secondsSinceLastSeen)s ago")
+                                    Text("OUI \(peer.oui)  ·  from \(peer.sourceIp)  ·  domain \(peer.domain)  ·  \(peer.messageCount) messages  ·  seen \(peer.secondsSinceLastSeen)s ago")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -80,8 +77,7 @@ struct LinkView: View {
                 Text("Link")
                     .font(.title3)
                     .fontWeight(.semibold)
-                Text("Every device this segment shows, by service registration or by its clock — "
-                   + "including gear nothing here can control")
+                Text("Every device this segment shows, by service registration or by its clock — including gear nothing here can control")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

@@ -43,6 +43,13 @@ test -x AES67Controller.app/Contents/MacOS/AES67Controller || {
 # The bundle has to carry the local-network usage description and the Bonjour
 # service types, or macOS silently gives it no multicast and no browsing --
 # the two things this application is for.
+for lang in ca es en; do
+  test -f "AES67Controller.app/Contents/Resources/$lang.lproj/Localizable.strings" || {
+    echo "FAIL: no $lang.lproj in the bundle" >&2
+    exit 1
+  }
+done
+
 for key in NSLocalNetworkUsageDescription NSBonjourServices; do
   grep -q "$key" AES67Controller.app/Contents/Info.plist || {
     echo "FAIL: Info.plist has no $key" >&2

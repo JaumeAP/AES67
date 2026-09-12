@@ -76,10 +76,7 @@ struct ProfileParametersView: View {
             : driverManager.resolvedOutputChannels
         section("Detected elements (PTP) — \(side)") {
             if peers.isEmpty {
-                Text("None detected yet. Elements are discovered passively from PTP "
-                     + "traffic — a Dolby unit appears here once it is on the network "
-                     + "and exchanging PTP with this driver. Each chained DMA unit "
-                     + "shows as its own entry.")
+                Text("None detected yet. Elements are discovered passively from PTP traffic — a Dolby unit appears here once it is on the network and exchanging PTP with this driver. Each chained DMA unit shows as its own entry.")
                     .font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
@@ -111,8 +108,7 @@ struct ProfileParametersView: View {
                             .frame(maxWidth: 280, alignment: .leading)
                             Spacer()
                         }
-                        Text("clock \(peer.clockId) · domain \(peer.domain) · "
-                             + "\(peer.messageCount) msgs")
+                        Text("clock \(peer.clockId) · domain \(peer.domain) · \(peer.messageCount) msgs")
                             .font(.caption).foregroundColor(.secondary)
                     }
                     Divider()
@@ -148,12 +144,10 @@ struct ProfileParametersView: View {
                     Text("now: \(current)")
                         .font(.caption).foregroundColor(.secondary)
                 }
-                Text("Vendor is read from the OUI; PTP can't tell one Dolby model from "
-                     + "another, so confirm each unit's model to set its channel count. "
+                Text("Vendor is read from the OUI; PTP can't tell one Dolby model from another, so confirm each unit's model to set its channel count. "
                      + (locked
                         ? "Uninstall the driver to apply a new layout — it's read at driver start."
-                        : "Applying sets the device's \(side) to fit the detected elements, "
-                          + "in groups of 8; it takes effect on the next driver start."))
+                        : "Applying sets the device's \(side) to fit the detected elements, in groups of 8; it takes effect on the next driver start."))
                     .font(.caption).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -171,10 +165,7 @@ struct ProfileParametersView: View {
                         Text("\(driverManager.rtcpReceivers.count)")
                             .font(.caption).bold()
                     }
-                    Text("A second, independent check: receivers of this driver's streams that "
-                         + "send RTCP reports. Should agree with the slaves found above — but "
-                         + "only appears for gear that emits RTCP, which Dolby's manuals don't "
-                         + "confirm the amplifiers do. Zero here doesn't mean no receiver.")
+                    Text("A second, independent check: receivers of this driver's streams that send RTCP reports. Should agree with the slaves found above — but only appears for gear that emits RTCP, which Dolby's manuals don't confirm the amplifiers do. Zero here doesn't mean no receiver.")
                         .font(.caption).foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -216,11 +207,9 @@ struct ProfileParametersView: View {
                 note: {
                     switch profile.direction {
                     case .receiveOnly:
-                        return "\(profile.name) sends to this driver and has no network audio "
-                            + "input — everything on the Outputs tab is locked."
+                        return "\(profile.name) sends to this driver and has no network audio input — everything on the Outputs tab is locked."
                     case .transmitOnly:
-                        return "\(profile.name) only receives from this driver and sends nothing "
-                            + "back — everything on the Inputs tab is locked."
+                        return "\(profile.name) only receives from this driver and sends nothing back — everything on the Inputs tab is locked."
                     case .any:
                         return "Both directions are available under this profile."
                     }
@@ -234,10 +223,8 @@ struct ProfileParametersView: View {
                     : "\(profile.recommendedDscp) (EF, factory default)",
                 locked: true,
                 note: profile.recommendedDscp < 0
-                    ? "Nothing documented for this profile, so this driver leaves its own "
-                      + "transmit traffic unmarked."
-                    : "Applied — every stream this driver transmits marks its packets with "
-                      + "this codepoint. Received traffic is marked by the sender, not here."
+                    ? "Nothing documented for this profile, so this driver leaves its own transmit traffic unmarked."
+                    : "Applied — every stream this driver transmits marks its packets with this codepoint. Received traffic is marked by the sender, not here."
             )
         }
 
@@ -258,10 +245,8 @@ struct ProfileParametersView: View {
                     : profile.allowedPtimesUs.map { Self.formatPtime($0) }.joined(separator: ", "),
                 locked: true,
                 note: profile.allowedPtimesUs.isEmpty
-                    ? "This profile places no packet-time limit on received streams; "
-                        + "the transmitter still emits 1 ms."
-                    : "This driver's transmitter emits 1 ms packets and can't be "
-                        + "reconfigured, so this is a hard limit either way."
+                    ? "This profile places no packet-time limit on received streams; the transmitter still emits 1 ms."
+                    : "This driver's transmitter emits 1 ms packets and can't be reconfigured, so this is a hard limit either way."
             )
             parameterRow(
                 "Encoding",
@@ -280,8 +265,7 @@ struct ProfileParametersView: View {
 
         if ruledOut {
             directionNotice(
-                "\(profile.name) is transmit-only — this driver never receives from it, so every "
-                + "input parameter below is locked."
+                "\(profile.name) is transmit-only — this driver never receives from it, so every input parameter below is locked."
             )
         }
 
@@ -294,8 +278,7 @@ struct ProfileParametersView: View {
                 locked: ruledOut,
                 note: ruledOut
                     ? "The input selector on the main window is disabled under this profile."
-                    : "Set with the Input selector on the main window. The device always presents "
-                      + "128 channels to Core Audio; this caps how many streams may be assigned to."
+                    : "Set with the Input selector on the main window. The device always presents 128 channels to Core Audio; this caps how many streams may be assigned to."
             )
         }
 
@@ -328,11 +311,7 @@ struct ProfileParametersView: View {
                 }
                 Text(ruledOut
                      ? "No receive streams under this profile."
-                     : "How much audio a receiver holds back before playing, as a cushion "
-                       + "against network jitter. Every sample of it is latency, so raise it "
-                       + "only as far as the dropouts need — 48 samples is 1 ms at 48 kHz. "
-                       + "Dolby calls the same control Safety Buffer. Applies to streams "
-                       + "added after the change.")
+                     : "How much audio a receiver holds back before playing, as a cushion against network jitter. Every sample of it is latency, so raise it only as far as the dropouts need — 48 samples is 1 ms at 48 kHz. Dolby calls the same control Safety Buffer. Applies to streams added after the change.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -351,12 +330,8 @@ struct ProfileParametersView: View {
                 note: ruledOut
                     ? "No receive streams can be added under this profile."
                     : (profile.requiredMulticastPrefix.isEmpty
-                       ? "Entered per stream when adding one, or taken from an imported SDP file. "
-                         + "A factory default is a starting point — installations with more than "
-                         + "one auditorium on a network give each its own address."
-                       : "\(profile.name) requires addresses inside "
-                         + "\(profile.requiredMulticastPrefix).0.0/16 — streams outside it are "
-                         + "rejected.")
+                       ? "Entered per stream when adding one, or taken from an imported SDP file. A factory default is a starting point — installations with more than one auditorium on a network give each its own address."
+                       : "\(profile.name) requires addresses inside \(profile.requiredMulticastPrefix).0.0/16 — streams outside it are rejected.")
             )
             parameterRow(
                 "Port",
@@ -381,8 +356,7 @@ struct ProfileParametersView: View {
 
         if ruledOut {
             directionNotice(
-                "\(profile.name) is receive-only — this driver never transmits to it, so every "
-                + "output parameter below is locked."
+                "\(profile.name) is receive-only — this driver never transmits to it, so every output parameter below is locked."
             )
         }
 
@@ -395,8 +369,7 @@ struct ProfileParametersView: View {
                 locked: ruledOut,
                 note: ruledOut
                     ? "The output selector on the main window is disabled under this profile."
-                    : "Set with the Output selector on the main window. Split into flows of at "
-                      + "most 8 channels when transmitted."
+                    : "Set with the Output selector on the main window. Split into flows of at most 8 channels when transmitted."
             )
         }
 
@@ -412,10 +385,8 @@ struct ProfileParametersView: View {
                 note: ruledOut
                     ? "No transmit streams can be created under this profile."
                     : (profile.requiredMulticastPrefix.isEmpty
-                       ? "A factory default is a starting point — installations with more than "
-                         + "one auditorium on a network give each its own address."
-                       : "\(profile.name) requires addresses inside "
-                         + "\(profile.requiredMulticastPrefix).0.0/16.")
+                       ? "A factory default is a starting point — installations with more than one auditorium on a network give each its own address."
+                       : "\(profile.name) requires addresses inside \(profile.requiredMulticastPrefix).0.0/16.")
             )
             if !ruledOut {
                 amplifierUnitRow
@@ -448,10 +419,8 @@ struct ProfileParametersView: View {
                 : ports.map(String.init).joined(separator: ", "),
             locked: true,
             note: ports.isEmpty
-                ? "This profile tells flows apart by multicast address, so the source port "
-                  + "doesn't matter and is left to the system."
-                : "One per 8-channel flow, derived from the destination port (shown here for "
-                  + "Dolby's own default, 6517) and the selected unit."
+                ? "This profile tells flows apart by multicast address, so the source port doesn't matter and is left to the system."
+                : "One per 8-channel flow, derived from the destination port (shown here for Dolby's own default, 6517) and the selected unit."
         )
     }
 
@@ -467,8 +436,7 @@ struct ProfileParametersView: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if driverManager.isDeviceActive {
-                Label("The device is active — parameters read at startup are locked. "
-                      + "Deactivate it to change them.",
+                Label("The device is active — parameters read at startup are locked. Deactivate it to change them.",
                       systemImage: "info.circle")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -510,9 +478,7 @@ struct ProfileParametersView: View {
             locked: profile.domainIsFixed,
             note: profile.domainIsFixed
                 ? "\(profile.name)'s mandatory configuration — streams on any other domain are rejected."
-                : "Editable 0–127 when adding a stream, pre-filled with the factory default. "
-                  + "Installations with several auditoriums on one network give each its own "
-                  + "domain (109, 110, 111, …)."
+                : "Editable 0–127 when adding a stream, pre-filled with the factory default. Installations with several auditoriums on one network give each its own domain (109, 110, 111, …)."
         )
     }
 
@@ -561,14 +527,11 @@ struct ProfileParametersView: View {
             Text({
                 switch lock {
                 case .free:
-                    return "What the device presents to Core Audio. Streams must match it — "
-                         + "one that doesn't is refused rather than resampled."
+                    return "What the device presents to Core Audio. Streams must match it — one that doesn't is refused rather than resampled."
                 case .byProfile(let name):
                     return "\(name) permits only this rate, so there is nothing to choose."
                 case .byStream(let stream):
-                    return "Following the stream that's already running (\(stream)). The device "
-                         + "has to match what it receives; changing it now would break that "
-                         + "stream. Stop it to choose a different rate."
+                    return "Following the stream that's already running (\(stream)). The device has to match what it receives; changing it now would break that stream. Stop it to choose a different rate."
                 }
             }())
                 .font(.caption)
@@ -585,10 +548,8 @@ struct ProfileParametersView: View {
                 : "Address per 8-channel flow, shared port",
             locked: true,
             note: profile.usesFixedMulticastPerFlowSourcePort
-                ? "Dolby Atmos Connect's own scheme: every flow shares the destination address "
-                  + "and port, and is told apart by its source port instead."
-                : "The AES67/Dante convention: each 8-channel flow gets the next multicast "
-                  + "address, all on the same port."
+                ? "Dolby Atmos Connect's own scheme: every flow shares the destination address and port, and is told apart by its source port instead."
+                : "The AES67/Dante convention: each 8-channel flow gets the next multicast address, all on the same port."
         )
     }
 
@@ -647,11 +608,7 @@ struct ProfileParametersView: View {
                 }
             }
             Text(multiUnit
-                 ? "Up to \(profile.maxUnits) units chain in one auditorium, each carrying the "
-                   + "next block of channels. Selecting a unit shifts this driver's flows to that "
-                   + "unit's own source ports. Units need not be the same size — set each "
-                   + "preceding unit's channel count above so the source ports line up (a 16/24/"
-                   + "32-channel unit takes 2/3/4 source ports)."
+                 ? "Up to \(profile.maxUnits) units chain in one auditorium, each carrying the next block of channels. Selecting a unit shifts this driver's flows to that unit's own source ports. Units need not be the same size — set each preceding unit's channel count above so the source ports line up (a 16/24/32-channel unit takes 2/3/4 source ports)."
                  : "\(profile.name) is a single-unit profile — nothing to select.")
                 .font(.caption)
                 .foregroundColor(.secondary)

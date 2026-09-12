@@ -1,0 +1,13 @@
+Channels	Canals	Canales
+Inputs across, outputs down. A click sets a crosspoint; clicking the one already set mutes that output channel.	Entrades en columnes, sortides en files. Un clic posa una cruïlla; clicar la que ja hi és silencia aquell canal de sortida.	Entradas en columnas, salidas en filas. Un clic pone un cruce; pulsar el que ya está silencia ese canal de salida.
+Device	Dispositiu	Dispositivo
+Refresh	Actualitza	Actualizar
+Devices	Dispositius	Dispositivos
+Sessions	Sessions	Sesiones
+Routing	Encaminament	Encaminamiento
+Link	Segment	Segmento
+Sessions on this network	Sessions d'aquesta xarxa	Sesiones de esta red
+Found over SAP, RTSP and NMOS by this application — no driver needed	Trobades per SAP, RTSP i NMOS per aquesta aplicació — sense driver	Encontradas por SAP, RTSP y NMOS por esta aplicación — sin driver
+Registered services	Serveis registrats	Servicios registrados
+PTP clocks	Rellotges PTP	Relojes PTP
+Every device this segment shows, by service registration or by its clock — including gear nothing here can control	Tot el que ensenya aquest segment, per registre de servei o pel seu rellotge — inclòs el gear que res d'aquí no pot controlar	Todo lo que muestra este segmento, por registro de servicio o por su reloj — incluido el equipo que nada de aquí puede controlar

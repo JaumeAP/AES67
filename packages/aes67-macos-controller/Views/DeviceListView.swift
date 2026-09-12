@@ -21,9 +21,7 @@ struct DeviceListView: View {
             header
             Divider()
             if nmos.nodes.isEmpty {
-                notice("No NMOS nodes found yet. Devices are discovered over mDNS as "
-                     + "_nmos-node._tcp; a plant with a registry on another subnet needs one "
-                     + "to be reachable from here.")
+                notice("No NMOS nodes found yet. Devices are discovered over mDNS as _nmos-node._tcp; a plant with a registry on another subnet needs one to be reachable from here.")
             } else {
                 Table(nmos.nodes) {
                     TableColumn("Device") { node in

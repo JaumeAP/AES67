@@ -117,6 +117,16 @@ fi
 # than each component's own, and it is on its way out. The order matters --
 # every nested piece has to carry its own signature before the enclosing bundle
 # is sealed over it, or the outer seal covers an unsigned payload.
+
+# The languages, the way macOS reads them: one .lproj per language holding
+# Localizable.strings, which is what SwiftUI resolves every Text("...") key
+# against. A language macOS has none of falls back to the English the sources
+# are written in, which is why the keys are that English.
+for lproj in Localization/Manager/*.lproj; do
+    [ -d "$lproj" ] || continue
+    ditto "$lproj" "AES67Manager.app/Contents/Resources/$(basename "$lproj")"
+done
+
 echo "Signing app..."
 for nested in \
     "AES67Manager.app/Contents/MacOS/aes67ptpd" \

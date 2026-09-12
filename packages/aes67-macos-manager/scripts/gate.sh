@@ -30,6 +30,24 @@ if ! AES67_BUILD_DIR=build ./run-tests.sh; then
   exit 1
 fi
 
+echo "==> Installer"
+if ! ./build-installer.sh --force > build/installer.log 2>&1; then
+  tail -20 build/installer.log >&2
+  echo "FAIL: build-installer.sh" >&2
+  exit 1
+fi
+test -x AES67Install.app/Contents/MacOS/AES67Install || {
+  echo "FAIL: no executable in the installer bundle" >&2
+  exit 1
+}
+# What it carries decides what its ticks can do, and which languages it speaks.
+for carried in AES67Manager.app AES67Controller.app ca.lproj es.lproj en.lproj; do
+  test -e "AES67Install.app/Contents/Resources/$carried" || {
+    echo "FAIL: the installer carries no $carried" >&2
+    exit 1
+  }
+done
+
 echo "==> Uninstaller"
 if ! ./build-uninstaller.sh --force > build/uninstaller.log 2>&1; then
   tail -20 build/uninstaller.log >&2
@@ -48,6 +66,15 @@ if ! ./build.sh --force > build/build.log 2>&1; then
   exit 1
 fi
 grep "^WARNING" build/build.log || true
+
+# The languages the app declares have to be the ones it carries, or macOS
+# shows English to somebody whose system is not.
+for lang in ca es en; do
+  test -f "AES67Manager.app/Contents/Resources/$lang.lproj/Localizable.strings" || {
+    echo "FAIL: the Manager carries no $lang.lproj" >&2
+    exit 1
+  }
+done
 test -x AES67Manager.app/Contents/MacOS/AES67Manager || {
   echo "FAIL: no app bundle produced" >&2; exit 1; }
 

@@ -1,0 +1,229 @@
+Sample Rate Mismatch	Freqüència de mostreig diferent	Frecuencia de muestreo distinta
+Streams must match the device sample rate for proper audio playback.	Els fluxos han de coincidir amb la freqüència del dispositiu perquè l'àudio soni bé.	Los flujos deben coincidir con la frecuencia del dispositivo para que el audio suene bien.
+Cancel	Cancel·la	Cancelar
+Add AES67 Stream	Afegeix un flux AES67	Añadir flujo AES67
+Stream Information	Dades del flux	Datos del flujo
+Network	Xarxa	Red
+TTL	TTL	TTL
+Audio Format	Format d'àudio	Formato de audio
+Channels	Canals	Canales
+Sample Rate	Freqüència de mostreig	Frecuencia de muestreo
+Sample rate differs from device	La freqüència no és la del dispositiu	La frecuencia no es la del dispositivo
+Encoding	Codificació	Codificación
+Synchronisation	Sincronització	Sincronización
+PTP Domain	Domini PTP	Dominio PTP
+Channel Mapping	Assignació de canals	Asignación de canales
+Current device sample rate:	Freqüència actual del dispositiu:	Frecuencia actual del dispositivo:
+Stream will be mapped to first available device channels	El flux anirà als primers canals lliures del dispositiu	El flujo irá a los primeros canales libres del dispositivo
+Not enough channels available	No hi ha prou canals lliures	No hay suficientes canales libres
+Add Stream	Afegeix el flux	Añadir flujo
+No audio data available	No hi ha dades d'àudio	No hay datos de audio
+Audio Status	Estat de l'àudio	Estado del audio
+Status:	Estat:	Estado:
+Signal:	Senyal:	Señal:
+Channel Mapping Diagnostic	Diagnòstic d'assignació de canals	Diagnóstico de asignación de canales
+128-channel device visualization	Vista dels 128 canals del dispositiu	Vista de los 128 canales del dispositivo
+Export Map	Exporta el mapa	Exportar el mapa
+Device Channel Map (0-127)	Mapa de canals del dispositiu (0-127)	Mapa de canales del dispositivo (0-127)
+Click a channel to see details	Clica un canal per veure'n els detalls	Pulsa un canal para ver los detalles
+Stream Channel Assignments	Assignacions de canals dels fluxos	Asignaciones de canales de los flujos
+No streams configured	Cap flux configurat	Ningún flujo configurado
+Device Channels:	Canals del dispositiu:	Canales del dispositivo:
+Stream Channels:	Canals del flux:	Canales del flujo:
+No mapping configured	Cap assignació configurada	Ninguna asignación configurada
+This channel is unassigned	Aquest canal no està assignat	Este canal no está asignado
+View	Vista	Vista
+Channels Used	Canals en ús	Canales en uso
+/ 128	/ 128	/ 128
+Streams Mapped	Fluxos assignats	Flujos asignados
+Available	Lliures	Libres
+channels	canals	canales
+Utilization	Ocupació	Ocupación
+Stream Assignments	Assignacions dels fluxos	Asignaciones de los flujos
+No Streams Added	Cap flux afegit	Ningún flujo añadido
+Add streams from the Stream List to begin mapping channels.	Afegeix fluxos des de la llista per començar a assignar canals.	Añade flujos desde la lista para empezar a asignar canales.
+Quick Actions	Accions ràpides	Acciones rápidas
+Auto-Map All Streams	Assigna tots els fluxos automàticament	Asignar todos los flujos automáticamente
+Clear All Mappings	Esborra totes les assignacions	Borrar todas las asignaciones
+Advanced View	Vista avançada	Vista avanzada
+128-Channel Device Layout	Distribució dels 128 canals del dispositiu	Distribución de los 128 canales del dispositivo
+Active Streams	Fluxos actius	Flujos activos
+Hover over a channel for details	Passa el cursor per un canal per veure'n els detalls	Pasa el cursor por un canal para ver los detalles
+Map Stream	Assigna el flux	Asignar el flujo
+Current Mapping:	Assignació actual:	Asignación actual:
+Clear Mapping	Esborra l'assignació	Borrar la asignación
+Auto-Assign Channels	Assigna canals automàticament	Asignar canales automáticamente
+Not mapped	Sense assignar	Sin asignar
+Auto-Map	Assigna automàticament	Asignar automáticamente
+Aux pair (+2)	Parella auxiliar (+2)	Pareja auxiliar (+2)
+Compatible with:	Compatible amb:	Compatible con:
+Parameters…	Paràmetres…	Parámetros…
+Unit:	Unitat:	Unidad:
+Turn the driver off to change	Atura el driver per canviar-ho	Detén el driver para cambiarlo
+Applies when the driver is next installed	S'aplica la propera vegada que s'instal·li el driver	Se aplica la próxima vez que se instale el driver
+Selecting a profile only narrows what the driver accepts. It is not a conformance claim.	Triar un perfil només estreny el que el driver accepta. No és una declaració de conformitat.	Elegir un perfil solo estrecha lo que el driver acepta. No es una declaración de conformidad.
+Profile Parameters	Paràmetres del perfil	Parámetros del perfil
+Done	Fet	Hecho
+Import SDP	Importa un SDP	Importar un SDP
+Discover	Descobreix	Descubrir
+Network Routing	Encaminament de xarxa	Encaminamiento de red
+Diagnostic	Diagnòstic	Diagnóstico
+Refresh	Actualitza	Actualizar
+No Streams Active	Cap flux actiu	Ningún flujo activo
+Add an AES67 stream to get started	Afegeix un flux AES67 per començar	Añade un flujo AES67 para empezar
+Import SDP File	Importa un fitxer SDP	Importar un archivo SDP
+Add Manually	Afegeix-lo a mà	Añadir a mano
+Discovered Sessions	Sessions descobertes	Sesiones descubiertas
+Found over SAP, RTSP and NMOS on this network	Trobades per SAP, RTSP i NMOS en aquesta xarxa	Encontradas por SAP, RTSP y NMOS en esta red
+Added	Afegida	Añadida
+Add	Afegeix	Añadir
+Master	Mestre	Maestro
+Inputs	Entrades	Entradas
+Outputs	Sortides	Salidas
+None detected yet. Elements are discovered passively from PTP traffic — a Dolby unit appears here once it is on the network and exchanging PTP with this driver. Each chained DMA unit shows as its own entry.	Cap de detectat encara. Els elements es descobreixen escoltant el trànsit PTP: una unitat Dolby surt aquí quan és a la xarxa i intercanvia PTP amb aquest driver. Cada DMA encadenada hi surt com una entrada pròpia.	Ninguno detectado aún. Los elementos se descubren escuchando el tráfico PTP: una unidad Dolby aparece aquí cuando está en la red e intercambia PTP con este driver. Cada DMA encadenada aparece como una entrada propia.
+Model	Model	Modelo
+Unassigned	Sense assignar	Sin asignar
+Vendor is read from the OUI; PTP can't tell one Dolby model from another, so confirm each unit's model to set its channel count. 	El fabricant es llegeix de l'OUI; el PTP no distingeix un model Dolby d'un altre, o sigui que confirma el model de cada unitat per fixar-ne el nombre de canals. 	El fabricante se lee del OUI; PTP no distingue un modelo Dolby de otro, así que confirma el modelo de cada unidad para fijar su número de canales. 
+Receivers seen via RTCP	Receptors vistos per RTCP	Receptores vistos por RTCP
+A second, independent check: receivers of this driver's streams that send RTCP reports. Should agree with the slaves found above — but only appears for gear that emits RTCP, which Dolby's manuals don't confirm the amplifiers do. Zero here doesn't mean no receiver.	Una segona comprovació independent: receptors dels fluxos d'aquest driver que envien informes RTCP. Hauria de coincidir amb els esclaus de dalt, però només hi surt el gear que emet RTCP, i els manuals de Dolby no confirmen que els amplificadors ho facin. Un zero aquí no vol dir que no hi hagi receptor.	Una segunda comprobación independiente: receptores de los flujos de este driver que envían informes RTCP. Debería coincidir con los esclavos de arriba, pero solo aparece el equipo que emite RTCP, y los manuales de Dolby no confirman que los amplificadores lo hagan. Un cero aquí no significa que no haya receptor.
+Playout delay	Retard de reproducció	Retardo de reproducción
+Unused	Sense ús	Sin uso
+The device is active — parameters read at startup are locked. Deactivate it to change them.	El dispositiu és actiu: els paràmetres que es llegeixen en arrencar estan bloquejats. Desactiva'l per canviar-los.	El dispositivo está activo: los parámetros que se leen al arrancar están bloqueados. Desactívalo para cambiarlos.
+Device sample rate	Freqüència del dispositiu	Frecuencia del dispositivo
+Amplifier unit	Unitat amplificadora	Unidad amplificadora
+Single unit	Unitat única	Unidad única
+No PTP master clock detected on the network.	No s'ha detectat cap rellotge mestre PTP a la xarxa.	No se ha detectado ningún reloj maestro PTP en la red.
+Troubleshooting steps:	Passos per mirar-ho:	Pasos para revisarlo:
+Troubleshooting	Resolució de problemes	Resolución de problemas
+PTP master found but clock not yet locked.	Mestre PTP trobat, però el rellotge encara no ha enganxat.	Maestro PTP encontrado, pero el reloj aún no ha enganchado.
+What to check:	Què cal mirar:	Qué hay que mirar:
+No Sync messages received yet - check network path to master.	Encara no ha arribat cap missatge Sync: mira el camí de xarxa fins al mestre.	Aún no ha llegado ningún mensaje Sync: revisa el camino de red hasta el maestro.
+Synchronization Status	Estat de la sincronització	Estado de la sincronización
+Clock is locked but offset is higher than expected.	El rellotge ha enganxat però la desviació és més alta del que s'espera.	El reloj ha enganchado pero la desviación es más alta de lo esperado.
+Performance Advisory	Avís de rendiment	Aviso de rendimiento
+PTP synchronization is healthy.	La sincronització PTP està sana.	La sincronización PTP está sana.
+Offset	Desviació	Desviación
+Jitter	Jitter	Jitter
+Freq Offset	Desviació de freqüència	Desviación de frecuencia
+Excellent sub-microsecond synchronization achieved.	Sincronització excel·lent, per sota del microsegon.	Sincronización excelente, por debajo del microsegundo.
+Sync Quality	Qualitat de la sincronització	Calidad de la sincronización
+macOS firewall may be blocking network audio traffic.	El tallafoc de macOS pot estar bloquejant el trànsit d'àudio de xarxa.	El cortafuegos de macOS puede estar bloqueando el tráfico de audio de red.
+Required Ports:	Ports necessaris:	Puertos necesarios:
+How to Fix:	Com arreglar-ho:	Cómo arreglarlo:
+Open Firewall Settings	Obre la configuració del tallafoc	Abrir la configuración del cortafuegos
+Testing...	Provant…	Probando…
+Test Connectivity	Prova la connectivitat	Probar la conectividad
+Firewall Configuration Needed	Cal configurar el tallafoc	Hay que configurar el cortafuegos
+PTP Diagnostic Information	Informació de diagnòstic PTP	Información de diagnóstico PTP
+Run a PTP clock	Fes córrer un rellotge PTP	Ejecutar un reloj PTP
+Off by default: earlier builds compiled the PTP subsystem without ever starting it, so turning this on is a real change to a driver that has been carrying audio without it. Takes effect the next time Core Audio starts the driver.	Apagat per defecte: les compilacions anteriors incloïen el subsistema PTP sense arrencar-lo mai, o sigui que encendre-ho és un canvi real en un driver que ha estat portant àudio sense ell. Té efecte el proper cop que Core Audio arrenqui el driver.	Apagado por defecto: las compilaciones anteriores incluían el subsistema PTP sin arrancarlo nunca, así que encenderlo es un cambio real en un driver que ha estado llevando audio sin él. Tiene efecto la próxima vez que Core Audio arranque el driver.
+Refuse audio until the clock locks	Refusa l'àudio fins que el rellotge enganxi	Rechazar el audio hasta que el reloj enganche
+Act as PTP master when eligible (BMCA decides)	Fes de mestre PTP quan toqui (ho decideix el BMCA)	Actuar como maestro PTP cuando corresponda (lo decide el BMCA)
+Clock source:	Font de rellotge:	Fuente de reloj:
+The selected clock device isn't available right now, so this driver has fallen back to its own clock and is advertising itself as a poor one. If it's Avid hardware, Pro Tools has it — see below.	El dispositiu de rellotge triat no està disponible ara mateix, o sigui que aquest driver ha tornat al seu propi rellotge i s'anuncia com un de dolent. Si és maquinari d'Avid, el té Pro Tools: mira-ho més avall.	El dispositivo de reloj elegido no está disponible ahora mismo, así que este driver ha vuelto a su propio reloj y se anuncia como uno malo. Si es hardware de Avid, lo tiene Pro Tools: míralo más abajo.
+Pro Tools hardware found — but Pro Tools takes it exclusively and doesn't go through Core Audio, so this device disappears the moment Pro Tools launches. It is only usable as a clock reference while Pro Tools is closed.\n\nTo actually run the network on the HDX clock, the tap has to be hardware: MTRX taking DigiLink and leading the audio network, or word clock out of an HD interface (or Sync X) into the network's PTP grandmaster. Then leave this driver on Internal and let it follow that grandmaster as a slave. See Docs/taking_clock_from_digilink.md.	Maquinari de Pro Tools trobat, però Pro Tools se'l queda en exclusiva i no passa per Core Audio, o sigui que aquest dispositiu desapareix en obrir Pro Tools. Només serveix de referència de rellotge amb Pro Tools tancat.\n\nPer fer córrer la xarxa amb el rellotge de l'HDX de debò, la presa ha de ser de maquinari: una MTRX agafant el DigiLink i liderant la xarxa d'àudio, o el word clock d'una interfície HD (o d'una Sync X) cap al grandmaster PTP de la xarxa. Llavors deixa aquest driver a Internal i que segueixi aquell grandmaster com a esclau. Mira Docs/taking_clock_from_digilink.md.	Hardware de Pro Tools encontrado, pero Pro Tools se lo queda en exclusiva y no pasa por Core Audio, así que este dispositivo desaparece al abrir Pro Tools. Solo sirve como referencia de reloj con Pro Tools cerrado.\n\nPara hacer funcionar la red con el reloj del HDX de verdad, la toma tiene que ser de hardware: una MTRX tomando el DigiLink y liderando la red de audio, o el word clock de una interfaz HD (o de una Sync X) hacia el grandmaster PTP de la red. Entonces deja este driver en Internal y que siga a ese grandmaster como esclavo. Mira Docs/taking_clock_from_digilink.md.
+Changes apply the next time Core Audio restarts, not immediately.	Els canvis s'apliquen el proper cop que Core Audio arrenqui, no a l'instant.	Los cambios se aplican la próxima vez que Core Audio arranque, no al instante.
+Restart Core Audio to Apply	Reinicia Core Audio per aplicar-ho	Reiniciar Core Audio para aplicarlo
+Refresh Device List	Actualitza la llista de dispositius	Actualizar la lista de dispositivos
+Refresh Diagnostics	Actualitza el diagnòstic	Actualizar el diagnóstico
+Reset Counters	Posa els comptadors a zero	Poner los contadores a cero
+BLOCKED	BLOQUEJAT	BLOQUEADO
+Quick Start Setup	Configuració ràpida	Configuración rápida
+Skip	Omet	Omitir
+Welcome to AES67 Manager	Benvingut a l'AES67 Manager	Bienvenido a AES67 Manager
+This wizard will help you set up your first AES67 audio stream in just a few steps.	Aquest assistent et guia per posar el teu primer flux d'àudio AES67 en uns quants passos.	Este asistente te guía para poner tu primer flujo de audio AES67 en unos pocos pasos.
+AES67 allows you to receive professional audio streams over your network with sample-accurate synchronization.	AES67 et permet rebre fluxos d'àudio professionals per la teva xarxa amb sincronització a nivell de mostra.	AES67 te permite recibir flujos de audio profesionales por tu red con sincronización a nivel de muestra.
+Get Started	Comença	Empezar
+Network Check	Comprovació de la xarxa	Comprobación de la red
+Verifying your network is ready for AES67	Comprovant que la xarxa està a punt per a AES67	Comprobando que la red está lista para AES67
+Network Interface:	Interfície de xarxa:	Interfaz de red:
+Install the AES67 driver package to continue.	Instal·la el driver AES67 per continuar.	Instala el driver AES67 para continuar.
+Back	Enrere	Atrás
+Recheck	Torna a comprovar	Volver a comprobar
+Next	Següent	Siguiente
+Add Your First Stream	Afegeix el teu primer flux	Añade tu primer flujo
+Choose how to add an AES67 stream	Tria com afegir un flux AES67	Elige cómo añadir un flujo AES67
+Add Method	Manera d'afegir-lo	Manera de añadirlo
+Scanning network for AES67 streams...	Buscant fluxos AES67 a la xarxa…	Buscando flujos AES67 en la red…
+No streams discovered	Cap flux descobert	Ningún flujo descubierto
+Scan Again	Torna a buscar	Volver a buscar
+Stream Name	Nom del flux	Nombre del flujo
+Multicast IP	Adreça multicast	Dirección multicast
+Port	Port	Puerto
+Drag & drop SDP file here	Arrossega aquí un fitxer SDP	Arrastra aquí un archivo SDP
+or	o	o
+Choose File...	Tria un fitxer…	Elegir archivo…
+You're All Set!	Tot a punt!	¡Todo listo!
+No streams added yet, but you can add them anytime from the main window.	Encara no hi ha cap flux, però en pots afegir quan vulguis des de la finestra principal.	Aún no hay ningún flujo, pero puedes añadirlos cuando quieras desde la ventana principal.
+Show in Menu Bar	Mostra'l a la barra de menús	Mostrar en la barra de menús
+Quick access to stream status	Accés ràpid a l'estat dels fluxos	Acceso rápido al estado de los flujos
+Launch at Login	Obre'l en iniciar la sessió	Abrir al iniciar sesión
+Start automatically when you log in	S'obre sol quan inicies la sessió	Se abre solo cuando inicias sesión
+Quick Tips:	Consells ràpids:	Consejos rápidos:
+Finish Setup	Acaba la configuració	Terminar la configuración
+OK	D'acord	De acuerdo
+Senders across, receivers down. Click a crosspoint to connect or disconnect over NMOS IS-05.	Emissors en columnes, receptors en files. Clica una cruïlla per connectar o desconnectar per NMOS IS-05.	Emisores en columnas, receptores en filas. Pulsa un cruce para conectar o desconectar por NMOS IS-05.
+No NMOS nodes found yet	Encara no s'ha trobat cap node NMOS	Aún no se ha encontrado ningún nodo NMOS
+Nodes announce themselves as _nmos-node._tcp over Bonjour. This Mac appears here once its driver is active.	Els nodes s'anuncien com a _nmos-node._tcp per Bonjour. Aquest Mac hi surt quan el seu driver és actiu.	Los nodos se anuncian como _nmos-node._tcp por Bonjour. Este Mac aparece aquí cuando su driver está activo.
+unreachable	inabastable	inalcanzable
+read-only	només lectura	solo lectura
+fixed source	font fixa	fuente fija
+free	lliure	libre
+General	General	General
+Audio	Àudio	Audio
+Driver	Driver	Driver
+About	Quant a	Acerca de
+Status Updates	Actualització d'estat	Actualización de estado
+Auto-refresh stream status	Actualitza sol l'estat dels fluxos	Actualizar solo el estado de los flujos
+Refresh interval	Interval d'actualització	Intervalo de actualización
+Appearance	Aspecte	Aspecto
+Show detailed statistics	Mostra estadístiques detallades	Mostrar estadísticas detalladas
+Show channel visualization	Mostra la vista de canals	Mostrar la vista de canales
+Device Sample Rate	Freqüència del dispositiu	Frecuencia del dispositivo
+Current device rate	Freqüència actual del dispositiu	Frecuencia actual del dispositivo
+Buffer	Memòria intermèdia	Búfer
+Buffer size	Mida de la memòria intermèdia	Tamaño del búfer
+Managed by driver	La gestiona el driver	La gestiona el driver
+Format Info	Dades de format	Datos de formato
+Supported encodings	Codificacions admeses	Codificaciones admitidas
+L16, L24	L16, L24	L16, L24
+Max channels	Canals màxims	Canales máximos
+128	128	128
+Channels in use	Canals en ús	Canales en uso
+Network Interface	Interfície de xarxa	Interfaz de red
+Preferred interface	Interfície preferida	Interfaz preferida
+Automatic	Automàtica	Automática
+Discovery	Descobriment	Descubrimiento
+Run every discovery route, whatever the profile	Fes córrer totes les vies de descobriment, sigui quin sigui el perfil	Ejecutar todas las vías de descubrimiento, sea cual sea el perfil
+Changing this restarts Core Audio and asks for an administrator password: the driver reads the setting when Core Audio builds it.	Canviar-ho reinicia Core Audio i demana contrasenya d'administrador: el driver llegeix l'opció quan Core Audio el construeix.	Cambiarlo reinicia Core Audio y pide contraseña de administrador: el driver lee la opción cuando Core Audio lo construye.
+Multicast Defaults	Valors multicast per defecte	Valores multicast por defecto
+Default TTL	TTL per defecte	TTL por defecto
+Default port	Port per defecte	Puerto por defecto
+Driver Status	Estat del driver	Estado del driver
+Status	Estat	Estado
+Version	Versió	Versión
+Location	Ubicació	Ubicación
+/Library/Audio/Plug-Ins/HAL/	/Library/Audio/Plug-Ins/HAL/	/Library/Audio/Plug-Ins/HAL/
+Actions	Accions	Acciones
+Restart Core Audio	Reinicia Core Audio	Reiniciar Core Audio
+Check Driver Installation	Comprova la instal·lació del driver	Comprobar la instalación del driver
+AES67 Audio Driver	Driver d'àudio AES67	Driver de audio AES67
+Professional AES67/RAVENNA/Dante audio driver for macOS	Driver d'àudio professional AES67/RAVENNA/Dante per a macOS	Driver de audio profesional AES67/RAVENNA/Dante para macOS
+Features:	Característiques:	Características:
+128 audio channels	128 canals d'àudio	128 canales de audio
+L16 and L24 encoding	Codificació L16 i L24	Codificación L16 y L24
+PTP synchronization	Sincronització PTP	Sincronización PTP
+Multiple simultaneous streams	Diversos fluxos alhora	Varios flujos a la vez
+Device Channel Allocation	Repartiment de canals del dispositiu	Reparto de canales del dispositivo
+Remove Stream	Treu el flux	Quitar el flujo
+Export SDP...	Exporta el SDP…	Exportar el SDP…
+View Details	Mira'n els detalls	Ver los detalles
+Statistics	Estadístiques	Estadísticas
+Total Channels	Canals totals	Canales totales
+PTP Diagnostics	Diagnòstic PTP	Diagnóstico PTP
+\u{00B7}	\u{00B7}	\u{00B7}
+Import SDP File...	Importa un fitxer SDP…	Importar un archivo SDP…
+Add Stream Manually...	Afegeix un flux a mà…	Añadir un flujo a mano…
+Refresh Status	Actualitza l'estat	Actualizar el estado
+Quick Start Guide...	Guia d'inici ràpid…	Guía de inicio rápido…
+AES67 Manager Help	Ajuda de l'AES67 Manager	Ayuda de AES67 Manager

@@ -1,0 +1,19 @@
+/*
+ * AES67 Install and AES67 Uninstall
+ *
+ * Generated from the English literals in the sources: SwiftUI passes each
+ * Text("...") through as a LocalizedStringKey, and this is what it is
+ * looked up in. Keys are the English text, so a missing translation falls
+ * back to it rather than to a key nobody can read.
+ */
+
+"AES67 for macOS" = "AES67 per a macOS";
+"Choose what this machine should have. A tick installs; taking one away removes that application." = "Tria què ha de tenir aquesta màquina. Una marca instal·la; treure-la desinstal·la aquella aplicació.";
+"installed" = "instal·lada";
+"The Manager carries the audio driver and the PTP daemon and puts them down itself, from its own window, once it is installed." = "El Manager porta el driver d'àudio i el dimoni PTP i els instal·la ell mateix, des de la seva finestra, un cop instal·lat.";
+"Remove everything" = "Treu-ho tot";
+"Quit" = "Surt";
+"Remove AES67 from this Mac" = "Treu AES67 d'aquest Mac";
+"This removes:" = "Això treu:";
+"Also remove AES67Manager.app and AES67Controller.app from Applications" = "Treu també AES67Manager.app i AES67Controller.app d'Aplicacions";
+"Core Audio is restarted at the end, which is what makes the device disappear. An administrator password is asked for once." = "Al final es reinicia Core Audio, que és el que fa desaparèixer el dispositiu. Es demana una contrasenya d'administrador una sola vegada.";

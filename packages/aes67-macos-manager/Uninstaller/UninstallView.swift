@@ -31,8 +31,7 @@ struct UninstallView: View {
                    isOn: $removeApplications)
                 .font(.callout)
 
-            Text("Core Audio is restarted at the end, which is what makes the device disappear. "
-               + "An administrator password is asked for once.")
+            Text("Core Audio is restarted at the end, which is what makes the device disappear. An administrator password is asked for once.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -66,8 +65,7 @@ struct UninstallView: View {
 
         guard let source = UninstallPlan.script(removingApplications: removeApplications) else {
             failed = true
-            result = "The uninstall command could not be built. That is a defect, not something "
-                   + "to retry."
+            result = "The uninstall command could not be built. That is a defect, not something to retry."
             working = false
             return
         }
@@ -78,12 +76,10 @@ struct UninstallView: View {
 
         if let error {
             failed = true
-            result = "Could not finish: \(error[NSAppleScript.errorMessage] ?? "unknown error"). "
-                   + "Nothing may have been removed."
+            result = "Could not finish: \(error[NSAppleScript.errorMessage] ?? "unknown error"). Nothing may have been removed."
             return
         }
         failed = false
-        result = "Removed. Core Audio has been restarted, so the AES67 device is gone from the "
-               + "system's audio devices."
+        result = "Removed. Core Audio has been restarted, so the AES67 device is gone from the system's audio devices."
     }
 }

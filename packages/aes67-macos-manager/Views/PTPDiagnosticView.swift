@@ -520,10 +520,7 @@ struct PTPDiagnosticView: View {
                             get: { driverManager.ptpEnabled },
                             set: { driverManager.ptpEnabled = $0; driverManager.savePTPMasterSettings() }
                         ))
-                        Text("Off by default: earlier builds compiled the PTP subsystem without "
-                           + "ever starting it, so turning this on is a real change to a driver "
-                           + "that has been carrying audio without it. Takes effect the next "
-                           + "time Core Audio starts the driver.")
+                        Text("Off by default: earlier builds compiled the PTP subsystem without ever starting it, so turning this on is a real change to a driver that has been carrying audio without it. Takes effect the next time Core Audio starts the driver.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -533,9 +530,7 @@ struct PTPDiagnosticView: View {
                             set: { driverManager.ptpRequireLock = $0; driverManager.savePTPMasterSettings() }
                         ))
                         .disabled(!driverManager.ptpEnabled)
-                        .help("Streams are rejected while the PTP clock is unlocked. Stricter, "
-                            + "and what the AES67 Linux daemon does unconditionally — but on a "
-                            + "working system this can only ever take audio away.")
+                        .help("Streams are rejected while the PTP clock is unlocked. Stricter, and what the AES67 Linux daemon does unconditionally — but on a working system this can only ever take audio away.")
 
                         Divider()
 
@@ -592,10 +587,7 @@ struct PTPDiagnosticView: View {
                             // the clock quality drops at the same moment
                             // and the cause isn't otherwise visible.
                             if driverManager.selectedClockSourceMissing {
-                                Label("The selected clock device isn't available right now, so "
-                                    + "this driver has fallen back to its own clock and is "
-                                    + "advertising itself as a poor one. If it's Avid hardware, "
-                                    + "Pro Tools has it — see below.",
+                                Label("The selected clock device isn't available right now, so this driver has fallen back to its own clock and is advertising itself as a poor one. If it's Avid hardware, Pro Tools has it — see below.",
                                       systemImage: "exclamationmark.triangle.fill")
                                     .font(.caption)
                                     .foregroundColor(.orange)
@@ -606,17 +598,7 @@ struct PTPDiagnosticView: View {
                             // present — there's nothing useful to say about
                             // it on a machine that doesn't have any.
                             if clockSources.contains(where: { $0.isAvidHD }) {
-                                Label("Pro Tools hardware found — but Pro Tools takes it "
-                                    + "exclusively and doesn't go through Core Audio, so this "
-                                    + "device disappears the moment Pro Tools launches. It is "
-                                    + "only usable as a clock reference while Pro Tools is "
-                                    + "closed.\n\nTo actually run the network on the HDX clock, "
-                                    + "the tap has to be hardware: MTRX taking DigiLink and "
-                                    + "leading the audio network, or word clock out of an HD "
-                                    + "interface (or Sync X) into the network's PTP "
-                                    + "grandmaster. Then leave this driver on Internal and let "
-                                    + "it follow that grandmaster as a slave. See "
-                                    + "Docs/taking_clock_from_digilink.md.",
+                                Label("Pro Tools hardware found — but Pro Tools takes it exclusively and doesn't go through Core Audio, so this device disappears the moment Pro Tools launches. It is only usable as a clock reference while Pro Tools is closed.\n\nTo actually run the network on the HDX clock, the tap has to be hardware: MTRX taking DigiLink and leading the audio network, or word clock out of an HD interface (or Sync X) into the network's PTP grandmaster. Then leave this driver on Internal and let it follow that grandmaster as a slave. See Docs/taking_clock_from_digilink.md.",
                                       systemImage: "exclamationmark.triangle")
                                     .font(.caption)
                                     .foregroundColor(.orange)

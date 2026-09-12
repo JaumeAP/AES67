@@ -82,6 +82,15 @@ mkdir -p AES67Controller.app/Contents/Resources
 mv AES67Controller AES67Controller.app/Contents/MacOS/
 cp Resources/Info.plist AES67Controller.app/Contents/
 
+
+# The languages, the way macOS reads them: one .lproj per language holding
+# Localizable.strings, which is what SwiftUI resolves every Text("...") key
+# against. The controller's own.
+for lproj in Localization/*.lproj; do
+    [ -d "$lproj" ] || continue
+    ditto "$lproj" "AES67Controller.app/Contents/Resources/$(basename "$lproj")"
+done
+
 echo "Signing app..."
 codesign --force --sign - AES67Controller.app
 

@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <!-- The languages this bundle carries. macOS picks by the system's own
+         language: the .lproj directories beside this file are what it looks
+         in, and a language it has none of falls back to the development
+         region, which is the English the sources are written in. -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ca</string>
+        <string>es</string>
+    </array>
     <key>CFBundleName</key>
     <string>AES67 Uninstall</string>
     <key>CFBundleDisplayName</key>

@@ -37,11 +37,7 @@ struct ControllerWindow: View {
                           label: "PTP sink \(peer.clockId)",
                           multicastAddress: FixedSink.atmosConnectAddress,
                           port: FixedSink.atmosConnectPort,
-                          note: "Follows a clock master and announces nothing: a unit configured "
-                              + "by hand, which is what Dolby Atmos Connect is. A crosspoint here "
-                              + "re-addresses the sender to \(FixedSink.atmosConnectAddress):"
-                              + "\(FixedSink.atmosConnectPort), the factory default — change it on "
-                              + "the unit's own side if this room uses another.")
+                          note: "Follows a clock master and announces nothing: a unit configured by hand, which is what Dolby Atmos Connect is. A crosspoint here re-addresses the sender to \(FixedSink.atmosConnectAddress):\(FixedSink.atmosConnectPort), the factory default — change it on the unit's own side if this room uses another.")
             }
     }
 
@@ -58,9 +54,7 @@ struct ControllerWindow: View {
                             label: "PTP source \(peer.clockId)",
                             multicastAddress: FixedSink.atmosConnectAddress,
                             port: FixedSink.atmosConnectPort,
-                            note: "A clock master that announces nothing: a unit configured by "
-                                + "hand. Where it sends is set on the unit, so a receiver of ours "
-                                + "is the end that can be told to listen there.")
+                            note: "A clock master that announces nothing: a unit configured by hand. Where it sends is set on the unit, so a receiver of ours is the end that can be told to listen there.")
             }
     }
 
@@ -112,8 +106,7 @@ struct ControllerWindow: View {
             if let error = discovery.lastError {
                 notice(error, icon: "exclamationmark.triangle")
             } else if sessions.isEmpty {
-                notice("Nothing found yet. Announcements repeat every 30 seconds or so, and a "
-                     + "registered service is asked again periodically.",
+                notice("Nothing found yet. Announcements repeat every 30 seconds or so, and a registered service is asked again periodically.",
                        icon: "antenna.radiowaves.left.and.right")
             } else {
                 List(sessions) { session in

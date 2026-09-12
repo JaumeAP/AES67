@@ -1,0 +1,22 @@
+/*
+ * AES67 Controller
+ *
+ * Generated from the English literals in the sources: SwiftUI passes each
+ * Text("...") through as a LocalizedStringKey, and this is what it is
+ * looked up in. Keys are the English text, so a missing translation falls
+ * back to it rather than to a key nobody can read.
+ */
+
+"Channels" = "Canales";
+"Inputs across, outputs down. A click sets a crosspoint; clicking the one already set mutes that output channel." = "Entradas en columnas, salidas en filas. Un clic pone un cruce; pulsar el que ya está silencia ese canal de salida.";
+"Device" = "Dispositivo";
+"Refresh" = "Actualizar";
+"Devices" = "Dispositivos";
+"Sessions" = "Sesiones";
+"Routing" = "Encaminamiento";
+"Link" = "Segmento";
+"Sessions on this network" = "Sesiones de esta red";
+"Found over SAP, RTSP and NMOS by this application — no driver needed" = "Encontradas por SAP, RTSP y NMOS por esta aplicación — sin driver";
+"Registered services" = "Servicios registrados";
+"PTP clocks" = "Relojes PTP";
+"Every device this segment shows, by service registration or by its clock — including gear nothing here can control" = "Todo lo que muestra este segmento, por registro de servicio o por su reloj — incluido el equipo que nada de aquí puede controlar";

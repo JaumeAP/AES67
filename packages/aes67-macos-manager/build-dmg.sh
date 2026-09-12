@@ -2,8 +2,13 @@
 #
 # build-dmg.sh
 # AES67 macOS Driver
-# Wraps the three applications in a disk image: AES67Manager.app,
-# AES67Controller.app and AES67Uninstall.app.
+# Wraps the installer in a disk image.
+#
+# One thing to open, not two to drag: AES67Install.app carries the Manager and
+# the Controller inside it, shows a tick per application, and makes the machine
+# match the ticks -- installing what is ticked, removing what is not, and, from
+# its own button, taking everything off including the driver and the PTP
+# daemon. AES67Uninstall.app rides along for whoever wants the removal alone.
 #
 # That is the whole of the delivery. There is no package that writes to
 # /Library or /usr/local: the Manager carries the driver, the PTP daemon and
@@ -29,7 +34,7 @@ DRIVER_PACKAGE="$(cd "$SCRIPT_DIR/../aes67-macos-driver" && pwd)"
 # driver's too -- this image ships the driver, so it carries its number.
 BUILD_DIR="${AES67_BUILD_DIR:-$DRIVER_PACKAGE/build}"
 
-APP="$SCRIPT_DIR/AES67Manager.app"
+APP="$SCRIPT_DIR/AES67Install.app"
 CONTROLLER_APP="$SCRIPT_DIR/../aes67-macos-controller/AES67Controller.app"
 UNINSTALL_APP="$SCRIPT_DIR/AES67Uninstall.app"
 VERSION="$(sed -n 's/^\([0-9][0-9.]*\)-build.*/\1/p' "$DRIVER_PACKAGE/VERSION.txt")"
@@ -38,32 +43,32 @@ STAGING_DIR="$OUTPUT_DIR/staging"
 DMG="$OUTPUT_DIR/AES67Manager-${VERSION}.dmg"
 
 if [ ! -d "$APP" ]; then
-    echo "ERROR: $APP not found. Build the app first (build.sh)." >&2
+    echo "ERROR: $APP not found. Build it first (build-installer.sh, which needs" >&2
+    echo "       build.sh and the controller's build.sh to have run)." >&2
     exit 1
 fi
 
 # What the app carries decides what the Install button can install, so say so
 # here rather than letting the user find out from a disabled button.
+for app in AES67Manager.app AES67Controller.app; do
+    if [ ! -d "$APP/Contents/Resources/$app" ]; then
+        echo "WARNING: the installer carries no $app — that tick will do nothing."
+    fi
+done
 for resource in AES67Driver.driver aes67ptpd com.aes67driver.ptpd.plist; do
-    if [ ! -e "$APP/Contents/Resources/$resource" ]; then
-        echo "WARNING: the app carries no $resource — the Install button will not install it."
+    if [ ! -e "$APP/Contents/Resources/AES67Manager.app/Contents/Resources/$resource" ]; then
+        echo "WARNING: the Manager inside carries no $resource — its Install button will not install it."
     fi
 done
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$STAGING_DIR"
 
-ditto "$APP" "$STAGING_DIR/AES67Manager.app"
+ditto "$APP" "$STAGING_DIR/AES67Install.app"
 
 # The Controller is carried when it has been built, and its absence is a
 # warning rather than a failure: it is a separate package with its own gate,
 # and an image with the Manager alone is still the delivery it always was.
-if [ -d "$CONTROLLER_APP" ]; then
-    ditto "$CONTROLLER_APP" "$STAGING_DIR/AES67Controller.app"
-else
-    echo "WARNING: $CONTROLLER_APP not found — the image will carry the Manager alone."
-    echo "         Build it with ../aes67-macos-controller/build.sh"
-fi
 
 if [ -d "$UNINSTALL_APP" ]; then
     ditto "$UNINSTALL_APP" "$STAGING_DIR/AES67Uninstall.app"
@@ -85,10 +90,10 @@ rm -rf "$STAGING_DIR"
 echo ""
 echo "Disk image: $DMG"
 echo ""
-echo "Drag the apps to Applications."
+echo "Open AES67Install.app: it has a tick per application and one button."
 echo ""
-echo "AES67Manager.app is this machine's: open it and press Install."
-echo "The app asks for an administrator password once, then puts down:"
+echo "AES67Manager.app is this machine's: once installed, its own Install button"
+echo "asks for an administrator password once and puts down:"
 echo "  /Library/Audio/Plug-Ins/HAL/AES67Driver.driver"
 echo "  /usr/local/libexec/aes67ptpd"
 echo "  /Library/LaunchDaemons/com.aes67driver.ptpd.plist"
@@ -97,8 +102,9 @@ echo ""
 echo "AES67Controller.app is the network's: sessions and NMOS crosspoints, for"
 echo "routing a plant. It installs nothing and needs nothing installed."
 echo ""
-echo "AES67Uninstall.app takes the driver, the PTP daemon and the settings back"
-echo "off the machine, and can be run without the Manager being there."
+echo "Both are inside the installer, and so is removal: its own button takes"
+echo "everything off, driver and PTP daemon included. AES67Uninstall.app rides"
+echo "along for whoever wants the removal on its own."
 echo ""
 echo "This image is UNSIGNED. To sign the apps before packaging them:"
 echo "  codesign --force --deep --sign \"Developer ID Application: Your Name\" \"$APP\""

@@ -10,6 +10,18 @@
     <string>com.aes67driver.manager</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <!-- The languages this bundle carries. macOS picks by the system's own
+         language: the .lproj directories beside this file are what it looks
+         in, and a language it has none of falls back to the development
+         region, which is the English the sources are written in. -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ca</string>
+        <string>es</string>
+    </array>
     <key>CFBundleName</key>
     <string>AES67 Manager</string>
     <key>CFBundlePackageType</key>

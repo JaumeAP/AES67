@@ -36,9 +36,7 @@ struct ChannelGridView: View {
             header
             Divider()
             if mappableNodes.isEmpty {
-                notice("No device here maps channels. IS-08 is optional, and gear that routes "
-                     + "whole streams and nothing finer declares no channel mapping control — "
-                     + "use the Routing tab for those.")
+                notice("No device here maps channels. IS-08 is optional, and gear that routes whole streams and nothing finer declares no channel mapping control — use the Routing tab for those.")
             } else if map.outputs.isEmpty {
                 notice(loading ? "Reading the map…" : "This device declares a channel map with no outputs.")
             } else {
@@ -55,8 +53,7 @@ struct ChannelGridView: View {
                 Text("Channels")
                     .font(.title3)
                     .fontWeight(.semibold)
-                Text("Inputs across, outputs down. A click sets a crosspoint; clicking the one "
-                   + "already set mutes that output channel.")
+                Text("Inputs across, outputs down. A click sets a crosspoint; clicking the one already set mutes that output channel.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

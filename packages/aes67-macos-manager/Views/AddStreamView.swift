@@ -124,9 +124,7 @@ struct AddStreamView: View {
                 // place they find out.
                 if driverManager.activeCompatibilityProfile.direction == .transmitOnly {
                     Label(
-                        "\(driverManager.activeCompatibilityProfile.name) is transmit-only — "
-                        + "this driver can't receive from it. Switch the compatibility profile "
-                        + "to add a receive stream.",
+                        "\(driverManager.activeCompatibilityProfile.name) is transmit-only — this driver can't receive from it. Switch the compatibility profile to add a receive stream.",
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.caption)

@@ -46,6 +46,15 @@ mkdir -p AES67Uninstall.app/Contents/Resources
 mv AES67Uninstall AES67Uninstall.app/Contents/MacOS/
 cp Resources/UninstallInfo.plist AES67Uninstall.app/Contents/Info.plist
 
+
+# The languages, the way macOS reads them: one .lproj per language holding
+# Localizable.strings, which is what SwiftUI resolves every Text("...") key
+# against. Shared with the installer.
+for lproj in Localization/Installer/*.lproj; do
+    [ -d "$lproj" ] || continue
+    ditto "$lproj" "AES67Uninstall.app/Contents/Resources/$(basename "$lproj")"
+done
+
 echo "Signing app..."
 codesign --force --sign - AES67Uninstall.app
 

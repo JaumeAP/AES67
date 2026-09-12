@@ -193,9 +193,7 @@ struct RoutingMatrixView: View {
         .buttonStyle(.plain)
         .disabled(!row.writable || !row.reachable)
         .help(row.writable
-              ? "Point \(row.label) at \(source.label): \(source.multicastAddress):\(source.port). "
-                + "That device answers nothing, so this end holds the connection — and can be "
-                + "pointed elsewhere later."
+              ? "Point \(row.label) at \(source.label): \(source.multicastAddress):\(source.port). That device answers nothing, so this end holds the connection — and can be pointed elsewhere later."
               : "\(row.label) is read-only: its node serves no connection API.")
     }
 
@@ -291,21 +289,16 @@ struct RoutingMatrixView: View {
                 .foregroundColor(.secondary)
         }
         .frame(width: cellSize, height: cellSize)
-        .help("\(source.label) and \(sink.label) both answer nothing: neither end can be told "
-            + "where to send or where to listen, so this pairing is set on the units and read "
-            + "only here.")
+        .help("\(source.label) and \(sink.label) both answer nothing: neither end can be told where to send or where to listen, so this pairing is set on the units and read only here.")
     }
 
     private func helpText(sink: FixedSink, column: RoutingMatrix.Column,
                           feeding: NmosSender?, isThisSender: Bool) -> String {
         if isThisSender {
-            return "\(column.label) feeds \(sink.label) at \(sink.multicastAddress):"
-                 + "\(sink.port). Click to stop it; click another sender to move the feed."
+            return "\(column.label) feeds \(sink.label) at \(sink.multicastAddress):\(sink.port). Click to stop it; click another sender to move the feed."
         }
         if let feeding {
-            return "\(sink.label) is fed by \(feeding.label). Clicking here moves the feed to "
-                 + "\(column.label): one sender per destination, because two on one address is "
-                 + "a collision."
+            return "\(sink.label) is fed by \(feeding.label). Clicking here moves the feed to \(column.label): one sender per destination, because two on one address is a collision."
         }
         return "Send \(column.label) to \(sink.label) at \(sink.multicastAddress):\(sink.port)"
     }
@@ -345,9 +338,7 @@ struct RoutingMatrixView: View {
 
     private var footer: some View {
         HStack {
-            Text("\(controller.nodes.count) node\(controller.nodes.count == 1 ? "" : "s"), "
-                 + "\(controller.matrix.columns.count) sender\(controller.matrix.columns.count == 1 ? "" : "s"), "
-                 + "\(controller.matrix.rows.count) receiver\(controller.matrix.rows.count == 1 ? "" : "s")")
+            Text("\(controller.nodes.count) node\(controller.nodes.count == 1 ? "" : "s"), \(controller.matrix.columns.count) sender\(controller.matrix.columns.count == 1 ? "" : "s"), \(controller.matrix.rows.count) receiver\(controller.matrix.rows.count == 1 ? "" : "s")")
                 .font(.caption).foregroundColor(.secondary)
             Spacer()
             if let error = controller.lastError {

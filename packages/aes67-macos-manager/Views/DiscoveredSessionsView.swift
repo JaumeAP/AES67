@@ -102,17 +102,13 @@ struct DiscoveredSessionsView: View {
     @ViewBuilder
     private var content: some View {
         if !driverManager.isDriverInstalled {
-            notice("The driver isn't installed, so nothing is listening for announcements. "
-                 + "Turn it on from the main window.",
+            notice("The driver isn't installed, so nothing is listening for announcements. Turn it on from the main window.",
                    icon: "power")
         } else if !canReceive {
-            notice("\(driverManager.activeCompatibilityProfile.name) is transmit-only — this "
-                 + "driver can't receive, so discovered sessions can't be added under it.",
+            notice("\(driverManager.activeCompatibilityProfile.name) is transmit-only — this driver can't receive, so discovered sessions can't be added under it.",
                    icon: "lock.fill")
         } else if sessions.isEmpty {
-            notice("Nothing found yet. Devices repeat their announcements every 30 seconds or "
-                 + "so, registered services are asked again periodically, and a session "
-                 + "disappears here once it stops being either.",
+            notice("Nothing found yet. Devices repeat their announcements every 30 seconds or so, registered services are asked again periodically, and a session disappears here once it stops being either.",
                    icon: "antenna.radiowaves.left.and.right")
         } else {
             List(sessions) { session in
@@ -130,8 +126,7 @@ struct DiscoveredSessionsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.name.isEmpty ? "(unnamed session)" : session.name)
                     .font(.body)
-                Text("\(where_)  ·  from \(session.sourceAddress)"
-                     + "  ·  PTP domain \(session.ptpDomain)  ·  \(session.routeLabel)")
+                Text("\(where_)  ·  from \(session.sourceAddress)  ·  PTP domain \(session.ptpDomain)  ·  \(session.routeLabel)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
