@@ -2,7 +2,12 @@
 // FuzzParsers.cpp
 // aes67-ravenna
 //
-// The four parsers that read bytes off a socket -- RTSP, JSON, HTTP and the DNS-SD query, fed what nobody wrote a test for.
+// The parsers that read bytes off a socket -- RTSP, JSON, HTTP and both halves
+// of DNS-SD -- fed what nobody wrote a test for.
+//
+// The response parser is the one that most wants this. It is the only one that
+// follows a pointer the packet itself supplies, and it does so on a socket
+// bound to port 5353, which every responder on the link can write to.
 //
 // Two entry points over one function. LLVMFuzzerTestOneInput is for
 // `-fsanitize=fuzzer` (-DAES67_LIBFUZZER=ON), which CI has and Apple's clang
@@ -28,6 +33,20 @@ using namespace AES67::Ravenna;
 
 namespace {
 
+/// One advertised NMOS registry, as the responder would send it: PTR, SRV,
+/// TXT and A, with the compression pointers the encoder puts in.
+std::vector<uint8_t> registryResponse() {
+    SessionAdvertisement registry;
+    registry.instanceName = "Registry 1";
+    registry.hostName = "reg.local";
+    registry.port = 8010;
+    registry.addressV4 = 0xC0A8000A;
+    registry.txtEntries = {"api_ver=v1.3", "api_proto=http", "pri=0"};
+    registry.serviceType = kNmosRegisterService;
+    registry.subtype.clear();
+    return buildAnnouncement(registry);
+}
+
 std::vector<std::vector<uint8_t>> seedCorpus() {
     auto bytes = [](const char* s) { return std::vector<uint8_t>(s, s + std::char_traits<char>::length(s)); };
     return {
@@ -37,6 +56,10 @@ std::vector<std::vector<uint8_t>> seedCorpus() {
         bytes("PATCH /x-nmos/connection/v1.1/single/receivers/abc/staged HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}"),
         bytes("{\"id\":\"a\",\"label\":\"x\",\"n\":[1,2.5,-3e2,true,false,null],\"o\":{\"k\":\"v\\n\"}}"),
         bytes("[[[]]]"),
+        // A DNS-SD response, built by the encoder this package ships so that
+        // the seed is a packet the parser is meant to accept. Everything
+        // interesting the fuzzer does to it is a mutation of a real one.
+        registryResponse(),
         // A DNS query for _rtsp._tcp.local: header, one question.
         std::vector<uint8_t>{0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,
                              5,'_','r','t','s','p',4,'_','t','c','p',5,'l','o','c','a','l',0,
@@ -53,6 +76,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     { JsonValue value; std::string error; (void)parseJson(text, value, error); }
     { std::string method, path, body; (void)parseHttpRequest(text, method, path, body); }
     (void)parseQueryNames(data, size);
+    // Both service types, because which one is asked about decides which
+    // records are followed and which are walked past.
+    (void)parseServiceResponse(data, size, kNmosRegisterService);
+    (void)parseServiceResponse(data, size, kRtspService);
     return 0;
 }
 
