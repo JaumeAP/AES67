@@ -27,6 +27,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -113,6 +114,17 @@ public:
     /// missed beats.
     static constexpr std::chrono::seconds kHeartbeatPeriod{5};
 
+    /// Where the version stamped on every resource comes from. IS-04 makes
+    /// a resource's version part of what it is, so the copy a registry holds
+    /// and the copy the Node API serves have to carry the same one until the
+    /// resource actually changes. Each was taking its own reading of the
+    /// clock, so the two never matched and a controller reading both saw one
+    /// resource superseding the other for ever.
+    ///
+    /// Unset means this client reads the clock itself, which is right for a
+    /// node that serves no Node API of its own.
+    using VersionSource = std::function<void(int64_t& seconds, int32_t& nanos)>;
+
     explicit NMOSRegistrationClient(NMOSNodeInfo node);
     ~NMOSRegistrationClient();
 
@@ -138,6 +150,10 @@ public:
     /// garbage-collected us, and it is the documented way back in.
     void startHeartbeats();
     void stop();
+
+    /// Takes the version to stamp from somewhere else. Set before
+    /// registering; the registration and heartbeat threads only read it.
+    void useVersionFrom(VersionSource source) { versionSource_ = std::move(source); }
 
     /// Registers the device and everything under it, and removes whatever
     /// the registry still holds from a previous call and this one does not
@@ -251,6 +267,9 @@ public:
 
 private:
     bool postNode();
+    /// The version to stamp: the source above when one was given, the clock
+    /// otherwise.
+    void versionNow(int64_t& seconds, int32_t& nanos) const;
 
     /// POSTs one already-built body. Shared by everything above.
     bool postResource(const std::string& body);
@@ -264,6 +283,7 @@ private:
     std::vector<std::pair<std::string, std::string>> published_;
     mutable std::mutex mutex_;
     std::atomic<bool> registered_{false};
+    VersionSource versionSource_;
     std::atomic<bool> running_{false};
     std::thread heartbeatThread_;
 };

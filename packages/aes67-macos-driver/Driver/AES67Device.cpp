@@ -612,6 +612,16 @@ void AES67Device::Initialize() {
 
             if (nmosSettings.enabled) {
                 nmosClient_ = std::make_unique<NMOSRegistrationClient>(node);
+                // One version for both copies of every resource. The Node API
+                // stamps it and the registry is told the same, so what a
+                // controller reads in the two places is one resource and not
+                // two that keep superseding each other.
+                if (nodeRouter_) {
+                    NodeAPIRouter* router = nodeRouter_.get();
+                    nmosClient_->useVersionFrom([router](int64_t& seconds, int32_t& nanos) {
+                        router->version(seconds, nanos);
+                    });
+                }
 
                 std::optional<NMOSRegistry> registry;
                 if (!nmosSettings.registryOverride.empty()) {

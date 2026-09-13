@@ -55,6 +55,12 @@ void NodeAPIRouter::touch() {
     touchLocked();
 }
 
+void NodeAPIRouter::version(int64_t& seconds, int32_t& nanos) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    seconds = versionSeconds_;
+    nanos = versionNanos_;
+}
+
 void NodeAPIRouter::setEndpoint(const std::string& apiHost, uint16_t apiPort,
                                 const std::string& controlHref) {
     std::lock_guard<std::mutex> lock(mutex_);

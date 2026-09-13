@@ -404,6 +404,18 @@ std::optional<NMOSRegistry> NMOSRegistrationClient::discoverRegistry(
     return found;
 }
 
+void NMOSRegistrationClient::versionNow(int64_t& seconds, int32_t& nanos) const {
+    if (versionSource_) {
+        versionSource_(seconds, nanos);
+        return;
+    }
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto whole = std::chrono::duration_cast<std::chrono::seconds>(now);
+    seconds = whole.count();
+    nanos = static_cast<int32_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now - whole).count());
+}
+
 bool NMOSRegistrationClient::postNode() {
     NMOSRegistry registry;
     NMOSNodeInfo node;
@@ -414,20 +426,37 @@ bool NMOSRegistrationClient::postNode() {
     }
     if (!registry.valid()) return false;
 
-    const auto now = std::chrono::system_clock::now().time_since_epoch();
-    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now);
-    const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(now - seconds);
+    int64_t seconds = 0;
+    int32_t nanos = 0;
+    versionNow(seconds, nanos);
 
     HTTPClient client(registry.host, registry.port);
-    const HTTPResponse response = client.post(
-        registrationPath(registry.apiVersion),
-        buildRegistrationBody(node, seconds.count(), static_cast<int32_t>(nanos.count())),
-        "application/json");
+    const HTTPResponse response = client.post(registrationPath(registry.apiVersion),
+                                              buildRegistrationBody(node, seconds, nanos),
+                                              "application/json");
 
-    // 201 is a new registration, 200 is the registry recognising an id it
-    // already holds. Both mean it took.
-    const bool accepted = response.error.empty() &&
-                          (response.status == 200 || response.status == 201);
+    if (!response.error.empty()) {
+        registered_.store(false, std::memory_order_relaxed);
+        return false;
+    }
+
+    // 201 is a new registration. 200 is the registry saying it already holds
+    // this id, which IS-04 sec 4.2 does not let a node simply accept: what it
+    // holds may be a stale copy of a node that never went away cleanly, and
+    // the specified way out is to delete it and register again from nothing.
+    // Taking the 200 as success left the registry serving whatever it had.
+    if (response.status == 200) {
+        HTTPClient remover(registry.host, registry.port);
+        (void)remover.del(registrationPath(registry.apiVersion) + "/" + node.id);
+        const HTTPResponse again = client.post(registrationPath(registry.apiVersion),
+                                               buildRegistrationBody(node, seconds, nanos),
+                                               "application/json");
+        const bool retook = again.error.empty() && again.status == 201;
+        registered_.store(retook, std::memory_order_relaxed);
+        return retook;
+    }
+
+    const bool accepted = response.status == 201;
     registered_.store(accepted, std::memory_order_relaxed);
     return accepted;
 }
@@ -478,8 +507,18 @@ void NMOSRegistrationClient::startHeartbeats() {
         while (running_.load(std::memory_order_acquire)) {
             heartbeat();
             // Slept in slices so stop() does not wait a whole period.
-            for (int i = 0; i < 50 && running_.load(std::memory_order_acquire); i++) {
-                std::this_thread::sleep_for(kHeartbeatPeriod / 50);
+            //
+            // The slice is a duration in its own right and not a division of
+            // the period. kHeartbeatPeriod is std::chrono::seconds, whose
+            // representation is integral, so `kHeartbeatPeriod / 50` is
+            // seconds(0): this loop did not sleep at all. It beat as fast as
+            // the socket would go -- two hundred thousand times in the
+            // twenty-four seconds it took to notice -- which is a registry
+            // under attack and a core of coreaudiod burnt.
+            constexpr auto slice = std::chrono::milliseconds(100);
+            const int slices = static_cast<int>(kHeartbeatPeriod / slice);
+            for (int i = 0; i < slices && running_.load(std::memory_order_acquire); i++) {
+                std::this_thread::sleep_for(slice);
             }
         }
     });
@@ -533,11 +572,9 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
     }
     if (nodeId.empty()) return false;
 
-    const auto now = std::chrono::system_clock::now().time_since_epoch();
-    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now);
-    const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(now - seconds);
-    const int64_t versionSeconds = seconds.count();
-    const int32_t versionNanos = static_cast<int32_t>(nanos.count());
+    int64_t versionSeconds = 0;
+    int32_t versionNanos = 0;
+    versionNow(versionSeconds, versionNanos);
 
     // One device, always the same id for this node: a driver is one audio
     // device however many streams it carries.

@@ -36,6 +36,11 @@ namespace {
 class FakeRegistry {
 public:
     explicit FakeRegistry(std::string answer) : answer_(std::move(answer)) {}
+    /// Answers the requests in order, and `answer` once the list runs out.
+    /// A node that meets a 200 has to delete itself and register again, so
+    /// checking that needs two different replies to two identical POSTs.
+    FakeRegistry(std::vector<std::string> inOrder, std::string answer)
+        : answer_(std::move(answer)), scripted_(std::move(inOrder)) {}
     ~FakeRegistry() { stop(); }
 
     bool start() {
@@ -69,7 +74,13 @@ public:
                     std::lock_guard<std::mutex> lock(mutex_);
                     requests_.push_back(request);
                 }
-                ::send(client, answer_.data(), answer_.size(), 0);
+                std::string reply = answer_;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (served_ < scripted_.size()) reply = scripted_[served_];
+                    ++served_;
+                }
+                ::send(client, reply.data(), reply.size(), 0);
                 ::close(client);
             }
         });
@@ -95,6 +106,8 @@ public:
 
 private:
     std::string answer_;
+    std::vector<std::string> scripted_;
+    size_t served_{0};
     int listen_{-1};
     uint16_t port_{0};
     std::atomic<bool> running_{false};
@@ -165,12 +178,32 @@ TEST_CASE("Registration Posts The Node And Reads The Answer") {
         CHECK(requests[0].find("\"type\": \"node\"") != std::string::npos);
     }
 
-    SUBCASE("200 is the registry recognising an id it already holds") {
-        FakeRegistry registry(answer("200 OK"));
+    SUBCASE("200 is a stale copy the registry still holds, and it goes") {
+        // IS-04 sec 4.2: a 200 says the registry already knows this id, and
+        // what it knows may be the remains of a node that never went away
+        // cleanly. The node deletes that and registers again from nothing.
+        // Simply accepting the 200 left the registry serving whatever it had.
+        FakeRegistry registry({answer("200 OK"), answer("204 No Content"), answer("201 Created")},
+                              answer("201 Created"));
         REQUIRE(registry.start());
 
         NMOSRegistrationClient client(testNode());
         CHECK(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+
+        const auto requests = registry.requests();
+        REQUIRE(requests.size() == 3);
+        CHECK(requests[0].find("POST /x-nmos/registration/v1.3/resource") == 0);
+        CHECK(requests[1].find("DELETE /x-nmos/registration/v1.3/resource/") == 0);
+        CHECK(requests[2].find("POST /x-nmos/registration/v1.3/resource") == 0);
+    }
+
+    SUBCASE("a 200 whose re-registration does not take leaves us unregistered") {
+        FakeRegistry registry(answer("200 OK"));
+        REQUIRE(registry.start());
+
+        NMOSRegistrationClient client(testNode());
+        CHECK_FALSE(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+        CHECK_FALSE(client.isRegistered());
     }
 
     SUBCASE("a registry that refuses leaves us unregistered") {
@@ -195,7 +228,9 @@ TEST_CASE("Registration Posts The Node And Reads The Answer") {
 }
 
 TEST_CASE("The Heartbeat Goes To The Node's Own Health Endpoint") {
-    FakeRegistry registry(answer("200 OK"));
+    // 201 for the registration: a 200 would send the node off deleting itself
+    // and registering again, which is a different exchange.
+    FakeRegistry registry({answer("201 Created")}, answer("200 OK"));
     REQUIRE(registry.start());
 
     NMOSRegistrationClient client(testNode());
