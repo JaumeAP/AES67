@@ -14,6 +14,13 @@
 // staged and active endpoints answer. A PATCH to a sender is applied when the
 // driver supplied a sender patcher, and refused with 501 when it did not.
 //
+// What a request means is not decided here. This owns the socket, the driver's
+// senders and receivers, and the patches that reach the driver; the
+// specification itself is `aes67-ravenna`'s ConnectionApi, which this hands
+// every request to. Both halves of the tree used to answer IS-05 on their own
+// and had drifted apart -- against the AMWA IS-05-01 suite, 57 of 61 there and
+// 15 here, over nine causes, every one of them already fixed there.
+//
 // Re-addressing a sender is how a stream reaches gear that cannot be
 // configured over the network at all: Dolby Atmos Connect has no control
 // protocol, and its receiver's address, destination port and per-flow source
@@ -57,6 +64,12 @@ struct ConnectionReceiver {
     std::string multicastAddress;
     uint16_t port{0};
     std::string senderId;
+    /// The transport file of the stream this receiver is taking, empty when
+    /// it is taking none. IS-05 reports it on the receiver's own endpoints,
+    /// and it is the only thing that says what the stream is rather than
+    /// merely where it is: a receiver that answers with an address and no
+    /// file is one a controller cannot copy onto another device.
+    std::string sdp;
     bool enabled{true};
 };
 

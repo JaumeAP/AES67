@@ -131,8 +131,10 @@ TEST_CASE("What is not there answers, rather than hanging or guessing") {
     CHECK(api.route("GET", base() + "/single/senders/nope", "").status == 404);
     CHECK(api.route("GET", base() + "/single/nonsense", "").status == 404);
     CHECK(api.route("GET", "/x-nmos/node/v1.3/self", "").status == 404);
-    // Bulk staging is a real part of IS-05 that this does not serve.
-    CHECK(api.route("PATCH", base() + "/bulk/receivers", "{}").status == 501);
+    // Bulk staging takes a POST and nothing else, so a PATCH to it is a 405
+    // on a resource that is plainly there rather than a 404.
+    CHECK(api.route("PATCH", base() + "/bulk/receivers", "{}").status == 405);
+    CHECK(api.route("GET", base() + "/bulk/receivers", "").status == 405);
 }
 
 TEST_CASE("A sender describes itself and refuses to be told what to do") {
@@ -146,11 +148,13 @@ TEST_CASE("A sender describes itself and refuses to be told what to do") {
     CHECK(file.body == kSDP);
 
     const auto type = api.route("GET", base() + "/single/senders/" + kSenderId + "/transporttype", "");
-    CHECK(type.body == "\"urn:x-nmos:transport:rtp.mcast\"");
+    // The base URN: this endpoint's schema is an enum of the four bases and
+    // rtp.mcast is not one of them. IS-04 publishes the multicast half.
+    CHECK(type.body == "\"urn:x-nmos:transport:rtp\"");
 
     const auto active = api.route("GET", base() + "/single/senders/" + kSenderId + "/active", "");
     CHECK(active.status == 200);
-    CHECK(active.body.find("\"destination_port\": 5004") != std::string::npos);
+    CHECK(active.body.find("\"destination_port\":5004") != std::string::npos);
     CHECK(active.body.find("239.69.0.1") != std::string::npos);
 
     // A driver that gave no way to re-address its senders keeps saying so:
@@ -243,8 +247,8 @@ TEST_CASE("Patching a receiver reaches the driver") {
 
     // What comes back is what was asked for, which is what a controller
     // reads to confirm the staging.
-    CHECK(reply.body.find("\"sender_id\": \"" + kSenderId + "\"") != std::string::npos);
-    CHECK(reply.body.find("\"destination_port\": 5004") != std::string::npos);
+    CHECK(reply.body.find("\"sender_id\":\"" + kSenderId + "\"") != std::string::npos);
+    CHECK(reply.body.find("\"destination_port\":5004") != std::string::npos);
 }
 
 TEST_CASE("A driver that refuses the patch is a 500, not a silent success") {
@@ -253,7 +257,8 @@ TEST_CASE("A driver that refuses the patch is a 500, not a silent success") {
     REQUIRE(fixture.start());
 
     const auto reply = fixture.server.route(
-        "PATCH", base() + "/single/receivers/" + kReceiverId + "/staged", "{}");
+        "PATCH", base() + "/single/receivers/" + kReceiverId + "/staged",
+        R"({"master_enable":false,"activation":{"mode":"activate_immediate"}})");
     CHECK(reply.status == 500);
 }
 
@@ -272,16 +277,20 @@ TEST_CASE("active names the sender a receiver is connected to") {
                               ConnectionReceiver receiver = testReceiver();
                               receiver.senderId = kSenderId;
                               receiver.enabled = true;
+                              // A receiver that is taking something is taking
+                              // a described stream, and the file is what
+                              // describes it.
+                              receiver.sdp = kSDP;
                               return std::vector<ConnectionReceiver>{receiver};
                           },
                           [](const std::string&, const ConnectionPatch&) { return true; }));
         const auto active = api.route("GET", base() + "/single/receivers/" + kReceiverId + "/active", "");
         CHECK(active.status == 200);
-        CHECK(active.body.find("\"sender_id\": \"" + kSenderId + "\"") != std::string::npos);
-        CHECK(active.body.find("\"master_enable\": true") != std::string::npos);
+        CHECK(active.body.find("\"sender_id\":\"" + kSenderId + "\"") != std::string::npos);
+        CHECK(active.body.find("\"master_enable\":true") != std::string::npos);
         // staged reads the same, this driver staging nothing for later.
         const auto staged = api.route("GET", base() + "/single/receivers/" + kReceiverId + "/staged", "");
-        CHECK(staged.body.find("\"sender_id\": \"" + kSenderId + "\"") != std::string::npos);
+        CHECK(staged.body.find("\"sender_id\":\"" + kSenderId + "\"") != std::string::npos);
     }
 
     SUBCASE("a receiver connected to nothing says null") {
@@ -290,7 +299,7 @@ TEST_CASE("active names the sender a receiver is connected to") {
         const auto active = fixture.server.route(
             "GET", base() + "/single/receivers/" + kReceiverId + "/active", "");
         CHECK(active.status == 200);
-        CHECK(active.body.find("\"sender_id\": null") != std::string::npos);
+        CHECK(active.body.find("\"sender_id\":null") != std::string::npos);
     }
 }
 
@@ -367,7 +376,11 @@ TEST_CASE("A header name is matched whatever its case") {
     Fixture fixture;
     REQUIRE(fixture.start());
 
-    const std::string body = "{ \"master_enable\": true }";
+    // With an activation: a PATCH that only stages is stored and not applied,
+    // so nothing would reach the driver and this case would prove nothing
+    // about the header it is here to test.
+    const std::string body =
+        "{ \"master_enable\": false, \"activation\": { \"mode\": \"activate_immediate\" } }";
     std::ostringstream request;
     request << "PATCH " << base() << "/single/receivers/" << kReceiverId << "/staged HTTP/1.1\r\n"
             << "host: 127.0.0.1\r\n"
@@ -393,7 +406,7 @@ TEST_CASE("A header name is matched whatever its case") {
     CHECK(std::string(answer).find("200 OK") != std::string::npos);
 
     REQUIRE(fixture.patches.size() == 1);
-    CHECK(fixture.patches[0].second.masterEnable.value_or(false) == true);
+    CHECK(fixture.patches[0].second.masterEnable.value_or(true) == false);
 }
 
 TEST_CASE("The same answers come back over a real socket") {
@@ -415,7 +428,8 @@ TEST_CASE("The same answers come back over a real socket") {
 
     const HTTPResponse patched =
         client.perform("PATCH", base() + "/single/receivers/" + kReceiverId + "/staged/",
-                       "{ \"master_enable\": false }", "application/json");
+                       R"({"master_enable":false,"activation":{"mode":"activate_immediate"}})",
+                       "application/json");
     CHECK(patched.status == 200);
     REQUIRE(fixture.patches.size() == 1);
     CHECK(fixture.patches[0].second.masterEnable.value_or(true) == false);
@@ -448,5 +462,6 @@ TEST_CASE("paths outside the connection API go to the fallback router") {
     CHECK(server.route("GET", "/x-nmos/", "").body == "[\"connection/\", \"node/\"]");
     CHECK(server.route("GET", "/x-nmos", "").body == "[\"connection/\", \"node/\"]");
     // The Connection API itself is untouched.
-    CHECK(server.route("GET", "/x-nmos/connection/v1.1/", "").body == "[\"single/\", \"bulk/\"]");
+    CHECK(server.route("GET", "/x-nmos/connection/v1.1/", "").body ==
+          "[\"bulk/\",\"single/\"]");
 }
