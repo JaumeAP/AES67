@@ -89,11 +89,12 @@ std::string stableUuidFrom(const std::string& name) {
     return text;
 }
 
-JsonValue NodeApi::versioned(JsonObject resource) const {
+JsonValue NodeApi::versioned(JsonObject resource,
+                             const std::string& alsoWhenThisChanges) const {
     const std::string id = resource["id"].asString();
     JsonObject shape = resource;
     shape.erase("version");
-    const std::string serialised = JsonValue(shape).serialise();
+    const std::string serialised = JsonValue(shape).serialise() + alsoWhenThisChanges;
 
     const std::lock_guard<std::mutex> held(versionsLock_);
     auto& known = versions_[id];
@@ -204,7 +205,10 @@ JsonValue NodeApi::devices() const {
         JsonValue(JsonObject{{"href", JsonValue(base + "/x-nmos/channelmapping/v1.0/")},
                              {"type", JsonValue("urn:x-nmos:control:cm-ctrl/v1.0")},
                              {"authorization", JsonValue(false)}})});
-    return JsonValue(JsonArray{versioned(device)});
+    // The device's own fields say nothing about the channel grid, and IS-08
+    // wants its version to move when the grid does.
+    return JsonValue(JsonArray{
+        versioned(device, mapping_ != nullptr ? mapping_->lastActivation() : std::string{})});
 }
 
 JsonValue NodeApi::sources() const {

@@ -22,6 +22,7 @@
 //
 #pragma once
 
+#include "Ravenna/ChannelMappingApi.h"
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/SessionCatalogue.h"
 
@@ -63,9 +64,16 @@ struct NodeIdentity {
 
 class NodeApi {
 public:
+    /// `mapping` is optional and is only read for one thing: IS-08 sec 6 says
+    /// the device carrying a channel mapping API changes version when its map
+    /// does, and the device resource does not carry the map to notice by
+    /// itself. A node with no such API passes nothing and nothing changes.
     NodeApi(const NodeIdentity& identity, const SessionCatalogue& catalogue,
-            const ConnectionApi& connections)
-        : identity_(identity), catalogue_(catalogue), connections_(connections) {}
+            const ConnectionApi& connections, const ChannelMappingApi* mapping = nullptr)
+        : identity_(identity),
+          catalogue_(catalogue),
+          connections_(connections),
+          mapping_(mapping) {}
 
     ApiResponse handle(const std::string& method, const std::string& path,
                        const std::string& body);
@@ -107,12 +115,16 @@ private:
     /// a controller comparing them concludes the node is out of date on every
     /// comparison. The shape is remembered instead, and the version moves
     /// only when the shape does.
-    JsonValue versioned(JsonObject resource) const;
+    /// `alsoWhenThisChanges` is folded into the remembered shape without
+    /// being published: a resource whose version has to move for a reason
+    /// that is not visible in the resource itself.
+    JsonValue versioned(JsonObject resource, const std::string& alsoWhenThisChanges = {}) const;
 
 
     NodeIdentity identity_;
     const SessionCatalogue& catalogue_;
     const ConnectionApi& connections_;
+    const ChannelMappingApi* mapping_ = nullptr;
 
     /// Per resource id: the last shape seen, and the version stamped on it.
     /// Guarded because the registration client reads the resources from its

@@ -336,7 +336,9 @@ int main(int argc, char** argv) {
     if (const std::optional<std::string> mac = macAddressOf(interfaceName)) {
         identity.interfaceMac = *mac;
     }
-    NodeApi nodeApi(identity, catalogue, connections);
+    // channelMapping is built above this so the node can read when the grid
+    // last moved: IS-08 has the device change version when its map does.
+    NodeApi nodeApi(identity, catalogue, connections, &channelMapping);
 
     HttpServer nmos([&connections, &channelMapping, &nodeApi](const std::string& method,
                                                               const std::string& path,

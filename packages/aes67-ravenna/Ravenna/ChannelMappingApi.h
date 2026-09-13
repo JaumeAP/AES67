@@ -44,6 +44,15 @@ public:
                       const ConnectionApi& connections)
         : mapper_(mapper), routing_(routing), connections_(connections) {}
 
+    /// When the grid was last changed, as IS-08 writes a time, and empty
+    /// while it never has been.
+    ///
+    /// IS-08 sec 6: the device carrying this API changes version when its map
+    /// does, so that a controller watching IS-04 learns the routing moved
+    /// without polling the grid. The device resource does not carry the map,
+    /// so this is what tells it something happened.
+    const std::string& lastActivation() const { return lastActivationTime_; }
+
     /// Answers one request. "GET" for io and the map, "POST" to activate.
     ApiResponse handle(const std::string& method, const std::string& path,
                        const std::string& body);

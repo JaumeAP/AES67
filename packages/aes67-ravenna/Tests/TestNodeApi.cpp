@@ -6,6 +6,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
+#include "Ravenna/ChannelMappingApi.h"
 #include "Ravenna/NodeApi.h"
 
 using namespace AES67;
@@ -351,4 +352,44 @@ TEST_CASE("IS-04 reports the subscriptions IS-05 was told to make") {
         CHECK(receivers.asArray()[0]["subscription"]["sender_id"].asString() == sender.id);
         CHECK(receivers.asArray()[0]["subscription"]["active"].asBool() == true);
     }
+}
+
+TEST_CASE("The device's version moves when the channel grid does") {
+    // IS-08 sec 6: a controller watching IS-04 has to learn that the routing
+    // changed without polling the grid. The device resource carries no map to
+    // notice by itself, so the grid's last activation is folded into what
+    // decides its version.
+    SessionCatalogue catalogue;
+    std::string error;
+    REQUIRE(catalogue.add(sessionNamed("Mix A"), error));
+
+    ConnectionApi connections;
+    ConnectionReceiver receiver;
+    receiver.id = "receiver-1";
+    connections.addReceiver(receiver);
+
+    StreamChannelMapper mapper;
+    ReceiverRouting routing(mapper);
+    ChannelMappingApi mapping(mapper, routing, connections);
+    NodeApi node(identity(), catalogue, connections, &mapping);
+
+    const auto deviceVersion = [&node]() {
+        const JsonValue devices = bodyOf(node.handle("GET", path("/devices/"), ""));
+        REQUIRE(devices.isArray());
+        REQUIRE(devices.asArray().size() == 1);
+        return devices.asArray()[0]["version"].asString();
+    };
+
+    const std::string before = deviceVersion();
+    // Read twice with nothing happening in between: an unchanged resource
+    // keeps its version, which is the other half of the rule.
+    CHECK(deviceVersion() == before);
+
+    REQUIRE(mapping.handle("POST",
+                           std::string(kChannelMappingApiRoot) + "/map/activations",
+                           R"({"activation":{"mode":"activate_immediate"},)"
+                           R"("action":{"device":{"7":{"input":"receiver-1","channel_index":0}}}})")
+                .status == 200);
+
+    CHECK(deviceVersion() != before);
 }
