@@ -47,12 +47,23 @@ jobs:
       # KSRC is the variable it puts that path in, so the path is given
       # directly: KERNELRELEASE would do it too, but kbuild reserves that name
       # for its own use inside an external module build.
+      # KBUILD_MODPOST_WARN because the module calls into ALSA -- snd_card_new,
+      # snd_pcm_new and the rest -- and those are exported by modules, not by
+      # the kernel image. A headers package carries no symbol versions for
+      # other modules, so modpost cannot resolve them and, by default, refuses
+      # to emit the .ko at all. With this it says so and carries on.
+      #
+      # What that leaves proven: every translation unit still compiles against
+      # this kernel, which is the question being asked and the one that breaks.
+      # What it does not: that the symbols it calls still exist with those
+      # signatures. That needs the ALSA modules' own Module.symvers, which
+      # means a machine with the kernel actually installed.
       - name: Build the module
         run: |
           release="$(ls /lib/modules | sort -V | tail -1)"
           echo "Building against ${release}"
           make -C external/ravenna-alsa-lkm/driver modules \
-            KSRC="/lib/modules/${release}/build/"
+            KSRC="/lib/modules/${release}/build/" KBUILD_MODPOST_WARN=1
 
       - name: The module has to exist
         run: test -f external/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko
