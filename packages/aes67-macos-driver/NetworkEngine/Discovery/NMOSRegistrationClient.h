@@ -28,12 +28,17 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+
+namespace AES67::Ravenna {
+struct NmosRegistry;
+}
 
 namespace AES67 {
 
@@ -131,11 +136,22 @@ public:
     NMOSRegistrationClient(const NMOSRegistrationClient&) = delete;
     NMOSRegistrationClient& operator=(const NMOSRegistrationClient&) = delete;
 
-    /// Looks for a registry on the local link. Blocks for at most
-    /// `waitFor`. Returns nothing when there is no registry, which is the
-    /// normal case on a small installation and never an error.
-    static std::optional<NMOSRegistry> discoverRegistry(
-        std::chrono::milliseconds waitFor = std::chrono::milliseconds(2000));
+    /// The registries on the link, lowest IS-04 priority first, and only
+    /// those whose advertisement says they speak this node's API version over
+    /// plain HTTP. Blocks for at most `waitFor`. An empty list is the normal
+    /// case on a small installation and never an error.
+    ///
+    /// The browsing is aes67-ravenna's RegistryBrowser: it reads the TXT
+    /// records rather than taking the first thing that answers, which is what
+    /// this used to do -- it registered with whatever advertised
+    /// _nmos-register._tcp, whatever version or protocol that registry said
+    /// it spoke, and never looked at `pri` at all.
+    std::vector<NMOSRegistry> discoverRegistries(
+        std::chrono::milliseconds waitFor = std::chrono::milliseconds(2000)) const;
+
+    /// The first of them, or nothing.
+    std::optional<NMOSRegistry> discoverRegistry(
+        std::chrono::milliseconds waitFor = std::chrono::milliseconds(2000)) const;
 
     /// POSTs the Node resource. True when the registry took it: 201 for a
     /// new node, 200 when it already knew this id.
@@ -267,6 +283,10 @@ public:
 
 private:
     bool postNode();
+    /// Registers with the first of these that takes it, skipping the one in
+    /// use. Called by the heartbeat thread when that one has stopped
+    /// answering. False when none of them would have it.
+    bool failOverTo(const std::vector<Ravenna::NmosRegistry>& candidates);
     /// The version to stamp: the source above when one was given, the clock
     /// otherwise.
     void versionNow(int64_t& seconds, int32_t& nanos) const;

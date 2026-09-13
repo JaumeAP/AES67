@@ -631,7 +631,7 @@ void AES67Device::Initialize() {
                                    nmosSettings.registryOverride.c_str());
                     }
                 } else {
-                    registry = NMOSRegistrationClient::discoverRegistry();
+                    registry = nmosClient_->discoverRegistry();
                 }
 
                 if (registry.has_value() && nmosClient_->registerWith(*registry)) {

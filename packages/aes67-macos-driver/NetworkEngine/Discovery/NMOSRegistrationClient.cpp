@@ -6,6 +6,12 @@
 #include <ranges>
 #include <iterator>
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
+#include "Driver/DebugLog.h"
+#include "NetworkEngine/NetworkInterfaceDetection.h"
+#include "Ravenna/RegistryBrowser.h"
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include "NetworkEngine/JsonEscape.h"
 
 #include "Ravenna/HTTPClient.h"
@@ -375,33 +381,59 @@ std::string NMOSRegistrationClient::buildReceiverData(const std::string& receive
     return json.str();
 }
 
-std::optional<NMOSRegistry> NMOSRegistrationClient::discoverRegistry(
-    std::chrono::milliseconds waitFor) {
-    MDNSBrowser browser(MDNSBrowser::kServiceTypeNMOSRegister);
-    if (!browser.start()) {
-        // No system responder: a lost convenience, never a failure. Same
-        // stance as the rest of discovery here.
-        return std::nullopt;
+std::vector<NMOSRegistry> NMOSRegistrationClient::discoverRegistries(
+    std::chrono::milliseconds waitFor) const {
+    std::string interfaceName;
+    std::string apiVersion;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        interfaceName = node_.interfaceName;
+        apiVersion = registry_.apiVersion.empty() ? std::string("v1.3") : registry_.apiVersion;
+    }
+    if (interfaceName.empty()) return {};
+
+    uint32_t addressV4 = 0;
+    {
+        const std::string address = NetworkInterfaceDetection::getInterfaceIPAddress(interfaceName);
+        struct in_addr parsed {};
+        if (!address.empty() && ::inet_pton(AF_INET, address.c_str(), &parsed) == 1) {
+            addressV4 = ntohl(parsed.s_addr);
+        }
     }
 
+    Ravenna::RegistryBrowser browser(interfaceName, addressV4, apiVersion);
+    std::string error;
+    if (!browser.start(error)) {
+        // No responder, or the port is taken. A lost convenience, never a
+        // failure: this is how a plant with no registry at all behaves.
+        return {};
+    }
+
+    // Asked once at the start and answered for the rest of the window. A
+    // responder announces unprompted when a service appears, so the listening
+    // matters as much as the question.
     const auto deadline = std::chrono::steady_clock::now() + waitFor;
-    std::optional<NMOSRegistry> found;
-    while (std::chrono::steady_clock::now() < deadline && !found.has_value()) {
-        for (const MDNSService& service : browser.discoveredServices()) {
-            if (!service.isResolved()) continue;
-            NMOSRegistry registry;
-            registry.host = service.address;
-            registry.port = service.port;
-            found = registry;
-            break;
-        }
-        if (!found.has_value()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+    while (std::chrono::steady_clock::now() < deadline) {
+        browser.service(100);
     }
 
+    std::vector<NMOSRegistry> found;
+    for (const Ravenna::NmosRegistry& one : browser.registries()) {
+        NMOSRegistry registry;
+        registry.host = one.host;
+        registry.port = one.port;
+        registry.apiVersion = one.apiVersion;
+        found.push_back(std::move(registry));
+    }
     browser.stop();
     return found;
+}
+
+std::optional<NMOSRegistry> NMOSRegistrationClient::discoverRegistry(
+    std::chrono::milliseconds waitFor) const {
+    const std::vector<NMOSRegistry> found = discoverRegistries(waitFor);
+    if (found.empty()) return std::nullopt;
+    return found.front();
 }
 
 void NMOSRegistrationClient::versionNow(int64_t& seconds, int32_t& nanos) const {
@@ -504,24 +536,105 @@ void NMOSRegistrationClient::startHeartbeats() {
     if (running_.exchange(true, std::memory_order_acq_rel)) return;
 
     heartbeatThread_ = std::thread([this] {
-        while (running_.load(std::memory_order_acquire)) {
-            heartbeat();
-            // Slept in slices so stop() does not wait a whole period.
-            //
-            // The slice is a duration in its own right and not a division of
-            // the period. kHeartbeatPeriod is std::chrono::seconds, whose
-            // representation is integral, so `kHeartbeatPeriod / 50` is
-            // seconds(0): this loop did not sleep at all. It beat as fast as
-            // the socket would go -- two hundred thousand times in the
-            // twenty-four seconds it took to notice -- which is a registry
-            // under attack and a core of coreaudiod burnt.
-            constexpr auto slice = std::chrono::milliseconds(100);
-            const int slices = static_cast<int>(kHeartbeatPeriod / slice);
-            for (int i = 0; i < slices && running_.load(std::memory_order_acquire); i++) {
-                std::this_thread::sleep_for(slice);
+        // The link is browsed for the whole time this runs, not asked once
+        // when a beat has already been lost. IS-04 sec 4.2 has a registry
+        // forget a node twelve seconds after it goes quiet, and a controller
+        // watching the changeover allows about one heartbeat interval for it,
+        // so a failover that starts by opening a socket and waiting for
+        // answers has already taken too long. Keeping the browser open means
+        // the candidates are known before they are needed and the failover
+        // costs one HTTP round trip.
+        std::string interfaceName;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            interfaceName = node_.interfaceName;
+        }
+        std::unique_ptr<Ravenna::RegistryBrowser> browser;
+        if (!interfaceName.empty()) {
+            uint32_t addressV4 = 0;
+            const std::string address =
+                NetworkInterfaceDetection::getInterfaceIPAddress(interfaceName);
+            struct in_addr parsed {};
+            if (!address.empty() && ::inet_pton(AF_INET, address.c_str(), &parsed) == 1) {
+                addressV4 = ntohl(parsed.s_addr);
+            }
+            browser = std::make_unique<Ravenna::RegistryBrowser>(interfaceName, addressV4);
+            std::string error;
+            if (!browser->start(error)) {
+                AES67_LOGF("NMOS: no registry browser, so no failover: %s", error.c_str());
+                browser.reset();
             }
         }
+
+        while (running_.load(std::memory_order_acquire)) {
+            if (!heartbeat()) {
+                // One lost beat is enough. There is nothing to be learnt from
+                // losing a second: a registry that refused the connection is
+                // not going to take the next one either, and the node has
+                // twelve seconds before it is forgotten.
+                if (browser && failOverTo(browser->registries())) {
+                    // Beat the new one at once rather than at the next tick,
+                    // so the changeover is one interval and not two.
+                    heartbeat();
+                }
+            }
+
+            // Waited against the clock and not by counting slices. The
+            // browser's service() returns as soon as a packet arrives, which
+            // on a link with any mDNS traffic is far short of the slice it was
+            // given; counting fifty of those is not five seconds, and the beat
+            // rate rose with the chatter on the link.
+            //
+            // The slice is what makes stop() prompt. It is a duration in its
+            // own right and not a division of the period: kHeartbeatPeriod is
+            // std::chrono::seconds, whose representation is integral, so
+            // `kHeartbeatPeriod / 50` is seconds(0) and the loop it was
+            // written for did not sleep at all -- it beat as fast as the
+            // socket would go, two hundred thousand times in the twenty-four
+            // seconds it took to notice.
+            constexpr auto slice = std::chrono::milliseconds(100);
+            const auto due = std::chrono::steady_clock::now() + kHeartbeatPeriod;
+            while (running_.load(std::memory_order_acquire) &&
+                   std::chrono::steady_clock::now() < due) {
+                // The wait doubles as the browser's service: what a responder
+                // announces while this is asleep is what the next failover
+                // needs to already know.
+                if (browser) {
+                    browser->service(static_cast<int>(slice.count()));
+                } else {
+                    std::this_thread::sleep_for(slice);
+                }
+            }
+        }
+        if (browser) browser->stop();
     });
+}
+
+bool NMOSRegistrationClient::failOverTo(const std::vector<Ravenna::NmosRegistry>& candidates) {
+    std::string current;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        current = registry_.host + ":" + std::to_string(registry_.port);
+    }
+
+    // Lowest priority first, which is the order the browser keeps them in.
+    for (const Ravenna::NmosRegistry& candidate : candidates) {
+        if (!running_.load(std::memory_order_acquire)) return false;
+        // The one that just went quiet is not tried again here: it is the one
+        // that failed, and a node that keeps choosing it never moves.
+        if (candidate.endpoint() == current) continue;
+
+        NMOSRegistry moved;
+        moved.host = candidate.host;
+        moved.port = candidate.port;
+        moved.apiVersion = candidate.apiVersion;
+        if (registerWith(moved)) {
+            AES67_LOGF("NMOS: the registry at %s stopped answering; moved to %s", current.c_str(),
+                       candidate.endpoint().c_str());
+            return true;
+        }
+    }
+    return false;
 }
 
 void NMOSRegistrationClient::stop() {
