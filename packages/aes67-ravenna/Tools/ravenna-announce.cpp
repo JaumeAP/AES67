@@ -403,10 +403,26 @@ int main(int argc, char** argv) {
     size_t requests = 0;
     auto nextReport = std::chrono::steady_clock::now() + std::chrono::seconds(1);
 
+    bool wasRegistered = false;
+
     while (g_running.load(std::memory_order_acquire)) {
         queries += mdns.service();
         describes += rtsp.service();
         requests += nmos.service();
+
+        // A node that has found a registry stops advertising itself on the
+        // link, and starts again when the registry goes away: peer-to-peer
+        // discovery is the fallback for a link with no registry, not a second
+        // channel beside it. The sessions keep being announced either way --
+        // RAVENNA finds them this way and has no registry to find them in.
+        const bool registered = !registration.registeredWith().empty();
+        if (registered != wasRegistered) {
+            mdns.announceExtras(!registered);
+            std::printf("[ravenna] %s the node over mDNS: %s\n",
+                        registered ? "withdrawing" : "announcing",
+                        registered ? "a registry has it" : "no registry has it");
+            wasRegistered = registered;
+        }
 
         const auto now = std::chrono::steady_clock::now();
         if (now >= nextReport) {
