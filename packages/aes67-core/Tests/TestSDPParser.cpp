@@ -221,6 +221,18 @@ TEST_CASE("SDP Generation") {
     CHECK(generated.find(" IN IP4 192.168.1.200\r\n") != std::string::npos);
     CHECK(generated.find("IP4 IN") == std::string::npos);
 
+    // The connection address twice: once at session level and once inside the
+    // media description. RFC 4566 sec 5.7 allows both and lets the per-media
+    // line override, and readers are split on which one they look at -- the
+    // AMWA IS-05 suite reads only the media section, most AES67 gear only the
+    // session level. Written once, one of the two found nothing.
+    const size_t sessionLevel = generated.find("c=IN IP4 239.69.100.1");
+    CHECK(sessionLevel != std::string::npos);
+    const size_t mediaLine = generated.find("m=audio ");
+    CHECK(mediaLine != std::string::npos);
+    CHECK(sessionLevel < mediaLine);
+    CHECK(generated.find("c=IN IP4 239.69.100.1", mediaLine) != std::string::npos);
+
     // Verify it can be parsed back
     auto reparsed = SDPParser::parseString(generated);
     CHECK(reparsed.has_value());;
