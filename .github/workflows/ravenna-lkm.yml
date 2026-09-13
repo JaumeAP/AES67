@@ -1,0 +1,58 @@
+# Compiles the RAVENNA ALSA kernel module this repository vendors.
+#
+# Not ours: external/ravenna-alsa-lkm is Merging's module, mirrored as a
+# submodule, and aes67-linux-ptpd compiles one file out of it -- driver/PTP.c,
+# with stubbed kernel headers -- to hold this project's grandmaster against
+# what a real slave decides about a packet. That test says what the module
+# DECIDES. It says nothing about whether the module still builds.
+#
+# It is worth knowing, because it has not always: the branch this tracks
+# carries a fix for kernel 7.2, and the day a newer kernel breaks it is the day
+# the device this interoperates with stops existing on new installations. A Mac
+# cannot tell us that. A Linux runner can, for the price of a compile.
+#
+# Compiles only. The .ko comes out built against the headers apt installed, not
+# against the kernel the runner is running, so insmod would refuse it on
+# version alone -- and a hosted runner would refuse to load a module in any
+# case. Loading it, and everything that needs it loaded, wants a Linux machine
+# with root and a matching kernel.
+name: ravenna-lkm
+
+on:
+  push:
+    paths:
+      - 'external/ravenna-alsa-lkm'
+      - '.github/workflows/ravenna-lkm.yml'
+  pull_request:
+    paths:
+      - 'external/ravenna-alsa-lkm'
+      - '.github/workflows/ravenna-lkm.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # linux-headers-generic rather than the running kernel's: a hosted
+      # runner runs a cloud kernel whose headers are not always packaged, and
+      # what is being asked here is whether the source still compiles.
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential linux-headers-generic
+
+      # The module's own Makefile builds against /lib/modules/$(uname -r)/build,
+      # and on a runner that names a cloud kernel whose headers are not there.
+      # KSRC is the variable it puts that path in, so the path is given
+      # directly: KERNELRELEASE would do it too, but kbuild reserves that name
+      # for its own use inside an external module build.
+      - name: Build the module
+        run: |
+          release="$(ls /lib/modules | sort -V | tail -1)"
+          echo "Building against ${release}"
+          make -C external/ravenna-alsa-lkm/driver modules \
+            KSRC="/lib/modules/${release}/build/"
+
+      - name: The module has to exist
+        run: test -f external/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko
