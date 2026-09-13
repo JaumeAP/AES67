@@ -68,8 +68,10 @@ TEST_CASE("the roots list what is under them") {
     CHECK(router.route("GET", "/x-nmos/node").body == "[\"v1.3/\"]");
     const auto root = router.route("GET", "/x-nmos/node/v1.3/");
     CHECK(root.status == 200);
+    // Six, and these six: the Node API's base schema names them and allows
+    // nothing else. `subscriptions/` is the Query API's, not a node's.
     CHECK(root.body ==
-          "[\"self/\",\"devices/\",\"sources/\",\"flows/\",\"senders/\",\"receivers/\",\"subscriptions/\"]");
+          "[\"self/\",\"devices/\",\"sources/\",\"flows/\",\"senders/\",\"receivers/\"]");
 }
 
 TEST_CASE("self is the node, with its API endpoint") {

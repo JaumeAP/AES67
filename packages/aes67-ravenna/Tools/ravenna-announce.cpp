@@ -20,6 +20,8 @@
 // onto the receiver's staged endpoint, activate it, and the channels are
 // assigned through aes67-core's StreamChannelMapper.
 //
+#include "Driver/SDPParser.h"
+#include "Ravenna/NetworkInterfaces.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
 #include "NetworkEngine/RTP/RTPHeader.h"
 #include "NetworkEngine/StreamChannelMapper.h"
@@ -81,37 +83,6 @@ const char* valueFor(int argc, char** argv, int& index) {
 /// The hardware address of one interface, as IS-04 writes one: six lowercase
 /// hex pairs joined by hyphens. Nothing when the interface has none to read,
 /// which is a loopback or a name that is not there.
-std::optional<std::string> macAddressOf(const std::string& interfaceName) {
-    struct ifaddrs* list = nullptr;
-    if (::getifaddrs(&list) != 0) return std::nullopt;
-
-    std::optional<std::string> found;
-    for (const struct ifaddrs* entry = list; entry != nullptr; entry = entry->ifa_next) {
-        if (entry->ifa_addr == nullptr || interfaceName != entry->ifa_name) continue;
-
-        const unsigned char* bytes = nullptr;
-#if defined(__linux__)
-        if (entry->ifa_addr->sa_family != AF_PACKET) continue;
-        const auto* link = reinterpret_cast<const struct sockaddr_ll*>(entry->ifa_addr);
-        if (link->sll_halen != 6) continue;
-        bytes = link->sll_addr;
-#else
-        if (entry->ifa_addr->sa_family != AF_LINK) continue;
-        const auto* link = reinterpret_cast<const struct sockaddr_dl*>(entry->ifa_addr);
-        if (link->sdl_alen != 6) continue;
-        bytes = reinterpret_cast<const unsigned char*>(LLADDR(link));
-#endif
-        char text[18];
-        (void)std::snprintf(text, sizeof(text), "%02x-%02x-%02x-%02x-%02x-%02x", bytes[0],
-                            bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
-        found = std::string(text);
-        break;
-    }
-
-    ::freeifaddrs(list);
-    return found;
-}
-
 bool addressFrom(const std::string& text, uint32_t& out) {
     struct in_addr parsed {};
     if (::inet_pton(AF_INET, text.c_str(), &parsed) != 1) return false;
@@ -243,6 +214,8 @@ int main(int argc, char** argv) {
     // because SDPParser::generate omits the line when the field is 0.
     session.sdp.framecount = framesPerPacket;
     session.sdp.direction = "sendonly";
+    // This host sends the stream, so the description says so (RFC 4570 sec 3).
+    SDPParser::nameOwnSource(session.sdp);
     // a=ts-refclk, RFC 7273: which clock the timestamps are against. Without
     // it the SDP says when a packet was taken and not by whose clock, and a
     // receiver that insists on knowing -- RAVENNA gear does -- will not lock

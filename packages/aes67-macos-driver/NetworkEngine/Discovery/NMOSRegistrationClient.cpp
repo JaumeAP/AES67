@@ -6,6 +6,12 @@
 #include <ranges>
 #include <iterator>
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
+#include "Driver/DebugLog.h"
+#include "NetworkEngine/NetworkInterfaceDetection.h"
+#include "Ravenna/RegistryBrowser.h"
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include "NetworkEngine/JsonEscape.h"
 
 #include "Ravenna/HTTPClient.h"
@@ -20,6 +26,30 @@
 #include <thread>
 
 namespace AES67 {
+
+namespace {
+/// The node's `interfaces`, which is the one this host uses or none at all.
+/// `chassis_id` is null: this is a Mac, not a chassis with a backplane
+/// identifier, and the schema takes null for exactly that case.
+std::string interfacesJson(const NMOSNodeInfo& node) {
+    if (node.interfaceName.empty()) return "[]";
+    std::ostringstream json;
+    json << "[{ \"name\": \"" << jsonEscape(node.interfaceName) << "\", "
+         << "\"chassis_id\": null, \"port_id\": \""
+         << jsonEscape(node.interfaceMac.empty() ? std::string("00-00-00-00-00-00")
+                                                 : node.interfaceMac)
+         << "\" }]";
+    return json.str();
+}
+
+/// A resource's `interface_bindings`: the node interface it uses, by name.
+std::string bindingsJson(const std::string& interfaceName) {
+    if (interfaceName.empty()) return "[]";
+    return "[\"" + jsonEscape(interfaceName) + "\"]";
+}
+
+}  // namespace
+
 
 namespace {
 
@@ -83,7 +113,12 @@ std::string NMOSRegistrationClient::buildNodeData(const NMOSNodeInfo& node,
          // that claims a PTP clock it is not running is a node a
          // controller will try to slave things to.
          << "    \"clocks\": [{ \"name\": \"clk0\", \"ref_type\": \"internal\" }],\n"
-         << "    \"interfaces\": []\n"
+         // The interface this node's streams use, named so that senders and
+         // receivers can bind to it: a sender that binds to nothing is a
+         // sender a controller cannot tell is reachable. `chassis_id` is null
+         // because this is a Mac and not a chassis with a backplane id; the
+         // schema takes null for exactly that.
+         << "    \"interfaces\": " << interfacesJson(node) << "\n"
          << "  }";
     return json.str();
 }
@@ -275,16 +310,19 @@ std::string NMOSRegistrationClient::buildSenderBody(const std::string& senderId,
                                                     const std::string& flowId,
                                                     const std::string& deviceId,
                                                     const NMOSSenderResource& sender,
-                                                    int64_t versionSeconds, int32_t versionNanos) {
+                                                    int64_t versionSeconds, int32_t versionNanos,
+                                                    const std::string& interfaceName) {
     return wrapResource("sender", buildSenderData(senderId, flowId, deviceId, sender,
-                                                   versionSeconds, versionNanos));
+                                                   versionSeconds, versionNanos,
+                                                   interfaceName));
 }
 
 std::string NMOSRegistrationClient::buildSenderData(const std::string& senderId,
                                                     const std::string& flowId,
                                                     const std::string& deviceId,
                                                     const NMOSSenderResource& sender,
-                                                    int64_t versionSeconds, int32_t versionNanos) {
+                                                    int64_t versionSeconds, int32_t versionNanos,
+                                                    const std::string& interfaceName) {
     std::ostringstream json;
     json << "{\n"
          << "    \"id\": \"" << senderId << "\",\n"
@@ -295,7 +333,7 @@ std::string NMOSRegistrationClient::buildSenderData(const std::string& senderId,
          << "    \"flow_id\": \"" << flowId << "\",\n"
          << "    \"device_id\": \"" << deviceId << "\",\n"
          << "    \"transport\": \"urn:x-nmos:transport:rtp.mcast\",\n"
-         << "    \"interface_bindings\": [],\n"
+         << "    \"interface_bindings\": " << bindingsJson(interfaceName) << ",\n"
          // The SDP for this sender is served over RTSP DESCRIBE, not over
          // HTTP, and manifest_href names an HTTP URL. Null says "ask me
          // another way" instead of pointing at something that will 404.
@@ -309,16 +347,19 @@ std::string NMOSRegistrationClient::buildReceiverBody(const std::string& receive
                                                       const std::string& deviceId,
                                                       const NMOSReceiverResource& receiver,
                                                       int64_t versionSeconds,
-                                                      int32_t versionNanos) {
+                                                      int32_t versionNanos,
+                                                      const std::string& interfaceName) {
     return wrapResource("receiver", buildReceiverData(receiverId, deviceId, receiver,
-                                                       versionSeconds, versionNanos));
+                                                       versionSeconds, versionNanos,
+                                                       interfaceName));
 }
 
 std::string NMOSRegistrationClient::buildReceiverData(const std::string& receiverId,
                                                       const std::string& deviceId,
                                                       const NMOSReceiverResource& receiver,
                                                       int64_t versionSeconds,
-                                                      int32_t versionNanos) {
+                                                      int32_t versionNanos,
+                                                      const std::string& interfaceName) {
     std::ostringstream json;
     json << "{\n"
          << "    \"id\": \"" << receiverId << "\",\n"
@@ -328,7 +369,7 @@ std::string NMOSRegistrationClient::buildReceiverData(const std::string& receive
          << "    \"tags\": {},\n"
          << "    \"device_id\": \"" << deviceId << "\",\n"
          << "    \"transport\": \"urn:x-nmos:transport:rtp.mcast\",\n"
-         << "    \"interface_bindings\": [],\n"
+         << "    \"interface_bindings\": " << bindingsJson(interfaceName) << ",\n"
          << "    \"format\": \"urn:x-nmos:format:audio\",\n"
          // What this receiver can take, which is what the RTP path
          // decodes: nothing else belongs here, however much the driver
@@ -340,33 +381,71 @@ std::string NMOSRegistrationClient::buildReceiverData(const std::string& receive
     return json.str();
 }
 
-std::optional<NMOSRegistry> NMOSRegistrationClient::discoverRegistry(
-    std::chrono::milliseconds waitFor) {
-    MDNSBrowser browser(MDNSBrowser::kServiceTypeNMOSRegister);
-    if (!browser.start()) {
-        // No system responder: a lost convenience, never a failure. Same
-        // stance as the rest of discovery here.
-        return std::nullopt;
+std::vector<NMOSRegistry> NMOSRegistrationClient::discoverRegistries(
+    std::chrono::milliseconds waitFor) const {
+    std::string interfaceName;
+    std::string apiVersion;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        interfaceName = node_.interfaceName;
+        apiVersion = registry_.apiVersion.empty() ? std::string("v1.3") : registry_.apiVersion;
+    }
+    if (interfaceName.empty()) return {};
+
+    uint32_t addressV4 = 0;
+    {
+        const std::string address = NetworkInterfaceDetection::getInterfaceIPAddress(interfaceName);
+        struct in_addr parsed {};
+        if (!address.empty() && ::inet_pton(AF_INET, address.c_str(), &parsed) == 1) {
+            addressV4 = ntohl(parsed.s_addr);
+        }
     }
 
+    Ravenna::RegistryBrowser browser(interfaceName, addressV4, apiVersion);
+    std::string error;
+    if (!browser.start(error)) {
+        // No responder, or the port is taken. A lost convenience, never a
+        // failure: this is how a plant with no registry at all behaves.
+        return {};
+    }
+
+    // Asked once at the start and answered for the rest of the window. A
+    // responder announces unprompted when a service appears, so the listening
+    // matters as much as the question.
     const auto deadline = std::chrono::steady_clock::now() + waitFor;
-    std::optional<NMOSRegistry> found;
-    while (std::chrono::steady_clock::now() < deadline && !found.has_value()) {
-        for (const MDNSService& service : browser.discoveredServices()) {
-            if (!service.isResolved()) continue;
-            NMOSRegistry registry;
-            registry.host = service.address;
-            registry.port = service.port;
-            found = registry;
-            break;
-        }
-        if (!found.has_value()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+    while (std::chrono::steady_clock::now() < deadline) {
+        browser.service(100);
     }
 
+    std::vector<NMOSRegistry> found;
+    for (const Ravenna::NmosRegistry& one : browser.registries()) {
+        NMOSRegistry registry;
+        registry.host = one.host;
+        registry.port = one.port;
+        registry.apiVersion = one.apiVersion;
+        found.push_back(std::move(registry));
+    }
     browser.stop();
     return found;
+}
+
+std::optional<NMOSRegistry> NMOSRegistrationClient::discoverRegistry(
+    std::chrono::milliseconds waitFor) const {
+    const std::vector<NMOSRegistry> found = discoverRegistries(waitFor);
+    if (found.empty()) return std::nullopt;
+    return found.front();
+}
+
+void NMOSRegistrationClient::versionNow(int64_t& seconds, int32_t& nanos) const {
+    if (versionSource_) {
+        versionSource_(seconds, nanos);
+        return;
+    }
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto whole = std::chrono::duration_cast<std::chrono::seconds>(now);
+    seconds = whole.count();
+    nanos = static_cast<int32_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now - whole).count());
 }
 
 bool NMOSRegistrationClient::postNode() {
@@ -379,20 +458,37 @@ bool NMOSRegistrationClient::postNode() {
     }
     if (!registry.valid()) return false;
 
-    const auto now = std::chrono::system_clock::now().time_since_epoch();
-    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now);
-    const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(now - seconds);
+    int64_t seconds = 0;
+    int32_t nanos = 0;
+    versionNow(seconds, nanos);
 
     HTTPClient client(registry.host, registry.port);
-    const HTTPResponse response = client.post(
-        registrationPath(registry.apiVersion),
-        buildRegistrationBody(node, seconds.count(), static_cast<int32_t>(nanos.count())),
-        "application/json");
+    const HTTPResponse response = client.post(registrationPath(registry.apiVersion),
+                                              buildRegistrationBody(node, seconds, nanos),
+                                              "application/json");
 
-    // 201 is a new registration, 200 is the registry recognising an id it
-    // already holds. Both mean it took.
-    const bool accepted = response.error.empty() &&
-                          (response.status == 200 || response.status == 201);
+    if (!response.error.empty()) {
+        registered_.store(false, std::memory_order_relaxed);
+        return false;
+    }
+
+    // 201 is a new registration. 200 is the registry saying it already holds
+    // this id, which IS-04 sec 4.2 does not let a node simply accept: what it
+    // holds may be a stale copy of a node that never went away cleanly, and
+    // the specified way out is to delete it and register again from nothing.
+    // Taking the 200 as success left the registry serving whatever it had.
+    if (response.status == 200) {
+        HTTPClient remover(registry.host, registry.port);
+        (void)remover.del(registrationPath(registry.apiVersion) + "/" + node.id);
+        const HTTPResponse again = client.post(registrationPath(registry.apiVersion),
+                                               buildRegistrationBody(node, seconds, nanos),
+                                               "application/json");
+        const bool retook = again.error.empty() && again.status == 201;
+        registered_.store(retook, std::memory_order_relaxed);
+        return retook;
+    }
+
+    const bool accepted = response.status == 201;
     registered_.store(accepted, std::memory_order_relaxed);
     return accepted;
 }
@@ -440,14 +536,105 @@ void NMOSRegistrationClient::startHeartbeats() {
     if (running_.exchange(true, std::memory_order_acq_rel)) return;
 
     heartbeatThread_ = std::thread([this] {
-        while (running_.load(std::memory_order_acquire)) {
-            heartbeat();
-            // Slept in slices so stop() does not wait a whole period.
-            for (int i = 0; i < 50 && running_.load(std::memory_order_acquire); i++) {
-                std::this_thread::sleep_for(kHeartbeatPeriod / 50);
+        // The link is browsed for the whole time this runs, not asked once
+        // when a beat has already been lost. IS-04 sec 4.2 has a registry
+        // forget a node twelve seconds after it goes quiet, and a controller
+        // watching the changeover allows about one heartbeat interval for it,
+        // so a failover that starts by opening a socket and waiting for
+        // answers has already taken too long. Keeping the browser open means
+        // the candidates are known before they are needed and the failover
+        // costs one HTTP round trip.
+        std::string interfaceName;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            interfaceName = node_.interfaceName;
+        }
+        std::unique_ptr<Ravenna::RegistryBrowser> browser;
+        if (!interfaceName.empty()) {
+            uint32_t addressV4 = 0;
+            const std::string address =
+                NetworkInterfaceDetection::getInterfaceIPAddress(interfaceName);
+            struct in_addr parsed {};
+            if (!address.empty() && ::inet_pton(AF_INET, address.c_str(), &parsed) == 1) {
+                addressV4 = ntohl(parsed.s_addr);
+            }
+            browser = std::make_unique<Ravenna::RegistryBrowser>(interfaceName, addressV4);
+            std::string error;
+            if (!browser->start(error)) {
+                AES67_LOGF("NMOS: no registry browser, so no failover: %s", error.c_str());
+                browser.reset();
             }
         }
+
+        while (running_.load(std::memory_order_acquire)) {
+            if (!heartbeat()) {
+                // One lost beat is enough. There is nothing to be learnt from
+                // losing a second: a registry that refused the connection is
+                // not going to take the next one either, and the node has
+                // twelve seconds before it is forgotten.
+                if (browser && failOverTo(browser->registries())) {
+                    // Beat the new one at once rather than at the next tick,
+                    // so the changeover is one interval and not two.
+                    heartbeat();
+                }
+            }
+
+            // Waited against the clock and not by counting slices. The
+            // browser's service() returns as soon as a packet arrives, which
+            // on a link with any mDNS traffic is far short of the slice it was
+            // given; counting fifty of those is not five seconds, and the beat
+            // rate rose with the chatter on the link.
+            //
+            // The slice is what makes stop() prompt. It is a duration in its
+            // own right and not a division of the period: kHeartbeatPeriod is
+            // std::chrono::seconds, whose representation is integral, so
+            // `kHeartbeatPeriod / 50` is seconds(0) and the loop it was
+            // written for did not sleep at all -- it beat as fast as the
+            // socket would go, two hundred thousand times in the twenty-four
+            // seconds it took to notice.
+            constexpr auto slice = std::chrono::milliseconds(100);
+            const auto due = std::chrono::steady_clock::now() + kHeartbeatPeriod;
+            while (running_.load(std::memory_order_acquire) &&
+                   std::chrono::steady_clock::now() < due) {
+                // The wait doubles as the browser's service: what a responder
+                // announces while this is asleep is what the next failover
+                // needs to already know.
+                if (browser) {
+                    browser->service(static_cast<int>(slice.count()));
+                } else {
+                    std::this_thread::sleep_for(slice);
+                }
+            }
+        }
+        if (browser) browser->stop();
     });
+}
+
+bool NMOSRegistrationClient::failOverTo(const std::vector<Ravenna::NmosRegistry>& candidates) {
+    std::string current;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        current = registry_.host + ":" + std::to_string(registry_.port);
+    }
+
+    // Lowest priority first, which is the order the browser keeps them in.
+    for (const Ravenna::NmosRegistry& candidate : candidates) {
+        if (!running_.load(std::memory_order_acquire)) return false;
+        // The one that just went quiet is not tried again here: it is the one
+        // that failed, and a node that keeps choosing it never moves.
+        if (candidate.endpoint() == current) continue;
+
+        NMOSRegistry moved;
+        moved.host = candidate.host;
+        moved.port = candidate.port;
+        moved.apiVersion = candidate.apiVersion;
+        if (registerWith(moved)) {
+            AES67_LOGF("NMOS: the registry at %s stopped answering; moved to %s", current.c_str(),
+                       candidate.endpoint().c_str());
+            return true;
+        }
+    }
+    return false;
 }
 
 void NMOSRegistrationClient::stop() {
@@ -498,11 +685,9 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
     }
     if (nodeId.empty()) return false;
 
-    const auto now = std::chrono::system_clock::now().time_since_epoch();
-    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now);
-    const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(now - seconds);
-    const int64_t versionSeconds = seconds.count();
-    const int32_t versionNanos = static_cast<int32_t>(nanos.count());
+    int64_t versionSeconds = 0;
+    int32_t versionNanos = 0;
+    versionNow(versionSeconds, versionNanos);
 
     // One device, always the same id for this node: a driver is one audio
     // device however many streams it carries.
@@ -538,7 +723,8 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
         allAccepted &= postResource(
             buildFlowBody(flowId, sourceId, deviceId, senders[i], versionSeconds, versionNanos));
         allAccepted &= postResource(buildSenderBody(senderIds[i], flowId, deviceId, senders[i],
-                                                    versionSeconds, versionNanos));
+                                                    versionSeconds, versionNanos,
+                                                    node_.interfaceName));
 
         published.emplace_back("sources", sourceId);
         published.emplace_back("flows", flowId);
@@ -547,7 +733,8 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
 
     for (size_t i = 0; i < receivers.size(); i++) {
         allAccepted &= postResource(buildReceiverBody(receiverIds[i], deviceId, receivers[i],
-                                                      versionSeconds, versionNanos));
+                                                      versionSeconds, versionNanos,
+                                                      node_.interfaceName));
         published.emplace_back("receivers", receiverIds[i]);
     }
 

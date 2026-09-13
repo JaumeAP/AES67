@@ -27,12 +27,18 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+
+namespace AES67::Ravenna {
+struct NmosRegistry;
+}
 
 namespace AES67 {
 
@@ -65,6 +71,16 @@ struct NMOSNodeInfo {
     /// Port 0 means none is served and the list stays empty.
     std::string apiHost;
     uint16_t apiPort{0};
+    /// The interface this node's streams leave by and arrive on. IS-04 makes
+    /// a node publish its interfaces and makes every sender and receiver name
+    /// the one it uses, and a controller works out which devices can reach
+    /// each other from exactly that. Empty publishes no interfaces, which is
+    /// what a node with no network to speak of should say.
+    std::string interfaceName;
+    /// That interface's hardware address, as IS-04 writes one: six lower-case
+    /// hex pairs joined by hyphens. Empty when the interface has none of its
+    /// own, which is the loopback's case.
+    std::string interfaceMac;
 };
 
 /// One transmit stream, as IS-04 sees it: a source (what the audio IS), a
@@ -103,17 +119,39 @@ public:
     /// missed beats.
     static constexpr std::chrono::seconds kHeartbeatPeriod{5};
 
+    /// Where the version stamped on every resource comes from. IS-04 makes
+    /// a resource's version part of what it is, so the copy a registry holds
+    /// and the copy the Node API serves have to carry the same one until the
+    /// resource actually changes. Each was taking its own reading of the
+    /// clock, so the two never matched and a controller reading both saw one
+    /// resource superseding the other for ever.
+    ///
+    /// Unset means this client reads the clock itself, which is right for a
+    /// node that serves no Node API of its own.
+    using VersionSource = std::function<void(int64_t& seconds, int32_t& nanos)>;
+
     explicit NMOSRegistrationClient(NMOSNodeInfo node);
     ~NMOSRegistrationClient();
 
     NMOSRegistrationClient(const NMOSRegistrationClient&) = delete;
     NMOSRegistrationClient& operator=(const NMOSRegistrationClient&) = delete;
 
-    /// Looks for a registry on the local link. Blocks for at most
-    /// `waitFor`. Returns nothing when there is no registry, which is the
-    /// normal case on a small installation and never an error.
-    static std::optional<NMOSRegistry> discoverRegistry(
-        std::chrono::milliseconds waitFor = std::chrono::milliseconds(2000));
+    /// The registries on the link, lowest IS-04 priority first, and only
+    /// those whose advertisement says they speak this node's API version over
+    /// plain HTTP. Blocks for at most `waitFor`. An empty list is the normal
+    /// case on a small installation and never an error.
+    ///
+    /// The browsing is aes67-ravenna's RegistryBrowser: it reads the TXT
+    /// records rather than taking the first thing that answers, which is what
+    /// this used to do -- it registered with whatever advertised
+    /// _nmos-register._tcp, whatever version or protocol that registry said
+    /// it spoke, and never looked at `pri` at all.
+    std::vector<NMOSRegistry> discoverRegistries(
+        std::chrono::milliseconds waitFor = std::chrono::milliseconds(2000)) const;
+
+    /// The first of them, or nothing.
+    std::optional<NMOSRegistry> discoverRegistry(
+        std::chrono::milliseconds waitFor = std::chrono::milliseconds(2000)) const;
 
     /// POSTs the Node resource. True when the registry took it: 201 for a
     /// new node, 200 when it already knew this id.
@@ -128,6 +166,10 @@ public:
     /// garbage-collected us, and it is the documented way back in.
     void startHeartbeats();
     void stop();
+
+    /// Takes the version to stamp from somewhere else. Set before
+    /// registering; the registration and heartbeat threads only read it.
+    void useVersionFrom(VersionSource source) { versionSource_ = std::move(source); }
 
     /// Registers the device and everything under it, and removes whatever
     /// the registry still holds from a previous call and this one does not
@@ -187,15 +229,19 @@ public:
                                      const std::string& deviceId,
                                      const NMOSSenderResource& sender,
                                      int64_t versionSeconds, int32_t versionNanos);
+    /// `interfaceName` goes into the resource's `interface_bindings`; see
+    /// buildSenderData below.
     static std::string buildSenderBody(const std::string& senderId,
                                        const std::string& flowId,
                                        const std::string& deviceId,
                                        const NMOSSenderResource& sender,
-                                       int64_t versionSeconds, int32_t versionNanos);
+                                       int64_t versionSeconds, int32_t versionNanos,
+                                       const std::string& interfaceName = {});
     static std::string buildReceiverBody(const std::string& receiverId,
                                          const std::string& deviceId,
                                          const NMOSReceiverResource& receiver,
-                                         int64_t versionSeconds, int32_t versionNanos);
+                                         int64_t versionSeconds, int32_t versionNanos,
+                                         const std::string& interfaceName = {});
 
     /// The bare resource objects. A registry takes them wrapped by
     /// wrapResource(); the Node API serves them as they are.
@@ -217,20 +263,33 @@ public:
                                      const std::string& deviceId,
                                      const NMOSSenderResource& sender,
                                      int64_t versionSeconds, int32_t versionNanos);
+    /// `interfaceName` is the node interface this resource is bound to, and
+    /// has to be one the node's own `interfaces` names: IS-04 is how a
+    /// controller works out which devices can reach each other, and it does
+    /// it by matching these. Empty publishes an empty binding list.
     static std::string buildSenderData(const std::string& senderId,
                                        const std::string& flowId,
                                        const std::string& deviceId,
                                        const NMOSSenderResource& sender,
-                                       int64_t versionSeconds, int32_t versionNanos);
+                                       int64_t versionSeconds, int32_t versionNanos,
+                                       const std::string& interfaceName = {});
     static std::string buildReceiverData(const std::string& receiverId,
                                          const std::string& deviceId,
                                          const NMOSReceiverResource& receiver,
-                                         int64_t versionSeconds, int32_t versionNanos);
+                                         int64_t versionSeconds, int32_t versionNanos,
+                                         const std::string& interfaceName = {});
     /// `{"type": <type>, "data": <data>}`, the shape a registration POST takes.
     static std::string wrapResource(const std::string& type, const std::string& data);
 
 private:
     bool postNode();
+    /// Registers with the first of these that takes it, skipping the one in
+    /// use. Called by the heartbeat thread when that one has stopped
+    /// answering. False when none of them would have it.
+    bool failOverTo(const std::vector<Ravenna::NmosRegistry>& candidates);
+    /// The version to stamp: the source above when one was given, the clock
+    /// otherwise.
+    void versionNow(int64_t& seconds, int32_t& nanos) const;
 
     /// POSTs one already-built body. Shared by everything above.
     bool postResource(const std::string& body);
@@ -244,6 +303,7 @@ private:
     std::vector<std::pair<std::string, std::string>> published_;
     mutable std::mutex mutex_;
     std::atomic<bool> registered_{false};
+    VersionSource versionSource_;
     std::atomic<bool> running_{false};
     std::thread heartbeatThread_;
 };

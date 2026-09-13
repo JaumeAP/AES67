@@ -15,6 +15,7 @@
 #include "NetworkEngine/NMOSSettings.h"
 #include "NetworkEngine/PTP/PTPMasterSettings.h"
 #include "NetworkEngine/NetworkInterfaceDetection.h"
+#include "Ravenna/NetworkInterfaces.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <arpa/inet.h>
 #include <algorithm>
@@ -378,6 +379,9 @@ void AES67Device::Initialize() {
                     if (!streamManager_) return sdps;
                     for (SDPSession session : streamManager_->getTransmitSessions()) {
                         if (session.originAddress.empty()) session.originAddress = sapAddress;
+                        // Ours to describe, so it says which source the group
+                        // carries (RFC 4570 sec 3).
+                        SDPParser::nameOwnSource(session);
                         std::string sdp = SDPParser::generate(session);
                         if (!sdp.empty()) sdps.push_back(std::move(sdp));
                     }
@@ -412,7 +416,8 @@ void AES67Device::Initialize() {
         const bool rtspStarted = rtspServer_->start([this]() {
             std::vector<RTSPPublishedStream> published;
             if (!streamManager_) return published;
-            for (const auto& session : streamManager_->getTransmitSessions()) {
+            for (SDPSession session : streamManager_->getTransmitSessions()) {
+                SDPParser::nameOwnSource(session);
                 std::string sdp = SDPParser::generate(session);
                 if (sdp.empty()) continue;
                 // One path per session name, plus "/" for the first stream so
@@ -507,6 +512,16 @@ void AES67Device::Initialize() {
             node.label = nmosSettings.label.empty()
                              ? ("AES67 macOS Driver on " + node.hostname)
                              : nmosSettings.label;
+            // The interface the streams use, which IS-04 makes the node
+            // publish and every sender and receiver bind to by name. A
+            // controller works out which devices can reach each other from
+            // exactly that, and resources bound to nothing looked unreachable.
+            node.interfaceName = nodeInterface;
+            if (!nodeInterface.empty()) {
+                if (const auto mac = Ravenna::macAddressOf(nodeInterface)) {
+                    node.interfaceMac = *mac;
+                }
+            }
 
             // IS-05. Bound to an ephemeral port: this is a user-space driver
             // and the port it gets is what it advertises.
@@ -597,6 +612,16 @@ void AES67Device::Initialize() {
 
             if (nmosSettings.enabled) {
                 nmosClient_ = std::make_unique<NMOSRegistrationClient>(node);
+                // One version for both copies of every resource. The Node API
+                // stamps it and the registry is told the same, so what a
+                // controller reads in the two places is one resource and not
+                // two that keep superseding each other.
+                if (nodeRouter_) {
+                    NodeAPIRouter* router = nodeRouter_.get();
+                    nmosClient_->useVersionFrom([router](int64_t& seconds, int32_t& nanos) {
+                        router->version(seconds, nanos);
+                    });
+                }
 
                 std::optional<NMOSRegistry> registry;
                 if (!nmosSettings.registryOverride.empty()) {
@@ -606,7 +631,7 @@ void AES67Device::Initialize() {
                                    nmosSettings.registryOverride.c_str());
                     }
                 } else {
-                    registry = NMOSRegistrationClient::discoverRegistry();
+                    registry = nmosClient_->discoverRegistry();
                 }
 
                 if (registry.has_value() && nmosClient_->registerWith(*registry)) {
@@ -759,7 +784,8 @@ std::vector<ConnectionSender> AES67Device::connectionSenders() {
     std::vector<ConnectionSender> senders;
     if (!streamManager_) return senders;
 
-    for (const SDPSession& sdp : streamManager_->getTransmitSessions()) {
+    for (SDPSession sdp : streamManager_->getTransmitSessions()) {
+        SDPParser::nameOwnSource(sdp);
         ConnectionSender sender;
         sender.id = nmosIdFor("sender", sdp.sessionName);
         sender.label = sdp.sessionName;

@@ -40,6 +40,13 @@ public:
     /// version stamp; a controller re-reads what moved.
     void touch();
 
+    /// The version this router is stamping on every resource right now. The
+    /// registration client takes the same one, so that what a registry holds
+    /// and what this serves agree: IS-04 makes the version part of what a
+    /// resource is, and two readings of the clock are two different
+    /// resources.
+    void version(int64_t& seconds, int32_t& nanos) const;
+
     /// The port is only known once the server has bound it, which is after
     /// this router has to exist for the server to call. Sets the node's
     /// api.endpoints and href, and the device's control.

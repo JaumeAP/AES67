@@ -128,6 +128,22 @@ public:
     //
     static std::string generate(const SDPSession& session);
 
+    /// Names this host as the source of a description it originates.
+    ///
+    /// RFC 4570 sec 3 asks a description with a multicast destination to say
+    /// which source the group carries, and ST 2110-10 makes it a shall; the
+    /// AMWA IS-05 suite refuses a transport file without one. The answer is
+    /// the origin address, because a stream this host describes is a stream
+    /// this host sends.
+    ///
+    /// Only for a description of our own stream. Regenerating a foreign one
+    /// this way would narrow a session that took any source to one that takes
+    /// a single address, and a sender transmitting from something other than
+    /// the address in its o= line would then be filtered out on the wire.
+    /// Does nothing when the destination is not multicast, or when the
+    /// description already names a source.
+    static void nameOwnSource(SDPSession& session);
+
     //
     // Write SDP session to file
     //
