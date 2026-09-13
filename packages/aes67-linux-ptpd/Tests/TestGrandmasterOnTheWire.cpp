@@ -20,6 +20,11 @@
 // turns it on first. The workflow does. AES67_TEST_INTERFACE names another
 // interface for a machine where that is not wanted.
 //
+// Wants privilege, and says so if it does not have it: PTP is on 319 and 320,
+// which are below 1024. The daemon needs the same to bind them, so this is a
+// property of what is being tested and not of the test. Labelled network and
+// run on its own, as root, by whoever runs it.
+//
 // Linux only, and only where the daemon was built: it is the thing under
 // test. CMake builds this nowhere else.
 //
@@ -74,7 +79,10 @@ struct Captured {
 /// loopback and set not to block.
 int openPtpPort(uint16_t port) {
     const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) return -1;
+    if (fd < 0) {
+        MESSAGE("socket(): " << std::strerror(errno));
+        return -1;
+    }
 
     const int on = 1;
     ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
@@ -87,6 +95,9 @@ int openPtpPort(uint16_t port) {
     local.sin_addr.s_addr = htonl(INADDR_ANY);
     local.sin_port = htons(port);
     if (::bind(fd, reinterpret_cast<struct sockaddr*>(&local), sizeof(local)) < 0) {
+        // 319 and 320 are below 1024, so this wants privilege -- the daemon
+        // under test needs the same, for the same reason.
+        MESSAGE("bind " << port << ": " << std::strerror(errno));
         ::close(fd);
         return -1;
     }
