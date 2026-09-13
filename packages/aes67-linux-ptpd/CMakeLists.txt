@@ -157,6 +157,34 @@ if(BUILD_TESTS)
         add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
         set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)
 
+        # The same module, fed what the daemon actually put on a socket rather
+        # than what PtpWire built in memory. Only where the daemon exists to
+        # be started, which is Linux: it is the thing under test.
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            add_executable(TestGrandmasterOnTheWire
+                Tests/TestGrandmasterOnTheWire.cpp
+                Tests/support/RavennaSlave.cpp
+                ${lkm_driver}/PTP.c
+            )
+            target_include_directories(TestGrandmasterOnTheWire PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/Tests
+                ${CMAKE_CURRENT_SOURCE_DIR}/Tests/support/lkm
+                ${lkm_driver})
+            if(AES67_SANITIZE)
+                set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
+                    COMPILE_OPTIONS "-fno-sanitize=shift")
+            endif()
+            target_link_libraries(TestGrandmasterOnTheWire
+                PRIVATE aes67_ptp_wire doctest_headers)
+            add_dependencies(TestGrandmasterOnTheWire aes67-ptpd)
+            add_test(NAME GrandmasterOnTheWire COMMAND TestGrandmasterOnTheWire)
+            # network, so that the sanitizer and coverage runs -- which exclude
+            # that label -- do not start a second daemon on the same group
+            # while another build of this suite is doing the same.
+            set_tests_properties(GrandmasterOnTheWire PROPERTIES
+                LABELS "network" TIMEOUT 120)
+        endif()
+
     # The parsers, fed what nobody wrote a test for: Tests/fuzz/FuzzParsers.cpp.
     # Not a CTest test -- the gate runs it under AES67_ANALYSE=1, in the
     # sanitizer build, with an iteration count. -DAES67_LIBFUZZER=ON builds the
