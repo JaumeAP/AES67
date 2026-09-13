@@ -5,6 +5,7 @@
 //
 
 #include "Driver/SDPParser.h"
+#include "NetworkEngine/RTP/RTPHeader.h"
 #include <iostream>
 #include <fstream>
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
@@ -12,6 +13,9 @@
 
 #include <string>
 #include <sstream>
+#include <vector>
+#include <cstdio>
+#include <cstdlib>
 
 namespace AES67 {
 namespace Tests {
@@ -438,6 +442,442 @@ TEST_CASE("Generated SDP states the PTP clock domain") {
         session.ptpDomain = -1;
         CHECK(SDPParser::generate(session).find("a=clock-domain:") == std::string::npos);
     }
+}
+
+// ===========================================================================
+// The parts of SDPParser nothing reached: the validation report, the file
+// ends, the session builders, and the refusal paths in parseString.
+// ===========================================================================
+
+TEST_CASE("The validation report names every missing field, not just the first") {
+    SDPSession session;
+    session.sessionName.clear();
+    session.connectionAddress.clear();
+    session.port = 0;
+    session.encoding = "MP3";
+    session.sampleRate = 0;
+    session.numChannels = 0;
+
+    const auto errors = session.getValidationErrors();
+    CHECK_FALSE(session.isValid());
+    REQUIRE(errors.size() == 6);
+    CHECK(errors[0] == "Session name (s=) is required");
+    CHECK(errors[1] == "Connection address (c=) is required");
+    CHECK(errors[2] == "Port must be non-zero");
+    CHECK(errors[3] == "Invalid encoding: MP3");
+    CHECK(errors[4] == "Sample rate must be non-zero");
+    CHECK(errors[5] == "Channel count must be non-zero");
+}
+
+TEST_CASE("The three AES67 encodings pass validation and nothing else does") {
+    SDPSession session;
+    session.sessionName = "Studio A";
+    session.connectionAddress = "239.69.0.1";
+
+    for (const std::string& encoding : {"L16", "L24", "AM824"}) {
+        session.encoding = encoding;
+        CHECK(session.isValid());
+    }
+
+    session.encoding = "L32";
+    CHECK_FALSE(session.isValid());
+    session.encoding.clear();
+    CHECK_FALSE(session.isValid());
+}
+
+TEST_CASE("validate reports through the vector it was handed, or through neither") {
+    SDPSession good;
+    good.sessionName = "Studio A";
+    good.connectionAddress = "239.69.0.1";
+
+    std::vector<std::string> errors{"stale entry"};
+    CHECK(SDPParser::validate(good, &errors));
+    CHECK(errors.empty());          // the vector is replaced, not appended to
+    CHECK(SDPParser::validate(good));   // and the pointer is optional
+
+    SDPSession bad;                 // no session name, no connection address
+    CHECK_FALSE(SDPParser::validate(bad, &errors));
+    CHECK(errors.size() == 2);
+    CHECK_FALSE(SDPParser::validate(bad));
+}
+
+TEST_CASE("A file that is not there parses to nothing") {
+    CHECK_FALSE(SDPParser::parseFile("/nonexistent-directory-aes67/stream.sdp").has_value());
+}
+
+TEST_CASE("A session written to a file parses back out of it") {
+    const std::string path =
+        std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") +
+        "/aes67_test_roundtrip.sdp";
+    (void)std::remove(path.c_str());
+
+    const SDPSession original = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.83.171", 5004, 8, 48000, "L24");
+    REQUIRE(SDPParser::writeFile(original, path));
+
+    const auto parsed = SDPParser::parseFile(path);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->sessionName == "Studio A");
+    CHECK(parsed->connectionAddress == "239.69.83.171");
+    CHECK(parsed->port == 5004);
+    CHECK(parsed->encoding == "L24");
+    CHECK(parsed->sampleRate == 48000);
+    CHECK(parsed->numChannels == 8);
+
+    (void)std::remove(path.c_str());
+}
+
+TEST_CASE("A file that cannot be opened for writing is reported, not thrown") {
+    const SDPSession session = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.83.171", 5004, 2, 48000);
+    CHECK_FALSE(SDPParser::writeFile(session, "/nonexistent-directory-aes67/stream.sdp"));
+}
+
+TEST_CASE("A default transmit session is complete enough to be valid") {
+    const SDPSession session = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.83.171", 5004, 8, 96000, "L16");
+
+    CHECK(session.isValid());
+    CHECK(session.sessionName == "Studio A");
+    CHECK(session.sessionInfo == "AES67 Stream");
+    CHECK(session.sessionVersion == 0);
+    CHECK(session.sessionID != 0);
+    CHECK(session.originUsername == "-");
+    CHECK(session.originAddress == "192.168.1.100");
+    CHECK(session.originNetworkType == "IN");
+    CHECK(session.originAddressType == "IP4");
+    CHECK(session.connectionAddress == "239.69.83.171");
+    CHECK(session.ttl == 32);
+    CHECK(session.timeStart == 0);
+    CHECK(session.timeStop == 0);
+    CHECK(session.mediaType == "audio");
+    CHECK(session.port == 5004);
+    CHECK(session.transport == "RTP/AVP");
+    CHECK(session.encoding == "L16");
+    CHECK(session.sampleRate == 96000);
+    CHECK(session.numChannels == 8);
+    CHECK(session.direction == "sendonly");
+    CHECK(session.sourceAddress == "192.168.1.100");
+    CHECK(session.ptpDomain == 0);
+    CHECK(session.mediaClockType == "direct=0");
+
+    // 1 ms packets, and the frame count that goes with them at this rate.
+    CHECK(session.ptimeUs == 1000);
+    CHECK(session.framecount == 96);
+}
+
+TEST_CASE("The default transmit session's payload type follows its encoding") {
+    const SDPSession wide = SDPParser::createDefaultTxSession(
+        "A", "192.168.1.100", "239.69.0.1", 5004, 2, 48000, "L24");
+    const SDPSession narrow = SDPParser::createDefaultTxSession(
+        "A", "192.168.1.100", "239.69.0.1", 5004, 2, 48000, "L16");
+
+    CHECK(wide.payloadType == RTP::payloadTypeFor("L24"));
+    CHECK(narrow.payloadType == RTP::payloadTypeFor("L16"));
+}
+
+TEST_CASE("A session becomes the stream description the engine works from") {
+    SDPSession session = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.83.171", 5004, 8, 48000, "L24");
+    session.sessionInfo = "8 channels from the live room";
+    session.ttl = 16;
+    session.ptimeUs = 125;
+    session.framecount = 6;
+    session.ptpMasterMAC = "00-1D-C1-FF-FE-12-34-56";
+    session.ptpDomain = 127;
+
+    const StreamInfo info = SDPParser::toStreamInfo(session);
+
+    CHECK_FALSE(info.id.isNull());          // a fresh identifier per call
+    CHECK(info.name == "Studio A");
+    CHECK(info.description == "8 channels from the live room");
+    CHECK(info.source.ip == "192.168.1.100");
+    CHECK(info.source.port == 0);           // an SDP does not carry one
+    CHECK(info.multicast.ip == "239.69.83.171");
+    CHECK(info.multicast.port == 5004);
+    CHECK(info.multicast.ttl == 16);
+    CHECK(info.encoding == AudioEncoding::L24);
+    CHECK(info.sampleRate == 48000);
+    CHECK(info.numChannels == 8);
+    CHECK(info.payloadType == session.payloadType);
+    CHECK(info.ptime == 125);
+    CHECK(info.framecount == 6);
+    CHECK(info.ptp.domain == 127);
+    CHECK(info.ptp.masterMAC == "00-1D-C1-FF-FE-12-34-56");
+    CHECK(info.ptp.enabled);
+}
+
+TEST_CASE("Two sessions converted in turn get identifiers of their own") {
+    const SDPSession session = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.0.1", 5004, 2, 48000);
+    CHECK(SDPParser::toStreamInfo(session).id != SDPParser::toStreamInfo(session).id);
+}
+
+TEST_CASE("An encoding the engine has no format for becomes Unknown") {
+    SDPSession session = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.0.1", 5004, 2, 48000, "L16");
+    CHECK(SDPParser::toStreamInfo(session).encoding == AudioEncoding::L16);
+
+    session.encoding = "AM824";
+    CHECK(SDPParser::toStreamInfo(session).encoding == AudioEncoding::Unknown);
+}
+
+TEST_CASE("A negative PTP domain converts to PTP being switched off") {
+    SDPSession session = SDPParser::createDefaultTxSession(
+        "Studio A", "192.168.1.100", "239.69.0.1", 5004, 2, 48000);
+    session.ptpDomain = -1;
+    CHECK_FALSE(SDPParser::toStreamInfo(session).ptp.enabled);
+}
+
+TEST_CASE("A stream description becomes a session again") {
+    StreamInfo info;
+    info.id = StreamID::generate();
+    info.name = "Studio B";
+    info.description = "the other room";
+    info.source.ip = "192.168.1.101";
+    info.multicast = NetworkAddress{"239.69.83.172", 5006};
+    info.multicast.ttl = 8;
+    info.encoding = AudioEncoding::L16;
+    info.sampleRate = 44100;
+    info.numChannels = 2;
+    info.payloadType = 98;
+    info.ptime = 250;
+    info.framecount = 11;
+    info.ptp.domain = 42;
+    info.ptp.masterMAC = "00-1D-C1-FF-FE-12-34-56";
+
+    const SDPSession session = SDPParser::fromStreamInfo(info);
+
+    CHECK(session.sessionName == "Studio B");
+    CHECK(session.sessionInfo == "the other room");
+    CHECK(session.sessionID != 0);
+    CHECK(session.originAddress == "192.168.1.101");
+    CHECK(session.sourceAddress == "192.168.1.101");
+    CHECK(session.connectionAddress == "239.69.83.172");
+    CHECK(session.port == 5006);
+    CHECK(session.ttl == 8);
+    CHECK(session.encoding == "L16");
+    CHECK(session.sampleRate == 44100);
+    CHECK(session.numChannels == 2);
+    CHECK(session.payloadType == 98);
+    CHECK(session.ptimeUs == 250);
+    CHECK(session.framecount == 11);
+    CHECK(session.ptpDomain == 42);
+    CHECK(session.ptpMasterMAC == "00-1D-C1-FF-FE-12-34-56");
+    CHECK(session.isValid());
+}
+
+TEST_CASE("An encoding with no SDP name of its own is written as L24") {
+    StreamInfo info;
+    info.name = "Studio B";
+    info.multicast = NetworkAddress{"239.69.0.1", 5004};
+
+    info.encoding = AudioEncoding::L24;
+    CHECK(SDPParser::fromStreamInfo(info).encoding == "L24");
+
+    info.encoding = AudioEncoding::L16;
+    CHECK(SDPParser::fromStreamInfo(info).encoding == "L16");
+
+    // DoP is carried as 24-bit PCM on the wire, and so is Unknown: the switch
+    // has no other name to give them.
+    info.encoding = AudioEncoding::DoP;
+    CHECK(SDPParser::fromStreamInfo(info).encoding == "L24");
+    info.encoding = AudioEncoding::Unknown;
+    CHECK(SDPParser::fromStreamInfo(info).encoding == "L24");
+}
+
+TEST_CASE("A description of our own multicast stream is given a source") {
+    SDPSession session;
+    session.sessionName = "Studio A";
+    session.originAddress = "192.168.1.100";
+    session.connectionAddress = "239.69.83.171";
+
+    SDPParser::nameOwnSource(session);
+    CHECK(session.sourceAddress == "192.168.1.100");
+}
+
+TEST_CASE("nameOwnSource leaves alone every description that is not ours to name") {
+    SDPSession session;
+    session.sessionName = "Studio A";
+    session.originAddress = "192.168.1.100";
+    session.connectionAddress = "239.69.83.171";
+
+    SUBCASE("one that already names a source") {
+        session.sourceAddress = "10.0.0.5";
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress == "10.0.0.5");
+    }
+    SUBCASE("one with no origin address to offer") {
+        session.originAddress.clear();
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+    SUBCASE("a unicast destination, which needs no source filter") {
+        session.connectionAddress = "192.168.1.50";
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+    SUBCASE("a destination above the multicast range") {
+        session.connectionAddress = "240.0.0.1";
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+    SUBCASE("a destination with no dot in it at all") {
+        session.connectionAddress = "localhost";
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+    SUBCASE("a destination whose first octet is not a number") {
+        session.connectionAddress = "example.com";
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+    SUBCASE("a destination that begins with a dot") {
+        session.connectionAddress = ".69.83.171";
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+    SUBCASE("an empty destination") {
+        session.connectionAddress.clear();
+        SDPParser::nameOwnSource(session);
+        CHECK(session.sourceAddress.empty());
+    }
+}
+
+TEST_CASE("Both ends of the multicast range are named, and nothing below it") {
+    SDPSession session;
+    session.originAddress = "192.168.1.100";
+
+    session.connectionAddress = "224.0.0.1";
+    session.sourceAddress.clear();
+    SDPParser::nameOwnSource(session);
+    CHECK(session.sourceAddress == "192.168.1.100");
+
+    session.connectionAddress = "239.255.255.255";
+    session.sourceAddress.clear();
+    SDPParser::nameOwnSource(session);
+    CHECK(session.sourceAddress == "192.168.1.100");
+
+    session.connectionAddress = "223.255.255.255";
+    session.sourceAddress.clear();
+    SDPParser::nameOwnSource(session);
+    CHECK(session.sourceAddress.empty());
+}
+
+TEST_CASE("Blank lines, comments and lines that are not records are skipped") {
+    const std::string sdp =
+        "v=0\r\n"
+        "\r\n"
+        "# a comment, which is not SDP but is written into fixtures\r\n"
+        "s=Studio A\r\n"
+        "x\r\n"                     // too short to be a record
+        "not-a-record\r\n"          // no '=' in the second position
+        "c=IN IP4 239.69.83.171/32\r\n"
+        "m=audio 5004 RTP/AVP 96\r\n"
+        "a=rtpmap:96 L24/48000/8\r\n";
+
+    const auto parsed = SDPParser::parseString(sdp);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->sessionName == "Studio A");
+    CHECK(parsed->numChannels == 8);
+}
+
+TEST_CASE("A version this parser does not speak is refused outright") {
+    const std::string sdp =
+        "v=1\r\n"
+        "s=Studio A\r\n"
+        "c=IN IP4 239.69.83.171/32\r\n"
+        "m=audio 5004 RTP/AVP 96\r\n";
+
+    CHECK_FALSE(SDPParser::parseString(sdp).has_value());
+}
+
+TEST_CASE("A malformed record fails the whole description") {
+    const std::string head = "v=0\r\ns=Studio A\r\n";
+    const std::string tail = "m=audio 5004 RTP/AVP 96\r\na=rtpmap:96 L24/48000/8\r\n";
+
+    SUBCASE("an origin line with too few fields") {
+        CHECK_FALSE(SDPParser::parseString(head + "o=- 1 0 IN IP4\r\n" + tail).has_value());
+    }
+    SUBCASE("an origin line whose session id is not a number") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "o=- nope 0 IN IP4 192.168.1.100\r\n" + tail).has_value());
+    }
+    SUBCASE("a connection line with too few fields") {
+        CHECK_FALSE(SDPParser::parseString(head + "c=IN IP4\r\n" + tail).has_value());
+    }
+    SUBCASE("a timing line with one field") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\nt=0\r\n" + tail).has_value());
+    }
+    SUBCASE("a timing line that is not numeric") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\nt=now later\r\n" + tail).has_value());
+    }
+    SUBCASE("a media line with too few fields") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\nm=audio 5004 RTP/AVP\r\n").has_value());
+    }
+    SUBCASE("a media line whose port is not a number") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\nm=audio http RTP/AVP 96\r\n").has_value());
+    }
+    SUBCASE("a media line whose payload type is not a number") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\nm=audio 5004 RTP/AVP audio\r\n").has_value());
+    }
+    SUBCASE("an rtpmap with no format at all") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\n" + "a=rtpmap:96\r\n").has_value());
+    }
+    SUBCASE("an rtpmap whose clock rate is missing") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\n" + "a=rtpmap:96 L24\r\n").has_value());
+    }
+    SUBCASE("an rtpmap whose clock rate is not a number") {
+        CHECK_FALSE(SDPParser::parseString(
+            head + "c=IN IP4 239.69.83.171\r\n" + "a=rtpmap:96 L24/fast/8\r\n").has_value());
+    }
+}
+
+TEST_CASE("A description that parses but describes nothing usable is refused") {
+    // Every record is well formed; what is missing is the session name, which
+    // validation requires.
+    const std::string sdp =
+        "v=0\r\n"
+        "c=IN IP4 239.69.83.171/32\r\n"
+        "m=audio 5004 RTP/AVP 96\r\n"
+        "a=rtpmap:96 L24/48000/8\r\n";
+
+    CHECK_FALSE(SDPParser::parseString(sdp).has_value());
+}
+
+TEST_CASE("A connection address without a TTL keeps the default one") {
+    const std::string sdp =
+        "v=0\r\n"
+        "s=Studio A\r\n"
+        "c=IN IP4 239.69.83.171\r\n"
+        "m=audio 5004 RTP/AVP 96\r\n"
+        "a=rtpmap:96 L24/48000/8\r\n";
+
+    const auto parsed = SDPParser::parseString(sdp);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->connectionAddress == "239.69.83.171");
+    CHECK(parsed->ttl == 32);
+}
+
+TEST_CASE("A TTL that is not a number falls back to 32 rather than failing") {
+    const std::string sdp =
+        "v=0\r\n"
+        "s=Studio A\r\n"
+        "c=IN IP4 239.69.83.171/none\r\n"
+        "m=audio 5004 RTP/AVP 96\r\n"
+        "a=rtpmap:96 L24/48000/8\r\n";
+
+    const auto parsed = SDPParser::parseString(sdp);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->connectionAddress == "239.69.83.171");
+    CHECK(parsed->ttl == 32);
 }
 
 } // namespace Tests
