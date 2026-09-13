@@ -611,9 +611,12 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
 
     bool hadUnderrun = false;
 
-    const auto writeTo = [&](size_t deviceChannel) {
+    // The samples are passed rather than captured: what this writes has to
+    // have been deinterleaved first, and saying so in the signature is the
+    // only place that dependency is visible.
+    const auto writeTo = [&](size_t deviceChannel, const float* samples) {
         if (deviceChannel >= 128) return;
-        const size_t written = deviceChannels_[deviceChannel].write(channelBuffer, frameCount);
+        const size_t written = deviceChannels_[deviceChannel].write(samples, frameCount);
         if (written < frameCount && !hadUnderrun) {
             // Ring buffer full - count underrun once per packet
             stats_.underruns.fetch_add(1, std::memory_order_relaxed);
@@ -626,7 +629,7 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
             // Extract this channel from the interleaved stream (deinterleave).
             deinterleaveChannel(interleavedAudio, channelBuffer, frameCount,
                                 sdp_.numChannels, streamChannel);
-            writeTo(mapping_.deviceChannelStart + streamChannel);
+            writeTo(mapping_.deviceChannelStart + streamChannel, channelBuffer);
             continue;
         }
 
@@ -642,7 +645,7 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
                                     sdp_.numChannels, streamChannel);
                 deinterleaved = true;
             }
-            writeTo(route.deviceChannel);
+            writeTo(route.deviceChannel, channelBuffer);
         }
     }
 }
