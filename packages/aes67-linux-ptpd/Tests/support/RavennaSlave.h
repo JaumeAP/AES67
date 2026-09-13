@@ -41,7 +41,18 @@ inline constexpr size_t kMinAnnounceBytes = 64;
 inline constexpr size_t kMinSyncBytes = 44;
 
 /// The slave's state: what it was configured with, and what it has elected.
+///
+/// It owns the module's clock once one has been made, and frees it. Leaving
+/// that to whoever wrote the case meant most of them did not, which nothing
+/// on a Mac could say: LeakSanitizer is a Linux thing, and the suite leaked a
+/// clock and two spinlocks per case until a runner counted them.
 struct SlaveState {
+    SlaveState() = default;
+    ~SlaveState();
+    /// Not copied: two states sharing one clock would free it twice.
+    SlaveState(const SlaveState&) = delete;
+    SlaveState& operator=(const SlaveState&) = delete;
+
     /// The module's own TClock_PTP, made on first use. Opaque here so the
     /// test needs none of the module's headers.
     void* impl = nullptr;
@@ -82,7 +93,8 @@ bool syncIsTwoStep(const uint8_t* data);
 /// so rather than waiting for it.
 void setCounterTime(uint64_t timeNs);
 
-/// Releases the module clock a state carries.
+/// Releases the module clock a state carries. The destructor calls this; it
+/// stays for a case that wants to let go of the clock and carry on.
 void destroy(SlaveState& state);
 
 } // namespace AES67::LinuxPtpd::Tests

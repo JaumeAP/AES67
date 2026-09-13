@@ -232,6 +232,4 @@ TEST_CASE("The module takes what the daemon puts on the wire") {
     CHECK(elected);
     CHECK(slave.masterClockIdentity != 0);
     CHECK(slave.grandmasterIdentity == slave.masterClockIdentity);
-
-    destroy(slave);
 }
