@@ -85,9 +85,12 @@ echo "==> An IS-08 cell moved over the loopback"
 # just took onto device channel 64. Passing it means the API reached the same
 # matrix the connection wrote to.
 grid_base="http://127.0.0.1:$nmos_port/x-nmos/channelmapping/v1.0"
-moved=$(curl -s -X POST -H 'Content-Type: application/json' \
+curl -s -o /dev/null -X POST -H 'Content-Type: application/json' \
     -d "{\"activation\":{\"mode\":\"activate_immediate\"},\"action\":{\"device\":{\"64\":{\"input\":\"$receiver_id\",\"channel_index\":1}}}}" \
-    "$grid_base/map/activate")
+    "$grid_base/map/activations"
+# The POST answers with the activation it made, keyed by its id; the grid
+# itself is at map/active, which is where a controller reads it back.
+moved=$(curl -s "$grid_base/map/active/")
 
 echo "==> The node describing itself over the loopback"
 # What a controller reads first. If this is wrong the device is not on the
