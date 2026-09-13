@@ -10,14 +10,14 @@
 // exists instead of shouting at the link -- and a node that never registers
 // is invisible to every one of them.
 //
-// So: browse for the registry, POST the resources in the order their
-// references need, and heartbeat every five seconds. A registry that stops
-// answering is left for the next one on the list, which is what the priority
-// in its advertisement is for.
+// So: listen for registries, POST the resources in the order their references
+// need, and heartbeat every five seconds. A registry that stops answering is
+// left for the next one on the list, which is what the priority in its
+// advertisement is for.
 //
-// One thread, because the work is a timer and a socket. It does not touch the
-// Node API's state: it reads the resources and posts them, and everything it
-// gets back is another machine's, parsed as such.
+// One thread, which drives the browser's socket as well as its own timers. It
+// does not touch the Node API's state: it reads the resources and posts them,
+// and everything it gets back is another machine's, parsed as such.
 //
 #pragma once
 
@@ -64,14 +64,21 @@ private:
     /// Posts everything, in order. False when the registry refused or went
     /// away, which is the caller's signal to try the next one.
     bool registerEverything(const NmosRegistry& registry);
-    /// POSTs the health resource. False the same way.
-    bool heartbeat(const NmosRegistry& registry);
+    /// POSTs the health resource. `unknown` comes back true when the registry
+    /// answered 404, which is how it says it has never heard of this node.
+    bool heartbeat(const NmosRegistry& registry, bool* unknown = nullptr);
+    /// Takes up with a registry: a heartbeat first, because IS-04 sec 4.1
+    /// says a node failing over asks whether the new registry already has it
+    /// and only registers again when the answer is 404. Posting everything
+    /// unasked is how a plant's failover turns into a burst of writes.
+    bool takeUp(const NmosRegistry& registry);
 
     const NodeApi& node_;
     std::string nodeId_;
     std::string interfaceName_;
     uint32_t addressV4_ = 0;
 
+    RegistryBrowser browser_{interfaceName_, addressV4_};
     std::thread thread_;
     std::atomic<bool> running_{false};
     mutable std::mutex registeredLock_;

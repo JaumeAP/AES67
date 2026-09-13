@@ -93,8 +93,9 @@ std::vector<std::string> parseQueryNames(const uint8_t* packet, size_t length);
 inline constexpr char kNmosRegisterService[] = "_nmos-register._tcp.local";
 
 /// One instance a response described. The records that make up a service are
-/// not all required to arrive in the same packet, so anything absent stays
-/// empty and the caller decides whether what it got is enough to use.
+/// not all required to arrive in the same packet -- a PTR naming it now and
+/// the SRV, TXT and A in a later one is ordinary -- so anything absent stays
+/// empty and the caller decides whether what it has is enough to use.
 struct DiscoveredService {
     std::string instanceName;  ///< the PTR's target, in full
     std::string hostName;      ///< the SRV's target
