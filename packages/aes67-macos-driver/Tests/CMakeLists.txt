@@ -357,10 +357,28 @@ target_compile_features(TestNodeAPI PRIVATE cxx_std_17)
 # Test: registering as an IS-04 node, against a registry made of a socket.
 add_executable(TestNMOSRegistration
     TestNMOSRegistration.cpp
+    support/FakeRegistry.cpp
 )
+
+# Test: how often the driver heartbeats, and where it goes when a registry
+# stops answering. Its own target because it spends real seconds.
+add_executable(TestNMOSHeartbeat
+    TestNMOSHeartbeat.cpp
+    support/FakeRegistry.cpp
+)
+
+target_include_directories(TestNMOSHeartbeat PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(TestNMOSHeartbeat PRIVATE aes67_net)
+target_link_libraries(TestNMOSHeartbeat PRIVATE doctest_headers)
+target_compile_features(TestNMOSHeartbeat PRIVATE cxx_std_17)
 
 target_include_directories(TestNMOSRegistration PRIVATE
     ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(TestNMOSRegistration PRIVATE aes67_net)
@@ -763,6 +781,7 @@ add_test(NAME SessionDirectory COMMAND TestSessionDirectory)
 add_test(NAME RTSPSessionDiscovery COMMAND TestRTSPSessionDiscovery)
 add_test(NAME DiscoveryBridge COMMAND TestDiscoveryBridge)
 add_test(NAME NMOSRegistration COMMAND TestNMOSRegistration)
+add_test(NAME NMOSHeartbeat COMMAND TestNMOSHeartbeat)
 add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME NodeAPI COMMAND TestNodeAPI)
 add_test(NAME SAPListener COMMAND TestSAPListener)
@@ -811,6 +830,7 @@ set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPMasterBoxInterop PROPERTIES LABELS "unit;interop" TIMEOUT 60)
 set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
+set_tests_properties(NMOSHeartbeat PROPERTIES LABELS "unit;timing;network" TIMEOUT 60)
 set_tests_properties(ConnectionAPI PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NodeAPI PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SAPListener PROPERTIES LABELS "unit" TIMEOUT 60)

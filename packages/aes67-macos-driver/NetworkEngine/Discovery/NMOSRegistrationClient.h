@@ -171,6 +171,14 @@ public:
     /// registering; the registration and heartbeat threads only read it.
     void useVersionFrom(VersionSource source) { versionSource_ = std::move(source); }
 
+    /// Registers with the first of these that takes it, skipping the one in
+    /// use. The heartbeat thread calls it with what the link is advertising
+    /// when the registry it is on has stopped answering; it is public because
+    /// the choice it makes -- lowest priority first, never the one that just
+    /// failed -- is worth pinning down without a link to advertise on. False
+    /// when none of them would have it.
+    bool failOverTo(const std::vector<Ravenna::NmosRegistry>& candidates);
+
     /// Registers the device and everything under it, and removes whatever
     /// the registry still holds from a previous call and this one does not
     /// mention. Call it after the streams are known and again whenever
@@ -283,10 +291,7 @@ public:
 
 private:
     bool postNode();
-    /// Registers with the first of these that takes it, skipping the one in
-    /// use. Called by the heartbeat thread when that one has stopped
-    /// answering. False when none of them would have it.
-    bool failOverTo(const std::vector<Ravenna::NmosRegistry>& candidates);
+
     /// The version to stamp: the source above when one was given, the clock
     /// otherwise.
     void versionNow(int64_t& seconds, int32_t& nanos) const;

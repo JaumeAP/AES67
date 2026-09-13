@@ -572,7 +572,8 @@ void NMOSRegistrationClient::startHeartbeats() {
                 // losing a second: a registry that refused the connection is
                 // not going to take the next one either, and the node has
                 // twelve seconds before it is forgotten.
-                if (browser && failOverTo(browser->registries())) {
+                if (browser && running_.load(std::memory_order_acquire) &&
+                    failOverTo(browser->registries())) {
                     // Beat the new one at once rather than at the next tick,
                     // so the changeover is one interval and not two.
                     heartbeat();
@@ -618,8 +619,10 @@ bool NMOSRegistrationClient::failOverTo(const std::vector<Ravenna::NmosRegistry>
     }
 
     // Lowest priority first, which is the order the browser keeps them in.
+    // Whether this is still wanted is the caller's question, not this one's:
+    // the heartbeat thread asks before calling, and anything else that asks
+    // for a failover wants one.
     for (const Ravenna::NmosRegistry& candidate : candidates) {
-        if (!running_.load(std::memory_order_acquire)) return false;
         // The one that just went quiet is not tried again here: it is the one
         // that failed, and a node that keeps choosing it never moves.
         if (candidate.endpoint() == current) continue;
