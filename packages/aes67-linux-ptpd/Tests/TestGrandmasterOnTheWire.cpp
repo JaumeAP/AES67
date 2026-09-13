@@ -15,6 +15,11 @@
 // interface a build machine is guaranteed to have and the one nobody else is
 // listening on; the daemon binds it like any other.
 //
+// Linux gives lo no MULTICAST flag by default -- macOS gives lo0 one, which is
+// why this looked fine until a runner said otherwise -- so whoever runs this
+// turns it on first. The workflow does. AES67_TEST_INTERFACE names another
+// interface for a machine where that is not wanted.
+//
 // Linux only, and only where the daemon was built: it is the thing under
 // test. CMake builds this nowhere else.
 //
@@ -48,6 +53,17 @@ namespace {
 /// directory, and ctest runs from there.
 constexpr char kDaemon[] = "./aes67-ptpd";
 
+/// The interface to run over, and the address to join the group on.
+std::string testInterface() {
+    const char* named = ::getenv("AES67_TEST_INTERFACE");
+    return named != nullptr && *named != '\0' ? named : "lo";
+}
+
+std::string testAddress() {
+    const char* named = ::getenv("AES67_TEST_ADDRESS");
+    return named != nullptr && *named != '\0' ? named : "127.0.0.1";
+}
+
 /// One PTP message as it came off the wire, and which port it came in on.
 struct Captured {
     std::vector<uint8_t> payload;
@@ -77,8 +93,13 @@ int openPtpPort(uint16_t port) {
 
     struct ip_mreq join {};
     join.imr_multiaddr.s_addr = ::inet_addr(kPtpPrimaryGroup);
-    join.imr_interface.s_addr = ::inet_addr("127.0.0.1");
+    join.imr_interface.s_addr = ::inet_addr(testAddress().c_str());
     if (::setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &join, sizeof(join)) < 0) {
+        // Said out loud: the usual reason is an interface with no MULTICAST
+        // flag, and "the socket would not open" sends whoever reads it looking
+        // in the wrong place.
+        MESSAGE("IP_ADD_MEMBERSHIP on " << testAddress() << " for port " << port << ": "
+                                        << std::strerror(errno));
         ::close(fd);
         return -1;
     }
@@ -122,8 +143,9 @@ pid_t startDaemon() {
     // The child. Software timestamps because the loopback has no hardware
     // ones, and quiet because its output is not what is being read.
     ::freopen("/dev/null", "w", stdout);
-    ::execl(kDaemon, kDaemon, "--interface", "lo", "--allow-software-timestamps",
-            static_cast<char*>(nullptr));
+    const std::string interfaceName = testInterface();
+    ::execl(kDaemon, kDaemon, "--interface", interfaceName.c_str(),
+            "--allow-software-timestamps", static_cast<char*>(nullptr));
     ::_exit(127);
 }
 
