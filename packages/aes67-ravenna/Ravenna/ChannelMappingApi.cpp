@@ -1,4 +1,5 @@
 #include "Ravenna/ChannelMappingApi.h"
+#include "Ravenna/ApiReplies.h"
 
 #include "Ravenna/TaiClock.h"
 
@@ -9,37 +10,8 @@
 namespace AES67::Ravenna {
 namespace {
 
-ApiResponse jsonResponse(int status, const JsonValue& value) {
-    ApiResponse response;
-    response.status = status;
-    response.body = value.serialise();
-    return response;
-}
 
-ApiResponse errorResponse(int status, const std::string& detail) {
-    JsonObject error;
-    error["code"] = JsonValue(status);
-    error["error"] = JsonValue(status == 404   ? "Not Found"
-                               : status == 501 ? "Not Implemented"
-                               : status == 405 ? "Method Not Allowed"
-                                               : "Bad Request");
-    error["debug"] = JsonValue(detail);
-    return jsonResponse(status, JsonValue(error));
-}
 
-std::vector<std::string> segmentsOf(const std::string& path) {
-    std::vector<std::string> segments;
-    size_t start = 0;
-    while (start <= path.size()) {
-        const size_t slash = path.find('/', start);
-        const std::string segment =
-            path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
-        if (!segment.empty()) segments.push_back(segment);
-        if (slash == std::string::npos) break;
-        start = slash + 1;
-    }
-    return segments;
-}
 
 /// A mapping's routes written out, so the block it was given and a grid a
 /// controller set are read the same way.

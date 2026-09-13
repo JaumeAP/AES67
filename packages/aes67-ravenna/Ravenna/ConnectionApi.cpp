@@ -1,4 +1,5 @@
 #include "Ravenna/ConnectionApi.h"
+#include "Ravenna/ApiReplies.h"
 
 #include "Driver/SDPParser.h"
 #include "Ravenna/TaiClock.h"
@@ -13,49 +14,9 @@
 namespace AES67::Ravenna {
 namespace {
 
-ApiResponse jsonResponse(int status, const JsonValue& value) {
-    ApiResponse response;
-    response.status = status;
-    response.body = value.serialise();
-    return response;
-}
 
-ApiResponse errorResponse(int status, const std::string& detail) {
-    // IS-05 sec 5: an error is an object with the code, a summary and the
-    // detail, and a controller shows the detail to a person.
-    JsonObject error;
-    error["code"] = JsonValue(status);
-    error["error"] = JsonValue(status == 404 ? "Not Found"
-                               : status == 501 ? "Not Implemented"
-                                               : "Bad Request");
-    error["debug"] = JsonValue(detail);
-    return jsonResponse(status, JsonValue(error));
-}
 
-ApiResponse listResponse(const std::vector<std::string>& entries) {
-    JsonArray items;
-    items.reserve(entries.size());
-    std::transform(entries.begin(), entries.end(), std::back_inserter(items),
-                   [](const std::string& entry) { return JsonValue(entry); });
-    return jsonResponse(200, JsonValue(items));
-}
 
-/// Splits a path into its segments, dropping the empty ones a trailing slash
-/// leaves behind.
-std::vector<std::string> segmentsOf(const std::string& path) {
-    std::vector<std::string> segments;
-    size_t start = 0;
-
-    while (start <= path.size()) {
-        const size_t slash = path.find('/', start);
-        const std::string segment =
-            path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
-        if (!segment.empty()) segments.push_back(segment);
-        if (slash == std::string::npos) break;
-        start = slash + 1;
-    }
-    return segments;
-}
 
 /// The transport parameters of one leg, in the names IS-05 gives them for
 /// urn:x-nmos:transport:rtp.mcast -- the same names `constraints` publishes --

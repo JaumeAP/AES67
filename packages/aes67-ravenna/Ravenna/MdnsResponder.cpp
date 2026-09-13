@@ -1,4 +1,5 @@
 #include "Ravenna/MdnsResponder.h"
+#include "Ravenna/ApiReplies.h"
 
 #include "Ravenna/DnsSd.h"
 
@@ -18,13 +19,6 @@ namespace {
 
 constexpr size_t kMaxPacketBytes = 4096;
 
-/// Lowercased, so a query for _RTSP._TCP.local matches: DNS names are case
-/// insensitive and mDNS queries arrive in whatever case the asker used.
-std::string lowered(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return text;
-}
 
 bool asksAbout(const std::vector<std::string>& asked,
                const std::vector<SessionAdvertisement>& advertised) {

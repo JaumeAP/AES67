@@ -1,4 +1,5 @@
 #include "Ravenna/NmosRoot.h"
+#include "Ravenna/ApiReplies.h"
 
 #include "Ravenna/ChannelMappingApi.h"
 #include "Ravenna/NodeApi.h"
@@ -10,30 +11,7 @@ namespace {
 
 constexpr char kNmosRoot[] = "/x-nmos";
 
-ApiResponse listing(const std::vector<std::string>& entries) {
-    JsonArray items;
-    items.reserve(entries.size());
-    for (const std::string& entry : entries) items.emplace_back(entry);
 
-    ApiResponse response;
-    response.status = 200;
-    response.body = JsonValue(items).serialise();
-    return response;
-}
-
-ApiResponse onlyGet() {
-    // The listings are readable and nothing else: there is nothing here to
-    // change.
-    JsonObject error;
-    error["code"] = JsonValue(405);
-    error["error"] = JsonValue("Method Not Allowed");
-    error["debug"] = JsonValue("only GET here");
-
-    ApiResponse response;
-    response.status = 405;
-    response.body = JsonValue(error).serialise();
-    return response;
-}
 
 /// The name and the version an API root is made of: "/x-nmos/node/v1.3"
 /// splits into "node" and "v1.3".
@@ -64,18 +42,18 @@ std::optional<ApiResponse> nmosRootListing(const std::string& method, const std:
     const std::string resource = withoutTrailingSlash(path);
 
     if (resource == kNmosRoot) {
-        if (method != "GET") return onlyGet();
+        if (method != "GET") return errorResponse(405, "only GET here");
         std::vector<std::string> names;
         names.reserve(apis.size());
         for (const ApiPath& api : apis) names.push_back(api.name + "/");
-        return listing(names);
+        return listResponse(names);
     }
 
     for (const ApiPath& api : apis) {
         if (resource != std::string(kNmosRoot) + "/" + api.name) continue;
-        if (method != "GET") return onlyGet();
+        if (method != "GET") return errorResponse(405, "only GET here");
         // One version each, which is what this device speaks.
-        return listing({api.version + "/"});
+        return listResponse({api.version + "/"});
     }
 
     return std::nullopt;

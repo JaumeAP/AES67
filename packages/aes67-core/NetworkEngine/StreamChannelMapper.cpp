@@ -5,6 +5,7 @@
 //
 
 #include "StreamChannelMapper.h"
+#include "NetworkEngine/JsonFields.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -394,36 +395,8 @@ std::string StreamChannelMapper::toJSON() const {
 
 namespace {
 
-// Minimal field extractors matching the fixed layout produced by toJSON().
-// Not a general JSON parser -- relies on the "key": value shape emitted above.
 
-std::string extractStringField(const std::string& block, const std::string& key) {
-    std::string pattern = "\"" + key + "\":";
-    size_t pos = block.find(pattern);
-    if (pos == std::string::npos) return {};
 
-    size_t firstQuote = block.find('"', pos + pattern.size());
-    if (firstQuote == std::string::npos) return {};
-    size_t secondQuote = block.find('"', firstQuote + 1);
-    if (secondQuote == std::string::npos) return {};
-
-    return block.substr(firstQuote + 1, secondQuote - firstQuote - 1);
-}
-
-std::optional<uint16_t> extractUintField(const std::string& block, const std::string& key) {
-    std::string pattern = "\"" + key + "\":";
-    size_t pos = block.find(pattern);
-    if (pos == std::string::npos) return std::nullopt;
-    pos += pattern.size();
-
-    while (pos < block.size() && std::isspace(static_cast<unsigned char>(block[pos]))) pos++;
-
-    size_t end = pos;
-    while (end < block.size() && std::isdigit(static_cast<unsigned char>(block[end]))) end++;
-    if (end == pos) return std::nullopt;
-
-    return static_cast<uint16_t>(std::stoul(block.substr(pos, end - pos)));
-}
 
 } // namespace
 
@@ -448,12 +421,12 @@ bool StreamChannelMapper::fromJSON(const std::string& json) {
         }
 
         ChannelMapping mapping;
-        mapping.streamID = StreamID(extractStringField(block, "streamID"));
-        mapping.streamName = extractStringField(block, "streamName");
-        mapping.streamChannelCount = extractUintField(block, "streamChannelCount").value_or(0);
-        mapping.streamChannelOffset = extractUintField(block, "streamChannelOffset").value_or(0);
-        mapping.deviceChannelStart = extractUintField(block, "deviceChannelStart").value_or(0);
-        mapping.deviceChannelCount = extractUintField(block, "deviceChannelCount").value_or(0);
+        mapping.streamID = StreamID(extractStringField(block, "streamID").value_or(std::string{}));
+        mapping.streamName = extractStringField(block, "streamName").value_or(std::string{});
+        mapping.streamChannelCount = extractUInt16Field(block, "streamChannelCount").value_or(0);
+        mapping.streamChannelOffset = extractUInt16Field(block, "streamChannelOffset").value_or(0);
+        mapping.deviceChannelStart = extractUInt16Field(block, "deviceChannelStart").value_or(0);
+        mapping.deviceChannelCount = extractUInt16Field(block, "deviceChannelCount").value_or(0);
 
         addMapping(mapping);
     }

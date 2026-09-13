@@ -1,4 +1,5 @@
 #include "Ravenna/RtspMessages.h"
+#include "Ravenna/ApiReplies.h"
 
 #include <algorithm>
 #include <cctype>
@@ -7,18 +8,7 @@
 namespace AES67::Ravenna {
 namespace {
 
-std::string lowered(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return text;
-}
 
-std::string trimmed(const std::string& text) {
-    const auto first = text.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    const auto last = text.find_last_not_of(" \t\r\n");
-    return text.substr(first, last - first + 1);
-}
 
 RtspMethod methodFrom(const std::string& name) {
     if (name == "OPTIONS") return RtspMethod::Options;
