@@ -282,14 +282,13 @@ accepts connection management over IS-05.
   the patches that reach the driver, and hands the request to the one
   implementation of IS-05 in the tree. There used to be two, and they had
   drifted — measured against the AMWA IS-05-01 suite, 57 of 61 against that one
-  and 15 against this, over nine separate causes.
+  and 15 against this, over nine separate causes. Both pass all 61 now.
 
 Both are exercised by `TestNMOSRegistration` and `TestConnectionAPI` against a
 registry and a controller made of loopback sockets, and the Connection API by
-the AMWA `nmos-testing` IS-05-01 suite over loopback: 57 pass, 4 fail, the four
-being the suite looking for the `c=` line inside the media section where this
-driver puts it at session level (RFC 4566 §5.7 allows either). Neither has been
-tested against a commercial NMOS registry or controller.
+the AMWA `nmos-testing` IS-05-01 suite over loopback, which it passes whole: 61
+of 61. Neither has been tested against a commercial NMOS registry or
+controller.
 
 #### The control plane is always on
 

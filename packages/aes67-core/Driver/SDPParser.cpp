@@ -492,6 +492,15 @@ std::string SDPParser::generate(const SDPSession& session) {
     // Media
     sdp << generateMediaLine(session) << kCRLF;
 
+    // And the connection again, inside the media description. RFC 4566 sec 5.7
+    // allows both -- a session-level line and a per-media one that overrides it
+    // for that medium -- and readers are split on which they look at: the AMWA
+    // IS-05 test suite reads only the media section and treats a description
+    // without one there as malformed, while most AES67 gear reads the session
+    // level. The same address written twice satisfies both, and says the same
+    // thing either way round.
+    sdp << generateConnectionLine(session) << kCRLF;
+
     // Attributes
     auto attributes = generateAttributes(session);
     for (const auto& attr : attributes) {
