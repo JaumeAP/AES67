@@ -46,8 +46,25 @@ jobs:
       - name: The daemon has to exist on Linux
         run: test -x build/aes67-ptpd
 
+      # Linux gives lo no MULTICAST flag, so the PTP group cannot be joined on
+      # it and the live grandmaster test has nowhere to listen. macOS gives
+      # lo0 one, which is why this was not obvious from the machine this was
+      # written on. Turning it on is the runner's business and not a test's.
+      - name: Multicast on the loopback
+        run: |
+          sudo ip link set lo multicast on
+          ip link show lo
+
       - name: Tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -LE network
+
+      # PTP is on ports 319 and 320, below 1024, so binding them wants
+      # privilege -- the daemon under test needs the same, which is why this
+      # is a property of the thing and not of the test. On its own, as root,
+      # and not folded into the run above where every other suite would gain
+      # a privilege none of them should have.
+      - name: The grandmaster on the wire, as root
+        run: sudo ctest --test-dir build --output-on-failure -L network
 
       # The package's own gate with its analysis half: clang-tidy, cppcheck,
       # the suites under ASan and UBSan, the wire parser fuzzed, coverage.
@@ -91,8 +108,12 @@ jobs:
       - name: Build
         run: cmake --build build -j
 
+      # Everything but the live grandmaster test: this job exists to produce a
+      # binary to install, it runs in a container with neither sudo nor
+      # iproute2, and it could not put the loopback into multicast if it
+      # wanted to. The build job above runs that one.
       - name: Tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -LE network
 
       - name: Package
         run: cpack --config build/CPackConfig.cmake -B build/packages

@@ -125,6 +125,18 @@ if(BUILD_TESTS)
         # frames a payload the way a netfilter hook delivers one. An upstream
         # change now breaks this test instead of quietly outdating a comment.
         set(lkm_driver ${CMAKE_CURRENT_SOURCE_DIR}/../../external/ravenna-alsa-lkm/driver)
+
+        # The module is C and uses bool, true and false throughout. In a kernel
+        # build those arrive with <linux/types.h>, which MTAL_stdint.h includes
+        # only under MTAL_KERNEL; out of the kernel it takes <stdint.h>, which
+        # promises none of them. PTP.h is also the first thing PTP.c includes,
+        # so nothing the stub directory holds is reached in time to help.
+        #
+        # Apple's clang has them already through another header and compiled it
+        # regardless, which is why this stood until a Linux runner said so. The
+        # force-include says what is happening; a stub that quietly supplied
+        # them would not.
+        set(lkm_ptp_options "-include" "stdbool.h")
         add_executable(TestRavennaSlaveInterop
             Tests/TestRavennaSlaveInterop.cpp
             Tests/support/RavennaSlave.cpp
@@ -148,14 +160,46 @@ if(BUILD_TESTS)
             # lands and the submodule moves, this goes: the fix was tried here
             # first, and the suite passes under both sanitizers without it.
             #
-            # Narrow on purpose: this one check, on this one file. Everything
+            # And the same file reads a clock identity out of a packet through
+            # a uint64_t*: PTP.c:297, and five more like it. A PTP payload
+            # starts 42 bytes into a frame, so those eight bytes are never
+            # eight-byte aligned -- in an skb either, which is where the module
+            # really reads them. GCC's UBSan on Linux says so; clang's on macOS
+            # did not, which is why this one waited for a runner.
+            #
+            # Narrow on purpose: these two checks, on this one file. Everything
             # else in it stays instrumented, and so does every line of ours.
-            set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
-                COMPILE_OPTIONS "-fno-sanitize=shift")
+            list(APPEND lkm_ptp_options "-fno-sanitize=shift" "-fno-sanitize=alignment")
         endif()
+        set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
+            COMPILE_OPTIONS "${lkm_ptp_options}")
         target_link_libraries(TestRavennaSlaveInterop PRIVATE aes67_ptp_wire doctest_headers)
         add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
         set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)
+
+        # The same module, fed what the daemon actually put on a socket rather
+        # than what PtpWire built in memory. Only where the daemon exists to
+        # be started, which is Linux: it is the thing under test.
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            add_executable(TestGrandmasterOnTheWire
+                Tests/TestGrandmasterOnTheWire.cpp
+                Tests/support/RavennaSlave.cpp
+                ${lkm_driver}/PTP.c
+            )
+            target_include_directories(TestGrandmasterOnTheWire PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/Tests
+                ${CMAKE_CURRENT_SOURCE_DIR}/Tests/support/lkm
+                ${lkm_driver})
+            target_link_libraries(TestGrandmasterOnTheWire
+                PRIVATE aes67_ptp_wire doctest_headers)
+            add_dependencies(TestGrandmasterOnTheWire aes67-ptpd)
+            add_test(NAME GrandmasterOnTheWire COMMAND TestGrandmasterOnTheWire)
+            # network, so that the sanitizer and coverage runs -- which exclude
+            # that label -- do not start a second daemon on the same group
+            # while another build of this suite is doing the same.
+            set_tests_properties(GrandmasterOnTheWire PROPERTIES
+                LABELS "network" TIMEOUT 120)
+        endif()
 
     # The parsers, fed what nobody wrote a test for: Tests/fuzz/FuzzParsers.cpp.
     # Not a CTest test -- the gate runs it under AES67_ANALYSE=1, in the

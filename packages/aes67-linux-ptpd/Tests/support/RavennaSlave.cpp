@@ -146,6 +146,8 @@ bool syncIsTwoStep(const uint8_t* data) {
     return data != nullptr && (data[6] & 0x02) != 0;
 }
 
+SlaveState::~SlaveState() { destroy(*this); }
+
 void destroy(SlaveState& state) {
     if (state.impl != nullptr) destroy_ptp(static_cast<TClock_PTP*>(state.impl));
     delete static_cast<TClock_PTP*>(state.impl);
