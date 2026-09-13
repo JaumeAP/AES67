@@ -117,7 +117,12 @@ JsonValue NodeApi::self() const {
         clock["ref_type"] = JsonValue("ptp");
         clock["traceable"] = JsonValue(false);
         clock["version"] = JsonValue("IEEE1588-2008");
-        clock["gmid"] = JsonValue(identity_.ptpGrandmaster);
+        // Lower case, which is what IS-04's clock schema takes:
+        // ^[0-9a-f]{2}(-[0-9a-f]{2}){7}$. RFC 7273 writes the same identity
+        // in upper case in an SDP, so the two spellings of one grandmaster
+        // are both right and a controller comparing them without folding the
+        // case reads two different clocks.
+        clock["gmid"] = JsonValue(lowered(identity_.ptpGrandmaster));
         clock["locked"] = JsonValue(true);
     }
 
@@ -266,16 +271,24 @@ JsonValue NodeApi::senders() const {
         // disagree. A session the connection API does not carry has nobody
         // subscribed to it, which is null.
         //
-        // `active` stays true because this sender does send: it is announced
-        // and streamed from the catalogue, and IS-05's master_enable on a
-        // sender is held here, not obeyed.
+        // `active` is IS-05's master_enable and nothing else. It used to be
+        // hard-coded true on the grounds that the session is announced
+        // whatever a controller says; what that meant in practice is that a
+        // sender a controller had switched off went on reporting itself
+        // subscribed, and the subscribed receiver with it.
         const auto connection = connections_.sender(id);
+        const bool active = connection && connection->active.masterEnable;
         sender["subscription"] = JsonValue(JsonObject{
-            {"receiver_id", connection && !connection->active.receiverId.empty()
+            {"receiver_id", active && !connection->active.receiverId.empty()
                                 ? JsonValue(connection->active.receiverId)
                                 : JsonValue()},
-            {"active", JsonValue(true)}});
-        items.emplace_back(versioned(sender));
+            {"active", JsonValue(active)}});
+        // The version has to move on every activation, whether or not the
+        // resource above came out any different -- a controller watches it to
+        // know that what it asked for happened (IS-05 sec 4). The activation
+        // time is what changes each time, so it goes into the hash.
+        items.emplace_back(
+            versioned(sender, connection ? connection->active.activationTime : std::string()));
     }
     return JsonValue(items);
 }
@@ -302,12 +315,15 @@ JsonValue NodeApi::receivers() const {
         // The sender this receiver was pointed at, from the same IS-05 state
         // the connection API reports it from. Published as null while a
         // controller had routed it, this said the crosspoint was never made.
+        // Null again once it is switched off: a receiver taking nothing is
+        // not subscribed to anybody, and one that still names a sender is one
+        // a controller shows as connected while no audio arrives.
         receiver["subscription"] = JsonValue(JsonObject{
-            {"sender_id", connection->active.senderId.empty()
-                              ? JsonValue()
-                              : JsonValue(connection->active.senderId)},
+            {"sender_id", active && !connection->active.senderId.empty()
+                              ? JsonValue(connection->active.senderId)
+                              : JsonValue()},
             {"active", JsonValue(active)}});
-        items.emplace_back(versioned(receiver));
+        items.emplace_back(versioned(receiver, connection->active.activationTime));
     }
     return JsonValue(items);
 }

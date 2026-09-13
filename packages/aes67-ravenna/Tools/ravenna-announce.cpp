@@ -20,6 +20,7 @@
 // onto the receiver's staged endpoint, activate it, and the channels are
 // assigned through aes67-core's StreamChannelMapper.
 //
+#include "Driver/SDPParser.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
 #include "NetworkEngine/RTP/RTPHeader.h"
 #include "NetworkEngine/StreamChannelMapper.h"
@@ -243,6 +244,8 @@ int main(int argc, char** argv) {
     // because SDPParser::generate omits the line when the field is 0.
     session.sdp.framecount = framesPerPacket;
     session.sdp.direction = "sendonly";
+    // This host sends the stream, so the description says so (RFC 4570 sec 3).
+    SDPParser::nameOwnSource(session.sdp);
     // a=ts-refclk, RFC 7273: which clock the timestamps are against. Without
     // it the SDP says when a packet was taken and not by whose clock, and a
     // receiver that insists on knowing -- RAVENNA gear does -- will not lock

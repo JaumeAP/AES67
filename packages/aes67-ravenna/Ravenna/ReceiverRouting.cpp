@@ -20,10 +20,27 @@ bool ReceiverRouting::apply(const std::string& receiverId, const std::string& sd
         return true;
     }
 
-    const auto parsed = SDPParser::parseString(sdp);
-    if (!parsed) {
-        why = "the transport file is not an SDP this device can read";
-        return false;
+    // No transport file at all is a controller that gave an address and
+    // nothing else, which IS-05 sec 4 allows: transport parameters on their
+    // own are a complete way to say which stream to take. What they cannot
+    // say is its format, so this takes the one AES67-2018 sec 6 requires every
+    // receiver to handle -- L24, 48 kHz, two channels at 1 ms. A stream that
+    // turns out to be something else needs its description; nothing here can
+    // guess that, and a controller that has one sends it.
+    SDPSession session;
+    if (sdp.empty()) {
+        session.sessionName = receiverId;
+        session.encoding = "L24";
+        session.sampleRate = 48000;
+        session.numChannels = 2;
+        session.ptimeUs = 1000;
+    } else {
+        const auto parsed = SDPParser::parseString(sdp);
+        if (!parsed) {
+            why = "the transport file is not an SDP this device can read";
+            return false;
+        }
+        session = *parsed;
     }
 
     // Whatever this receiver held before: a controller pointing it at another
@@ -32,9 +49,9 @@ bool ReceiverRouting::apply(const std::string& receiverId, const std::string& sd
     // for want of room it is itself holding.
     release(receiverId);
 
-    auto mapping = mapper_.createDefaultMapping(*parsed);
+    auto mapping = mapper_.createDefaultMapping(session);
     if (!mapping) {
-        why = "no free device channels for " + std::to_string(parsed->numChannels) +
+        why = "no free device channels for " + std::to_string(session.numChannels) +
               " channels";
         return false;
     }
@@ -72,7 +89,7 @@ bool ReceiverRouting::apply(const std::string& receiverId, const std::string& sd
     streamIdOf_[receiverId] = mapping->streamID;
 
     outcome.connected = true;
-    outcome.streamName = parsed->sessionName;
+    outcome.streamName = session.sessionName;
     outcome.channelCount = mapping->deviceChannelCount;
     outcome.deviceChannelStart = mapping->deviceChannelStart;
     return true;

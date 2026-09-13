@@ -468,6 +468,22 @@ namespace {
 constexpr const char* kCRLF = "\r\n";
 }  // namespace
 
+void SDPParser::nameOwnSource(SDPSession& session) {
+    if (!session.sourceAddress.empty()) return;
+    if (session.originAddress.empty()) return;
+    // 224.0.0.0/4, read off the first octet by hand: this file is part of the
+    // platform-free core and inet_pton would drag a socket header in. A
+    // unicast destination needs no filter -- there is only one place the
+    // traffic can arrive from.
+    const size_t dot = session.connectionAddress.find('.');
+    if (dot == std::string::npos || dot == 0) return;
+    const std::string first = session.connectionAddress.substr(0, dot);
+    if (first.find_first_not_of("0123456789") != std::string::npos) return;
+    const int octet = std::stoi(first);
+    if (octet < 224 || octet > 239) return;
+    session.sourceAddress = session.originAddress;
+}
+
 std::string SDPParser::generate(const SDPSession& session) {
     std::ostringstream sdp;
 

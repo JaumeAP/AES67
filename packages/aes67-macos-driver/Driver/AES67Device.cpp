@@ -378,6 +378,9 @@ void AES67Device::Initialize() {
                     if (!streamManager_) return sdps;
                     for (SDPSession session : streamManager_->getTransmitSessions()) {
                         if (session.originAddress.empty()) session.originAddress = sapAddress;
+                        // Ours to describe, so it says which source the group
+                        // carries (RFC 4570 sec 3).
+                        SDPParser::nameOwnSource(session);
                         std::string sdp = SDPParser::generate(session);
                         if (!sdp.empty()) sdps.push_back(std::move(sdp));
                     }
@@ -412,7 +415,8 @@ void AES67Device::Initialize() {
         const bool rtspStarted = rtspServer_->start([this]() {
             std::vector<RTSPPublishedStream> published;
             if (!streamManager_) return published;
-            for (const auto& session : streamManager_->getTransmitSessions()) {
+            for (SDPSession session : streamManager_->getTransmitSessions()) {
+                SDPParser::nameOwnSource(session);
                 std::string sdp = SDPParser::generate(session);
                 if (sdp.empty()) continue;
                 // One path per session name, plus "/" for the first stream so
@@ -759,7 +763,8 @@ std::vector<ConnectionSender> AES67Device::connectionSenders() {
     std::vector<ConnectionSender> senders;
     if (!streamManager_) return senders;
 
-    for (const SDPSession& sdp : streamManager_->getTransmitSessions()) {
+    for (SDPSession sdp : streamManager_->getTransmitSessions()) {
+        SDPParser::nameOwnSource(sdp);
         ConnectionSender sender;
         sender.id = nmosIdFor("sender", sdp.sessionName);
         sender.label = sdp.sessionName;

@@ -26,7 +26,7 @@ namespace {
 /// "auto" is IS-05's own word for a value the device picks. A sender's source
 /// port and a receiver's interface are not in an SDP, and this device gives a
 /// controller no way to choose either.
-JsonObject transportParamsFromSdp(const std::string& sdp, bool forSender, bool rtpEnabled) {
+JsonObject transportParamsFromSdp(const std::string& sdp, bool forSender) {
     std::optional<SDPSession> session;
     if (!sdp.empty()) session = SDPParser::parseString(sdp);
 
@@ -38,7 +38,11 @@ JsonObject transportParamsFromSdp(const std::string& sdp, bool forSender, bool r
     };
 
     JsonObject leg;
-    leg["rtp_enabled"] = JsonValue(rtpEnabled);
+    // Whether this leg carries RTP at all, which is not whether the resource
+    // is switched on: master_enable is that, and IS-05 sec 4 keeps the two
+    // apart so that a redundant pair can have one leg idle while the resource
+    // is active. This device has one leg and it is always the RTP one.
+    leg["rtp_enabled"] = JsonValue(true);
     if (forSender) {
         leg["source_ip"] = session ? address(session->originAddress) : JsonValue();
         leg["source_port"] = JsonValue("auto");
@@ -298,7 +302,7 @@ JsonValue stateAsJson(const ConnectionState& state, bool forSender) {
     // One leg, because one stream: IS-05 carries an array here so a device
     // with a redundant pair can describe both, and saying two when there is
     // one is how a controller ends up waiting for a stream nobody sends.
-    JsonObject leg = transportParamsFromSdp(state.transportFile, forSender, state.masterEnable);
+    JsonObject leg = transportParamsFromSdp(state.transportFile, forSender);
     // What a controller fixed by PATCH wins over what the transport file
     // says, which is the order IS-05 sets: the file fills the parameters in
     // and the controller corrects them afterwards.
@@ -371,7 +375,7 @@ std::vector<std::string> ConnectionApi::receiverIds() const {
 
 JsonValue ConnectionApi::activeAsJson(const ConnectionState& state, bool forSender) const {
     ConnectionState resolved = state;
-    JsonObject leg = transportParamsFromSdp(state.transportFile, forSender, state.masterEnable);
+    JsonObject leg = transportParamsFromSdp(state.transportFile, forSender);
     for (const auto& [name, value] : state.transportParams) leg[name] = value;
     resolveAutoLeg(leg, forSender, state.transportFile, interfaceAddress_);
     resolved.transportParams = leg;
@@ -383,7 +387,7 @@ bool ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState sta
     // What is active has to say what this device chose, so the leg is worked
     // out once here -- the file's values, the controller's on top, every
     // "auto" resolved -- and stored whole.
-    JsonObject leg = transportParamsFromSdp(sender.sdp, /*forSender=*/true, state.masterEnable);
+    JsonObject leg = transportParamsFromSdp(sender.sdp, /*forSender=*/true);
     for (const auto& [name, value] : state.transportParams) leg[name] = value;
     resolveAutoLeg(leg, /*forSender=*/true, sender.sdp, interfaceAddress_);
     state.transportParams = leg;
@@ -410,7 +414,7 @@ bool ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState sta
 bool ConnectionApi::activateReceiver(ConnectionReceiver& receiver, ConnectionState state,
                                      std::string& error) {
     JsonObject leg =
-        transportParamsFromSdp(state.transportFile, /*forSender=*/false, state.masterEnable);
+        transportParamsFromSdp(state.transportFile, /*forSender=*/false);
     for (const auto& [name, value] : state.transportParams) leg[name] = value;
     resolveAutoLeg(leg, /*forSender=*/false, state.transportFile, interfaceAddress_);
     state.transportParams = leg;
@@ -514,6 +518,16 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
             }
             staged.transportFile = data.asString();
         }
+        // A transport file describes where the stream is, so it replaces what
+        // a controller had fixed by hand for the parameters it determines
+        // (IS-05 sec 4.2). Without this a receiver handed a new file went on
+        // reporting the group and port of the previous one, and joined those
+        // -- a controller that had ever set them could never hand it a stream
+        // again. What the same PATCH also names in transport_params is
+        // applied after this and still wins.
+        for (const char* name : {"source_ip", "multicast_ip", "destination_port"}) {
+            staged.transportParams.erase(name);
+        }
     }
 
     if (patch.has("transport_params")) {
@@ -535,8 +549,22 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
         return jsonResponse(200, stateAsJson(found->second.staged, /*forSender=*/false));
     }
 
-    if (staged.masterEnable && staged.transportFile.empty()) {
-        return errorResponse(400, "cannot enable a receiver with no transport file");
+    if (staged.masterEnable) {
+        // Enabling needs somewhere to listen, and IS-05 sec 4 gives a
+        // controller two ways to say where: a transport file, or the
+        // transport parameters on their own. Demanding the file refused the
+        // second, which is how a controller that knows the group and the port
+        // -- and a test suite that subscribes a receiver to a sender it
+        // cannot fetch an SDP from -- was turned away from a legal request.
+        const auto group = staged.transportParams.find("multicast_ip");
+        const bool addressed = group != staged.transportParams.end() &&
+                               group->second.isString() &&
+                               !group->second.asString().empty() &&
+                               group->second.asString() != "auto";
+        if (staged.transportFile.empty() && !addressed) {
+            return errorResponse(
+                400, "cannot enable a receiver with neither a transport file nor a multicast_ip");
+        }
     }
 
     if (activation.mode != kActivateImmediate) {

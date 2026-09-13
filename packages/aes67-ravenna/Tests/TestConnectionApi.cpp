@@ -358,7 +358,10 @@ TEST_CASE("A sender's transport parameters are the ones its own SDP announces") 
     CHECK(leg["destination_port"].asNumber() == 5004);          // m=
     // Not in an SDP and not a controller's to choose here.
     CHECK(leg["source_port"].asString() == "auto");
-    CHECK(leg["rtp_enabled"].asBool() == false);
+    // Whether the leg carries RTP, which it does. Whether the sender is
+    // switched on is master_enable, a separate field, and reporting one as
+    // the other told a controller a live leg was dead.
+    CHECK(leg["rtp_enabled"].asBool() == true);
 }
 
 TEST_CASE("A receiver's transport parameters come from the file it was given") {

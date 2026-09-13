@@ -88,7 +88,10 @@ TEST_CASE("A grandmaster named is a clock announced") {
 
     const JsonValue clock = bodyOf(node.handle("GET", path("/self/"), ""))["clocks"].asArray()[0];
     CHECK(clock["ref_type"].asString() == "ptp");
-    CHECK(clock["gmid"].asString() == "00-1D-C1-FF-FE-00-00-01");
+    // Lower case: IS-04's clock schema is ^[0-9a-f]{2}(-[0-9a-f]{2}){7}$,
+    // while RFC 7273 writes the same identity in upper case in an SDP. The
+    // grandmaster was given here in upper case and comes back folded.
+    CHECK(clock["gmid"].asString() == "00-1d-c1-ff-fe-00-00-01");
     CHECK(clock["version"].asString() == "IEEE1588-2008");
 }
 
@@ -312,8 +315,10 @@ TEST_CASE("IS-04 reports the subscriptions IS-05 was told to make") {
         const JsonValue senders = bodyOf(node.handle("GET", path("/senders/"), ""));
         REQUIRE(senders.asArray().size() == 1);
         CHECK(senders.asArray()[0]["subscription"]["receiver_id"].isNull());
-        // This sender streams whether or not anyone asked for it.
-        CHECK(senders.asArray()[0]["subscription"]["active"].asBool() == true);
+        // Nothing has been enabled over IS-05, so nothing is subscribed.
+        // This used to report true unconditionally, which meant a sender a
+        // controller had switched off still showed as connected.
+        CHECK(senders.asArray()[0]["subscription"]["active"].asBool() == false);
 
         const JsonValue receivers = bodyOf(node.handle("GET", path("/receivers/"), ""));
         CHECK(receivers.asArray()[0]["subscription"]["sender_id"].isNull());
@@ -337,6 +342,7 @@ TEST_CASE("IS-04 reports the subscriptions IS-05 was told to make") {
 
         JsonObject subscribe;
         subscribe["receiver_id"] = JsonValue("receiver-1");
+        subscribe["master_enable"] = JsonValue(true);
         subscribe["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
         REQUIRE(connections
                     .handle("PATCH",
