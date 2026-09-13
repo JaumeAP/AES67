@@ -169,7 +169,7 @@ a=framecount:6
     auto whole = SDPParser::parseString(sdp96);
     CHECK(whole.has_value());;
     whole->ptimeUs = 1000;
-    CHECK(SDPParser::generate(*whole).find("a=ptime:1\n") != std::string::npos);;
+    CHECK(SDPParser::generate(*whole).find("a=ptime:1\r\n") != std::string::npos);;
 
     std::cout << "✓ PASSED\n";
 }
@@ -218,7 +218,7 @@ TEST_CASE("SDP Generation") {
     // "IP4", then the address. The defaults were the other way round, and
     // only a session built here rather than parsed showed it.
     CHECK((generated.rfind("o=- ", 0) == 0 || generated.find("\no=- ") != std::string::npos));
-    CHECK(generated.find(" IN IP4 192.168.1.200\n") != std::string::npos);
+    CHECK(generated.find(" IN IP4 192.168.1.200\r\n") != std::string::npos);
     CHECK(generated.find("IP4 IN") == std::string::npos);
 
     // Verify it can be parsed back
@@ -336,7 +336,7 @@ a=ts-refclk:ptp=IEEE1588-2008:00-1B-21-AC-B5-4F:domain-nmbr=3
     ours.ptpMasterMAC = "00-60-2B-FF-FE-11-22-33";
     ours.ptpDomain = 0;
     const std::string gen = SDPParser::generate(ours);
-    CHECK(gen.find("a=ts-refclk:ptp=IEEE1588-2008:00-60-2B-FF-FE-11-22-33:0\n") != std::string::npos);
+    CHECK(gen.find("a=ts-refclk:ptp=IEEE1588-2008:00-60-2B-FF-FE-11-22-33:0\r\n") != std::string::npos);
     CHECK(gen.find("domain-nmbr=") == std::string::npos);
     auto back = SDPParser::parseString(gen);
     CHECK((back.has_value() && back->ptpDomain == 0 && back->ptpMasterMAC == ours.ptpMasterMAC));
@@ -411,7 +411,7 @@ TEST_CASE("Generated SDP states the PTP clock domain") {
     session.ptpTraceable = true;
 
     const std::string sdp = SDPParser::generate(session);
-    CHECK(sdp.find("a=clock-domain:PTPv2 109\n") != std::string::npos);
+    CHECK(sdp.find("a=clock-domain:PTPv2 109\r\n") != std::string::npos);
 
     SUBCASE("and does not repeat one the parsed session already carried") {
         const auto parsed = SDPParser::parseString(sdp);
