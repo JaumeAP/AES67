@@ -459,34 +459,43 @@ bool SDPParser::parseMediaClockAttribute(const std::string& value, SDPSession& s
 // Generation
 // ============================================================================
 
+namespace {
+/// RFC 4566 sec 5: a record ends with CRLF. The paragraph that follows asks
+/// PARSERS to be tolerant and take a bare newline too -- which this one is,
+/// in splitLines -- and that tolerance is not a licence for a writer. These
+/// descriptions go out over SAP, over an RTSP DESCRIBE and as an IS-05
+/// transport file, to readers nobody here wrote.
+constexpr const char* kCRLF = "\r\n";
+}  // namespace
+
 std::string SDPParser::generate(const SDPSession& session) {
     std::ostringstream sdp;
 
     // Version
-    sdp << "v=0\n";
+    sdp << "v=0" << kCRLF;
 
     // Origin
-    sdp << generateOriginLine(session) << "\n";
+    sdp << generateOriginLine(session) << kCRLF;
 
     // Session name and info
-    sdp << "s=" << session.sessionName << "\n";
+    sdp << "s=" << session.sessionName << kCRLF;
     if (!session.sessionInfo.empty()) {
-        sdp << "i=" << session.sessionInfo << "\n";
+        sdp << "i=" << session.sessionInfo << kCRLF;
     }
 
     // Connection
-    sdp << generateConnectionLine(session) << "\n";
+    sdp << generateConnectionLine(session) << kCRLF;
 
     // Timing
-    sdp << "t=" << session.timeStart << " " << session.timeStop << "\n";
+    sdp << "t=" << session.timeStart << " " << session.timeStop << kCRLF;
 
     // Media
-    sdp << generateMediaLine(session) << "\n";
+    sdp << generateMediaLine(session) << kCRLF;
 
     // Attributes
     auto attributes = generateAttributes(session);
     for (const auto& attr : attributes) {
-        sdp << attr << "\n";
+        sdp << attr << kCRLF;
     }
 
     return sdp.str();
