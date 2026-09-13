@@ -125,6 +125,18 @@ if(BUILD_TESTS)
         # frames a payload the way a netfilter hook delivers one. An upstream
         # change now breaks this test instead of quietly outdating a comment.
         set(lkm_driver ${CMAKE_CURRENT_SOURCE_DIR}/../../external/ravenna-alsa-lkm/driver)
+
+        # The module is C and uses bool, true and false throughout. In a kernel
+        # build those arrive with <linux/types.h>, which MTAL_stdint.h includes
+        # only under MTAL_KERNEL; out of the kernel it takes <stdint.h>, which
+        # promises none of them. PTP.h is also the first thing PTP.c includes,
+        # so nothing the stub directory holds is reached in time to help.
+        #
+        # Apple's clang has them already through another header and compiled it
+        # regardless, which is why this stood until a Linux runner said so. The
+        # force-include says what is happening; a stub that quietly supplied
+        # them would not.
+        set(lkm_ptp_options "-include" "stdbool.h")
         add_executable(TestRavennaSlaveInterop
             Tests/TestRavennaSlaveInterop.cpp
             Tests/support/RavennaSlave.cpp
@@ -150,9 +162,10 @@ if(BUILD_TESTS)
             #
             # Narrow on purpose: this one check, on this one file. Everything
             # else in it stays instrumented, and so does every line of ours.
-            set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
-                COMPILE_OPTIONS "-fno-sanitize=shift")
+            list(APPEND lkm_ptp_options "-fno-sanitize=shift")
         endif()
+        set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
+            COMPILE_OPTIONS "${lkm_ptp_options}")
         target_link_libraries(TestRavennaSlaveInterop PRIVATE aes67_ptp_wire doctest_headers)
         add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
         set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)
@@ -170,10 +183,6 @@ if(BUILD_TESTS)
                 ${CMAKE_CURRENT_SOURCE_DIR}/Tests
                 ${CMAKE_CURRENT_SOURCE_DIR}/Tests/support/lkm
                 ${lkm_driver})
-            if(AES67_SANITIZE)
-                set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
-                    COMPILE_OPTIONS "-fno-sanitize=shift")
-            endif()
             target_link_libraries(TestGrandmasterOnTheWire
                 PRIVATE aes67_ptp_wire doctest_headers)
             add_dependencies(TestGrandmasterOnTheWire aes67-ptpd)

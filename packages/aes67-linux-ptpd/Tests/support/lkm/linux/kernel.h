@@ -6,11 +6,6 @@
 // file is compiled here with these in place of <linux/*.h>, and what it
 // decides is exercised directly rather than mirrored.
 #pragma once
-// stdbool because the module is C and uses bool, true and false throughout,
-// and in the kernel those come from <linux/types.h>. A C compiler gives them
-// only from here -- clang happened to have them already through another
-// header on one platform, which is why this was missing and still built.
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
