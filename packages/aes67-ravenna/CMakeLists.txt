@@ -63,6 +63,7 @@ add_library(aes67_ravenna
     Ravenna/RtspMessages.cpp
     Ravenna/RtspServer.cpp
     Ravenna/SessionCatalogue.cpp
+    Ravenna/TaiClock.cpp
 )
 target_include_directories(aes67_ravenna PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(aes67_ravenna PUBLIC aes67_core)
