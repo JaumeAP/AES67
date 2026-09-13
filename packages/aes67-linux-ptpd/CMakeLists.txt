@@ -134,6 +134,20 @@ if(BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/Tests
             ${CMAKE_CURRENT_SOURCE_DIR}/Tests/support/lkm
             ${lkm_driver})
+        if(AES67_SANITIZE)
+            # The module's own byte swap shifts a signed int32 left by 8, which
+            # is undefined once the top bits are set: PTP.c:474, on the
+            # Follow_Up timestamp, and every timestamp of the last few decades
+            # has them. That is upstream's code and upstream's defect. This
+            # test compiles it to find out what it DECIDES about a packet, and
+            # a sanitizer abort inside the vendor's arithmetic ends the test
+            # without having said anything about this daemon.
+            #
+            # Narrow on purpose: this one check, on this one file. Everything
+            # else in it stays instrumented, and so does every line of ours.
+            set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
+                COMPILE_OPTIONS "-fno-sanitize=shift")
+        endif()
         target_link_libraries(TestRavennaSlaveInterop PRIVATE aes67_ptp_wire doctest_headers)
         add_test(NAME RavennaSlaveInterop COMMAND TestRavennaSlaveInterop)
         set_tests_properties(RavennaSlaveInterop PROPERTIES LABELS "unit" TIMEOUT 60)
