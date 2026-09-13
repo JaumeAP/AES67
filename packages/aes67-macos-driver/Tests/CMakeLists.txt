@@ -504,6 +504,26 @@ target_link_libraries(TestDaemonSAPInterop PRIVATE aes67_net)
 target_link_libraries(TestDaemonSAPInterop PRIVATE doctest_headers)
 target_compile_features(TestDaemonSAPInterop PRIVATE cxx_std_17)
 
+# Test: this driver's RTSP DESCRIBE (both the server that answers one and
+# the client that sends one) against the AES67 Linux daemon's rules for it.
+# support/DaemonRtsp mirrors the daemon's rtsp_client.cpp and
+# rtsp_server.cpp, read from source, the same way support/DaemonSap mirrors
+# its SAP.
+add_executable(TestDaemonRTSPInterop
+    TestDaemonRTSPInterop.cpp
+    support/DaemonRtsp.cpp
+)
+
+target_include_directories(TestDaemonRTSPInterop PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(TestDaemonRTSPInterop PRIVATE aes67_net)
+
+target_link_libraries(TestDaemonRTSPInterop PRIVATE doctest_headers)
+target_compile_features(TestDaemonRTSPInterop PRIVATE cxx_std_17)
+
 # Test: the DSCP marking, read back off a real socket.
 add_executable(TestNetworkQoS
     TestNetworkQoS.cpp
@@ -774,6 +794,7 @@ add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
+add_test(NAME DaemonRTSPInterop COMMAND TestDaemonRTSPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME PTPT41Interop COMMAND TestPTPT41Interop)
 add_test(NAME ImpairmentPolicy COMMAND TestImpairmentPolicy)
@@ -849,6 +870,7 @@ set_tests_properties(PTPLoopback PROPERTIES LABELS "integration;timing;network" 
 set_tests_properties(PTPService PROPERTIES LABELS "integration;timing" TIMEOUT 60)
 set_tests_properties(MDNSBrowser PROPERTIES LABELS "integration;network" TIMEOUT 60)
 set_tests_properties(RTSPServer PROPERTIES LABELS "integration;network" TIMEOUT 60)
+set_tests_properties(DaemonRTSPInterop PROPERTIES LABELS "integration;network;interop" TIMEOUT 60)
 
 message(STATUS "Tests configured:")
 message(STATUS "  - TestSDPParser")

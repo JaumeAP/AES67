@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <cerrno>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -37,6 +38,44 @@ bool parseContentLength(const std::string& text, size_t& out) {
     if (value > kMaxRTSPBodyBytes) return false;
     out = static_cast<size_t>(value);
     return true;
+}
+
+// The escaping a DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN request line applies to
+// what it sends. A URL cannot carry a raw space -- an unescaped one splits
+// the request line into extra fields, which a server answers with 400 Bad
+// Request rather than the resource that was asked for -- and by-name paths
+// carry one by convention: bondagit/aes67-linux-daemon's own RTSP server
+// serves "/by-name/<node id> <name>", a space and all. Mirrors
+// cpp-httplib's encode_url, which that daemon's own RTSP client applies
+// before sending: space, '+', CR, LF, apostrophe, comma and semicolon are
+// escaped, along with any byte >= 0x80; '/' and ':' are left alone, which is
+// what makes it safe to run over the whole "rtsp://host:port/path" rather
+// than just the path component.
+std::string encodeRequestURL(const std::string& text) {
+    std::string result;
+    result.reserve(text.size());
+    for (unsigned char c : text) {
+        switch (c) {
+            case ' ': result += "%20"; break;
+            case '+': result += "%2B"; break;
+            case '\r': result += "%0D"; break;
+            case '\n': result += "%0A"; break;
+            case '\'': result += "%27"; break;
+            case ',': result += "%2C"; break;
+            case ';': result += "%3B"; break;
+            default:
+                if (c >= 0x80) {
+                    char hex[4];
+                    const int written = std::snprintf(hex, sizeof(hex), "%02X", c);
+                    (void)written;  // always 2 for a single byte
+                    result += '%';
+                    result += hex;
+                } else {
+                    result += static_cast<char>(c);
+                }
+        }
+    }
+    return result;
 }
 } // namespace
 
@@ -176,9 +215,9 @@ std::optional<RTSPResponse> RTSPClient::sendRequest(
 
     // Use full URL for DESCRIBE, path for others
     if (method == "DESCRIBE") {
-        request << url_;
+        request << encodeRequestURL(url_);
     } else {
-        request << path;
+        request << encodeRequestURL(path);
     }
 
     request << " RTSP/1.0\r\n";
