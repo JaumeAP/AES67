@@ -360,12 +360,27 @@ bool RTSPClient::connect() {
         return true;  // Already connected
     }
 
-    // Resolve hostname
-    const struct hostent* he = gethostbyname(host_.c_str());
-    if (!he) {
+    // Resolve hostname.
+    //
+    // getaddrinfo rather than gethostbyname: the older call hands back a
+    // structure whose layout is the resolver's own, and reading an address
+    // out of its h_addr_list is a load off a pointer nothing promised was
+    // aligned -- UBSan says so on this platform. It is also not thread-safe
+    // and speaks only IPv4, and this runs inside coreaudiod.
+    struct addrinfo hints {};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* resolved = nullptr;
+    if (::getaddrinfo(host_.c_str(), nullptr, &hints, &resolved) != 0 || resolved == nullptr) {
         std::cerr << "RTSPClient: Failed to resolve host " << host_ << '\n';
         return false;
     }
+
+    sockaddr_in serverAddr{};
+    std::memcpy(&serverAddr, resolved->ai_addr, sizeof(serverAddr));
+    ::freeaddrinfo(resolved);
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port_);
 
     // Create socket
     socket_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -382,10 +397,6 @@ bool RTSPClient::connect() {
     setsockopt(socket_, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
     // Connect
-    sockaddr_in serverAddr{};
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(port_);
-    memcpy(&serverAddr.sin_addr, he->h_addr_list[0], he->h_length);
 
     if (::connect(socket_, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
         std::cerr << "RTSPClient: Failed to connect to " << host_ << ":" << port_ << '\n';
