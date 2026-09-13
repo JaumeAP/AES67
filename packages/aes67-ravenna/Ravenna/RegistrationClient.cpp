@@ -1,6 +1,6 @@
 #include "Ravenna/RegistrationClient.h"
 
-#include "NetworkEngine/Discovery/HTTPClient.h"
+#include "Ravenna/HTTPClient.h"
 
 #include <chrono>
 #include <cstdio>

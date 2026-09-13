@@ -5,7 +5,7 @@
 
 #include "NetworkEngine/Discovery/SDPFetcher.h"
 
-#include "NetworkEngine/Discovery/HTTPClient.h"
+#include "Ravenna/HTTPClient.h"
 #include "NetworkEngine/Discovery/RTSPClient.h"
 
 

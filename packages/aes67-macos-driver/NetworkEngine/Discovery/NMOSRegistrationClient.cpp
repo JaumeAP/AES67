@@ -8,7 +8,7 @@
 #include "NetworkEngine/Discovery/NMOSRegistrationClient.h"
 #include "NetworkEngine/JsonEscape.h"
 
-#include "NetworkEngine/Discovery/HTTPClient.h"
+#include "Ravenna/HTTPClient.h"
 #include "NetworkEngine/Discovery/MDNSBrowser.h"
 
 #include <CommonCrypto/CommonDigest.h>

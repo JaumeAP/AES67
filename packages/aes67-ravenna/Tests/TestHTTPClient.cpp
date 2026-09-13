@@ -1,6 +1,6 @@
 //
 // TestHTTPClient.cpp
-// AES67 core
+// AES67 RAVENNA session layer
 //
 // The small HTTP client the discovery layer is built on, against a server
 // made of a loopback socket that answers whatever the test tells it to.
@@ -15,7 +15,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "NetworkEngine/Discovery/HTTPClient.h"
+#include "Ravenna/HTTPClient.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

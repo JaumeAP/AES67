@@ -1,9 +1,9 @@
 //
 // HTTPClient.cpp
-// AES67 core
+// AES67 RAVENNA session layer
 //
 
-#include "NetworkEngine/Discovery/HTTPClient.h"
+#include "Ravenna/HTTPClient.h"
 
 #include <netdb.h>
 #include <netinet/in.h>

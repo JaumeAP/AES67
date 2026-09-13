@@ -18,7 +18,7 @@
 #include "doctest.h"
 
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
-#include "NetworkEngine/Discovery/HTTPClient.h"
+#include "Ravenna/HTTPClient.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

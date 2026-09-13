@@ -1,6 +1,6 @@
 //
 // HTTPClient.h
-// AES67 core
+// AES67 RAVENNA session layer
 //
 // The small HTTP/1.1 client the discovery layer needs: fetching a session
 // description from a URL, and registering with an NMOS registry.
