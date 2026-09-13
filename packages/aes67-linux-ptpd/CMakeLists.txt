@@ -143,6 +143,11 @@ if(BUILD_TESTS)
             # a sanitizer abort inside the vendor's arithmetic ends the test
             # without having said anything about this daemon.
             #
+            # Reported, with the two-line fix, as
+            # https://github.com/bondagit/ravenna-alsa-lkm/issues/40. When it
+            # lands and the submodule moves, this goes: the fix was tried here
+            # first, and the suite passes under both sanitizers without it.
+            #
             # Narrow on purpose: this one check, on this one file. Everything
             # else in it stays instrumented, and so does every line of ours.
             set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
