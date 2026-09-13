@@ -21,12 +21,6 @@ namespace AES67 {
 
 namespace {
 
-std::string toLower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
-
 /// A port out of a URL, without exceptions: std::stoi throws on garbage
 /// and this runs inside coreaudiod.
 bool parsePort(const std::string& text, uint16_t& out) {

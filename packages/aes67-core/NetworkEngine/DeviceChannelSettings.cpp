@@ -1,4 +1,5 @@
 #include "DeviceChannelSettings.h"
+#include "NetworkEngine/JsonFields.h"
 #include "Profiles/ConfigPaths.h"
 #include "../Driver/DebugLog.h"
 
@@ -74,30 +75,6 @@ bool DeviceChannelSettingsManager::ensureConfigDirectoryExists() {
     return ensureParentDirectory(configPath_, "DeviceChannelSettingsManager");
 }
 
-namespace {
-
-bool extractUint32Field(const std::string& json, const std::string& key, uint32_t& out) {
-    std::regex pattern("\"" + key + "\"\\s*:\\s*(\\d+)");
-    std::smatch match;
-    if (std::regex_search(json, match, pattern) && match.size() > 1) {
-        out = static_cast<uint32_t>(std::stoul(match[1].str()));
-        return true;
-    }
-    return false;
-}
-
-bool extractBoolField(const std::string& json, const std::string& key, bool& out) {
-    std::regex pattern("\"" + key + "\"\\s*:\\s*(true|false)");
-    std::smatch match;
-    if (std::regex_search(json, match, pattern) && match.size() > 1) {
-        out = (match[1].str() == "true");
-        return true;
-    }
-    return false;
-}
-
-} // namespace
-
 DeviceChannelSettings DeviceChannelSettingsManager::load() {
     DeviceChannelSettings settings; // defaults: 128 channels each direction, no aux
 
@@ -109,10 +86,10 @@ DeviceChannelSettings DeviceChannelSettingsManager::load() {
     const std::string json = buffer.str();
 
     DeviceChannelSettings parsed;
-    extractUint32Field(json, "rxChannelCount", parsed.rx.channelCount);
-    extractBoolField(json, "rxAuxChannelEnabled", parsed.rx.auxChannelEnabled);
-    extractUint32Field(json, "txChannelCount", parsed.tx.channelCount);
-    extractBoolField(json, "txAuxChannelEnabled", parsed.tx.auxChannelEnabled);
+    if (auto v = extractUInt32Field(json, "rxChannelCount")) parsed.rx.channelCount = *v;
+    if (auto v = extractBoolField(json, "rxAuxChannelEnabled")) parsed.rx.auxChannelEnabled = *v;
+    if (auto v = extractUInt32Field(json, "txChannelCount")) parsed.tx.channelCount = *v;
+    if (auto v = extractBoolField(json, "txAuxChannelEnabled")) parsed.tx.auxChannelEnabled = *v;
 
     if (!parsed.isValid()) {
         AES67_LOGF("DeviceChannelSettingsManager: %s holds an invalid combination "

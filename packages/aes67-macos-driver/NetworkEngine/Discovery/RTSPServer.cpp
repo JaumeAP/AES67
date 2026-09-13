@@ -20,6 +20,8 @@
 #include <iterator>
 #include <algorithm>
 #include "NetworkEngine/Discovery/RTSPServer.h"
+
+#include "Ravenna/RtspMessages.h"
 #include "NetworkEngine/SelectWait.h"
 
 #include <arpa/inet.h>
@@ -87,29 +89,6 @@ int parseCSeq(const std::string& request) {
 /// unreachable). Malformed escapes are left verbatim rather than
 /// rejected: this is a lookup key, and an unmatched key is already a
 /// clean 404.
-std::string percentDecode(const std::string& text) {
-    std::string out;
-    out.reserve(text.size());
-    auto hex = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    };
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (text[i] == '%' && i + 2 < text.size()) {
-            const int hi = hex(text[i + 1]);
-            const int lo = hex(text[i + 2]);
-            if (hi >= 0 && lo >= 0) {
-                out.push_back(static_cast<char>((hi << 4) | lo));
-                i += 2;
-                continue;
-            }
-        }
-        out.push_back(text[i]);
-    }
-    return out;
-}
 
 /// Splits "DESCRIBE rtsp://host:554/path RTSP/1.0" into method and path.
 /// Returns false for anything that is not three space-separated tokens.
@@ -130,7 +109,7 @@ bool parseRequestLine(const std::string& request, std::string& method, std::stri
         path = pathStart == std::string::npos ? "/" : url.substr(pathStart);
     }
     if (path.empty()) path = "/";
-    path = percentDecode(path);
+    path = Ravenna::percentDecode(path);
     return true;
 }
 

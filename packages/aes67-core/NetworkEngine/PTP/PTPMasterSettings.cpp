@@ -1,5 +1,6 @@
 #include "PTPMasterSettings.h"
 #include "NetworkEngine/JsonEscape.h"
+#include "NetworkEngine/JsonFields.h"
 #include "Profiles/ConfigPaths.h"
 #include "../../Driver/DebugLog.h"
 
@@ -43,46 +44,11 @@ namespace {
 // Tiny hand-rolled extraction for this file's two known string fields —
 // full generic JSON parsing (as StreamConfig.cpp needs, for an array of
 // stream objects) is overkill for one flat object with two keys.
-std::optional<std::string> extractStringField(const std::string& json, const std::string& key) {
-    std::regex pattern("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
-    std::smatch match;
-    if (std::regex_search(json, match, pattern) && match.size() > 1) {
-        return match[1].str();
-    }
-    return std::nullopt;
-}
 
 /// An integer field, without exceptions: this parses a file the app wrote
 /// and a person may have edited by hand, and std::stoi throws on anything
 /// that is not a number.
-std::optional<int> extractIntField(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) return std::nullopt;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return std::nullopt;
-    ++pos;
-    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
-    const size_t start = pos;
-    if (pos < json.size() && (json[pos] == '-' || json[pos] == '+')) ++pos;
-    const size_t digitsStart = pos;
-    while (pos < json.size() && std::isdigit(static_cast<unsigned char>(json[pos]))) ++pos;
-    if (pos == digitsStart) return std::nullopt;
-    errno = 0;
-    char* end = nullptr;
-    const long value = std::strtol(json.c_str() + start, &end, 10);
-    if (errno == ERANGE || value < INT_MIN || value > INT_MAX) return std::nullopt;
-    return static_cast<int>(value);
-}
 
-std::optional<bool> extractBoolField(const std::string& json, const std::string& key) {
-    std::regex pattern("\"" + key + "\"\\s*:\\s*(true|false)");
-    std::smatch match;
-    if (std::regex_search(json, match, pattern) && match.size() > 1) {
-        return match[1].str() == "true";
-    }
-    return std::nullopt;
-}
 
 } // namespace
 

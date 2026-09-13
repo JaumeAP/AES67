@@ -1,28 +1,14 @@
 #include "DeviceActivation.h"
+#include "NetworkEngine/JsonFields.h"
 #include "Profiles/ConfigPaths.h"
 #include "Driver/DebugLog.h"
 
 #include <cstdlib>
 #include <fstream>
 #include <optional>
-#include <regex>
 #include <sstream>
 
 namespace AES67 {
-
-namespace {
-
-/// Reads "name": true / false out of a flat JSON object. Same shape of parse
-/// PTPMasterSettings uses, and for the same reason: one boolean does not earn
-/// a JSON library the driver would otherwise not link.
-std::optional<bool> extractBoolField(const std::string& json, const std::string& name) {
-    const std::regex pattern("\"" + name + "\"\\s*:\\s*(true|false)");
-    std::smatch match;
-    if (!std::regex_search(json, match, pattern)) return std::nullopt;
-    return match[1].str() == "true";
-}
-
-} // namespace
 
 DeviceActivationManager::DeviceActivationManager() {
     // An explicit path is where the file goes, whether or not it is there

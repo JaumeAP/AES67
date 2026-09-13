@@ -6,6 +6,8 @@
 #include <iterator>
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 
+#include "NetworkEngine/JsonEscape.h"
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/select.h>
@@ -57,18 +59,6 @@ size_t findHeader(const std::string& head, const std::string& name) {
         lineStart = lineEnd + 2;
     }
     return std::string::npos;
-}
-
-std::string jsonEscape(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"' || c == '\\') out.push_back('\\');
-        if (c == '\n') { out += "\\n"; continue; }
-        if (c == '\r') { out += "\\r"; continue; }
-        out.push_back(c);
-    }
-    return out;
 }
 
 /// The path split on '/', empty pieces dropped. Percent-decoding is not
