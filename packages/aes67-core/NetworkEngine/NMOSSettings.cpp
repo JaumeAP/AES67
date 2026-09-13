@@ -4,6 +4,7 @@
 //
 
 #include <algorithm>
+#include "NetworkEngine/JsonFields.h"
 #include "NMOSSettings.h"
 #include "NetworkEngine/JsonEscape.h"
 #include "Profiles/ConfigPaths.h"
@@ -37,25 +38,6 @@ std::string extractString(const std::string& json, const std::string& key) {
     return value;
 }
 
-bool extractBool(const std::string& json, const std::string& key, bool& out) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) return false;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return false;
-    const size_t trueAt = json.find("true", pos);
-    const size_t falseAt = json.find("false", pos);
-    const size_t lineEnd = json.find('\n', pos);
-    if (trueAt != std::string::npos && (lineEnd == std::string::npos || trueAt < lineEnd)) {
-        out = true;
-        return true;
-    }
-    if (falseAt != std::string::npos && (lineEnd == std::string::npos || falseAt < lineEnd)) {
-        out = false;
-        return true;
-    }
-    return false;
-}
 
 } // namespace
 
@@ -116,8 +98,7 @@ NMOSSettings NMOSSettingsManager::load() {
     buffer << file.rdbuf();
     const std::string json = buffer.str();
 
-    bool enabled = false;
-    if (extractBool(json, "enabled", enabled)) settings.enabled = enabled;
+    if (auto enabled = extractBoolField(json, "enabled")) settings.enabled = *enabled;
     settings.label = extractString(json, "label");
     settings.nodeId = extractString(json, "nodeId");
     settings.registryOverride = extractString(json, "registryOverride");

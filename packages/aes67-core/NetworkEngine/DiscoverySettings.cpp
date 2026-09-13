@@ -4,6 +4,7 @@
 //
 
 #include "NetworkEngine/DiscoverySettings.h"
+#include "NetworkEngine/JsonFields.h"
 
 #include "Profiles/ConfigPaths.h"
 
@@ -18,18 +19,6 @@ namespace {
 /// The value of a JSON boolean field, if the file has one. Hand-read like
 /// every other settings file in this tree: the files are three lines long and
 /// a JSON dependency for them would be the larger decision.
-bool extractBool(const std::string& json, const std::string& key, bool& out) {
-    const std::string needle = "\"" + key + "\"";
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) return false;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return false;
-    ++pos;
-    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t')) ++pos;
-    if (json.compare(pos, 4, "true") == 0) { out = true; return true; }
-    if (json.compare(pos, 5, "false") == 0) { out = false; return true; }
-    return false;
-}
 
 } // namespace
 
@@ -60,7 +49,7 @@ DiscoverySettings DiscoverySettingsManager::load() {
     buffer << file.rdbuf();
     const std::string json = buffer.str();
 
-    extractBool(json, "runEveryRoute", settings.runEveryRoute);
+    if (auto value = extractBoolField(json, "runEveryRoute")) settings.runEveryRoute = *value;
     return settings;
 }
 

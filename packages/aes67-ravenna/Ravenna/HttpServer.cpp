@@ -1,4 +1,5 @@
 #include "Ravenna/HttpServer.h"
+#include "Ravenna/ApiReplies.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -76,12 +77,6 @@ std::string decodePath(const std::string& path) {
     return decoded;
 }
 
-std::string trimmed(const std::string& text) {
-    const auto first = text.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    const auto last = text.find_last_not_of(" \t\r\n");
-    return text.substr(first, last - first + 1);
-}
 
 }  // namespace
 

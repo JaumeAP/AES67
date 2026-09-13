@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <iterator>
 #include "Ravenna/NodeApi.h"
+#include "Ravenna/ApiReplies.h"
 
 #include <arpa/inet.h>
 
@@ -10,42 +11,9 @@
 namespace AES67::Ravenna {
 namespace {
 
-ApiResponse jsonResponse(int status, const JsonValue& value) {
-    ApiResponse response;
-    response.status = status;
-    response.body = value.serialise();
-    return response;
-}
 
-ApiResponse errorResponse(int status, const std::string& detail) {
-    JsonObject error;
-    error["code"] = JsonValue(status);
-    error["error"] = JsonValue(status == 404 ? "Not Found" : "Method Not Allowed");
-    error["debug"] = JsonValue(detail);
-    return jsonResponse(status, JsonValue(error));
-}
 
-std::vector<std::string> segmentsOf(const std::string& path) {
-    std::vector<std::string> segments;
-    size_t start = 0;
-    while (start <= path.size()) {
-        const size_t slash = path.find('/', start);
-        const std::string segment =
-            path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
-        if (!segment.empty()) segments.push_back(segment);
-        if (slash == std::string::npos) break;
-        start = slash + 1;
-    }
-    return segments;
-}
 
-std::string addressText(uint32_t addressV4) {
-    struct in_addr address {};
-    address.s_addr = htonl(addressV4);
-    char text[INET_ADDRSTRLEN] = {};
-    ::inet_ntop(AF_INET, &address, text, sizeof(text));
-    return text;
-}
 
 /// IS-04 wants a version on every resource: TAI seconds and nanoseconds,
 /// bumped whenever the resource changes. These are built fresh on every read,

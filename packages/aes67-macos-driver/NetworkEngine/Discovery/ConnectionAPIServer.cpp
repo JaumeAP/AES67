@@ -5,6 +5,7 @@
 
 #include <iterator>
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
+#include "NetworkEngine/Discovery/PathPieces.h"
 
 #include "NetworkEngine/JsonEscape.h"
 
@@ -61,20 +62,6 @@ size_t findHeader(const std::string& head, const std::string& name) {
     return std::string::npos;
 }
 
-/// The path split on '/', empty pieces dropped. Percent-decoding is not
-/// needed: every id here is a UUID and every other piece is a fixed word.
-std::vector<std::string> pathPieces(const std::string& path) {
-    std::vector<std::string> pieces;
-    size_t start = 0;
-    while (start < path.size()) {
-        const size_t slash = path.find('/', start);
-        const size_t end = (slash == std::string::npos) ? path.size() : slash;
-        if (end > start) pieces.push_back(path.substr(start, end - start));
-        if (slash == std::string::npos) break;
-        start = slash + 1;
-    }
-    return pieces;
-}
 
 std::string jsonList(const std::vector<std::string>& entries) {
     std::ostringstream out;

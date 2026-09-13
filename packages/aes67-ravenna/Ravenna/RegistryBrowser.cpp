@@ -1,4 +1,5 @@
 #include "Ravenna/RegistryBrowser.h"
+#include "Ravenna/ApiReplies.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -15,13 +16,6 @@
 namespace AES67::Ravenna {
 namespace {
 
-std::string addressText(uint32_t addressV4) {
-    struct in_addr address {};
-    address.s_addr = htonl(addressV4);
-    char text[INET_ADDRSTRLEN] = {};
-    if (::inet_ntop(AF_INET, &address, text, sizeof(text)) == nullptr) return {};
-    return text;
-}
 
 /// Whether a registry advertising `versions` speaks the one this node uses.
 /// The key is a comma-separated list (IS-04 sec 3.1), and a registry that

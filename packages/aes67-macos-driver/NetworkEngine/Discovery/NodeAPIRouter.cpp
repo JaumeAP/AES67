@@ -6,6 +6,7 @@
 #include <iterator>
 #include <algorithm>
 #include "NetworkEngine/Discovery/NodeAPIRouter.h"
+#include "NetworkEngine/Discovery/PathPieces.h"
 
 #include <chrono>
 
@@ -13,20 +14,6 @@ namespace AES67 {
 
 namespace {
 
-std::vector<std::string> pathPieces(const std::string& path) {
-    std::vector<std::string> pieces;
-    std::string piece;
-    for (const char c : path) {
-        if (c == '/') {
-            if (!piece.empty()) pieces.push_back(piece);
-            piece.clear();
-        } else {
-            piece += c;
-        }
-    }
-    if (!piece.empty()) pieces.push_back(piece);
-    return pieces;
-}
 
 std::string jsonStringList(const std::vector<std::string>& items) {
     std::string out = "[";
