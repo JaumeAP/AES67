@@ -239,9 +239,18 @@ int64_t RTPReceiver::getTimeSinceLastPacket() const {
 }
 
 bool RTPReceiver::updateMapping(const ChannelMapping& newMapping) {
-    // Validate mapping
-    if (newMapping.deviceChannelStart + sdp_.numChannels > 128) {
-        return false;
+    // Every channel this would write to has to be one the device has, whether
+    // the mapping routes them itself or takes the block it was given.
+    if (newMapping.routes.empty()) {
+        if (newMapping.deviceChannelStart + sdp_.numChannels > 128) {
+            return false;
+        }
+    } else {
+        for (const ChannelRoute& route : newMapping.routes) {
+            if (route.deviceChannel >= 128 || route.streamChannel >= sdp_.numChannels) {
+                return false;
+            }
+        }
     }
 
     // Stop, update, restart
@@ -395,7 +404,9 @@ void RTPReceiver::consumeLoop() {
         if (packetsSinceRateCheck >= kRateCheckIntervalPackets) {
             packetsSinceRateCheck = 0;
 
-            size_t deviceCh = mapping_.deviceChannelStart;
+            // The first channel this stream actually writes to, which is not
+            // the block start once a controller has routed it elsewhere.
+            size_t deviceCh = firstDeviceChannel();
             if (deviceCh < 128) {
                 const auto& ringBuf = deviceChannels_[deviceCh];
                 const size_t cap = ringBuf.capacity();
@@ -565,11 +576,24 @@ void RTPReceiver::decodeL24(const uint8_t* payload, size_t payloadSize) {
     mapChannelsToDevice(audioBuffer_.data(), frameCount);
 }
 
+size_t RTPReceiver::firstDeviceChannel() const {
+    if (mapping_.routes.empty()) return mapping_.deviceChannelStart;
+
+    size_t lowest = 128;
+    for (const ChannelRoute& route : mapping_.routes) {
+        if (route.deviceChannel < lowest) lowest = route.deviceChannel;
+    }
+    return lowest;
+}
+
 void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t frameCount) {
-    // Validate mapping
-    const size_t deviceChannelEnd = mapping_.deviceChannelStart + sdp_.numChannels;
-    if (deviceChannelEnd > 128) {
-        return; // Mapping out of range
+    // Validate the block, when the block is what this takes. A routed mapping
+    // is checked route by route below, because its channels are not a range.
+    if (mapping_.routes.empty()) {
+        const size_t deviceChannelEnd = mapping_.deviceChannelStart + sdp_.numChannels;
+        if (deviceChannelEnd > 128) {
+            return; // Mapping out of range
+        }
     }
 
     // Stack-allocated temporary buffer for de-interleaving, sized by the same
@@ -587,20 +611,38 @@ void RTPReceiver::mapChannelsToDevice(const float* interleavedAudio, size_t fram
 
     bool hadUnderrun = false;
 
-    for (size_t streamChannel = 0; streamChannel < sdp_.numChannels; ++streamChannel) {
-        const size_t deviceChannel = mapping_.deviceChannelStart + streamChannel;
-
-        // Extract this channel from the interleaved stream (deinterleave).
-        deinterleaveChannel(interleavedAudio, channelBuffer, frameCount,
-                            sdp_.numChannels, streamChannel);
-
-        // Write to device ring buffer (batch write)
+    const auto writeTo = [&](size_t deviceChannel) {
+        if (deviceChannel >= 128) return;
         const size_t written = deviceChannels_[deviceChannel].write(channelBuffer, frameCount);
-
         if (written < frameCount && !hadUnderrun) {
             // Ring buffer full - count underrun once per packet
             stats_.underruns.fetch_add(1, std::memory_order_relaxed);
             hadUnderrun = true;
+        }
+    };
+
+    for (size_t streamChannel = 0; streamChannel < sdp_.numChannels; ++streamChannel) {
+        if (mapping_.routes.empty()) {
+            // Extract this channel from the interleaved stream (deinterleave).
+            deinterleaveChannel(interleavedAudio, channelBuffer, frameCount,
+                                sdp_.numChannels, streamChannel);
+            writeTo(mapping_.deviceChannelStart + streamChannel);
+            continue;
+        }
+
+        // Deinterleaved once, however many device channels this one feeds:
+        // that is the expensive half, and each of them wants the same buffer.
+        // A stream channel with no route is not carried, and is not
+        // deinterleaved either.
+        bool deinterleaved = false;
+        for (const ChannelRoute& route : mapping_.routes) {
+            if (route.streamChannel != streamChannel) continue;
+            if (!deinterleaved) {
+                deinterleaveChannel(interleavedAudio, channelBuffer, frameCount,
+                                    sdp_.numChannels, streamChannel);
+                deinterleaved = true;
+            }
+            writeTo(route.deviceChannel);
         }
     }
 }

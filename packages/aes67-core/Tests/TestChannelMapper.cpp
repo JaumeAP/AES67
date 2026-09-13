@@ -117,9 +117,11 @@ TEST_CASE("Custom Channel Mapping") {
     mapping.deviceChannelStart = 10;
     mapping.deviceChannelCount = 8;
 
-    // Custom routing: stream channels [0,2,4,6] → device channels [10,12,14,16]
-    //                 stream channels [1,3,5,7] → device channels [11,13,15,17]
-    mapping.channelMap = {0, 1, 2, 3, 4, 5, 6, 7};  // Identity mapping
+    // Routed one by one rather than taken as a block, which is what a
+    // controller setting a grid does.
+    for (uint16_t channel = 0; channel < 8; ++channel) {
+        mapping.routes.push_back({channel, static_cast<uint16_t>(10 + channel)});
+    }
 
     bool added = mapper.addMapping(mapping);
     CHECK(added);
@@ -437,6 +439,77 @@ TEST_CASE("Max Channels Per Flow Is The Transport Ceiling") {
 }
 
 
+TEST_CASE("One stream channel can feed several device channels") {
+    // IS-08 keys its map by the OUTPUT channel, and a source feeding more
+    // than one of them -- one mono talkback into every monitor -- is an
+    // ordinary thing to ask for. An array indexed by stream channel could not
+    // say it, which is why the routes are a list.
+    StreamChannelMapper mapper;
+    const StreamID streamID = StreamID::generate();
+
+    ChannelMapping mapping;
+    mapping.streamID = streamID;
+    mapping.streamName = "Talkback";
+    mapping.streamChannelCount = 1;
+    mapping.deviceChannelStart = 0;
+    mapping.deviceChannelCount = 1;
+    mapping.routes = {{0, 4}, {0, 5}, {0, 6}};
+
+    std::string why;
+    CHECK(mapper.validateMapping(mapping, &why));
+    CHECK(mapper.addMapping(mapping));
+
+    // Every one of them is this stream's, and nothing else may take them.
+    for (int deviceChannel : {4, 5, 6}) {
+        CHECK(mapping.containsDeviceChannel(deviceChannel));
+        const auto owner = mapper.getStreamForDeviceChannel(deviceChannel);
+        CHECK(owner.has_value());
+        CHECK(*owner == streamID);
+    }
+    CHECK(mapping.deviceChannels() == std::vector<int>{4, 5, 6});
+}
+
+TEST_CASE("Two sources on one device channel is refused") {
+    // Not a mix: a fault. The device would carry whichever wrote last.
+    StreamChannelMapper mapper;
+
+    ChannelMapping mapping;
+    mapping.streamID = StreamID::generate();
+    mapping.streamName = "Confused";
+    mapping.streamChannelCount = 2;
+    mapping.deviceChannelStart = 0;
+    mapping.deviceChannelCount = 2;
+    mapping.routes = {{0, 3}, {1, 3}};
+
+    std::string why;
+    CHECK_FALSE(mapper.validateMapping(mapping, &why));
+    CHECK(why.find("device channel 3") != std::string::npos);
+
+    // And a route that names a channel neither end has.
+    mapping.routes = {{7, 3}};
+    CHECK_FALSE(mapper.validateMapping(mapping, &why));
+    mapping.routes = {{0, 200}};
+    CHECK_FALSE(mapper.validateMapping(mapping, &why));
+}
+
+TEST_CASE("A stream with no route for a channel does not carry it") {
+    ChannelMapping mapping;
+    mapping.streamID = StreamID::generate();
+    mapping.streamChannelCount = 4;
+    mapping.deviceChannelStart = 0;
+    mapping.deviceChannelCount = 4;
+    // Only the second channel goes anywhere.
+    mapping.routes = {{1, 9}};
+
+    CHECK(mapping.isValid());
+    CHECK(mapping.deviceChannels() == std::vector<int>{9});
+    CHECK_FALSE(mapping.containsDeviceChannel(0));
+    CHECK(mapping.containsDeviceChannel(9));
+
+    // And with no routes at all it is the block it was given, in order.
+    mapping.routes.clear();
+    CHECK(mapping.deviceChannels() == std::vector<int>{0, 1, 2, 3});
+}
+
 } // namespace Tests
 } // namespace AES67
-

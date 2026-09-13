@@ -556,9 +556,9 @@ std::vector<StreamID> StreamManager::createTxStreamFlows(
             static_cast<uint16_t>(mapping.deviceChannelStart + flow * kPerFlow);
         flowMapping.streamChannelCount = flowChannels;
         flowMapping.deviceChannelCount = flowChannels;
-        flowMapping.channelMap.clear(); // sequential within the flow; a custom
-                                        // map for the whole group wouldn't
-                                        // carry over meaningfully per-flow
+        flowMapping.routes.clear();  // sequential within the flow; routes set
+                                     // for the whole group name channels this
+                                     // flow does not have
 
         const std::string flowName = (flowCount == 1)
             ? baseName

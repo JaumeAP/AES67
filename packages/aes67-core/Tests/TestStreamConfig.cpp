@@ -330,6 +330,36 @@ TEST_CASE("Get Current Timestamp") {
     std::cout << "PASS" << std::endl;
 }
 
+
+TEST_CASE("Routes Survive A Round Trip, And The Older Shape Is Still Read") {
+    std::cout << "Test: routes through JSON, and the shape written before them... ";
+
+    PersistedStreamConfig config = StreamConfigManager::createConfig(
+        createTestSDP("Routed", 5004, 3, 48000), createTestMapping(3, 0), "Routed");
+    // One input channel onto two of the device's, which is what an array
+    // indexed by input channel could never say.
+    config.mapping.routes = {{0, 40}, {0, 41}, {1, 90}};
+
+    const std::string json = StreamConfigManager::configToJSON(config);
+    const auto read = StreamConfigManager::configFromJSON(json);
+    REQUIRE(read.has_value());
+    CHECK(read->mapping.routes == config.mapping.routes);
+
+    // The same file as one written before routes existed: one device channel
+    // per input channel, in order, with -1 for a channel that went nowhere.
+    std::string older = json;
+    const size_t at = older.find("\"routes\": [");
+    REQUIRE(at != std::string::npos);
+    older.replace(at, older.find(']', at) + 1 - at, "\"channelMap\": [7, -1, 9]");
+
+    const auto upgraded = StreamConfigManager::configFromJSON(older);
+    REQUIRE(upgraded.has_value());
+    const std::vector<ChannelRoute> expected{{0, 7}, {2, 9}};
+    CHECK(upgraded->mapping.routes == expected);
+
+    std::cout << "PASS" << std::endl;
+}
+
 //
 // Main Test Runner
 //

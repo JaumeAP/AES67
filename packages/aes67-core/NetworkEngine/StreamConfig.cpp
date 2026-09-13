@@ -234,11 +234,19 @@ std::string StreamConfigManager::mappingToJSON(const ChannelMapping& mapping) {
     json << "        \"streamChannelOffset\": " << mapping.streamChannelOffset << ",\n";
     json << "        \"deviceChannelStart\": " << mapping.deviceChannelStart << ",\n";
     json << "        \"deviceChannelCount\": " << mapping.deviceChannelCount << ",\n";
-    json << "        \"channelMap\": [";
+    // Pairs laid out flat -- stream channel, device channel, stream channel,
+    // device channel -- because a stream channel may land on more than one of
+    // the device's and an array indexed by stream channel cannot say so. Flat
+    // rather than a list of objects because the reader pulls this block out
+    // with a regex that allows one level of braces and no more.
+    //
+    // The older shape, one device channel per stream channel in order, is
+    // still read, so a file written before this keeps working.
+    json << "        \"routes\": [";
 
-    for (size_t i = 0; i < mapping.channelMap.size(); i++) {
+    for (size_t i = 0; i < mapping.routes.size(); i++) {
         if (i > 0) json << ", ";
-        json << mapping.channelMap[i];
+        json << mapping.routes[i].streamChannel << ", " << mapping.routes[i].deviceChannel;
     }
 
     json << "]\n";
@@ -468,7 +476,32 @@ std::optional<ChannelMapping> StreamConfigManager::mappingFromJSON(const std::st
     if (auto val = extractUInt16Field(json, "deviceChannelStart")) mapping.deviceChannelStart = *val;
     if (auto val = extractUInt16Field(json, "deviceChannelCount")) mapping.deviceChannelCount = *val;
 
-    // Parse channelMap array
+    // Routes: flat pairs of stream channel and device channel.
+    std::regex routesRegex(R"("routes"\s*:\s*\[([^\]]*)\])");
+    std::smatch routesMatch;
+    if (std::regex_search(json, routesMatch, routesRegex)) {
+        const std::string content = routesMatch[1].str();
+        std::vector<int> numbers;
+        std::regex numberRegex(R"((\d+))");
+        for (std::sregex_iterator it(content.begin(), content.end(), numberRegex), end; it != end;
+             ++it) {
+            numbers.push_back(std::stoi((*it)[1].str()));
+        }
+        // An odd count is a half-written pair, and a route with no
+        // destination is not one: the last number is dropped rather than
+        // guessed at.
+        for (size_t i = 0; i + 1 < numbers.size(); i += 2) {
+            ChannelRoute route;
+            route.streamChannel = static_cast<uint16_t>(numbers[i]);
+            route.deviceChannel = static_cast<uint16_t>(numbers[i + 1]);
+            mapping.routes.push_back(route);
+        }
+        return mapping;
+    }
+
+    // The shape written before routes existed: one device channel per stream
+    // channel, in order, with -1 for a channel that was not carried. Read so
+    // that a device does not lose its patch the first time it is upgraded.
     std::regex arrayRegex(R"("channelMap"\s*:\s*\[([^\]]*)\])");
     std::smatch arrayMatch;
     if (std::regex_search(json, arrayMatch, arrayRegex)) {
@@ -477,9 +510,16 @@ std::optional<ChannelMapping> StreamConfigManager::mappingFromJSON(const std::st
         std::sregex_iterator it(arrayContent.begin(), arrayContent.end(), numberRegex);
         std::sregex_iterator end;
 
+        uint16_t streamChannel = 0;
         while (it != end) {
-            int value = std::stoi((*it)[1].str());
-            mapping.channelMap.push_back(value);
+            const int value = std::stoi((*it)[1].str());
+            if (value >= 0) {
+                ChannelRoute route;
+                route.streamChannel = streamChannel;
+                route.deviceChannel = static_cast<uint16_t>(value);
+                mapping.routes.push_back(route);
+            }
+            ++streamChannel;
             ++it;
         }
     }

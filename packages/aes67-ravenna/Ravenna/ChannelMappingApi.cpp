@@ -41,17 +41,26 @@ std::vector<std::string> segmentsOf(const std::string& path) {
     return segments;
 }
 
-/// Every channel of a mapping as an explicit device channel, so the sequential
-/// case and the custom one are read the same way. -1 is a stream channel that
-/// goes nowhere, which is what an unrouted cell in the grid is.
-std::vector<int> explicitMapOf(const ChannelMapping& mapping) {
-    if (!mapping.channelMap.empty()) return mapping.channelMap;
+/// A mapping's routes written out, so the block it was given and a grid a
+/// controller set are read the same way.
+std::vector<ChannelRoute> routesOf(const ChannelMapping& mapping) {
+    if (!mapping.routes.empty()) return mapping.routes;
 
-    std::vector<int> expanded(mapping.streamChannelCount, -1);
+    std::vector<ChannelRoute> expanded;
     for (uint16_t i = 0; i < mapping.deviceChannelCount && i < mapping.streamChannelCount; ++i) {
-        expanded[i] = mapping.deviceChannelStart + i;
+        expanded.push_back({i, static_cast<uint16_t>(mapping.deviceChannelStart + i)});
     }
     return expanded;
+}
+
+/// Takes whatever fed this device channel off it. Every cell of a grid names
+/// at most one input, and two inputs on one output channel is not a mix.
+void unfeed(std::vector<ChannelRoute>& routes, uint16_t deviceChannel) {
+    routes.erase(std::remove_if(routes.begin(), routes.end(),
+                                [deviceChannel](const ChannelRoute& route) {
+                                    return route.deviceChannel == deviceChannel;
+                                }),
+                 routes.end());
 }
 
 JsonValue channelLabels(uint16_t count, const char* prefix) {
@@ -179,12 +188,10 @@ ApiResponse ChannelMappingApi::activeMap() const {
         // The stream's grid where there is one, and the one a controller set
         // beforehand where there is not: the active map is what this device
         // will do with a channel, not only what it is doing this instant.
-        const std::vector<int> channels =
-            mapping ? explicitMapOf(*mapping) : routing_.rememberedMap(receiverId);
-        for (size_t streamChannel = 0; streamChannel < channels.size(); ++streamChannel) {
-            const int deviceChannel = channels[streamChannel];
-            if (deviceChannel < 0) continue;
-            feeding[deviceChannel] = {receiverId, static_cast<int>(streamChannel)};
+        const std::vector<ChannelRoute> routes =
+            mapping ? routesOf(*mapping) : routing_.rememberedRoutes(receiverId);
+        for (const ChannelRoute& route : routes) {
+            feeding[route.deviceChannel] = {receiverId, route.streamChannel};
         }
     }
 
@@ -239,18 +246,16 @@ ApiResponse ChannelMappingApi::applyAction(const JsonValue& action) {
     // and a plant is patched before its streams arrive. What is set on an
     // input with no stream is remembered until one comes.
     std::map<std::string, ChannelMapping> updated;
-    std::map<std::string, std::vector<int>> waiting;
+    std::map<std::string, std::vector<ChannelRoute>> waiting;
     for (const std::string& receiverId : connections_.receiverIds()) {
         const auto mapping = routing_.mappingFor(receiverId);
         if (mapping) {
             ChannelMapping working = *mapping;
-            working.channelMap = explicitMapOf(working);
+            working.routes = routesOf(working);
             updated[receiverId] = working;
             continue;
         }
-        std::vector<int> grid = routing_.rememberedMap(receiverId);
-        grid.resize(mapper_.getUsableChannelCount(), -1);
-        waiting[receiverId] = grid;
+        waiting[receiverId] = routing_.rememberedRoutes(receiverId);
     }
 
     const JsonValue& cells = action[kDeviceOutputId];
@@ -271,10 +276,10 @@ ApiResponse ChannelMappingApi::applyAction(const JsonValue& action) {
         // names a new input or empties it. Two inputs on one output channel
         // is not a mix, it is a fault.
         for (auto& [receiverId, mapping] : updated) {
-            std::replace(mapping.channelMap.begin(), mapping.channelMap.end(), deviceChannel, -1);
+            unfeed(mapping.routes, static_cast<uint16_t>(deviceChannel));
         }
-        for (auto& [receiverId, grid] : waiting) {
-            std::replace(grid.begin(), grid.end(), deviceChannel, -1);
+        for (auto& [receiverId, routes] : waiting) {
+            unfeed(routes, static_cast<uint16_t>(deviceChannel));
         }
 
         const JsonValue& input = cell["input"];
@@ -293,13 +298,21 @@ ApiResponse ChannelMappingApi::applyAction(const JsonValue& action) {
             return errorResponse(400, "a cell that names an input needs a channel_index");
         }
         const int streamChannel = static_cast<int>(index.asNumber());
-        std::vector<int>& grid =
-            connected != updated.end() ? connected->second.channelMap : pending->second;
-        if (streamChannel < 0 || streamChannel >= static_cast<int>(grid.size())) {
+        // What that input has to offer: the stream's channels once one is
+        // connected, and what the input could take before that, which is what
+        // io reports for it.
+        const int channels = connected != updated.end()
+                                 ? static_cast<int>(connected->second.streamChannelCount)
+                                 : static_cast<int>(mapper_.getUsableChannelCount());
+        if (streamChannel < 0 || streamChannel >= channels) {
             return errorResponse(400, "input " + input.asString() + " has no channel " +
                                           std::to_string(streamChannel));
         }
-        grid[static_cast<size_t>(streamChannel)] = deviceChannel;
+
+        std::vector<ChannelRoute>& routes =
+            connected != updated.end() ? connected->second.routes : pending->second;
+        routes.push_back({static_cast<uint16_t>(streamChannel),
+                          static_cast<uint16_t>(deviceChannel)});
     }
 
     // Applied by taking every mapping out and putting the new ones back: an
@@ -322,7 +335,7 @@ ApiResponse ChannelMappingApi::applyAction(const JsonValue& action) {
 
     // And what was set on an input with nothing flowing is kept for the
     // stream that has not arrived yet.
-    for (const auto& [receiverId, grid] : waiting) routing_.rememberMap(receiverId, grid);
+    for (const auto& [receiverId, routes] : waiting) routing_.rememberRoutes(receiverId, routes);
 
     lastActivationTime_ = taiText(taiNow());
     return activeMap();

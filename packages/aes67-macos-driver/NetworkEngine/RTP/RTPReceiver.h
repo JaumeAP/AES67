@@ -107,6 +107,12 @@ private:
     void decodeL24(const uint8_t* payload, size_t payloadSize);
 
     // Channel mapping: stream audio → device channels
+    /// The first device channel this stream writes to: the block start when
+    /// it takes a block, and the lowest channel it routes to when it does not.
+    /// The rate matcher watches one ring buffer, and watching a channel this
+    /// stream never writes would read a fill level that never moves.
+    size_t firstDeviceChannel() const;
+
     void mapChannelsToDevice(const float* interleavedAudio, size_t frameCount);
 
     // Statistics tracking
