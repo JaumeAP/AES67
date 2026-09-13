@@ -40,6 +40,31 @@ bool ReceiverRouting::apply(const std::string& receiverId, const std::string& sd
     }
     mapping->streamID = StreamID::generate();
 
+    // What a controller already asked for on this receiver, laid over the
+    // block it was just given. Trimmed to the stream's width: a grid set for
+    // eight channels and a stream that brings two is two channels routed.
+    // The default block is kept if the remembered grid does not fit, and the
+    // grid stays remembered for a stream that does.
+    const auto asked = remembered_.find(receiverId);
+    if (asked != remembered_.end()) {
+        ChannelMapping wanted = *mapping;
+        // Written out first: a default mapping carries an empty map, which
+        // means the block laid out in order, and there is nothing to lay a
+        // grid over until it says so channel by channel.
+        if (wanted.channelMap.empty()) {
+            wanted.channelMap.resize(wanted.streamChannelCount);
+            for (size_t channel = 0; channel < wanted.channelMap.size(); ++channel) {
+                wanted.channelMap[channel] = wanted.deviceChannelStart + static_cast<int>(channel);
+            }
+        }
+        for (size_t channel = 0;
+             channel < wanted.channelMap.size() && channel < asked->second.size(); ++channel) {
+            wanted.channelMap[channel] = asked->second[channel];
+        }
+        std::string ignored;
+        if (mapper_.validateMapping(wanted, &ignored)) *mapping = wanted;
+    }
+
     // Asked before adding, because addMapping() answers false to a mapping
     // that does not validate and to one that overlaps alike, and those are
     // not the same thing to tell a controller.
@@ -69,6 +94,16 @@ std::vector<std::string> ReceiverRouting::connectedReceivers() const {
     receivers.reserve(streamIdOf_.size());
     for (const auto& [receiverId, streamId] : streamIdOf_) receivers.push_back(receiverId);
     return receivers;
+}
+
+void ReceiverRouting::rememberMap(const std::string& receiverId, std::vector<int> channelMap) {
+    remembered_[receiverId] = std::move(channelMap);
+}
+
+std::vector<int> ReceiverRouting::rememberedMap(const std::string& receiverId) const {
+    const auto found = remembered_.find(receiverId);
+    if (found == remembered_.end()) return {};
+    return found->second;
 }
 
 std::optional<StreamID> ReceiverRouting::streamIdFor(const std::string& receiverId) const {

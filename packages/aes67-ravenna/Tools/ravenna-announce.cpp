@@ -315,7 +315,7 @@ int main(int argc, char** argv) {
     });
 
     // The grid, channel by channel: IS-08 over the same matrix.
-    ChannelMappingApi channelMapping(mapper, routing);
+    ChannelMappingApi channelMapping(mapper, routing, connections);
 
     // IS-04, so a controller browsing the link finds this device at all and
     // knows what it is made of before it routes anything.

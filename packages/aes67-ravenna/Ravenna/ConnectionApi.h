@@ -40,6 +40,12 @@ inline constexpr char kTransportRtpMulticast[] = "urn:x-nmos:transport:rtp.mcast
 /// multicast half from IS-04.
 inline constexpr char kTransportRtp[] = "urn:x-nmos:transport:rtp";
 
+/// The three ways NMOS activates a change, and the only three there are.
+/// IS-05 stages a connection and IS-08 a grid, and both use these names.
+inline constexpr char kActivateImmediate[] = "activate_immediate";
+inline constexpr char kActivateRelative[] = "activate_scheduled_relative";
+inline constexpr char kActivateAbsolute[] = "activate_scheduled_absolute";
+
 /// What a sender or a receiver holds in each of its two states.
 struct ConnectionState {
     /// IS-05 sec 4: nothing flows while this is false, whatever else is set.

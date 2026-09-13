@@ -14,17 +14,19 @@
 // it. So nothing here decides where a channel may go -- the matrix does, and
 // it refuses what does not fit.
 //
-// v1.0, and the parts of it a device with one output block has: io, the
-// active map, and immediate activation. Scheduled activation answers 501
-// rather than being accepted and forgotten.
+// v1.0, and the parts of it a device with one output block has: the inputs
+// and outputs with everything under them, io, the active map, and all three
+// ways of activating a change to it.
 //
 #pragma once
 
 #include "NetworkEngine/StreamChannelMapper.h"
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/ReceiverRouting.h"
+#include "Ravenna/TaiClock.h"
 
 #include <string>
+#include <vector>
 
 namespace AES67::Ravenna {
 
@@ -38,21 +40,60 @@ inline constexpr char kDeviceOutputId[] = "device";
 
 class ChannelMappingApi {
 public:
-    ChannelMappingApi(StreamChannelMapper& mapper, ReceiverRouting& routing)
-        : mapper_(mapper), routing_(routing) {}
+    ChannelMappingApi(StreamChannelMapper& mapper, ReceiverRouting& routing,
+                      const ConnectionApi& connections)
+        : mapper_(mapper), routing_(routing), connections_(connections) {}
 
     /// Answers one request. "GET" for io and the map, "POST" to activate.
     ApiResponse handle(const std::string& method, const std::string& path,
                        const std::string& body);
 
 private:
+    /// An activation waiting for its moment. IS-08 answers a scheduled one
+    /// with a 202 and an id, and a controller reads it back, or deletes it,
+    /// under that id until the time comes.
+    struct PendingActivation {
+        std::string id;
+        std::string mode;
+        std::string requestedTime;
+        std::string activationTime;  ///< when it is due, as IS-08 reports it
+        TaiTime due;
+        JsonValue action;
+    };
+
     ApiResponse describeIo() const;
     ApiResponse activeMap() const;
-    ApiResponse activate(const std::string& body);
+    /// POST to map/activations: applies the change now, or promises it.
+    ApiResponse postActivation(const std::string& body);
+    /// Works the action into the matrix. The whole change is decided before
+    /// any of it is applied, so a bad cell leaves the grid as it was.
+    ApiResponse applyAction(const JsonValue& action);
+    /// Fires whatever is due. Called at the top of every request, which is
+    /// the only clock this API is driven by.
+    void applyDueActivations();
+    JsonValue activationEnvelope(const PendingActivation& activation) const;
+
+    /// An input per receiver, whether or not it is carrying anything. IS-08's
+    /// inputs are the ports a controller may route FROM, and a device that
+    /// published only the ones already connected gave a controller nothing to
+    /// draw a grid with until somebody had connected them by other means.
+    bool hasInput(const std::string& id) const;
+    JsonValue inputProperties(const std::string& id) const;
+    JsonValue inputChannels(const std::string& id) const;
+    JsonValue inputParent(const std::string& id) const;
+    JsonValue inputCaps() const;
+
+    JsonValue outputProperties() const;
+    JsonValue outputChannels() const;
+    JsonValue outputCaps() const;
+    JsonValue outputSourceId() const;
 
     StreamChannelMapper& mapper_;
     ReceiverRouting& routing_;
+    const ConnectionApi& connections_;
     std::string lastActivationTime_;
+    std::vector<PendingActivation> pending_;
+    uint64_t nextActivationId_ = 1;
 };
 
 }  // namespace AES67::Ravenna
