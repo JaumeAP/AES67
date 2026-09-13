@@ -342,14 +342,19 @@ std::vector<DiscoveredService> parseServiceResponse(const uint8_t* packet, size_
         offset = data + dataLength;
     }
 
-    // A PTR with no SRV beside it is an instance nobody can reach, and the
-    // caller would have to check every field itself; they are dropped here.
+    // Every instance a PTR named, with whatever else arrived for it. A PTR on
+    // its own is normal rather than broken: a responder is free to send the
+    // SRV, the TXT and the A in later packets, and a browser that dropped the
+    // name would have nothing to attach them to when they came.
     for (const std::string& instance : instances) {
-        for (const auto& [owner, service] : byOwner) {
-            if (owner != instance || service.hostName.empty() || service.port == 0) continue;
-            found.push_back(service);
+        DiscoveredService service;
+        service.instanceName = instance;
+        for (const auto& [owner, gathered] : byOwner) {
+            if (owner != instance) continue;
+            service = gathered;
             break;
         }
+        found.push_back(service);
     }
 
     for (DiscoveredService& service : found) {

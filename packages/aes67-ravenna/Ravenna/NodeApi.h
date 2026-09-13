@@ -25,6 +25,8 @@
 #include "Ravenna/ConnectionApi.h"
 #include "Ravenna/SessionCatalogue.h"
 
+#include <map>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -99,9 +101,24 @@ private:
     std::string sourceIdFor(const std::string& sessionName) const;
     std::string flowIdFor(const std::string& sessionName) const;
 
+    /// Stamps a resource with its version. IS-04 sec 4: the version says when
+    /// a resource last CHANGED, so a fresh one on every read makes the copy a
+    /// registry holds differ from the one this API serves a moment later, and
+    /// a controller comparing them concludes the node is out of date on every
+    /// comparison. The shape is remembered instead, and the version moves
+    /// only when the shape does.
+    JsonValue versioned(JsonObject resource) const;
+
+
     NodeIdentity identity_;
     const SessionCatalogue& catalogue_;
     const ConnectionApi& connections_;
+
+    /// Per resource id: the last shape seen, and the version stamped on it.
+    /// Guarded because the registration client reads the resources from its
+    /// own thread while the HTTP server answers from the main one.
+    mutable std::mutex versionsLock_;
+    mutable std::map<std::string, std::pair<std::string, std::string>> versions_;
 };
 
 /// A UUID built from a name, so the same name always gives the same id and two

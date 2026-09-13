@@ -201,6 +201,27 @@ TEST_CASE("What this package announces, it reads back as a service") {
     CHECK(found[0].txt("api_auth", "false") == "false");
 }
 
+TEST_CASE("A PTR with nothing beside it still names the instance") {
+    // The SRV, the TXT and the A of a service are not required to arrive in
+    // the same packet as the PTR that named it. A browser that dropped the
+    // name would have nothing to attach them to when they came.
+    std::vector<uint8_t> ptrOnly = {0, 0, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+    const std::vector<uint8_t> owner = encodeName(kNmosRegisterService);
+    ptrOnly.insert(ptrOnly.end(), owner.begin(), owner.end());
+    for (const uint8_t byte : {0, 12, 0, 1, 0, 0, 0x11, 0x94}) ptrOnly.push_back(byte);
+    const std::vector<uint8_t> instance =
+        encodeName(std::string("Registry 1.") + kNmosRegisterService);
+    ptrOnly.push_back(0);
+    ptrOnly.push_back(static_cast<uint8_t>(instance.size()));
+    ptrOnly.insert(ptrOnly.end(), instance.begin(), instance.end());
+
+    const std::vector<DiscoveredService> found =
+        parseServiceResponse(ptrOnly.data(), ptrOnly.size(), kNmosRegisterService);
+    REQUIRE(found.size() == 1);
+    CHECK(found[0].instanceName == std::string("registry 1.") + kNmosRegisterService);
+    CHECK(found[0].port == 0);
+}
+
 TEST_CASE("Another service's records are not this service's") {
     SessionAdvertisement node;
     node.instanceName = "Mix A";
@@ -243,7 +264,9 @@ TEST_CASE("A packet off the network cannot make this loop or read past itself") 
     forwards.resize(32, 0);
     CHECK(parseServiceResponse(forwards.data(), forwards.size(), kNmosRegisterService).empty());
 
-    // A record whose data length runs off the end of the packet.
+    // A record whose data length runs off the end of the packet: reading
+    // stops there, so whatever the PTR named is left with nothing to reach it
+    // by rather than with half a record read past the end of the buffer.
     SessionAdvertisement service;
     service.instanceName = "Registry 1";
     service.hostName = "reg.local";
@@ -252,5 +275,9 @@ TEST_CASE("A packet off the network cannot make this loop or read past itself") 
     service.subtype.clear();
     std::vector<uint8_t> truncated = buildAnnouncement(service);
     truncated.resize(truncated.size() / 2);
-    CHECK(parseServiceResponse(truncated.data(), truncated.size(), kNmosRegisterService).empty());
+    for (const DiscoveredService& partial :
+         parseServiceResponse(truncated.data(), truncated.size(), kNmosRegisterService)) {
+        CHECK(partial.hostName.empty());
+        CHECK(partial.port == 0);
+    }
 }

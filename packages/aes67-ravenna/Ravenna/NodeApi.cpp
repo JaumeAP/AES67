@@ -89,6 +89,22 @@ std::string stableUuidFrom(const std::string& name) {
     return text;
 }
 
+JsonValue NodeApi::versioned(JsonObject resource) const {
+    const std::string id = resource["id"].asString();
+    JsonObject shape = resource;
+    shape.erase("version");
+    const std::string serialised = JsonValue(shape).serialise();
+
+    const std::lock_guard<std::mutex> held(versionsLock_);
+    auto& known = versions_[id];
+    if (known.first != serialised) {
+        known.first = serialised;
+        known.second = versionNow();
+    }
+    resource["version"] = JsonValue(known.second);
+    return JsonValue(resource);
+}
+
 std::string NodeApi::senderIdFor(const std::string& sessionName) const {
     // The connection API holds the id this sender is routed by; the session
     // catalogue holds the name it is known by. The label is what joins them.
@@ -138,7 +154,6 @@ JsonValue NodeApi::self() const {
 
     JsonObject node;
     node["id"] = JsonValue(identity_.nodeId);
-    node["version"] = JsonValue(versionNow());
     node["label"] = JsonValue(identity_.label);
     node["description"] = JsonValue(identity_.description);
     node["tags"] = tagsEmpty();
@@ -154,7 +169,7 @@ JsonValue NodeApi::self() const {
         // is this one: nothing here speaks LLDP.
         {"chassis_id", JsonValue()},
         {"port_id", JsonValue(identity_.interfaceMac)}})});
-    return JsonValue(node);
+    return versioned(node);
 }
 
 JsonValue NodeApi::devices() const {
@@ -173,7 +188,6 @@ JsonValue NodeApi::devices() const {
 
     JsonObject device;
     device["id"] = JsonValue(identity_.deviceId);
-    device["version"] = JsonValue(versionNow());
     device["label"] = JsonValue(identity_.label);
     device["description"] = JsonValue(identity_.description);
     device["tags"] = tagsEmpty();
@@ -190,7 +204,7 @@ JsonValue NodeApi::devices() const {
         JsonValue(JsonObject{{"href", JsonValue(base + "/x-nmos/channelmapping/v1.0/")},
                              {"type", JsonValue("urn:x-nmos:control:cm-ctrl/v1.0")},
                              {"authorization", JsonValue(false)}})});
-    return JsonValue(JsonArray{JsonValue(device)});
+    return JsonValue(JsonArray{versioned(device)});
 }
 
 JsonValue NodeApi::sources() const {
@@ -207,8 +221,7 @@ JsonValue NodeApi::sources() const {
 
         JsonObject source;
         source["id"] = JsonValue(sourceIdFor(name));
-        source["version"] = JsonValue(versionNow());
-        source["label"] = JsonValue(name);
+            source["label"] = JsonValue(name);
         source["description"] = JsonValue("");
         source["tags"] = tagsEmpty();
         source["caps"] = JsonValue(JsonObject{});
@@ -217,7 +230,7 @@ JsonValue NodeApi::sources() const {
         source["clock_name"] = JsonValue("clk0");
         source["format"] = JsonValue("urn:x-nmos:format:audio");
         source["channels"] = JsonValue(channels);
-        items.emplace_back(source);
+        items.emplace_back(versioned(source));
     }
     return JsonValue(items);
 }
@@ -232,8 +245,7 @@ JsonValue NodeApi::flows() const {
         // thing the SDP's rtpmap says and has to stay the same thing.
         JsonObject flow;
         flow["id"] = JsonValue(flowIdFor(name));
-        flow["version"] = JsonValue(versionNow());
-        flow["label"] = JsonValue(name);
+            flow["label"] = JsonValue(name);
         flow["description"] = JsonValue("");
         flow["tags"] = tagsEmpty();
         flow["device_id"] = JsonValue(identity_.deviceId);
@@ -246,7 +258,7 @@ JsonValue NodeApi::flows() const {
             {"denominator", JsonValue(1)}});
         flow["bit_depth"] =
             JsonValue(session->sdp.encoding == "L16" ? 16 : 24);
-        items.emplace_back(flow);
+        items.emplace_back(versioned(flow));
     }
     return JsonValue(items);
 }
@@ -264,8 +276,7 @@ JsonValue NodeApi::senders() const {
 
         JsonObject sender;
         sender["id"] = JsonValue(id);
-        sender["version"] = JsonValue(versionNow());
-        sender["label"] = JsonValue(name);
+            sender["label"] = JsonValue(name);
         sender["description"] = JsonValue("");
         sender["tags"] = tagsEmpty();
         sender["device_id"] = JsonValue(identity_.deviceId);
@@ -292,7 +303,7 @@ JsonValue NodeApi::senders() const {
                                 ? JsonValue(connection->active.receiverId)
                                 : JsonValue()},
             {"active", JsonValue(true)}});
-        items.emplace_back(sender);
+        items.emplace_back(versioned(sender));
     }
     return JsonValue(items);
 }
@@ -307,8 +318,7 @@ JsonValue NodeApi::receivers() const {
 
         JsonObject receiver;
         receiver["id"] = JsonValue(id);
-        receiver["version"] = JsonValue(versionNow());
-        receiver["label"] = JsonValue(connection->label.empty() ? id : connection->label);
+            receiver["label"] = JsonValue(connection->label.empty() ? id : connection->label);
         receiver["description"] = JsonValue("");
         receiver["tags"] = tagsEmpty();
         receiver["device_id"] = JsonValue(identity_.deviceId);
@@ -325,7 +335,7 @@ JsonValue NodeApi::receivers() const {
                               ? JsonValue()
                               : JsonValue(connection->active.senderId)},
             {"active", JsonValue(active)}});
-        items.emplace_back(receiver);
+        items.emplace_back(versioned(receiver));
     }
     return JsonValue(items);
 }

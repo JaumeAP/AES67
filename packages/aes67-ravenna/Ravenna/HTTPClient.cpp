@@ -5,8 +5,10 @@
 
 #include "Ravenna/HTTPClient.h"
 
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -94,7 +96,31 @@ int connectTo(const std::string& host, uint16_t port, int timeoutMs, std::string
     ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
-    if (::connect(fd, result->ai_addr, result->ai_addrlen) != 0) {
+    // SO_SNDTIMEO does not bound connect(): a host that answers nothing at
+    // all -- unplugged, firewalled, an address with nobody behind it -- takes
+    // the operating system's own retry sequence, over a minute, and whatever
+    // asked for this waits the whole of it. So the connect is made
+    // non-blocking and given the same timeout as the rest of the exchange.
+    const int flags = ::fcntl(fd, F_GETFL, 0);
+    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    bool connected = ::connect(fd, result->ai_addr, result->ai_addrlen) == 0;
+    if (!connected && errno == EINPROGRESS) {
+        struct pollfd waiting {};
+        waiting.fd = fd;
+        waiting.events = POLLOUT;
+        if (::poll(&waiting, 1, timeoutMs) > 0) {
+            // Writable is not the same as connected: the error has to be read
+            // off the socket, or a refused connection looks like a good one.
+            int failure = 0;
+            socklen_t length = sizeof(failure);
+            connected = ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &failure, &length) == 0 &&
+                        failure == 0;
+        }
+    }
+    ::fcntl(fd, F_SETFL, flags);
+
+    if (!connected) {
         ::close(fd);
         ::freeaddrinfo(result);
         error = "cannot connect to " + host + ":" + portText;

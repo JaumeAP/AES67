@@ -2,21 +2,27 @@
 
 #include "Ravenna/HTTPClient.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 
 namespace AES67::Ravenna {
 namespace {
 
-/// How long a browse waits for registries to answer. RFC 6762 asks a
-/// responder to answer within 120 ms; a second is generous and is paid once,
-/// when the daemon starts or when the registry it was using went away.
-constexpr int kBrowseMs = 1000;
+/// How long each turn round the loop spends waiting on the browser's socket.
+/// Short, because it is also how quickly this reacts to a registry going
+/// away, and the wait is where the thread sits when nothing is happening.
+constexpr int kTickMs = 200;
 
-/// How long to wait before browsing again when nothing answered. A link with
-/// no registry on it is the ordinary case for this device, and asking every
-/// second for ever would be a packet a second nobody wants.
-constexpr int kBrowseAgainSeconds = 10;
+/// How often the question is asked again. A responder announces a service
+/// unprompted when it appears, so this is only for the ones that were already
+/// up, and a packet every few seconds is what a browser costs a link.
+constexpr int kAskAgainSeconds = 5;
+
+/// How long to wait after every known registry has refused. A link with no
+/// registry on it is the ordinary case for this device, and retrying as fast
+/// as the machine can is a connection a millisecond nobody wants.
+constexpr int kRetrySeconds = 5;
 
 std::string resourceBody(const std::string& type, const JsonValue& data) {
     JsonObject envelope;
@@ -73,72 +79,112 @@ bool RegistrationClient::registerEverything(const NmosRegistry& registry) {
     return true;
 }
 
-bool RegistrationClient::heartbeat(const NmosRegistry& registry) {
+bool RegistrationClient::heartbeat(const NmosRegistry& registry, bool* unknown) {
     HTTPClient client(registry.host, registry.port);
-    // The health resource takes a POST with no body, and the registry answers
-    // 200 while it still has this node.
+    // The health resource takes a POST with no body at all, so it carries no
+    // Content-Type either: a header describing a body that is not there is
+    // what the AMWA suite warns about.
     const HTTPResponse response =
-        client.post(registry.registrationPath() + "/health/nodes/" + nodeId_, "",
-                    "application/json");
+        client.perform("POST", registry.registrationPath() + "/health/nodes/" + nodeId_);
+    if (unknown != nullptr) *unknown = response.error.empty() && response.status == 404;
     return response.error.empty() && response.status == 200;
 }
 
-void RegistrationClient::run() {
-    std::vector<NmosRegistry> registries;
-    size_t current = 0;
-    bool registered = false;
+bool RegistrationClient::takeUp(const NmosRegistry& registry) {
+    bool unknown = false;
+    if (heartbeat(registry, &unknown)) return true;
+    // Anything other than "I have never heard of you" is a registry that is
+    // not usable at all, and the next one down the list is the answer.
+    if (!unknown) return false;
 
-    const auto forget = [this]() {
+    if (!registerEverything(registry)) return false;
+    // Registered, and told so at once: a registry counts a node as present
+    // from its first heartbeat, and a plant failing over moves faster than
+    // the interval.
+    (void)heartbeat(registry);
+    return true;
+}
+
+void RegistrationClient::run() {
+    std::string error;
+    if (!browser_.start(error)) {
+        (void)std::fprintf(stderr, "[nmos] no registry discovery: %s\n", error.c_str());
+        return;
+    }
+
+    using Clock = std::chrono::steady_clock;
+    // The registries already tried and refused, by endpoint. A node walks down
+    // the priority list rather than hammering the one at the top, and the set
+    // is cleared once the whole list has been through: a registry that was
+    // down when this asked is up again a minute later.
+    std::vector<std::string> refused;
+    NmosRegistry active;
+    bool registered = false;
+    auto nextAsk = Clock::now();
+    auto nextAttempt = Clock::now();
+    auto nextHeartbeat = Clock::now();
+
+    const auto note = [this](const std::string& endpoint) {
         const std::lock_guard<std::mutex> held(registeredLock_);
-        registeredWith_.clear();
+        registeredWith_ = endpoint;
     };
 
     while (running_.load()) {
-        if (!registered) {
-            if (current >= registries.size()) {
-                registries = browseForRegistries(interfaceName_, addressV4_, kBrowseMs);
-                current = 0;
-            }
-            if (registries.empty()) {
-                // Nothing on the link. Peer-to-peer discovery still works, so
-                // this is a quiet wait rather than a failure.
-                for (int slept = 0; slept < kBrowseAgainSeconds && running_.load(); ++slept) {
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
-                }
+        // The socket first, so an announcement that arrives while this is
+        // waiting for its next attempt is already in the list when it comes.
+        browser_.service(kTickMs);
+
+        const auto now = Clock::now();
+        if (now >= nextAsk) {
+            browser_.ask();
+            nextAsk = now + std::chrono::seconds(kAskAgainSeconds);
+        }
+
+        if (registered) {
+            if (now < nextHeartbeat) continue;
+            if (heartbeat(active)) {
+                nextHeartbeat = now + std::chrono::seconds(kHeartbeatSeconds);
                 continue;
             }
-
-            const NmosRegistry& registry = registries[current];
-            if (registerEverything(registry)) {
-                registered = true;
-                const std::lock_guard<std::mutex> held(registeredLock_);
-                registeredWith_ = registry.host + ":" + std::to_string(registry.port);
-                (void)std::fprintf(stderr, "[nmos] registered with %s\n", registeredWith_.c_str());
-            } else {
-                // The next one down the priority list, and a fresh browse once
-                // the list is used up: that is what a second advertised
-                // registry is for.
-                ++current;
-            }
+            (void)std::fprintf(stderr, "[nmos] %s stopped answering; looking for another\n",
+                               active.endpoint().c_str());
+            registered = false;
+            refused.push_back(active.endpoint());
+            note({});
             continue;
         }
 
-        for (int slept = 0; slept < kHeartbeatSeconds && running_.load(); ++slept) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-        if (!running_.load()) break;
+        if (now < nextAttempt) continue;
 
-        if (!heartbeat(registries[current])) {
-            (void)std::fprintf(stderr, "[nmos] %s stopped answering; looking for another registry\n",
-                         registries[current].host.c_str());
-            registered = false;
-            forget();
-            // The one that failed is not tried again until the next browse.
-            ++current;
+        const std::vector<NmosRegistry> registries = browser_.registries();
+        const auto next = std::find_if(
+            registries.begin(), registries.end(), [&refused](const NmosRegistry& registry) {
+                return std::find(refused.begin(), refused.end(), registry.endpoint()) ==
+                       refused.end();
+            });
+        if (next == registries.end()) {
+            // Nothing left to try, either because nothing has answered yet or
+            // because every one of them refused. Wait before starting the list
+            // again, so a link whose registries are all down is not asked
+            // about as fast as the machine can ask.
+            refused.clear();
+            nextAttempt = now + std::chrono::seconds(kRetrySeconds);
+            continue;
+        }
+
+        if (takeUp(*next)) {
+            active = *next;
+            registered = true;
+            nextHeartbeat = now + std::chrono::seconds(kHeartbeatSeconds);
+            note(active.endpoint());
+            (void)std::fprintf(stderr, "[nmos] registered with %s\n", active.endpoint().c_str());
+        } else {
+            refused.push_back(next->endpoint());
         }
     }
 
-    forget();
+    note({});
+    browser_.stop();
 }
 
 }  // namespace AES67::Ravenna
