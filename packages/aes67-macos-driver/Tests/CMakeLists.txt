@@ -233,18 +233,6 @@ target_link_libraries(TestRTCPMonitor PRIVATE doctest_headers)
 target_compile_features(TestRTCPMonitor PRIVATE cxx_std_17)
 
 # Test: the HTTP client, against a server made of a loopback socket.
-add_executable(TestHTTPClient
-    TestHTTPClient.cpp
-)
-
-target_include_directories(TestHTTPClient PRIVATE
-    ${PROJECT_SOURCE_DIR}
-)
-
-target_link_libraries(TestHTTPClient PRIVATE aes67_net)
-
-target_link_libraries(TestHTTPClient PRIVATE doctest_headers)
-target_compile_features(TestHTTPClient PRIVATE cxx_std_17)
 
 # Test: RTSP URL and response parsing, without a server.
 add_executable(TestRTSPClient
@@ -779,7 +767,6 @@ add_test(NAME ConnectionAPI COMMAND TestConnectionAPI)
 add_test(NAME NodeAPI COMMAND TestNodeAPI)
 add_test(NAME SAPListener COMMAND TestSAPListener)
 add_test(NAME RTCPMonitor COMMAND TestRTCPMonitor)
-add_test(NAME HTTPClient COMMAND TestHTTPClient)
 add_test(NAME RTSPClient COMMAND TestRTSPClient)
 add_test(NAME SAPAnnouncer COMMAND TestSAPAnnouncer)
 add_test(NAME NetworkUtils COMMAND TestNetworkUtils)
@@ -828,7 +815,6 @@ set_tests_properties(ConnectionAPI PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NodeAPI PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SAPListener PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTCPMonitor PROPERTIES LABELS "unit" TIMEOUT 60)
-set_tests_properties(HTTPClient PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(RTSPClient PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SAPAnnouncer PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(NetworkUtils PROPERTIES LABELS "unit" TIMEOUT 60)

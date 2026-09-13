@@ -1,6 +1,6 @@
 //
 // TestHTTPClient.cpp
-// AES67 macOS Driver
+// AES67 core
 //
 // The small HTTP client the discovery layer is built on, against a server
 // made of a loopback socket that answers whatever the test tells it to.

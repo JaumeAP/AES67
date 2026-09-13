@@ -28,6 +28,7 @@
 #include "Ravenna/HttpServer.h"
 #include "Ravenna/MdnsResponder.h"
 #include "Ravenna/NmosRoot.h"
+#include "Ravenna/RegistrationClient.h"
 #include "Ravenna/NodeApi.h"
 #include "Ravenna/ReceiverRouting.h"
 #include "Ravenna/RtspServer.h"
@@ -36,6 +37,12 @@
 #include <optional>
 #include <cerrno>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
+#if defined(__linux__)
+#include <linux/if_packet.h>
+#else
+#include <net/if_dl.h>
+#endif
 
 #include <atomic>
 #include <map>
@@ -71,6 +78,40 @@ const char* valueFor(int argc, char** argv, int& index) {
 /// Host byte order, which is what the advertisement holds: the encoder writes
 /// it big-endian itself, and holding it already swapped is how a field ends up
 /// reversed on the wire.
+/// The hardware address of one interface, as IS-04 writes one: six lowercase
+/// hex pairs joined by hyphens. Nothing when the interface has none to read,
+/// which is a loopback or a name that is not there.
+std::optional<std::string> macAddressOf(const std::string& interfaceName) {
+    struct ifaddrs* list = nullptr;
+    if (::getifaddrs(&list) != 0) return std::nullopt;
+
+    std::optional<std::string> found;
+    for (const struct ifaddrs* entry = list; entry != nullptr; entry = entry->ifa_next) {
+        if (entry->ifa_addr == nullptr || interfaceName != entry->ifa_name) continue;
+
+        const unsigned char* bytes = nullptr;
+#if defined(__linux__)
+        if (entry->ifa_addr->sa_family != AF_PACKET) continue;
+        const auto* link = reinterpret_cast<const struct sockaddr_ll*>(entry->ifa_addr);
+        if (link->sll_halen != 6) continue;
+        bytes = link->sll_addr;
+#else
+        if (entry->ifa_addr->sa_family != AF_LINK) continue;
+        const auto* link = reinterpret_cast<const struct sockaddr_dl*>(entry->ifa_addr);
+        if (link->sdl_alen != 6) continue;
+        bytes = reinterpret_cast<const unsigned char*>(LLADDR(link));
+#endif
+        char text[18];
+        (void)std::snprintf(text, sizeof(text), "%02x-%02x-%02x-%02x-%02x-%02x", bytes[0],
+                            bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+        found = std::string(text);
+        break;
+    }
+
+    ::freeifaddrs(list);
+    return found;
+}
+
 bool addressFrom(const std::string& text, uint32_t& out) {
     struct in_addr parsed {};
     if (::inet_pton(AF_INET, text.c_str(), &parsed) != 1) return false;
@@ -291,6 +332,10 @@ int main(int argc, char** argv) {
     identity.addressV4 = address;
     identity.apiPort = nmosPort;
     identity.ptpGrandmaster = ptpGrandmaster;
+    identity.interfaceName = interfaceName;
+    if (const std::optional<std::string> mac = macAddressOf(interfaceName)) {
+        identity.interfaceMac = *mac;
+    }
     NodeApi nodeApi(identity, catalogue, connections);
 
     HttpServer nmos([&connections, &channelMapping, &nodeApi](const std::string& method,
@@ -318,6 +363,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // The other half of IS-04 discovery: the mDNS advertisement above is
+    // what a controller browsing the link finds, and this is what a plant
+    // running a registry sees. A link with no registry costs one query every
+    // ten seconds and nothing else.
+    RegistrationClient registration(nodeApi, identity.nodeId, interfaceName, address);
+    registration.start();
+
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
     std::signal(SIGPIPE, SIG_IGN);
@@ -344,6 +396,7 @@ int main(int argc, char** argv) {
                 "IS-08 at %s/map/\n",
                 static_cast<unsigned>(nmos.port()), kNodeApiRoot, kConnectionApiRoot,
                 kChannelMappingApiRoot);
+    std::printf("[ravenna] looking for an NMOS registry on %s\n", interfaceName.c_str());
 
     size_t queries = 0;
     size_t describes = 0;
@@ -363,6 +416,8 @@ int main(int argc, char** argv) {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
+
+    registration.stop();
 
     // The goodbye matters: without it a browser holds the session for another
     // 75 minutes after this stops.

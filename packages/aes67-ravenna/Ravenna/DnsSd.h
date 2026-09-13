@@ -88,4 +88,38 @@ std::vector<uint8_t> buildGoodbye(const SessionAdvertisement& session,
 /// returns empty rather than throwing: this reads packets from the network.
 std::vector<std::string> parseQueryNames(const uint8_t* packet, size_t length);
 
+/// What an NMOS registry advertises itself as, which is what a node browses
+/// for before it can register anything (IS-04 sec 3.1).
+inline constexpr char kNmosRegisterService[] = "_nmos-register._tcp.local";
+
+/// One instance a response described. The records that make up a service are
+/// not all required to arrive in the same packet, so anything absent stays
+/// empty and the caller decides whether what it got is enough to use.
+struct DiscoveredService {
+    std::string instanceName;  ///< the PTR's target, in full
+    std::string hostName;      ///< the SRV's target
+    uint16_t port = 0;
+    uint32_t addressV4 = 0;    ///< host byte order, from the A record
+    std::vector<std::string> txtEntries;  ///< "key=value", RFC 6763 sec 6
+
+    /// The value of one TXT key, or the fallback when it is not there.
+    std::string txt(const std::string& key, const std::string& fallback = {}) const;
+};
+
+/// A question for one service type, as an mDNS query packet: the single PTR
+/// question RFC 6763 sec 4.1 says a browser asks.
+std::vector<uint8_t> buildQuery(const std::string& serviceType);
+
+/// The instances of `serviceType` an mDNS response describes. Records are
+/// read from the answer, authority and additional sections alike, because a
+/// responder is free to put the SRV, the TXT and the A in any of them.
+///
+/// Unlike the query side, this follows compression pointers: a real response
+/// is full of them, and refusing to would make this read almost nothing. The
+/// jumps are counted and bounded, because the packet comes off an open
+/// network and a pointer loop is one byte to write. Anything unparseable
+/// yields what was read up to that point rather than throwing.
+std::vector<DiscoveredService> parseServiceResponse(const uint8_t* packet, size_t length,
+                                                    const std::string& serviceType);
+
 }  // namespace AES67::Ravenna

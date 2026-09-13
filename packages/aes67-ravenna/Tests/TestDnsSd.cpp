@@ -173,3 +173,84 @@ TEST_CASE("An instance name is one label, and a dot in it makes two") {
     CHECK(dotted[0] == 5);
     CHECK(dotted[6] == 5);
 }
+
+TEST_CASE("What this package announces, it reads back as a service") {
+    // The announcement side is the only responder this package can be sure
+    // of, so the round trip is what says the two halves agree on the bytes.
+    SessionAdvertisement registry;
+    registry.instanceName = "Registry 1";
+    registry.hostName = "reg.local";
+    registry.port = 8010;
+    registry.addressV4 = 0xC0A8000A;  // 192.168.0.10
+    registry.txtEntries = {"api_ver=v1.3", "api_proto=http", "pri=10"};
+    registry.serviceType = kNmosRegisterService;
+    registry.subtype.clear();
+
+    const std::vector<uint8_t> packet = buildAnnouncement(registry);
+    const std::vector<DiscoveredService> found =
+        parseServiceResponse(packet.data(), packet.size(), kNmosRegisterService);
+
+    REQUIRE(found.size() == 1);
+    CHECK(found[0].hostName == "reg.local");
+    CHECK(found[0].port == 8010);
+    CHECK(found[0].addressV4 == 0xC0A8000A);
+    CHECK(found[0].txt("pri") == "10");
+    CHECK(found[0].txt("api_ver") == "v1.3");
+    // A key nobody advertised is the fallback, not an empty string that looks
+    // like an answer.
+    CHECK(found[0].txt("api_auth", "false") == "false");
+}
+
+TEST_CASE("Another service's records are not this service's") {
+    SessionAdvertisement node;
+    node.instanceName = "Mix A";
+    node.hostName = "box.local";
+    node.port = 8080;
+    node.serviceType = kNmosNodeService;
+    node.subtype.clear();
+
+    const std::vector<uint8_t> packet = buildAnnouncement(node);
+    CHECK(parseServiceResponse(packet.data(), packet.size(), kNmosRegisterService).empty());
+    CHECK(parseServiceResponse(packet.data(), packet.size(), kNmosNodeService).size() == 1);
+}
+
+TEST_CASE("A query is one PTR question for the service asked about") {
+    const std::vector<uint8_t> packet = buildQuery(kNmosRegisterService);
+    REQUIRE(packet.size() > 12);
+    CHECK(packet[5] == 1);   // one question
+    CHECK(packet[7] == 0);   // and no answers
+    CHECK(parseQueryNames(packet.data(), packet.size()) ==
+          std::vector<std::string>{kNmosRegisterService});
+}
+
+TEST_CASE("A packet off the network cannot make this loop or read past itself") {
+    // Everything here is what an unfriendly responder sends, and none of it
+    // may do more than return nothing.
+    const std::vector<uint8_t> empty;
+    CHECK(parseServiceResponse(nullptr, 0, kNmosRegisterService).empty());
+    CHECK(parseServiceResponse(empty.data(), 0, kNmosRegisterService).empty());
+
+    // A pointer at itself: the classic loop.
+    std::vector<uint8_t> loop = {0, 0, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+    loop.push_back(0xC0);
+    loop.push_back(12);
+    CHECK(parseServiceResponse(loop.data(), loop.size(), kNmosRegisterService).empty());
+
+    // A pointer forwards, which a legal packet never has.
+    std::vector<uint8_t> forwards = {0, 0, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+    forwards.push_back(0xC0);
+    forwards.push_back(20);
+    forwards.resize(32, 0);
+    CHECK(parseServiceResponse(forwards.data(), forwards.size(), kNmosRegisterService).empty());
+
+    // A record whose data length runs off the end of the packet.
+    SessionAdvertisement service;
+    service.instanceName = "Registry 1";
+    service.hostName = "reg.local";
+    service.port = 8010;
+    service.serviceType = kNmosRegisterService;
+    service.subtype.clear();
+    std::vector<uint8_t> truncated = buildAnnouncement(service);
+    truncated.resize(truncated.size() / 2);
+    CHECK(parseServiceResponse(truncated.data(), truncated.size(), kNmosRegisterService).empty());
+}
