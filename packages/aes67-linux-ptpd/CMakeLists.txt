@@ -160,9 +160,16 @@ if(BUILD_TESTS)
             # lands and the submodule moves, this goes: the fix was tried here
             # first, and the suite passes under both sanitizers without it.
             #
-            # Narrow on purpose: this one check, on this one file. Everything
+            # And the same file reads a clock identity out of a packet through
+            # a uint64_t*: PTP.c:297, and five more like it. A PTP payload
+            # starts 42 bytes into a frame, so those eight bytes are never
+            # eight-byte aligned -- in an skb either, which is where the module
+            # really reads them. GCC's UBSan on Linux says so; clang's on macOS
+            # did not, which is why this one waited for a runner.
+            #
+            # Narrow on purpose: these two checks, on this one file. Everything
             # else in it stays instrumented, and so does every line of ours.
-            list(APPEND lkm_ptp_options "-fno-sanitize=shift")
+            list(APPEND lkm_ptp_options "-fno-sanitize=shift" "-fno-sanitize=alignment")
         endif()
         set_source_files_properties(${lkm_driver}/PTP.c PROPERTIES
             COMPILE_OPTIONS "${lkm_ptp_options}")
