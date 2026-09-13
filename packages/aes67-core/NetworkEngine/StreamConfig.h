@@ -11,6 +11,8 @@
 #include "StreamChannelMapper.h"
 #include <string>
 #include <vector>
+#include "NetworkEngine/JsonFields.h"
+
 #include <optional>
 #include <filesystem>
 
@@ -140,14 +142,6 @@ private:
     static std::optional<ChannelMapping> mappingFromJSON(const std::string& json);
 
     // Simple JSON parsing helpers
-    static std::optional<std::string> extractStringField(const std::string& json, const std::string& field);
-    static std::optional<uint64_t> extractUInt64Field(const std::string& json, const std::string& field);
-    static std::optional<uint32_t> extractUInt32Field(const std::string& json, const std::string& field);
-    static std::optional<uint16_t> extractUInt16Field(const std::string& json, const std::string& field);
-    static std::optional<uint8_t> extractUInt8Field(const std::string& json, const std::string& field);
-    static std::optional<double> extractDoubleField(const std::string& json, const std::string& field);
-    static std::optional<bool> extractBoolField(const std::string& json, const std::string& field);
-    static std::optional<int> extractIntField(const std::string& json, const std::string& field);
 };
 
 } // namespace AES67

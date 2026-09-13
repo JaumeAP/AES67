@@ -23,6 +23,11 @@
 
 namespace AES67 {
 
+/// Lower case, ASCII only. HTTP header names are compared without regard to
+/// case (RFC 9110 sec 5.1) and so are the keys of an SDP attribute, and the
+/// macOS driver had written this out again to compare the same things.
+std::string toLower(std::string text);
+
 struct HTTPResponse {
     int status{0};        ///< 0 when nothing came back; the error says why.
     std::string body;

@@ -21,13 +21,13 @@
 
 namespace AES67 {
 
-namespace {
-
-std::string toLower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
+std::string toLower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char letter) { return static_cast<char>(std::tolower(letter)); });
+    return text;
 }
+
+namespace {
 
 /// A small unsigned number out of text, without exceptions: std::stoi
 /// throws on garbage and this runs inside coreaudiod.

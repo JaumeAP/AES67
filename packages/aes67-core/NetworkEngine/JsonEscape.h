@@ -16,20 +16,45 @@
 
 namespace AES67 {
 
-/// Escapes what this project's JSON writers put inside a quoted string: the
-/// quote itself and the backslash.
+/// Escapes what this project's JSON writers put inside a quoted string.
 ///
-/// Deliberately not a full RFC 8259 escaper. What goes through here is
-/// labels, identifiers and device names -- text a person typed -- and a
-/// control character in one of those is a bug upstream of this function, not
-/// something to encode and pass on. Widening it is a change of contract for
-/// three call sites, so it wants its own commit and its own reason.
+/// It used to do the quote and the backslash and nothing else, on the reading
+/// that a control character in a device name is a bug upstream of here. It is
+/// -- and the document this wrote was still one nothing could read back,
+/// which is a worse place to find out. What goes through here is labels,
+/// identifiers and names out of settings files that nobody validates first,
+/// so a newline in one costs a file this repository can no longer parse.
+///
+/// RFC 8259 sec 7: the quote, the backslash, and everything below a space,
+/// which has the named escapes where there is one and \u00XX where there is
+/// not. The macOS driver had written half of this again for the same reason.
 inline std::string jsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"' || c == '\\') out.push_back('\\');
-        out.push_back(c);
+    for (const char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                // Everything below a space has to be escaped, and the only
+                // general way to write one is \u00XX (RFC 8259 sec 7). A
+                // control character written raw is a document nothing will
+                // read back, and these strings come from device names and
+                // settings files that nobody validates first.
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    static const char* kHex = "0123456789abcdef";
+                    out += "\\u00";
+                    out += kHex[(static_cast<unsigned char>(c) >> 4) & 0xF];
+                    out += kHex[static_cast<unsigned char>(c) & 0xF];
+                } else {
+                    out.push_back(c);
+                }
+        }
     }
     return out;
 }
