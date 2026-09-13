@@ -13,6 +13,22 @@
 
 namespace AES67 {
 
+/// One of a stream's channels landing on one of the device's.
+///
+/// A stream channel may appear more than once. IS-08 keys its map by the
+/// OUTPUT channel, and a source feeding several device channels -- one mono
+/// talkback into every monitor, say -- is an ordinary thing for a controller
+/// to ask for. A device channel may appear only once: two sources on one
+/// output is not a mix, it is a fault.
+struct ChannelRoute {
+    uint16_t streamChannel{0};
+    uint16_t deviceChannel{0};
+
+    bool operator==(const ChannelRoute& other) const {
+        return streamChannel == other.streamChannel && deviceChannel == other.deviceChannel;
+    }
+};
+
 /// Defines how channels from an AES67 stream map to device channels.
 /// Supports sequential mapping with offsets or per-channel custom routing.
 struct ChannelMapping {
@@ -26,8 +42,18 @@ struct ChannelMapping {
     uint16_t deviceChannelStart{0};      ///< First device channel (0-127)
     uint16_t deviceChannelCount{0};      ///< Number of channels to map
 
-    /// Per-channel custom routing. If empty, sequential: streamCh[i] -> deviceCh[start+i].
-    std::vector<int> channelMap;
+    /// Where this stream's channels go, when they do not simply go in order.
+    /// Empty is the ordinary case and means sequential: streamCh[i] lands on
+    /// deviceCh[start+i].
+    ///
+    /// A list rather than one device channel per stream channel, because the
+    /// two are not one to one: a stream channel with no route is not carried,
+    /// and one with several is carried to each of them.
+    std::vector<ChannelRoute> routes;
+
+    /// The device channels this stream lands on, in order, whether it routes
+    /// them itself or takes the block it was given.
+    std::vector<int> deviceChannels() const;
 
     // Validation
     bool isValid() const;

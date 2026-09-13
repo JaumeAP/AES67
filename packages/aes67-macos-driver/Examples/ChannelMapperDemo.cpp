@@ -239,10 +239,11 @@ int run() {
     customMapping.deviceChannelStart = 100;  // Start at channel 100
     customMapping.deviceChannelCount = 8;
 
-    // Custom per-channel routing
-    // Stream ch 0,1,2,3 → Device ch 100,101,102,103
-    // Stream ch 4,5,6,7 → Device ch 104,105,106,107
-    customMapping.channelMap = {0, 1, 2, 3, 4, 5, 6, 7};
+    // Custom per-channel routing: stream ch 0..7 → device ch 100..107,
+    // named one by one rather than taken as a block.
+    for (uint16_t channel = 0; channel < 8; ++channel) {
+        customMapping.routes.push_back({channel, static_cast<uint16_t>(100 + channel)});
+    }
 
     std::cout << "\nCreating custom mapping:\n";
     std::cout << "  Stream: 8 channels\n";

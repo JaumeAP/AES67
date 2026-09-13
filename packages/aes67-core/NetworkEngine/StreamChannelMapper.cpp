@@ -41,22 +41,52 @@ std::string ChannelMapping::getValidationError() const {
         return "Device channel range exceeds maximum (128 channels)";
     }
 
-    if (!channelMap.empty() && channelMap.size() != streamChannelCount) {
-        return "Custom channel map size doesn't match stream channel count";
+    std::vector<bool> taken(StreamChannelMapper::kMaxDeviceChannels, false);
+    for (const ChannelRoute& route : routes) {
+        if (route.streamChannel >= streamChannelCount) {
+            return "A route names stream channel " + std::to_string(route.streamChannel) +
+                   ", and the stream has " + std::to_string(streamChannelCount);
+        }
+        if (route.deviceChannel >= StreamChannelMapper::kMaxDeviceChannels) {
+            return "A route names device channel " + std::to_string(route.deviceChannel) +
+                   ", and the device has " +
+                   std::to_string(StreamChannelMapper::kMaxDeviceChannels);
+        }
+        // Two sources on one output is not a mix, it is a fault.
+        if (taken[route.deviceChannel]) {
+            return "Two routes land on device channel " +
+                   std::to_string(route.deviceChannel);
+        }
+        taken[route.deviceChannel] = true;
     }
 
     return "";  // Valid
 }
 
+std::vector<int> ChannelMapping::deviceChannels() const {
+    std::vector<int> channels;
+    if (routes.empty()) {
+        channels.reserve(deviceChannelCount);
+        for (uint16_t i = 0; i < deviceChannelCount; i++) {
+            channels.push_back(deviceChannelStart + i);
+        }
+        return channels;
+    }
+
+    channels.reserve(routes.size());
+    for (const ChannelRoute& route : routes) channels.push_back(route.deviceChannel);
+    return channels;
+}
+
 bool ChannelMapping::containsDeviceChannel(int deviceCh) const {
-    if (channelMap.empty()) {
+    if (routes.empty()) {
         // Sequential mapping
         return deviceCh >= deviceChannelStart &&
                deviceCh < (deviceChannelStart + deviceChannelCount);
-    } else {
-        // Custom mapping
-        return std::find(channelMap.begin(), channelMap.end(), deviceCh) != channelMap.end();
     }
+    return std::any_of(routes.begin(), routes.end(), [deviceCh](const ChannelRoute& route) {
+        return route.deviceChannel == deviceCh;
+    });
 }
 
 // ============================================================================
@@ -188,7 +218,7 @@ std::optional<ChannelMapping> StreamChannelMapper::createDefaultMapping(
     mapping.streamChannelOffset = 0;
     mapping.deviceChannelStart = *blockStart;
     mapping.deviceChannelCount = numChannels;
-    // channelMap left empty for sequential mapping
+    // routes left empty for sequential mapping
 
     return mapping;
 }
@@ -438,18 +468,9 @@ bool StreamChannelMapper::fromJSON(const std::string& json) {
 void StreamChannelMapper::updateDeviceChannelOwners(const ChannelMapping& mapping) {
     // Note: Caller must hold lock
 
-    if (mapping.channelMap.empty()) {
-        // Sequential mapping
-        for (uint16_t i = 0; i < mapping.deviceChannelCount; i++) {
-            int deviceCh = mapping.deviceChannelStart + i;
+    for (int deviceCh : mapping.deviceChannels()) {
+        if (deviceCh >= 0 && deviceCh < static_cast<int>(kMaxDeviceChannels)) {
             deviceChannelOwners_[deviceCh] = mapping.streamID;
-        }
-    } else {
-        // Custom mapping
-        for (int deviceCh : mapping.channelMap) {
-            if (deviceCh >= 0 && deviceCh < static_cast<int>(kMaxDeviceChannels)) {
-                deviceChannelOwners_[deviceCh] = mapping.streamID;
-            }
         }
     }
 }

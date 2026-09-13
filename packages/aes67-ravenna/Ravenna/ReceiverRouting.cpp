@@ -48,19 +48,14 @@ bool ReceiverRouting::apply(const std::string& receiverId, const std::string& sd
     const auto asked = remembered_.find(receiverId);
     if (asked != remembered_.end()) {
         ChannelMapping wanted = *mapping;
-        // Written out first: a default mapping carries an empty map, which
-        // means the block laid out in order, and there is nothing to lay a
-        // grid over until it says so channel by channel.
-        if (wanted.channelMap.empty()) {
-            wanted.channelMap.resize(wanted.streamChannelCount);
-            for (size_t channel = 0; channel < wanted.channelMap.size(); ++channel) {
-                wanted.channelMap[channel] = wanted.deviceChannelStart + static_cast<int>(channel);
-            }
+        // Only the routes for channels this stream actually has: a grid set
+        // for eight channels and a stream that brings two is two channels
+        // routed, and the rest waits for a stream that has them.
+        wanted.routes.clear();
+        for (const ChannelRoute& route : asked->second) {
+            if (route.streamChannel < wanted.streamChannelCount) wanted.routes.push_back(route);
         }
-        for (size_t channel = 0;
-             channel < wanted.channelMap.size() && channel < asked->second.size(); ++channel) {
-            wanted.channelMap[channel] = asked->second[channel];
-        }
+        if (wanted.routes.empty()) wanted.routes = mapping->routes;
         std::string ignored;
         if (mapper_.validateMapping(wanted, &ignored)) *mapping = wanted;
     }
@@ -96,11 +91,12 @@ std::vector<std::string> ReceiverRouting::connectedReceivers() const {
     return receivers;
 }
 
-void ReceiverRouting::rememberMap(const std::string& receiverId, std::vector<int> channelMap) {
-    remembered_[receiverId] = std::move(channelMap);
+void ReceiverRouting::rememberRoutes(const std::string& receiverId,
+                                     std::vector<ChannelRoute> routes) {
+    remembered_[receiverId] = std::move(routes);
 }
 
-std::vector<int> ReceiverRouting::rememberedMap(const std::string& receiverId) const {
+std::vector<ChannelRoute> ReceiverRouting::rememberedRoutes(const std::string& receiverId) const {
     const auto found = remembered_.find(receiverId);
     if (found == remembered_.end()) return {};
     return found->second;

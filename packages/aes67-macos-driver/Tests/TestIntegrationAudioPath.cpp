@@ -869,6 +869,79 @@ TEST_CASE("Channel Mapping Through Receiver") {
     std::cout << "PASS" << std::endl;
 }
 
+
+TEST_CASE("Routes Reach The Audio") {
+    std::cout << "Test: routed channels, and one input channel onto several... ";
+
+    auto deviceBuffers = MakeRingBufferArray<kNumChannels>(kRingBufferSize);
+
+    // Two channels in, and a grid a controller could have set: the first onto
+    // three device channels at once, the second onto one nowhere near the
+    // block. Until the routes were read here, both landed sequentially from
+    // deviceChannelStart and the grid was decoration.
+    const uint16_t rxChannels = 2;
+    SDPSession sdp = createTestSDP("Routed RX", "239.69.69.17", 15026, rxChannels, "L16");
+    StreamID id = StreamID::generate();
+    ChannelMapping mapping = createTestMapping(id, "Routed RX", rxChannels, 30);
+    mapping.routes = {{0, 40}, {0, 41}, {0, 42}, {1, 90}};
+
+    RTPReceiver receiver(sdp, mapping, deviceBuffers, 0, kTestInterfaceIP);
+    CHECK(receiver.start());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    const size_t frameCount = 48;
+    const size_t totalSamples = frameCount * rxChannels;
+    std::vector<float> audio(totalSamples);
+    for (size_t f = 0; f < frameCount; ++f) {
+        audio[f * rxChannels + 0] = 0.25f;
+        audio[f * rxChannels + 1] = 0.5f;
+    }
+
+    std::vector<uint8_t> payload(totalSamples * 2);
+    L16Codec::encode(audio.data(), totalSamples, payload.data());
+
+    for (int i = 0; i < 15; ++i) {
+        sendRawRTPPacket("239.69.69.17", 15026, i, i * 48, 0x44444444,
+                         PT_AES67_L16, payload.data(), payload.size());
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    const auto sameAll = [&](size_t devCh, float expected, const char* what) {
+        const size_t avail = deviceBuffers[devCh].available();
+        if (avail == 0) {
+            FAIL_CHECK(what << " carried nothing");
+            return;
+        }
+        std::vector<float> data(avail);
+        deviceBuffers[devCh].read(data.data(), avail);
+        for (size_t i = 0; i < avail; ++i) {
+            if (std::abs(data[i] - expected) > 0.02f) {
+                FAIL_CHECK(what << " (sample " << i << " = " << data[i]
+                                << ", expected ~" << expected << ")");
+                return;
+            }
+        }
+    };
+
+    // The same input channel on each of the three it was routed to.
+    sameAll(40, 0.25f, "Device ch40 should carry stream ch0");
+    sameAll(41, 0.25f, "Device ch41 should carry stream ch0");
+    sameAll(42, 0.25f, "Device ch42 should carry stream ch0");
+    sameAll(90, 0.5f, "Device ch90 should carry stream ch1");
+
+    // And nothing at the block it would have taken had the routes been
+    // ignored, which is what this test exists to catch.
+    CHECK(deviceBuffers[30].available() == 0);
+    CHECK(deviceBuffers[31].available() == 0);
+
+    receiver.stop();
+
+    std::cout << "PASS" << std::endl;
+}
+
 // ============================================================================
 // Test 9: Receiver Statistics Accuracy
 // ============================================================================

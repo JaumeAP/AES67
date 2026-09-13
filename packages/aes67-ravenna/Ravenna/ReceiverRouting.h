@@ -59,15 +59,15 @@ public:
     std::optional<StreamID> streamIdFor(const std::string& receiverId) const;
 
     /// The grid a controller set on a receiver that is carrying nothing yet:
-    /// which device channel each of its channels is to land on, -1 for none.
+    /// which of its channels lands on which of the device's.
     ///
     /// IS-08 routes ports, not media. A plant is patched before the streams
     /// arrive -- that is what a patch is -- and a device that refused the
     /// grid until something was flowing would make a controller do it twice,
     /// in an order nobody asked it to work in. So it is remembered, and laid
     /// over the default mapping when that receiver does take a stream.
-    void rememberMap(const std::string& receiverId, std::vector<int> channelMap);
-    std::vector<int> rememberedMap(const std::string& receiverId) const;
+    void rememberRoutes(const std::string& receiverId, std::vector<ChannelRoute> routes);
+    std::vector<ChannelRoute> rememberedRoutes(const std::string& receiverId) const;
 
     /// The same thing shaped for ConnectionApi::onReceiverActivation, so the
     /// wiring is one line and not a lambda in every caller.
@@ -76,7 +76,7 @@ public:
 private:
     void release(const std::string& receiverId);
 
-    std::map<std::string, std::vector<int>> remembered_;
+    std::map<std::string, std::vector<ChannelRoute>> remembered_;
 
     StreamChannelMapper& mapper_;
     /// A receiver's name is not a StreamID: the matrix keys on a UUID, and one

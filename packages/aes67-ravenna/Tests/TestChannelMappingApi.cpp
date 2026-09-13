@@ -9,6 +9,8 @@
 
 #include "Ravenna/ChannelMappingApi.h"
 
+#include <algorithm>
+
 using namespace AES67;
 using namespace AES67::Ravenna;
 
@@ -38,16 +40,20 @@ JsonValue bodyOf(const ApiResponse& response) {
     return value;
 }
 
-/// The device channel that a given input channel feeds, or -1.
-int deviceChannelOf(const JsonValue& map, const std::string& input, int channelIndex) {
-    const JsonValue& cells = map["map"][kDeviceOutputId];
-    for (const auto& [channel, cell] : cells.asObject()) {
-        if (cell["input"].isString() && cell["input"].asString() == input &&
-            static_cast<int>(cell["channel_index"].asNumber(-1)) == channelIndex) {
-            return std::stoi(channel);
-        }
-    }
-    return -1;
+/// Whether a device channel is fed by that channel of that input. Asked this
+/// way round because that is the way IS-08 keys its map: one input channel
+/// may feed several device channels, so "which device channel does this input
+/// channel feed" has no single answer.
+bool carries(const JsonValue& map, int deviceChannel, const std::string& input,
+             int channelIndex) {
+    const JsonValue& cell = map["map"][kDeviceOutputId][std::to_string(deviceChannel)];
+    return cell["input"].isString() && cell["input"].asString() == input &&
+           static_cast<int>(cell["channel_index"].asNumber(-1)) == channelIndex;
+}
+
+/// Whether anything at all feeds that device channel.
+bool isFed(const JsonValue& map, int deviceChannel) {
+    return map["map"][kDeviceOutputId][std::to_string(deviceChannel)]["input"].isString();
 }
 
 /// The receivers these cases route. IS-08's inputs are the connection API's
@@ -105,8 +111,8 @@ TEST_CASE("The active map is what the matrix holds, not a second copy") {
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
     CHECK(map["map"][kDeviceOutputId].asObject().size() == 128);
 
-    CHECK(deviceChannelOf(map, "receiver-1", 0) == outcome.deviceChannelStart);
-    CHECK(deviceChannelOf(map, "receiver-1", 1) == outcome.deviceChannelStart + 1);
+    CHECK(carries(map, outcome.deviceChannelStart, "receiver-1", 0));
+    CHECK(carries(map, outcome.deviceChannelStart + 1, "receiver-1", 1));
 
     // Every other cell is empty, and says so with nulls rather than with a
     // channel nobody feeds.
@@ -143,13 +149,13 @@ TEST_CASE("Moving a cell moves the channel in the matrix") {
     CHECK(made["activation"]["activation_time"].isNull() == false);
 
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(deviceChannelOf(map, "receiver-1", 1) == 64);
+    CHECK(carries(map, 64, "receiver-1", 1));
 
     // And the matrix agrees, which is the point: the grid is a view of it.
     const auto mapping = routing.mappingFor("receiver-1");
     REQUIRE(mapping.has_value());
-    REQUIRE(mapping->channelMap.size() == 2);
-    CHECK(mapping->channelMap[1] == 64);
+    CHECK(std::find(mapping->routes.begin(), mapping->routes.end(), ChannelRoute{1, 64}) !=
+          mapping->routes.end());
 }
 
 TEST_CASE("A cell emptied stops carrying anything") {
@@ -172,7 +178,7 @@ TEST_CASE("A cell emptied stops carrying anything") {
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
     CHECK(map["map"][kDeviceOutputId][std::to_string(first)]["input"].isNull());
     // The other channel is untouched.
-    CHECK(deviceChannelOf(map, "receiver-1", 1) == first + 1);
+    CHECK(carries(map, first + 1, "receiver-1", 1));
 }
 
 TEST_CASE("Two inputs cannot end up on one device channel") {
@@ -198,7 +204,7 @@ TEST_CASE("Two inputs cannot end up on one device channel") {
     const JsonValue& cell = map["map"][kDeviceOutputId]["10"];
     REQUIRE(cell["input"].isString());
     CHECK(cell["input"].asString() == "receiver-2");
-    CHECK(deviceChannelOf(map, "receiver-1", 0) != 10);
+    CHECK_FALSE(carries(map, 10, "receiver-1", 0));
 }
 
 TEST_CASE("A grid the matrix refuses leaves the device carrying what it was") {
@@ -219,7 +225,8 @@ TEST_CASE("A grid the matrix refuses leaves the device carrying what it was") {
     CHECK(api.handle("POST", path("/map/activations"), body).status == 400);
 
     const JsonValue after = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(deviceChannelOf(after, "receiver-1", 0) == deviceChannelOf(before, "receiver-1", 0));
+    CHECK(after["map"][kDeviceOutputId].serialise() ==
+          before["map"][kDeviceOutputId].serialise());
 }
 
 TEST_CASE("An input or a channel that does not exist is refused with which") {
@@ -395,7 +402,7 @@ TEST_CASE("A scheduled change is promised, locks the grid, and can be called off
 
     // Promised, not done: the grid has not moved.
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(deviceChannelOf(map, "receiver-1", 1) != 64);
+    CHECK_FALSE(carries(map, 64, "receiver-1", 1));
 
     // And it is readable under its id, on its own and in the list.
     CHECK(bodyOf(api.handle("GET", path("/map/activations/"), "")).asObject().count(id) == 1);
@@ -433,7 +440,7 @@ TEST_CASE("A change whose time has passed happens at the next request") {
     // Nothing reads this API without a request, so the next request is when a
     // due change happens.
     const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(deviceChannelOf(map, "receiver-1", 1) == 64);
+    CHECK(carries(map, 64, "receiver-1", 1));
     // And it is gone from the list, so it cannot fire twice.
     CHECK(bodyOf(api.handle("GET", path("/map/activations/"), "")).asObject().empty());
 }
@@ -455,7 +462,7 @@ TEST_CASE("A grid set before the stream is kept, and taken up when it arrives") 
     // Read back before anything is connected: the active map says where that
     // channel will land, which is what a controller just told it.
     const JsonValue patched = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(deviceChannelOf(patched, "receiver-1", 1) == 70);
+    CHECK(carries(patched, 70, "receiver-1", 1));
 
     RoutingOutcome outcome;
     std::string why;
@@ -464,5 +471,52 @@ TEST_CASE("A grid set before the stream is kept, and taken up when it arrives") 
     // And the stream lands where it was patched rather than on the default
     // block it would otherwise have taken.
     const JsonValue flowing = bodyOf(api.handle("GET", path("/map/active/"), ""));
-    CHECK(deviceChannelOf(flowing, "receiver-1", 1) == 70);
+    CHECK(carries(flowing, 70, "receiver-1", 1));
+}
+
+TEST_CASE("One input channel can feed several device channels") {
+    // IS-08 keys its map by the OUTPUT channel: routing an input onto a
+    // second output does not take it off the first, because that first cell
+    // was never written. One source into several monitors is the ordinary
+    // reason to ask.
+    StreamChannelMapper mapper;
+    ReceiverRouting routing(mapper);
+    ConnectionApi connections = withTwoReceivers();
+    ChannelMappingApi api(mapper, routing, connections);
+
+    RoutingOutcome outcome;
+    std::string why;
+    REQUIRE(routing.apply("receiver-1", sdpFor("Talkback", 1), true, outcome, why));
+
+    REQUIRE(api.handle("POST", path("/map/activations"),
+                       R"({"activation":{"mode":"activate_immediate"},"action":{"device":{)"
+                       R"("40":{"input":"receiver-1","channel_index":0},)"
+                       R"("41":{"input":"receiver-1","channel_index":0},)"
+                       R"("42":{"input":"receiver-1","channel_index":0}}}})")
+                .status == 200);
+
+    const JsonValue map = bodyOf(api.handle("GET", path("/map/active/"), ""));
+    CHECK(carries(map, 40, "receiver-1", 0));
+    CHECK(carries(map, 41, "receiver-1", 0));
+    CHECK(carries(map, 42, "receiver-1", 0));
+    // And the block it was given still carries it too: nothing emptied that
+    // cell, so nothing stopped feeding it.
+    CHECK(carries(map, outcome.deviceChannelStart, "receiver-1", 0));
+
+    // The matrix holds all of them, and they are this stream's.
+    const auto mapping = routing.mappingFor("receiver-1");
+    REQUIRE(mapping.has_value());
+    for (int deviceChannel : {40, 41, 42}) {
+        CHECK(mapping->containsDeviceChannel(deviceChannel));
+    }
+
+    // Emptying one leaves the others alone.
+    REQUIRE(api.handle("POST", path("/map/activations"),
+                       R"({"activation":{"mode":"activate_immediate"},)"
+                       R"("action":{"device":{"41":{"input":null,"channel_index":null}}}})")
+                .status == 200);
+    const JsonValue after = bodyOf(api.handle("GET", path("/map/active/"), ""));
+    CHECK_FALSE(isFed(after, 41));
+    CHECK(carries(after, 40, "receiver-1", 0));
+    CHECK(carries(after, 42, "receiver-1", 0));
 }

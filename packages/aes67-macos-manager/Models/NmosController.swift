@@ -173,11 +173,11 @@ final class NmosController: NSObject, ObservableObject {
             return
         }
         do {
-            // POST map/activate, not PATCH: IS-08 writes the map through an
-            // activation resource rather than by patching the map itself, and
-            // this repository's own server (Ravenna/ChannelMappingApi.cpp)
-            // answers 405 to anything else there.
-            try await post(root.appendingPathComponent("map/activate"),
+            // POST map/activations, not PATCH: IS-08 writes the map through
+            // an activation resource rather than by patching the map itself.
+            // The answer is the activation that was made, keyed by the id it
+            // was given, and the map itself is read back from map/active.
+            try await post(root.appendingPathComponent("map/activations"),
                            body: NmosPatch.mapChannel(output: output, outputChannel: outputChannel,
                                                       input: input, inputChannel: inputChannel))
         } catch {
