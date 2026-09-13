@@ -131,10 +131,30 @@ void MdnsResponder::alsoAdvertise(const SessionAdvertisement& service) {
     extras_.push_back(service);
 }
 
+void MdnsResponder::announceExtras(bool announce) {
+    if (announce == announceExtras_) return;
+
+    if (!announce) {
+        // Withdrawn before they stop being ours to withdraw: once the flag is
+        // down, everything() no longer lists them and the goodbye would name
+        // nothing.
+        for (const SessionAdvertisement& service : extras_) {
+            (void)sendPacket(buildGoodbye(service));
+        }
+        announceExtras_ = false;
+        return;
+    }
+
+    announceExtras_ = true;
+    for (const SessionAdvertisement& service : extras_) {
+        (void)sendPacket(buildAnnouncement(service));
+    }
+}
+
 std::vector<SessionAdvertisement> MdnsResponder::everything() const {
     std::vector<SessionAdvertisement> all =
         catalogue_.advertisements(hostName_, port_, addressV4_);
-    all.insert(all.end(), extras_.begin(), extras_.end());
+    if (announceExtras_) all.insert(all.end(), extras_.begin(), extras_.end());
     return all;
 }
 

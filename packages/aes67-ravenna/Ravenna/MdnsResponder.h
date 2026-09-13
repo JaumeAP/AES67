@@ -54,12 +54,27 @@ public:
     /// common way a daemon stops is a signal.
     void goodbye();
 
+    /// Whether the services added with alsoAdvertise() are announced at all.
+    ///
+    /// IS-04 sec 3.1: a node that has found a registry stops advertising
+    /// itself on the link. Peer-to-peer discovery is the fallback for a link
+    /// with no registry, not a second channel running beside it, and a
+    /// controller that finds the same node twice has to work out that the two
+    /// are one. Turning it off withdraws them with a goodbye; turning it back
+    /// on announces them again, which is what happens when the registry goes
+    /// away.
+    ///
+    /// The sessions this responder advertises are not affected: RAVENNA finds
+    /// them this way and has no registry to find them in.
+    void announceExtras(bool announce);
+
 private:
     bool sendPacket(const std::vector<uint8_t>& packet);
     std::vector<SessionAdvertisement> everything() const;
 
     const SessionCatalogue& catalogue_;
     std::vector<SessionAdvertisement> extras_;
+    bool announceExtras_ = true;
     int socket_ = -1;
     std::string hostName_;
     uint32_t addressV4_ = 0;
