@@ -106,17 +106,23 @@ void resolveAutoLeg(JsonObject& leg, bool forSender, const std::string& sdp,
     }
 }
 
-/// Rewrites a sender's transport file so it describes where the stream is
-/// actually going. A controller is entitled to move a sender's destination
-/// and then read the SDP; one that still named the old group would send every
-/// receiver somewhere nothing arrives.
+/// Rewrites a transport file so it describes where the stream actually goes.
+/// A controller is entitled to move a sender's destination and then read the
+/// SDP; one that still named the old group would send every receiver
+/// somewhere nothing arrives.
+///
+/// A receiver's leg calls the same address `multicast_ip`, and the file
+/// follows it for the same reason from the other end: the host is told which
+/// stream to take by being handed a transport file, so an override the file
+/// does not carry is an override the host never hears about.
 void followSdpToLeg(std::string& sdp, const JsonObject& leg) {
     if (sdp.empty()) return;
     std::optional<SDPSession> session = SDPParser::parseString(sdp);
     if (!session) return;
 
     bool changed = false;
-    const auto destination = leg.find("destination_ip");
+    auto destination = leg.find("destination_ip");
+    if (destination == leg.end()) destination = leg.find("multicast_ip");
     if (destination != leg.end() && destination->second.isString() &&
         destination->second.asString() != "auto" &&
         destination->second.asString() != session->connectionAddress) {
@@ -333,6 +339,10 @@ void ConnectionApi::addReceiver(const ConnectionReceiver& receiver) {
     receivers_[receiver.id] = receiver;
 }
 
+void ConnectionApi::removeSender(const std::string& id) { senders_.erase(id); }
+
+void ConnectionApi::removeReceiver(const std::string& id) { receivers_.erase(id); }
+
 std::optional<ConnectionSender> ConnectionApi::sender(const std::string& id) const {
     const auto found = senders_.find(id);
     if (found == senders_.end()) return std::nullopt;
@@ -368,7 +378,8 @@ JsonValue ConnectionApi::activeAsJson(const ConnectionState& state, bool forSend
     return stateAsJson(resolved, forSender);
 }
 
-void ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState state) {
+bool ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState state,
+                                   std::string& error) {
     // What is active has to say what this device chose, so the leg is worked
     // out once here -- the file's values, the controller's on top, every
     // "auto" resolved -- and stored whole.
@@ -378,7 +389,14 @@ void ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState sta
     state.transportParams = leg;
 
     // A sender's transport file describes where it sends, so it follows.
-    followSdpToLeg(sender.sdp, leg);
+    std::string moved = sender.sdp;
+    followSdpToLeg(moved, leg);
+
+    if (onSenderActivation_ && !onSenderActivation_(sender.id, moved, state.masterEnable, error)) {
+        return false;
+    }
+
+    sender.sdp = moved;
     state.transportFile = sender.sdp;
 
     sender.active = state;
@@ -386,6 +404,7 @@ void ConnectionApi::activateSender(ConnectionSender& sender, ConnectionState sta
     sender.staged.activationMode = "null";
     sender.staged.activationRequestedTime.clear();
     sender.staged.activationTime.clear();
+    return true;
 }
 
 bool ConnectionApi::activateReceiver(ConnectionReceiver& receiver, ConnectionState state,
@@ -395,6 +414,13 @@ bool ConnectionApi::activateReceiver(ConnectionReceiver& receiver, ConnectionSta
     for (const auto& [name, value] : state.transportParams) leg[name] = value;
     resolveAutoLeg(leg, /*forSender=*/false, state.transportFile, interfaceAddress_);
     state.transportParams = leg;
+
+    // The host is told which stream to take by being handed the file, so an
+    // address or a port the controller overrode has to reach the file before
+    // the host reads it. Without this a receiver staged onto a different group
+    // than its SDP names reported the new one on /active and joined the old
+    // one on the wire.
+    followSdpToLeg(state.transportFile, leg);
 
     if (onActivation_ && !onActivation_(receiver.id, state.transportFile, state.masterEnable,
                                         error)) {
@@ -416,7 +442,10 @@ void ConnectionApi::applyDueActivations() {
         if (!taiReached({sender.pending.dueSeconds, sender.pending.dueNanos}, now)) continue;
         const ConnectionState promised = sender.pending.state;
         sender.pending = PendingActivation{};
-        activateSender(sender, promised);
+        // A scheduled activation the host refuses has nobody left to tell:
+        // the answer went out with the 202. What was active stays active.
+        std::string refused;
+        activateSender(sender, promised, refused);
     }
 
     for (auto& [id, receiver] : receivers_) {
@@ -527,7 +556,9 @@ ApiResponse ConnectionApi::patchStagedReceiver(const std::string& id, const std:
     immediate.activationRequestedTime.clear();
     immediate.activationTime = taiText(taiNow());
     if (!activateReceiver(found->second, immediate, error)) {
-        return errorResponse(400, "the receiver refused it: " + error);
+        // The request was legal and this host could not carry it out,
+        // which is its failure and not the controller's (IS-05 sec 5).
+        return errorResponse(500, "the receiver refused it: " + error);
     }
 
     return jsonResponse(200, activeAsJson(found->second.active, /*forSender=*/false));
@@ -602,7 +633,9 @@ ApiResponse ConnectionApi::patchStagedSender(const std::string& id, const std::s
     immediate.activationMode = kActivateImmediate;
     immediate.activationRequestedTime.clear();
     immediate.activationTime = taiText(taiNow());
-    activateSender(found->second, immediate);
+    if (!activateSender(found->second, immediate, error)) {
+        return errorResponse(500, "the sender refused it: " + error);
+    }
 
     return jsonResponse(200, activeAsJson(found->second.active, /*forSender=*/true));
 }

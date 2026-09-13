@@ -953,6 +953,7 @@ std::vector<ConnectionReceiver> AES67Device::connectionReceivers() {
         receiver.label = sdp.sessionName;
         receiver.multicastAddress = sdp.connectionAddress;
         receiver.port = sdp.port;
+        receiver.sdp = SDPParser::generate(sdp);
         {
             // Whose stream this is: kept from the patch that pointed the
             // receiver here, because the stream itself carries an address
@@ -975,6 +976,10 @@ std::vector<ConnectionReceiver> AES67Device::connectionReceivers() {
         ConnectionReceiver receiver;
         receiver.id = nmosIdFor("receiver", name);
         receiver.label = name;
+        // Taking nothing, which IS-05 says as master_enable false: a receiver
+        // that claims to be enabled with no transport file is describing a
+        // state it cannot be in.
+        receiver.enabled = false;
         receivers.push_back(std::move(receiver));
     }
     return receivers;

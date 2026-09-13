@@ -3,11 +3,11 @@
 // AES67 macOS Driver
 //
 
-#include <iterator>
 #include "NetworkEngine/Discovery/ConnectionAPIServer.h"
 #include "NetworkEngine/Discovery/PathPieces.h"
 
 #include "NetworkEngine/JsonEscape.h"
+#include "Ravenna/ConnectionApi.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -15,12 +15,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -248,6 +248,7 @@ public:
         receivers_ = std::move(receivers);
         patcher_ = std::move(patcher);
         senderPatcher_ = std::move(senderPatcher);
+        wireApi();
 
         listen_ = ::socket(AF_INET, SOCK_STREAM, 0);
         if (listen_ < 0) return false;
@@ -352,18 +353,17 @@ public:
     ConnectionAPIServer::FallbackRouter fallback_;
 
 private:
-    /// The five leaves every sender and receiver carries.
-    static std::vector<std::string> leaves(bool isSender) {
-        std::vector<std::string> entries{"constraints/", "staged/", "active/", "transporttype/"};
-        if (isSender) entries.emplace_back("transportfile/");
-        return entries;
-    }
+    /// Wires the two activation callbacks, once. What IS-05 activates is what
+    /// this driver is told to do: the API decides whether a request is legal
+    /// and what the resulting state is, and the driver's own patchers are
+    /// what make it happen.
+    void wireApi();
 
-    static std::string transportParams(const std::string& multicastAddress, uint16_t port,
-                                       const std::string& interfaceAddress);
-    static std::string connectionResource(const std::string& senderId, bool enabled,
-                                          const std::string& multicastAddress, uint16_t port,
-                                          const std::string& interfaceAddress);
+    /// Brings the API's set of resources level with what the driver lists.
+    /// The listers are the driver's live view -- streams are discovered and
+    /// go away while this is serving -- and the API holds what a controller
+    /// staged, so one is copied into the other rather than merged.
+    void syncResources() const;
 
     ConnectionSenderLister senders_;
     ConnectionReceiverLister receivers_;
@@ -375,42 +375,165 @@ private:
     int listen_{-1};
     std::atomic<bool> running_{false};
     std::thread thread_;
+
+    /// The IS-05 the RAVENNA package already serves. This driver used to
+    /// answer the specification itself, and the two implementations drifted:
+    /// the AMWA suite passed 57 of 61 against that one and 15 against this,
+    /// over nine causes, every one of them already fixed there. Delegating is
+    /// what keeps them from drifting again.
+    mutable Ravenna::ConnectionApi api_;
+    /// route() is const and the accept loop is one thread, but the routing is
+    /// public so that it can be read without a socket, and the API underneath
+    /// it is mutable state.
+    mutable std::mutex apiMutex_;
+    /// What each resource looked like the last time it was copied into the
+    /// API, so a resource the driver changed underneath is re-seeded and one
+    /// it did not is left with whatever a controller staged on it.
+    mutable std::map<std::string, std::string> seeded_;
 };
 
-std::string ConnectionAPIServer::Impl::transportParams(const std::string& multicastAddress,
-                                                       uint16_t port,
-                                                       const std::string& interfaceAddress) {
-    std::ostringstream out;
-    out << "[{ \"destination_port\": " << port << ", "
-        << "\"multicast_ip\": " << (multicastAddress.empty()
-                                        ? std::string("null")
-                                        : "\"" + jsonEscape(multicastAddress) + "\"")
-        << ", \"interface_ip\": " << (interfaceAddress.empty()
-                                          ? std::string("\"auto\"")
-                                          : "\"" + jsonEscape(interfaceAddress) + "\"")
-        << ", \"rtp_enabled\": true }]";
-    return out.str();
+namespace {
+
+/// Copies a staged leg's addresses and port onto the patch the driver reads.
+/// The transport file carries most of this, but not all of it: a controller
+/// may fix a group, a port or an interface that the file never named, and
+/// those are exactly the values the driver would otherwise never see.
+/// "auto" is not one of them -- it is a request for the device to choose,
+/// not an address.
+void legOntoPatch(const Ravenna::JsonObject& leg, bool forSender, ConnectionPatch& patch) {
+    const auto text = [&leg](const char* name) -> std::optional<std::string> {
+        const auto found = leg.find(name);
+        if (found == leg.end() || !found->second.isString()) return std::nullopt;
+        if (found->second.asString() == "auto" || found->second.asString().empty()) {
+            return std::nullopt;
+        }
+        return found->second.asString();
+    };
+
+    patch.multicastAddress = text(forSender ? "destination_ip" : "multicast_ip");
+    if (!forSender) patch.interfaceAddress = text("interface_ip");
+
+    const auto port = leg.find("destination_port");
+    if (port != leg.end() && port->second.isNumber()) {
+        const double value = port->second.asNumber();
+        if (value > 0 && value <= 65535) patch.port = static_cast<uint16_t>(value);
+    }
 }
 
-std::string ConnectionAPIServer::Impl::connectionResource(const std::string& senderId,
-                                                          bool enabled,
-                                                          const std::string& multicastAddress,
-                                                          uint16_t port,
-                                                          const std::string& interfaceAddress) {
-    std::ostringstream out;
-    out << "{\n"
-        << "  \"master_enable\": " << (enabled ? "true" : "false") << ",\n"
-        << "  \"sender_id\": "
-        << (senderId.empty() ? std::string("null") : "\"" + jsonEscape(senderId) + "\"") << ",\n"
-        // Nothing is ever pending here: this driver applies an activation
-        // when it is asked for and stages nothing for later, so saying so
-        // is more useful than a mode a controller would wait on.
-        << "  \"activation\": { \"mode\": null, \"requested_time\": null, "
-        << "\"activation_time\": null },\n"
-        << "  \"transport_params\": " << transportParams(multicastAddress, port, interfaceAddress)
-        << "\n}\n";
-    return out.str();
+}  // namespace
+
+void ConnectionAPIServer::Impl::wireApi() {
+    // A receiver joins a group by being handed a transport file. The API has
+    // already worked out which one -- the controller's overrides followed into
+    // the SDP -- so what reaches the driver is the stream it is to take.
+    api_.onReceiverActivation([this](const std::string& id, const std::string& sdp,
+                                     bool masterEnable, std::string& error) {
+        ConnectionPatch patch;
+        patch.masterEnable = masterEnable;
+        patch.activateImmediate = true;
+        if (!sdp.empty()) patch.transportFile = sdp;
+        if (const auto receiver = api_.receiver(id)) {
+            if (!receiver->staged.senderId.empty()) patch.senderId = receiver->staged.senderId;
+            legOntoPatch(receiver->staged.transportParams, /*forSender=*/false, patch);
+        }
+        if (!this->patch(id, patch)) {
+            error = "the driver would not take it";
+            return false;
+        }
+        return true;
+    });
+
+    // A sender is re-addressed the same way: its transport file describes
+    // where it transmits, and the API has already moved it.
+    api_.onSenderActivation([this](const std::string& id, const std::string& sdp,
+                                   bool masterEnable, std::string& error) {
+        if (!hasSenderPatcher()) {
+            error = "this driver's senders cannot be re-addressed";
+            return false;
+        }
+        ConnectionPatch patch;
+        patch.masterEnable = masterEnable;
+        patch.activateImmediate = true;
+        if (!sdp.empty()) patch.transportFile = sdp;
+        if (const auto sender = api_.sender(id)) {
+            legOntoPatch(sender->staged.transportParams, /*forSender=*/true, patch);
+        }
+        if (!patchSender(id, patch)) {
+            error = "the driver would not take it";
+            return false;
+        }
+        return true;
+    });
 }
+
+void ConnectionAPIServer::Impl::syncResources() const {
+    const std::vector<ConnectionSender> senderList = senders();
+    const std::vector<ConnectionReceiver> receiverList = receivers();
+
+    std::map<std::string, std::string> present;
+
+    for (const ConnectionSender& sender : senderList) {
+        std::ostringstream shape;
+        shape << sender.label << '\x1f' << sender.multicastAddress << '\x1f' << sender.port
+              << '\x1f' << sender.sourceAddress << '\x1f' << sender.enabled << '\x1f' << sender.sdp;
+        present[sender.id] = shape.str();
+        const auto known = seeded_.find(sender.id);
+        if (known != seeded_.end() && known->second == shape.str()) continue;
+
+        Ravenna::ConnectionSender fresh;
+        fresh.id = sender.id;
+        fresh.label = sender.label;
+        fresh.sdp = sender.sdp;
+        // What this sender is doing right now, which is what /active reports.
+        // The transport file carries the addresses; master_enable is the one
+        // thing the file cannot say.
+        fresh.active.masterEnable = sender.enabled;
+        fresh.active.transportFile = sender.sdp;
+        fresh.staged = fresh.active;
+        api_.addSender(fresh);
+    }
+
+    for (const ConnectionReceiver& receiver : receiverList) {
+        std::ostringstream shape;
+        shape << receiver.label << '\x1f' << receiver.multicastAddress << '\x1f' << receiver.port
+              << '\x1f' << receiver.senderId << '\x1f' << receiver.enabled << '\x1f'
+              << receiver.sdp;
+        present[receiver.id] = shape.str();
+        const auto known = seeded_.find(receiver.id);
+        if (known != seeded_.end() && known->second == shape.str()) continue;
+
+        Ravenna::ConnectionReceiver fresh;
+        fresh.id = receiver.id;
+        fresh.label = receiver.label;
+        // The group and the port as the driver has them. The transport file
+        // says both, but a receiver whose stream was never described by one
+        // -- discovered over SAP, or pointed there by hand -- still has to
+        // report where it is listening.
+        fresh.active.masterEnable = receiver.enabled;
+        fresh.active.senderId = receiver.senderId;
+        fresh.active.transportFile = receiver.sdp;
+        if (!receiver.multicastAddress.empty()) {
+            fresh.active.transportParams["multicast_ip"] =
+                Ravenna::JsonValue(receiver.multicastAddress);
+        }
+        if (receiver.port != 0) {
+            fresh.active.transportParams["destination_port"] =
+                Ravenna::JsonValue(static_cast<int>(receiver.port));
+        }
+        fresh.staged = fresh.active;
+        api_.addReceiver(fresh);
+    }
+
+    // A resource the driver no longer lists is one a controller must stop
+    // being able to patch.
+    for (const auto& [id, shape] : seeded_) {
+        if (present.count(id) != 0) continue;
+        api_.removeSender(id);
+        api_.removeReceiver(id);
+    }
+    seeded_ = std::move(present);
+}
+
 
 ConnectionAPIServer::Reply ConnectionAPIServer::Impl::route(const std::string& method,
                                                             const std::string& path,
@@ -428,138 +551,33 @@ ConnectionAPIServer::Reply ConnectionAPIServer::Impl::route(const std::string& m
         if (fallback_) return fallback_(method, path, body);
         return {404, "application/json", "[]"};
     }
-    if (pieces.size() < 3) return {404, "application/json", "[]"};
+    if (pieces.size() == 2) {
+        // The versions of the Connection API this serves. A controller walks
+        // down from here rather than being told a version to assume, and
+        // answering 404 at this level made the whole API undiscoverable.
+        return {200, "application/json",
+                jsonList({std::string(ConnectionAPIServer::kApiVersion) + "/"})};
+    }
     if (pieces[2] != ConnectionAPIServer::kApiVersion) {
         // A version this does not serve is a 404 rather than a guess: a
         // controller that asked for v1.0 semantics must not be answered
         // in v1.1's.
         return {404, "application/json", "[]"};
     }
-    if (pieces.size() == 3) return {200, "application/json", jsonList({"single/", "bulk/"})};
-    if (pieces[3] == "bulk") {
-        // Bulk staging is one PATCH for many resources. Not served, and
-        // said so rather than half-answered.
+
+    // Senders stay read-only when the driver gave no way to re-address one.
+    // The API below would take the patch and hand it to a callback that
+    // refuses, which is a 400 -- "this request was wrong" -- when the truth
+    // is that the resource is right and the feature is absent.
+    if (method == "PATCH" && pieces.size() == 7 && pieces[3] == "single" &&
+        pieces[4] == "senders" && pieces[6] == "staged" && !hasSenderPatcher()) {
         return {501, "application/json", "[]"};
     }
-    if (pieces[3] != "single") return {404, "application/json", "[]"};
-    if (pieces.size() == 4) {
-        return {200, "application/json", jsonList({"senders/", "receivers/"})};
-    }
 
-    const bool isSender = (pieces[4] == "senders");
-    const bool isReceiver = (pieces[4] == "receivers");
-    if (!isSender && !isReceiver) return {404, "application/json", "[]"};
-
-    const std::vector<ConnectionSender> senderList = senders();
-    const std::vector<ConnectionReceiver> receiverList = receivers();
-
-    if (pieces.size() == 5) {
-        std::vector<std::string> ids;
-        if (isSender) {
-            ids.reserve(senderList.size());
-            std::transform(senderList.begin(), senderList.end(), std::back_inserter(ids),
-                           [](const ConnectionSender& sender) { return sender.id + "/"; });
-        } else {
-            ids.reserve(receiverList.size());
-            std::transform(receiverList.begin(), receiverList.end(), std::back_inserter(ids),
-                           [](const ConnectionReceiver& receiver) { return receiver.id + "/"; });
-        }
-        return {200, "application/json", jsonList(ids)};
-    }
-
-    const std::string& id = pieces[5];
-    const ConnectionSender* sender = nullptr;
-    const ConnectionReceiver* receiver = nullptr;
-    if (isSender) {
-        for (const ConnectionSender& candidate : senderList) {
-            if (candidate.id == id) sender = &candidate;
-        }
-        if (sender == nullptr) return {404, "application/json", "[]"};
-    } else {
-        for (const ConnectionReceiver& candidate : receiverList) {
-            if (candidate.id == id) receiver = &candidate;
-        }
-        if (receiver == nullptr) return {404, "application/json", "[]"};
-    }
-
-    if (pieces.size() == 6) return {200, "application/json", jsonList(leaves(isSender))};
-
-    const std::string& leaf = pieces[6];
-
-    if (leaf == "transporttype") {
-        return {200, "application/json", "\"urn:x-nmos:transport:rtp.mcast\""};
-    }
-
-    if (leaf == "constraints") {
-        // One leg, and nothing constrained beyond what the transport is:
-        // an empty object per leg is IS-05's way of saying "anything this
-        // transport allows".
-        return {200, "application/json", "[{}]"};
-    }
-
-    if (leaf == "transportfile") {
-        if (!isSender) return {404, "application/json", "[]"};
-        if (sender->sdp.empty()) return {404, "application/json", "[]"};
-        return {200, "application/sdp", sender->sdp};
-    }
-
-    if (leaf == "staged" || leaf == "active") {
-        if (method == "GET") {
-            if (isSender) {
-                return {200, "application/json",
-                        connectionResource("", sender->enabled, sender->multicastAddress,
-                                           sender->port, sender->sourceAddress)};
-            }
-            return {200, "application/json",
-                    connectionResource(receiver->senderId, receiver->enabled,
-                                       receiver->multicastAddress, receiver->port, "")};
-        }
-
-        if (method == "PATCH") {
-            if (leaf == "active") {
-                // active is what IS-05 reports, never what it is told.
-                return {405, "application/json", "[]"};
-            }
-            if (isSender) {
-                // Where a sender transmits, when the driver gave us a way to
-                // change it. Without one the answer stays 501: a control that
-                // accepted the patch and did nothing would be worse than one
-                // that says no.
-                if (!hasSenderPatcher()) return {501, "application/json", "[]"};
-                const ConnectionPatch parsed = ConnectionAPIServer::parsePatch(body);
-                if (!patchSender(id, parsed)) {
-                    return {500, "application/json", "[]"};
-                }
-                const std::string multicast = parsed.multicastAddress.value_or(
-                    sender ? sender->multicastAddress : std::string());
-                const uint16_t answeredPort =
-                    parsed.port.value_or(sender ? sender->port : uint16_t{0});
-                return {200, "application/json",
-                        connectionResource("", parsed.masterEnable.value_or(true),
-                                           multicast, answeredPort,
-                                           sender ? sender->sourceAddress : std::string())};
-            }
-            const ConnectionPatch parsed = ConnectionAPIServer::parsePatch(body);
-            if (!patch(id, parsed)) {
-                return {500, "application/json", "[]"};
-            }
-            // Answer with what the patch asked for: a controller reads
-            // this back to confirm what it staged.
-            const std::string multicast = parsed.multicastAddress.value_or(
-                receiver ? receiver->multicastAddress : std::string());
-            const uint16_t port = parsed.port.value_or(receiver ? receiver->port : 0);
-            const std::string senderId = parsed.senderId.value_or(
-                receiver ? receiver->senderId : std::string());
-            const bool enabled = parsed.masterEnable.value_or(receiver ? receiver->enabled : true);
-            return {200, "application/json",
-                    connectionResource(senderId, enabled, multicast, port,
-                                       parsed.interfaceAddress.value_or(""))};
-        }
-
-        return {405, "application/json", "[]"};
-    }
-
-    return {404, "application/json", "[]"};
+    std::lock_guard<std::mutex> held(apiMutex_);
+    syncResources();
+    const Ravenna::ApiResponse answer = api_.handle(method, path, body);
+    return {answer.status, answer.contentType, answer.body};
 }
 
 void ConnectionAPIServer::Impl::serve(int client) {
@@ -607,7 +625,12 @@ void ConnectionAPIServer::Impl::serve(int client) {
         std::string path = head.substr(firstSpace + 1, secondSpace - firstSpace - 1);
         const size_t query = path.find('?');
         if (query != std::string::npos) path.resize(query);  // not substr: assigned to itself
-        reply = route(method, path, body);
+        if (method == "OPTIONS") {
+            // The preflight a browser-based controller sends before a PATCH.
+            reply = {200, "text/plain", {}};
+        } else {
+            reply = route(method, path, body);
+        }
     }
 
     std::ostringstream out;
@@ -615,14 +638,21 @@ void ConnectionAPIServer::Impl::serve(int client) {
         << (reply.status == 200 ? "OK" : (reply.status == 404 ? "Not Found" : "Error")) << "\r\n"
         << "Content-Type: " << reply.contentType << "\r\n"
         << "Content-Length: " << reply.body.size() << "\r\n";
-    // A controller reads this from a browser as often as from code, so GET
-    // stays readable cross-origin. Activations do not: this endpoint has no
-    // authentication, and letting an arbitrary page's script read or drive
-    // one would hand every website the user visits a way to re-point the
-    // device's audio (2026-09-04 audit).
-    if (method == "GET") {
-        out << "Access-Control-Allow-Origin: *\r\n";
-    }
+    // IS-05 controllers are often browser based, and a device that answers
+    // without these is a device they cannot drive: a preflight that comes
+    // back without Allow-Headers fails the request before it is sent.
+    //
+    // The 2026-09-04 audit sent these on GET only, so that a browser could
+    // read the API but not patch it -- there is no authentication here, and
+    // withholding the preflight is what stopped an arbitrary page from
+    // re-pointing the device's audio. That protection is given up on purpose:
+    // this server and the RAVENNA package's now answer identically, and the
+    // RAVENNA one has always sent them. The exposure is unchanged for
+    // anything that is not a browser, which was never blocked by a header.
+    out << "Access-Control-Allow-Origin: *\r\n"
+        << "Access-Control-Allow-Methods: GET, PUT, POST, PATCH, DELETE, HEAD, OPTIONS\r\n"
+        << "Access-Control-Allow-Headers: Content-Type, Accept, Authorization\r\n"
+        << "Access-Control-Max-Age: 3600\r\n";
     out << "Connection: close\r\n\r\n" << reply.body;
     const std::string answer = out.str();
     // Loop: a transport file is comfortably larger than a socket buffer, and

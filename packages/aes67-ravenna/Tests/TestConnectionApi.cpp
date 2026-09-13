@@ -154,7 +154,10 @@ TEST_CASE("A receiver that refuses the stream is not left saying it took it") {
 
     const ApiResponse response =
         api.handle("PATCH", path("/single/receivers/receiver-1/staged/"), body);
-    CHECK(response.status == 400);
+    // The controller asked for something legal and this host could not do
+    // it, which is a 500 and not a 400: a 400 would send a controller off
+    // rewriting a request that was never wrong.
+    CHECK(response.status == 500);
     CHECK(response.body.find("no free device channels") != std::string::npos);
 
     const JsonValue active = bodyOf(api.handle("GET", path("/single/receivers/receiver-1/active/"), ""));

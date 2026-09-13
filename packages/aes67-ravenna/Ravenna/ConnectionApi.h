@@ -124,10 +124,32 @@ public:
         std::function<bool(const std::string& receiverId, const std::string& sdp,
                            bool masterEnable, std::string& error)>;
 
+    /// Called when a sender's staged state is activated. The SDP is the one
+    /// the sender now describes itself with, destination and port already
+    /// followed to whatever the controller staged, so a host that re-points a
+    /// stream reads where it goes from the file rather than from the leg.
+    ///
+    /// Senders had no equivalent of the callback above, and a device whose
+    /// only configurable end is the source -- gear with no control protocol
+    /// of its own is patched by moving the sender, not the receiver -- had
+    /// nowhere to be told that a controller had moved it.
+    using SenderActivation =
+        std::function<bool(const std::string& senderId, const std::string& sdp,
+                           bool masterEnable, std::string& error)>;
+
     void addSender(const ConnectionSender& sender);
     void addReceiver(const ConnectionReceiver& receiver);
+    /// Forgets a resource. A host whose set of senders and receivers changes
+    /// while this is serving -- the macOS driver's does, as streams are
+    /// discovered and go away -- would otherwise keep answering for one that
+    /// is no longer there.
+    void removeSender(const std::string& id);
+    void removeReceiver(const std::string& id);
     void onReceiverActivation(ReceiverActivation callback) {
         onActivation_ = std::move(callback);
+    }
+    void onSenderActivation(SenderActivation callback) {
+        onSenderActivation_ = std::move(callback);
     }
 
     /// The address of the interface this device receives on. IS-05 lets a
@@ -165,13 +187,14 @@ private:
     /// and answering "auto" there tells a controller nothing about where the
     /// stream is.
     JsonValue activeAsJson(const ConnectionState& state, bool forSender) const;
-    void activateSender(ConnectionSender& sender, ConnectionState state);
+    bool activateSender(ConnectionSender& sender, ConnectionState state, std::string& error);
     bool activateReceiver(ConnectionReceiver& receiver, ConnectionState state,
                           std::string& error);
 
     std::map<std::string, ConnectionSender> senders_;
     std::map<std::string, ConnectionReceiver> receivers_;
     ReceiverActivation onActivation_;
+    SenderActivation onSenderActivation_;
     std::string interfaceAddress_;
 };
 

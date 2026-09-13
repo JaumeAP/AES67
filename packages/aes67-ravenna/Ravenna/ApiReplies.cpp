@@ -22,6 +22,7 @@ ApiResponse errorResponse(int status, const std::string& detail) {
     error["error"] = JsonValue(status == 404   ? "Not Found"
                                : status == 405 ? "Method Not Allowed"
                                : status == 423 ? "Locked"
+                               : status == 500 ? "Internal Server Error"
                                : status == 501 ? "Not Implemented"
                                                : "Bad Request");
     error["debug"] = JsonValue(detail);

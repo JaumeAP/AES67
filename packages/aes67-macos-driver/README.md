@@ -272,13 +272,24 @@ accepts connection management over IS-05.
   endpoint serving `/x-nmos/connection/v1.1/`. Controllers read
   `constraints`, `staged` and `active` for each sender and receiver, read a
   sender's `transportfile` (the SDP), and PATCH a receiver's `staged` to
-  re-point it — by transport parameters, or by handing over an SDP. An
-  activation is applied immediately; nothing is staged for later, and `active`
-  is read-only.
+  re-point it — by transport parameters, or by handing over an SDP. All three
+  activation modes are served: immediate, and scheduled relative or absolute,
+  the scheduled ones answered 202 and applied when their time arrives. The
+  `bulk` endpoints take a POST. `active` is read-only.
+
+  What the specification means is decided by `aes67-ravenna`'s `ConnectionApi`,
+  not here: this server owns the socket, the driver's senders and receivers and
+  the patches that reach the driver, and hands the request to the one
+  implementation of IS-05 in the tree. There used to be two, and they had
+  drifted — measured against the AMWA IS-05-01 suite, 57 of 61 against that one
+  and 15 against this, over nine separate causes.
 
 Both are exercised by `TestNMOSRegistration` and `TestConnectionAPI` against a
-registry and a controller made of loopback sockets. Neither has been tested
-against a commercial NMOS registry or controller.
+registry and a controller made of loopback sockets, and the Connection API by
+the AMWA `nmos-testing` IS-05-01 suite over loopback: 57 pass, 4 fail, the four
+being the suite looking for the `c=` line inside the media section where this
+driver puts it at session level (RFC 4566 §5.7 allows either). Neither has been
+tested against a commercial NMOS registry or controller.
 
 #### The control plane is always on
 
@@ -294,18 +305,21 @@ it is worth knowing before putting this on a link you do not control.
 The server is deliberately small: a request is bounded to 64 KiB, the client
 socket carries a 2 s timeout, and one client is served at a time. A stalled
 peer therefore delays the control plane and nothing else; the audio path never
-waits on it. GETs answer with `Access-Control-Allow-Origin: *`, so a browser
-controller can read the node cross-origin; activations are not answered
-cross-origin.
+waits on it. Every answer carries the CORS headers a browser-based controller
+needs, and `OPTIONS` is answered, so such a controller can both read the node
+and activate on it. Until 2026-09-13 only GETs were answered cross-origin, on
+purpose: withholding the preflight was what stopped an arbitrary page from
+re-pointing the device's audio. That was given up so that this server and
+`aes67-ravenna`'s answer identically; it never protected anything that was not
+a browser.
 
 Registering with a registry is the separate, opt-in half, and stays off until
 `nmos.json` turns it on.
 
 The endpoint has no authentication — IS-05 does not define one at this level —
-so it is only as safe as the network it is on. It answers cross-origin reads
-but not cross-origin activations, and a receiver only follows an unsolicited
-SAP announcement when the announcement comes from the host the stream is
-already bound to.
+so it is only as safe as the network it is on, a browser on that network now
+included. A receiver only follows an unsolicited SAP announcement when the
+announcement comes from the host the stream is already bound to.
 
 ### The PTP daemon (`aes67ptpd`)
 
