@@ -243,7 +243,6 @@ set(AES67_NET_SOURCES
     NetworkEngine/Discovery/ConnectionAPIServer.cpp
     NetworkEngine/Discovery/NodeAPIRouter.cpp
     NetworkEngine/Discovery/NodeAdvertiser.cpp
-    NetworkEngine/Discovery/HTTPClient.cpp
     NetworkEngine/Discovery/NMOSRegistrationClient.cpp
     NetworkEngine/Discovery/SDPFetcher.cpp
 )

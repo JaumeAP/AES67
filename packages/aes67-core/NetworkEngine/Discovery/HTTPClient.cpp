@@ -1,6 +1,6 @@
 //
 // HTTPClient.cpp
-// AES67 macOS Driver
+// AES67 core
 //
 
 #include "NetworkEngine/Discovery/HTTPClient.h"

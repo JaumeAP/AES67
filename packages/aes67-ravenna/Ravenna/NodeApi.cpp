@@ -149,9 +149,11 @@ JsonValue NodeApi::self() const {
     node["services"] = JsonValue(JsonArray{});
     node["clocks"] = JsonValue(JsonArray{JsonValue(clock)});
     node["interfaces"] = JsonValue(JsonArray{JsonValue(JsonObject{
-        {"name", JsonValue("eth0")},
+        {"name", JsonValue(identity_.interfaceName)},
+        // Null is what the schema takes for a chassis it cannot name, which
+        // is this one: nothing here speaks LLDP.
         {"chassis_id", JsonValue()},
-        {"port_id", JsonValue()}})});
+        {"port_id", JsonValue(identity_.interfaceMac)}})});
     return JsonValue(node);
 }
 
@@ -269,7 +271,7 @@ JsonValue NodeApi::senders() const {
         sender["device_id"] = JsonValue(identity_.deviceId);
         sender["flow_id"] = JsonValue(flowIdFor(name));
         sender["transport"] = JsonValue(kTransportRtpMulticast);
-        sender["interface_bindings"] = JsonValue(JsonArray{JsonValue("eth0")});
+        sender["interface_bindings"] = JsonValue(JsonArray{JsonValue(identity_.interfaceName)});
         // The SDP, at the address the connection API serves it from. A
         // controller takes it from here and gives it to a receiver.
         sender["manifest_href"] =
@@ -311,7 +313,7 @@ JsonValue NodeApi::receivers() const {
         receiver["tags"] = tagsEmpty();
         receiver["device_id"] = JsonValue(identity_.deviceId);
         receiver["transport"] = JsonValue(kTransportRtpMulticast);
-        receiver["interface_bindings"] = JsonValue(JsonArray{JsonValue("eth0")});
+        receiver["interface_bindings"] = JsonValue(JsonArray{JsonValue(identity_.interfaceName)});
         receiver["format"] = JsonValue("urn:x-nmos:format:audio");
         receiver["caps"] = JsonValue(JsonObject{
             {"media_types", JsonValue(JsonArray{JsonValue("audio/L24"), JsonValue("audio/L16")})}});
@@ -342,14 +344,47 @@ SessionAdvertisement NodeApi::advertisement() const {
     return node;
 }
 
+std::vector<std::pair<std::string, JsonValue>> NodeApi::resourcesInRegistrationOrder() const {
+    std::vector<std::pair<std::string, JsonValue>> resources;
+    resources.emplace_back("node", self());
+
+    // A registry refuses a resource whose device_id it has never seen, and
+    // then refuses the sender that names the flow it refused, so the order
+    // here is the order of the references and not a preference.
+    const auto each = [&resources](const char* type, const JsonValue& collection) {
+        if (!collection.isArray()) return;
+        for (const JsonValue& item : collection.asArray()) resources.emplace_back(type, item);
+    };
+    each("device", devices());
+    each("source", sources());
+    each("flow", flows());
+    each("sender", senders());
+    each("receiver", receivers());
+    return resources;
+}
+
 ApiResponse NodeApi::handle(const std::string& method, const std::string& path,
                             const std::string& body) {
     (void)body;
     const std::string root = kNodeApiRoot;
     if (path.rfind(root, 0) != 0) return errorResponse(404, "this device serves " + root);
-    if (method != "GET") return errorResponse(405, "the node API is read-only");
 
     const std::vector<std::string> segments = segmentsOf(path.substr(root.size()));
+
+    // IS-04 sec 4.2 kept one writable resource from before IS-05 existed:
+    // PUT a sender onto /receivers/<id>/target and the receiver subscribes.
+    // This device connects over IS-05, where a controller can stage, check
+    // and then activate, and 501 is the answer the specification gives for
+    // the older route -- a 405 would say the resource is not there at all.
+    if (segments.size() == 3 && segments[0] == "receivers" && segments[2] == "target") {
+        if (method == "PUT") {
+            return errorResponse(501, "connect over IS-05, at " +
+                                          std::string(kConnectionApiRoot) + "/single/receivers/");
+        }
+        return errorResponse(405, "only PUT here");
+    }
+
+    if (method != "GET") return errorResponse(405, "the node API is read-only");
 
     if (segments.empty()) {
         return jsonResponse(200, JsonValue(JsonArray{

@@ -26,6 +26,7 @@
 #include "Ravenna/SessionCatalogue.h"
 
 #include <string>
+#include <utility>
 
 namespace AES67::Ravenna {
 
@@ -42,6 +43,16 @@ struct NodeIdentity {
     std::string hostName = "aes67.local";
     uint32_t addressV4 = 0;   ///< host byte order
     uint16_t apiPort = 8080;  ///< where this API and the others answer
+    /// The interface this node's streams are bound to. Senders and receivers
+    /// name it in their interface_bindings, and a controller matches those
+    /// against this node's own list, so the two have to be the same string.
+    std::string interfaceName = "eth0";
+    /// Its MAC, as IS-04 writes one: six lowercase hex pairs joined by
+    /// hyphens. The schema requires a Port ID in that shape -- it is what
+    /// IS-06 does topology discovery with -- and takes neither null nor
+    /// anything else, so a node that cannot read its own says so with zeros
+    /// rather than making the resource invalid.
+    std::string interfaceMac = "00-00-00-00-00-00";
     /// The PTP grandmaster this device's clock follows, as IS-04 names it.
     /// Empty means it says its clock is internal, which is the honest answer
     /// for a device with no reference.
@@ -60,6 +71,13 @@ public:
     /// The DNS-SD advertisement that makes a controller find this node
     /// without a registry.
     SessionAdvertisement advertisement() const;
+
+    /// Everything this node has, paired with the IS-04 type name of each, in
+    /// the order a registry has to be given them: a resource is refused
+    /// while the one it names is not there yet, so the node comes first, then
+    /// its device, then the sources, flows, senders and receivers that point
+    /// back at it.
+    std::vector<std::pair<std::string, JsonValue>> resourcesInRegistrationOrder() const;
 
 private:
     JsonValue self() const;

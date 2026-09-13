@@ -57,6 +57,8 @@ add_library(aes67_ravenna
     Ravenna/ReceiverRouting.cpp
     Ravenna/MdnsResponder.cpp
     Ravenna/NmosRoot.cpp
+    Ravenna/RegistrationClient.cpp
+    Ravenna/RegistryBrowser.cpp
     Ravenna/RtspMessages.cpp
     Ravenna/RtspServer.cpp
     Ravenna/SessionCatalogue.cpp
@@ -96,7 +98,7 @@ if(AES67_RAVENNA_TOOLS_AND_TESTS)
             # that project's own suite says the bytes mean, not against its
             # code, so this package keeps its dependency count at zero.
             foreach(suite RtspMessages DnsSd SessionCatalogue Json ConnectionApi ReceiverRouting
-                     ChannelMappingApi NmosRoot NodeApi RavennaKitParity)
+                     ChannelMappingApi NmosRoot NodeApi RavennaKitParity RegistryBrowser)
                 add_executable(Test${suite} Tests/Test${suite}.cpp)
                 target_link_libraries(Test${suite} PRIVATE aes67_ravenna doctest_headers)
                 add_test(NAME ${suite} COMMAND Test${suite})

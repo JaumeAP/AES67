@@ -1,6 +1,6 @@
 //
 // HTTPClient.h
-// AES67 macOS Driver
+// AES67 core
 //
 // The small HTTP/1.1 client the discovery layer needs: fetching a session
 // description from a URL, and registering with an NMOS registry.
@@ -10,10 +10,10 @@
 // front, so https is refused by the callers rather than half-supported
 // here.
 //
-// Everything it reads comes from a server nobody here controls, into
-// coreaudiod, where an escaped exception takes the audio daemon with it:
-// no parse throws, the body is bounded, and both directions carry a
-// timeout.
+// Everything it reads comes from a server nobody here controls, and one of
+// the things that links this is a macOS driver living inside coreaudiod,
+// where an escaped exception takes the audio daemon with it: no parse
+// throws, the body is bounded, and both directions carry a timeout.
 //
 #pragma once
 
