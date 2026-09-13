@@ -101,13 +101,26 @@ ConnectionAPIServer::Reply NodeAPIRouter::route(const std::string& method,
     if (pieces.size() < 2 || pieces[0] != "x-nmos" || pieces[1] != "node") {
         return error(404, "not found");
     }
+    // A receiver's `target` takes a PUT, and it is the one thing here that
+    // is not a GET. IS-04 v1.3 keeps it for controllers older than IS-05 and
+    // lets a node that does connection management the modern way answer 501,
+    // which is this one: everything a controller would do by PUTing a sender
+    // here it does properly on the Connection API, and accepting it in two
+    // places is how the two answers come to disagree.
+    if (method == "PUT" && pieces.size() == 6 && pieces[2] == kApiVersion &&
+        pieces[3] == "receivers" && pieces[5] == "target") {
+        return error(501, "connection management is on the IS-05 Connection API");
+    }
     if (method != "GET") return error(405, "method not allowed");
     if (pieces.size() == 2) return {200, "application/json", jsonStringList({"v1.3/"})};
     if (pieces[2] != kApiVersion) return error(404, "version not served");
     if (pieces.size() == 3) {
+        // Exactly these six. `subscriptions/` belongs to the Query API, not
+        // to a node, and listing it here failed the Node API's own base
+        // schema, which pins the list to six named entries.
         return {200, "application/json",
                 jsonStringList({"self/", "devices/", "sources/", "flows/", "senders/",
-                                "receivers/", "subscriptions/"})};
+                                "receivers/"})};
     }
 
     const std::string& collection = pieces[3];
@@ -142,7 +155,8 @@ ConnectionAPIServer::Reply NodeAPIRouter::route(const std::string& method,
             } else {
                 objects.emplace_back(senderId, NMOSRegistrationClient::buildSenderData(
                                                    senderId, flowId, deviceId(), sender,
-                                                   versionSeconds_, versionNanos_));
+                                                   versionSeconds_, versionNanos_,
+                                                   node_.interfaceName));
             }
         }
     } else if (collection == "receivers") {
@@ -151,7 +165,8 @@ ConnectionAPIServer::Reply NodeAPIRouter::route(const std::string& method,
                 NMOSRegistrationClient::deriveId(node_.id, "receiver:" + receiver.name);
             objects.emplace_back(receiverId, NMOSRegistrationClient::buildReceiverData(
                                                  receiverId, deviceId(), receiver,
-                                                 versionSeconds_, versionNanos_));
+                                                 versionSeconds_, versionNanos_,
+                                                 node_.interfaceName));
         }
     } else {
         return error(404, "not found");

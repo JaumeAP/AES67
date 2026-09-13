@@ -65,6 +65,16 @@ struct NMOSNodeInfo {
     /// Port 0 means none is served and the list stays empty.
     std::string apiHost;
     uint16_t apiPort{0};
+    /// The interface this node's streams leave by and arrive on. IS-04 makes
+    /// a node publish its interfaces and makes every sender and receiver name
+    /// the one it uses, and a controller works out which devices can reach
+    /// each other from exactly that. Empty publishes no interfaces, which is
+    /// what a node with no network to speak of should say.
+    std::string interfaceName;
+    /// That interface's hardware address, as IS-04 writes one: six lower-case
+    /// hex pairs joined by hyphens. Empty when the interface has none of its
+    /// own, which is the loopback's case.
+    std::string interfaceMac;
 };
 
 /// One transmit stream, as IS-04 sees it: a source (what the audio IS), a
@@ -187,15 +197,19 @@ public:
                                      const std::string& deviceId,
                                      const NMOSSenderResource& sender,
                                      int64_t versionSeconds, int32_t versionNanos);
+    /// `interfaceName` goes into the resource's `interface_bindings`; see
+    /// buildSenderData below.
     static std::string buildSenderBody(const std::string& senderId,
                                        const std::string& flowId,
                                        const std::string& deviceId,
                                        const NMOSSenderResource& sender,
-                                       int64_t versionSeconds, int32_t versionNanos);
+                                       int64_t versionSeconds, int32_t versionNanos,
+                                       const std::string& interfaceName = {});
     static std::string buildReceiverBody(const std::string& receiverId,
                                          const std::string& deviceId,
                                          const NMOSReceiverResource& receiver,
-                                         int64_t versionSeconds, int32_t versionNanos);
+                                         int64_t versionSeconds, int32_t versionNanos,
+                                         const std::string& interfaceName = {});
 
     /// The bare resource objects. A registry takes them wrapped by
     /// wrapResource(); the Node API serves them as they are.
@@ -217,15 +231,21 @@ public:
                                      const std::string& deviceId,
                                      const NMOSSenderResource& sender,
                                      int64_t versionSeconds, int32_t versionNanos);
+    /// `interfaceName` is the node interface this resource is bound to, and
+    /// has to be one the node's own `interfaces` names: IS-04 is how a
+    /// controller works out which devices can reach each other, and it does
+    /// it by matching these. Empty publishes an empty binding list.
     static std::string buildSenderData(const std::string& senderId,
                                        const std::string& flowId,
                                        const std::string& deviceId,
                                        const NMOSSenderResource& sender,
-                                       int64_t versionSeconds, int32_t versionNanos);
+                                       int64_t versionSeconds, int32_t versionNanos,
+                                       const std::string& interfaceName = {});
     static std::string buildReceiverData(const std::string& receiverId,
                                          const std::string& deviceId,
                                          const NMOSReceiverResource& receiver,
-                                         int64_t versionSeconds, int32_t versionNanos);
+                                         int64_t versionSeconds, int32_t versionNanos,
+                                         const std::string& interfaceName = {});
     /// `{"type": <type>, "data": <data>}`, the shape a registration POST takes.
     static std::string wrapResource(const std::string& type, const std::string& data);
 

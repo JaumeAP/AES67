@@ -22,6 +22,30 @@
 namespace AES67 {
 
 namespace {
+/// The node's `interfaces`, which is the one this host uses or none at all.
+/// `chassis_id` is null: this is a Mac, not a chassis with a backplane
+/// identifier, and the schema takes null for exactly that case.
+std::string interfacesJson(const NMOSNodeInfo& node) {
+    if (node.interfaceName.empty()) return "[]";
+    std::ostringstream json;
+    json << "[{ \"name\": \"" << jsonEscape(node.interfaceName) << "\", "
+         << "\"chassis_id\": null, \"port_id\": \""
+         << jsonEscape(node.interfaceMac.empty() ? std::string("00-00-00-00-00-00")
+                                                 : node.interfaceMac)
+         << "\" }]";
+    return json.str();
+}
+
+/// A resource's `interface_bindings`: the node interface it uses, by name.
+std::string bindingsJson(const std::string& interfaceName) {
+    if (interfaceName.empty()) return "[]";
+    return "[\"" + jsonEscape(interfaceName) + "\"]";
+}
+
+}  // namespace
+
+
+namespace {
 
 } // namespace
 
@@ -83,7 +107,12 @@ std::string NMOSRegistrationClient::buildNodeData(const NMOSNodeInfo& node,
          // that claims a PTP clock it is not running is a node a
          // controller will try to slave things to.
          << "    \"clocks\": [{ \"name\": \"clk0\", \"ref_type\": \"internal\" }],\n"
-         << "    \"interfaces\": []\n"
+         // The interface this node's streams use, named so that senders and
+         // receivers can bind to it: a sender that binds to nothing is a
+         // sender a controller cannot tell is reachable. `chassis_id` is null
+         // because this is a Mac and not a chassis with a backplane id; the
+         // schema takes null for exactly that.
+         << "    \"interfaces\": " << interfacesJson(node) << "\n"
          << "  }";
     return json.str();
 }
@@ -275,16 +304,19 @@ std::string NMOSRegistrationClient::buildSenderBody(const std::string& senderId,
                                                     const std::string& flowId,
                                                     const std::string& deviceId,
                                                     const NMOSSenderResource& sender,
-                                                    int64_t versionSeconds, int32_t versionNanos) {
+                                                    int64_t versionSeconds, int32_t versionNanos,
+                                                    const std::string& interfaceName) {
     return wrapResource("sender", buildSenderData(senderId, flowId, deviceId, sender,
-                                                   versionSeconds, versionNanos));
+                                                   versionSeconds, versionNanos,
+                                                   interfaceName));
 }
 
 std::string NMOSRegistrationClient::buildSenderData(const std::string& senderId,
                                                     const std::string& flowId,
                                                     const std::string& deviceId,
                                                     const NMOSSenderResource& sender,
-                                                    int64_t versionSeconds, int32_t versionNanos) {
+                                                    int64_t versionSeconds, int32_t versionNanos,
+                                                    const std::string& interfaceName) {
     std::ostringstream json;
     json << "{\n"
          << "    \"id\": \"" << senderId << "\",\n"
@@ -295,7 +327,7 @@ std::string NMOSRegistrationClient::buildSenderData(const std::string& senderId,
          << "    \"flow_id\": \"" << flowId << "\",\n"
          << "    \"device_id\": \"" << deviceId << "\",\n"
          << "    \"transport\": \"urn:x-nmos:transport:rtp.mcast\",\n"
-         << "    \"interface_bindings\": [],\n"
+         << "    \"interface_bindings\": " << bindingsJson(interfaceName) << ",\n"
          // The SDP for this sender is served over RTSP DESCRIBE, not over
          // HTTP, and manifest_href names an HTTP URL. Null says "ask me
          // another way" instead of pointing at something that will 404.
@@ -309,16 +341,19 @@ std::string NMOSRegistrationClient::buildReceiverBody(const std::string& receive
                                                       const std::string& deviceId,
                                                       const NMOSReceiverResource& receiver,
                                                       int64_t versionSeconds,
-                                                      int32_t versionNanos) {
+                                                      int32_t versionNanos,
+                                                      const std::string& interfaceName) {
     return wrapResource("receiver", buildReceiverData(receiverId, deviceId, receiver,
-                                                       versionSeconds, versionNanos));
+                                                       versionSeconds, versionNanos,
+                                                       interfaceName));
 }
 
 std::string NMOSRegistrationClient::buildReceiverData(const std::string& receiverId,
                                                       const std::string& deviceId,
                                                       const NMOSReceiverResource& receiver,
                                                       int64_t versionSeconds,
-                                                      int32_t versionNanos) {
+                                                      int32_t versionNanos,
+                                                      const std::string& interfaceName) {
     std::ostringstream json;
     json << "{\n"
          << "    \"id\": \"" << receiverId << "\",\n"
@@ -328,7 +363,7 @@ std::string NMOSRegistrationClient::buildReceiverData(const std::string& receive
          << "    \"tags\": {},\n"
          << "    \"device_id\": \"" << deviceId << "\",\n"
          << "    \"transport\": \"urn:x-nmos:transport:rtp.mcast\",\n"
-         << "    \"interface_bindings\": [],\n"
+         << "    \"interface_bindings\": " << bindingsJson(interfaceName) << ",\n"
          << "    \"format\": \"urn:x-nmos:format:audio\",\n"
          // What this receiver can take, which is what the RTP path
          // decodes: nothing else belongs here, however much the driver
@@ -538,7 +573,8 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
         allAccepted &= postResource(
             buildFlowBody(flowId, sourceId, deviceId, senders[i], versionSeconds, versionNanos));
         allAccepted &= postResource(buildSenderBody(senderIds[i], flowId, deviceId, senders[i],
-                                                    versionSeconds, versionNanos));
+                                                    versionSeconds, versionNanos,
+                                                    node_.interfaceName));
 
         published.emplace_back("sources", sourceId);
         published.emplace_back("flows", flowId);
@@ -547,7 +583,8 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
 
     for (size_t i = 0; i < receivers.size(); i++) {
         allAccepted &= postResource(buildReceiverBody(receiverIds[i], deviceId, receivers[i],
-                                                      versionSeconds, versionNanos));
+                                                      versionSeconds, versionNanos,
+                                                      node_.interfaceName));
         published.emplace_back("receivers", receiverIds[i]);
     }
 

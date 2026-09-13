@@ -15,6 +15,7 @@
 #include "NetworkEngine/NMOSSettings.h"
 #include "NetworkEngine/PTP/PTPMasterSettings.h"
 #include "NetworkEngine/NetworkInterfaceDetection.h"
+#include "Ravenna/NetworkInterfaces.h"
 #include <CoreAudio/AudioServerPlugIn.h>
 #include <arpa/inet.h>
 #include <algorithm>
@@ -511,6 +512,16 @@ void AES67Device::Initialize() {
             node.label = nmosSettings.label.empty()
                              ? ("AES67 macOS Driver on " + node.hostname)
                              : nmosSettings.label;
+            // The interface the streams use, which IS-04 makes the node
+            // publish and every sender and receiver bind to by name. A
+            // controller works out which devices can reach each other from
+            // exactly that, and resources bound to nothing looked unreachable.
+            node.interfaceName = nodeInterface;
+            if (!nodeInterface.empty()) {
+                if (const auto mac = Ravenna::macAddressOf(nodeInterface)) {
+                    node.interfaceMac = *mac;
+                }
+            }
 
             // IS-05. Bound to an ephemeral port: this is a user-space driver
             // and the port it gets is what it advertises.

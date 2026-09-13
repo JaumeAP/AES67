@@ -49,6 +49,7 @@ endif()
 
 add_library(aes67_ravenna
     Ravenna/ApiReplies.cpp
+    Ravenna/NetworkInterfaces.cpp
     Ravenna/ChannelMappingApi.cpp
     Ravenna/ConnectionApi.cpp
     Ravenna/DnsSd.cpp
