@@ -86,6 +86,20 @@ target_include_directories(AES67LiveDaemonInterop PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(AES67LiveDaemonInterop PRIVATE aes67_net_portable)
 target_compile_features(AES67LiveDaemonInterop PRIVATE cxx_std_17)
 
+# AES67 PTP Stress Run: this driver's real PTPMaster and PTPSlave against
+# each other over a live interface for a sustained period, sampling lock
+# state/offset/path delay every second -- TestPTPLoopback only proves the
+# exchange completes and checks the state once, at the end of ~8 seconds.
+# Needs AudioThreadPriority (PTPMaster's transmit/receive threads call it),
+# which lives in Driver/ and is not part of aes67_net.
+add_executable(AES67PTPStressRun
+    AES67PTPStressRun.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+target_include_directories(AES67PTPStressRun PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(AES67PTPStressRun PRIVATE aes67_net)
+target_compile_features(AES67PTPStressRun PRIVATE cxx_std_17)
+
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against
 # no driver code, so it validates what is installed, not this build tree.
@@ -105,6 +119,7 @@ message(STATUS "  - AES67TestReceiver")
 message(STATUS "  - AES67ImpairmentRelay")
 message(STATUS "  - AES67SAPMonitor")
 message(STATUS "  - AES67LiveDaemonInterop")
+message(STATUS "  - AES67PTPStressRun")
 message(STATUS "  - HALValidate")
 message(STATUS "")
 message(STATUS "Run test sender:")
