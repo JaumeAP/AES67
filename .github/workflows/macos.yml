@@ -18,6 +18,7 @@ on:
     paths:
       - 'packages/aes67-macos-driver/**'
       - 'packages/aes67-macos-manager/**'
+      - 'packages/aes67-macos-controller/**'
       - 'packages/aes67-core/**'
       - 'packages/aes67-profiles/**'
       - 'packages/aes67-ravenna/**'
@@ -26,6 +27,7 @@ on:
     paths:
       - 'packages/aes67-macos-driver/**'
       - 'packages/aes67-macos-manager/**'
+      - 'packages/aes67-macos-controller/**'
       - '.github/workflows/macos.yml'
 
 jobs:
@@ -54,6 +56,11 @@ jobs:
       # runner adds here is a second compiler, not a second analysis.
       - name: aes67-macos-driver
         run: packages/aes67-macos-driver/scripts/gate.sh --clean
+
+      # Before the manager: its own gate checks that its installer carries
+      # AES67Controller.app, and only this one builds it.
+      - name: aes67-macos-controller
+        run: packages/aes67-macos-controller/scripts/gate.sh
 
       - name: aes67-macos-manager
         run: packages/aes67-macos-manager/scripts/gate.sh

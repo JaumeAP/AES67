@@ -10,8 +10,8 @@
 #   packages/aes67-core/scripts/gate.sh          build, test, platform contract
 #   packages/aes67-ravenna/scripts/gate.sh       build, tests, a live DESCRIBE
 #   packages/aes67-macos-driver/scripts/gate.sh   build, test, CMake sanity
-#   packages/aes67-macos-manager/scripts/gate.sh  host tests, the app
 #   packages/aes67-macos-controller/scripts/gate.sh  the controller app
+#   packages/aes67-macos-manager/scripts/gate.sh  host tests, the app
 #   packages/aes67-linux-ptpd/scripts/gate.sh    build, wire tests
 #   packages/t41-ptp/scripts/gate.sh             host tests
 #
@@ -19,6 +19,14 @@
 # builds both in, and their failures are harder to read through it than on
 # their own. aes67-ravenna used to run after it, which is the one place this
 # order did not follow its own rule.
+#
+# aes67-macos-controller runs before aes67-macos-manager for the same kind of
+# reason: the manager's gate checks that its installer carries
+# AES67Controller.app, and only the controller's own gate builds one. Running
+# the manager first only ever passed locally by accident, off whatever
+# AES67Controller.app a previous build happened to leave on disk -- a clean
+# checkout (a GitHub runner, packages/macos.yml) had no such leftover and
+# failed the check every time.
 #
 # .githooks/pre-push runs this. Opt in per clone with
 # `git config core.hooksPath .githooks`, since hook configuration is local and
@@ -52,8 +60,11 @@ run "aes67-profiles"     packages/aes67-profiles/scripts/gate.sh
 run "aes67-core"         packages/aes67-core/scripts/gate.sh
 run "aes67-ravenna"      packages/aes67-ravenna/scripts/gate.sh
 run "aes67-macos-driver" packages/aes67-macos-driver/scripts/gate.sh
-run "aes67-macos-manager" packages/aes67-macos-manager/scripts/gate.sh
+# Controller before manager: the manager's own gate requires
+# AES67Controller.app to already exist (it checks the installer carries it),
+# and only the controller's gate builds it.
 run "aes67-macos-controller" packages/aes67-macos-controller/scripts/gate.sh
+run "aes67-macos-manager" packages/aes67-macos-manager/scripts/gate.sh
 run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 
 # The RAVENNA ALSA kernel module is a checkout, not a package: docs/ravenna-alsa-lkm.md
