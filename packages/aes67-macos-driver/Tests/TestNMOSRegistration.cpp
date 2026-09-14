@@ -295,7 +295,63 @@ TEST_CASE("The resource bodies say what IS-04 expects") {
             "rcv-id", "dev-id", receiver, 1756000000, 0);
         CHECK(body.find("\"media_types\": [\"audio/L16\", \"audio/L24\"]") !=
               std::string::npos);
-        CHECK(body.find("\"active\": true") != std::string::npos);
+    }
+
+    SUBCASE("a receiver's subscription follows IS-05's master_enable, not stream existence") {
+        // A receive stream can exist -- `active` above -- and still have
+        // been switched off by a controller without being torn down.
+        // Reporting the resource itself as always subscribed once a stream
+        // exists is a lie the driver used to tell every registry: fixed to
+        // read masterEnable/subscribedSenderId, which the caller now reads
+        // from the real Connection API rather than assuming from existence.
+        NMOSReceiverResource switchedOff;
+        switchedOff.name = "Desk Return";
+        switchedOff.active = true;         // a stream exists
+        switchedOff.masterEnable = false;  // but a controller turned it off
+        const std::string offBody = NMOSRegistrationClient::buildReceiverBody(
+            "rcv-id", "dev-id", switchedOff, 1756000000, 0);
+        CHECK(offBody.find("\"active\": false") != std::string::npos);
+        CHECK(offBody.find("\"sender_id\": null") != std::string::npos);
+
+        NMOSReceiverResource connected;
+        connected.name = "Desk Return";
+        connected.active = true;
+        connected.masterEnable = true;
+        connected.subscribedSenderId = "5cd71600-d803-50aa-a55c-d2489b9545e9";
+        const std::string onBody = NMOSRegistrationClient::buildReceiverBody(
+            "rcv-id", "dev-id", connected, 1756000000, 0);
+        CHECK(onBody.find("\"active\": true") != std::string::npos);
+        CHECK(onBody.find("\"sender_id\": \"5cd71600-d803-50aa-a55c-d2489b9545e9\"") !=
+              std::string::npos);
+    }
+
+    SUBCASE("a sender's subscription follows IS-05's master_enable and receiver_id") {
+        // buildSenderData used to hard-code "active": true unconditionally
+        // -- a sender a controller switched off went on reporting itself
+        // subscribed. sender.masterEnable defaults to true, matching that
+        // old behavior for a caller with no Connection API to ask; a real
+        // one overrides it.
+        NMOSSenderResource idle = sender;
+        idle.masterEnable = true;
+        const std::string idleBody = NMOSRegistrationClient::buildSenderBody(
+            "snd-id", "flow-id", "dev-id", idle, 1756000000, 0);
+        CHECK(idleBody.find("\"active\": true") != std::string::npos);
+        CHECK(idleBody.find("\"receiver_id\": null") != std::string::npos);
+
+        NMOSSenderResource offSender = sender;
+        offSender.masterEnable = false;
+        const std::string offBody = NMOSRegistrationClient::buildSenderBody(
+            "snd-id", "flow-id", "dev-id", offSender, 1756000000, 0);
+        CHECK(offBody.find("\"active\": false") != std::string::npos);
+
+        NMOSSenderResource connectedSender = sender;
+        connectedSender.masterEnable = true;
+        connectedSender.subscribedReceiverId = "9e6a9c9e-7f8c-4b2a-9e8e-1a2b3c4d5e6f";
+        const std::string connectedBody = NMOSRegistrationClient::buildSenderBody(
+            "snd-id", "flow-id", "dev-id", connectedSender, 1756000000, 0);
+        CHECK(connectedBody.find(
+                  "\"receiver_id\": \"9e6a9c9e-7f8c-4b2a-9e8e-1a2b3c4d5e6f\"") !=
+              std::string::npos);
     }
 }
 
@@ -342,6 +398,39 @@ TEST_CASE("A sync posts the whole tree, and the next one takes away what went") 
     CHECK(deletes.find("/senders/") != std::string::npos);
     // The receiver stayed, so nothing of it was removed.
     CHECK(deletes.find("/receivers/") == std::string::npos);
+}
+
+TEST_CASE("A 200 on a resource, not just the node, deletes and reposts") {
+    // postResource() used to accept 200 the same as 201, unlike postNode()'s
+    // identical concern (IS-04 sec 4.2: a 200 may be a stale copy the
+    // registry already holds). syncResources() re-POSTs every resource with
+    // the same deterministic id on every call, so once a device resource
+    // exists, changing it -- here, nothing has to change; the registry is
+    // simply scripted to answer as if it already held one -- got 200 back
+    // and the registry kept serving whatever it had.
+    FakeRegistry registry({
+        answer("201 Created"),  // node
+        answer("200 OK"),       // device: "I already have this"
+        answer("204 No Content"),  // device DELETE
+        answer("201 Created"),  // device re-POST
+    }, answer("201 Created"));  // source, flow, sender: nothing special
+    REQUIRE(registry.start());
+
+    NMOSRegistrationClient client(testNode());
+    REQUIRE(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+
+    NMOSSenderResource sender;
+    sender.name = "Studio Mic 1";
+    CHECK(client.syncResources({sender}, {}));
+
+    const auto requests = registry.requests();
+    // node, device (200), device DELETE, device (re-POST 201), source, flow,
+    // sender: seven.
+    REQUIRE(requests.size() == 7);
+    CHECK(requests[1].find("\"type\": \"device\"") != std::string::npos);
+    CHECK(requests[2].find("DELETE /x-nmos/registration/v1.3/resource/devices/") == 0);
+    CHECK(requests[3].find("\"type\": \"device\"") != std::string::npos);
+    CHECK(requests[4].find("\"type\": \"source\"") != std::string::npos);
 }
 
 TEST_CASE("Unregistering takes the tree down before the node") {

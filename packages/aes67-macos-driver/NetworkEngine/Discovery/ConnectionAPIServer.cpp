@@ -316,6 +316,37 @@ public:
         return senderPatcher_ ? senderPatcher_(id, patch) : false;
     }
 
+    // Not callable from inside route()'s own call tree (that includes the
+    // onReceiverActivation/onSenderActivation callbacks wireApi() installs
+    // below): route() holds apiMutex_ for the whole of api_.handle(), and
+    // this is a plain mutex, not the recursive one ConnectionApi's own
+    // resourcesMutex_ had to become for exactly this shape of problem. Safe
+    // as designed because these are called from AES67Device's own NMOS sync
+    // path, never nested inside a request this server is already serving.
+    ConnectionActiveState senderActiveState(const std::string& id) const {
+        std::lock_guard<std::mutex> held(apiMutex_);
+        syncResources();
+        ConnectionActiveState state;
+        if (const auto sender = api_.sender(id)) {
+            state.exists = true;
+            state.masterEnable = sender->active.masterEnable;
+            state.peerId = sender->active.receiverId;
+        }
+        return state;
+    }
+
+    ConnectionActiveState receiverActiveState(const std::string& id) const {
+        std::lock_guard<std::mutex> held(apiMutex_);
+        syncResources();
+        ConnectionActiveState state;
+        if (const auto receiver = api_.receiver(id)) {
+            state.exists = true;
+            state.masterEnable = receiver->active.masterEnable;
+            state.peerId = receiver->active.senderId;
+        }
+        return state;
+    }
+
 private:
     void run() {
         while (running_.load()) {
@@ -692,6 +723,14 @@ ConnectionAPIServer::Reply ConnectionAPIServer::route(const std::string& method,
                                                       const std::string& path,
                                                       const std::string& body) const {
     return impl_->route(method, path, body);
+}
+
+ConnectionActiveState ConnectionAPIServer::senderActiveState(const std::string& senderId) const {
+    return impl_->senderActiveState(senderId);
+}
+
+ConnectionActiveState ConnectionAPIServer::receiverActiveState(const std::string& receiverId) const {
+    return impl_->receiverActiveState(receiverId);
 }
 
 } // namespace AES67

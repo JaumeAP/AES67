@@ -1125,6 +1125,19 @@ std::vector<NMOSSenderResource> AES67Device::nmosSenderResources() {
         sender.sampleRate = static_cast<uint32_t>(sdp.sampleRate);
         sender.channels = sdp.numChannels;
         sender.encoding = sdp.encoding.empty() ? "L24" : sdp.encoding;
+        // IS-05's real master_enable and receiver_id when there is a
+        // Connection API to ask; otherwise this keeps its default of
+        // "subscribed", which is what every sender answered before this
+        // was read from anywhere. A stream existing in StreamManager is not
+        // the same fact as a controller having left it switched on.
+        if (connectionServer_) {
+            const ConnectionActiveState state =
+                connectionServer_->senderActiveState(nmosIdFor("sender", sdp.sessionName));
+            if (state.exists) {
+                sender.masterEnable = state.masterEnable;
+                sender.subscribedReceiverId = state.peerId;
+            }
+        }
         senders.push_back(std::move(sender));
     }
     return senders;
@@ -1139,8 +1152,23 @@ std::vector<NMOSReceiverResource> AES67Device::nmosReceiverResources() {
         receiver.description = sdp.sessionInfo;
         receiver.subscribedMulticastAddress = sdp.connectionAddress;
         // A receive stream that exists is a receiver that is taking
-        // something.
+        // something -- the fallback answer when there is no Connection API
+        // to ask, and `active` in its own right for a caller that only
+        // wants to know whether a stream exists at all.
         receiver.active = true;
+        receiver.masterEnable = true;
+        // IS-05's real master_enable and sender_id, once there is somewhere
+        // to read them. A receive stream can exist and still have been
+        // switched off by a controller without being torn down; `active`
+        // above cannot see that.
+        if (connectionServer_) {
+            const ConnectionActiveState state =
+                connectionServer_->receiverActiveState(nmosIdFor("receiver", sdp.sessionName));
+            if (state.exists) {
+                receiver.masterEnable = state.masterEnable;
+                receiver.subscribedSenderId = state.peerId;
+            }
+        }
         receivers.push_back(std::move(receiver));
     }
 
