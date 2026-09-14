@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <sched.h>
+#include <cstdint>
 
 namespace AES67 {
 
@@ -51,6 +52,17 @@ public:
      * Restore normal priority to the current thread
      */
     static void restoreNormalPriority();
+
+    /**
+     * milliseconds -> Mach absolute time, clamped to a representable
+     * uint32_t rather than left to an out-of-range double-to-integer cast
+     * (undefined behavior, not a wrapped or saturated one). Exposed for
+     * test: nothing validates a period this reaches before it does --
+     * PTPMasterConfig::syncIntervalMs/announceIntervalMs carry no
+     * min/max -- so this is the one place that has to hold regardless of
+     * how a caller arrived at an unreasonable value.
+     */
+    static std::uint32_t millisToAbsoluteForTest(double ms);
 };
 
 } // namespace AES67

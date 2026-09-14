@@ -8,6 +8,7 @@
 #include <sys/resource.h>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
 namespace AES67 {
 
@@ -22,7 +23,22 @@ std::uint32_t millisToAbsolute(double ms) {
         return t;
     }();
     const double ns = ms * 1.0e6;
-    return static_cast<std::uint32_t>(ns * tb.denom / tb.numer);
+    const double absolute = ns * tb.denom / tb.numer;
+    // Nothing between a hand-edited ptp_master.json's syncIntervalMs/
+    // announceIntervalMs and this clamps them, and a value at or above
+    // roughly 4.3 s (UINT32_MAX absolute-time ticks, denom/numer close to 1
+    // on both Apple Silicon and Intel) makes a double-to-uint32_t cast of an
+    // out-of-range value -- undefined behavior, not a wrapped or saturated
+    // one, unlike an integer-to-integer narrowing. Clamped here rather than
+    // validated further up the chain: this is the one place every caller's
+    // milliseconds value is turned into the type Mach's policy actually
+    // takes, so it is the one place that has to hold regardless of how a
+    // caller arrived at an unreasonable period.
+    if (!(absolute > 0.0)) return 0;  // also catches NaN, which > always refuses
+    if (absolute >= static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
+        return std::numeric_limits<std::uint32_t>::max();
+    }
+    return static_cast<std::uint32_t>(absolute);
 }
 
 } // namespace
@@ -98,6 +114,10 @@ void AudioThreadPriority::restoreNormalPriority() {
 
     // Restore normal nice value
     setpriority(PRIO_PROCESS, 0, 0);
+}
+
+std::uint32_t AudioThreadPriority::millisToAbsoluteForTest(double ms) {
+    return millisToAbsolute(ms);
 }
 
 } // namespace AES67
