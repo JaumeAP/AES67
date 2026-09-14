@@ -250,8 +250,12 @@ make docs
 # Install the driver
 sudo cp -R AES67Driver.driver /Library/Audio/Plug-Ins/HAL/
 
-# Restart Core Audio to load the driver
-sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+# Restart Core Audio to load the driver -- killall, not `launchctl kickstart`:
+# macOS 14.4 made kickstart-ing coreaudiod refuse even as root ("Operation not
+# permitted while System Integrity Protection is engaged"). coreaudiod is
+# launchd's own, KeepAlive-managed, so killing it is enough -- launchd
+# restarts it.
+sudo killall coreaudiod
 
 # Verify it appears
 system_profiler SPAudioDataType | grep -A 5 "AES67"

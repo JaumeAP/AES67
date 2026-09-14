@@ -54,8 +54,12 @@ enum UninstallPlan {
             commands.append("rm -rf \(q(controllerAppPath))")
         }
         // Last, and always: until Core Audio is restarted the device is still
-        // there, loaded from a bundle that no longer exists.
-        commands.append("launchctl kickstart -kp system/com.apple.audio.coreaudiod")
+        // there, loaded from a bundle that no longer exists. killall, not
+        // `launchctl kickstart`: macOS 14.4 made kickstart-ing coreaudiod
+        // refuse even as root ("Operation not permitted while System
+        // Integrity Protection is engaged"). coreaudiod is launchd's own,
+        // KeepAlive-managed, so killing it is enough -- launchd restarts it.
+        commands.append("killall coreaudiod")
         return commands
     }
 

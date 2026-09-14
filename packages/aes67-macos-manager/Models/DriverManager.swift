@@ -148,9 +148,15 @@ class DriverManager: ObservableObject {
     }
 
     func restartCoreAudio() {
+        // killall, not `launchctl kickstart`: macOS 14.4 made kickstart-ing a
+        // handful of critical system daemons -- coreaudiod among them --
+        // refuse even as root ("150: Operation not permitted while System
+        // Integrity Protection is engaged"), no matter who asks. coreaudiod
+        // is launchd's own, KeepAlive-managed, so killing it is enough --
+        // launchd restarts it, which is the whole point of the call.
         let task = Process()
-        task.launchPath = "/bin/launchctl"
-        task.arguments = ["kickstart", "-kp", "system/com.apple.audio.coreaudiod"]
+        task.launchPath = "/usr/bin/killall"
+        task.arguments = ["coreaudiod"]
 
         do {
             try task.run()
@@ -171,7 +177,7 @@ class DriverManager: ObservableObject {
 
     private func restartCoreAudioWithPrivileges() {
         let script = NSAppleScript(source: """
-            do shell script "launchctl kickstart -kp system/com.apple.audio.coreaudiod" with administrator privileges
+            do shell script "killall coreaudiod" with administrator privileges
             """)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
@@ -369,7 +375,7 @@ class DriverManager: ObservableObject {
             "ditto \(q(source.path)) \(q(Self.driverInstallPath))",
             "chown -R root:wheel \(q(Self.driverInstallPath))",
             "chmod -R 755 \(q(Self.driverInstallPath))",
-            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+            "killall coreaudiod",
         ]
 
         guard let source = PrivilegedScript.adminShell(commands) else {
@@ -412,7 +418,7 @@ class DriverManager: ObservableObject {
         let q = PrivilegedScript.shellQuoted
         guard let source = PrivilegedScript.adminShell([
             "rm -rf \(q(Self.driverInstallPath))",
-            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+            "killall coreaudiod",
         ]) else {
             showAlert(title: "Uninstall Failed",
                      message: "The uninstall command could not be built. This is a defect, not "
@@ -510,7 +516,7 @@ class DriverManager: ObservableObject {
             "/bin/cp \(q(staged.path)) \(q(Self.activationPath))",
             "chown root:wheel \(q(Self.activationPath))",
             "chmod 644 \(q(Self.activationPath))",
-            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+            "killall coreaudiod",
         ]) else {
             showAlert(title: active ? "Activate Failed" : "Deactivate Failed",
                      message: "The command could not be built. This is a defect, not something "
@@ -585,7 +591,7 @@ class DriverManager: ObservableObject {
             "/bin/cp \(q(staged.path)) \(q(Self.discoveryPath))",
             "chown root:wheel \(q(Self.discoveryPath))",
             "chmod 644 \(q(Self.discoveryPath))",
-            "launchctl kickstart -kp system/com.apple.audio.coreaudiod",
+            "killall coreaudiod",
         ]) else {
             showAlert(title: "Discovery Setting Failed",
                       message: "The command could not be built. This is a defect, not something "

@@ -185,9 +185,13 @@ ctest -R StreamManager --output-on-failure
 # Doxygen API docs (requires `brew install doxygen`)
 make docs
 
-# Install the driver, then reload coreaudiod to pick it up
+# Install the driver, then reload coreaudiod to pick it up. killall, not
+# `launchctl kickstart`: macOS 14.4 made kickstart-ing coreaudiod refuse even
+# as root ("Operation not permitted while System Integrity Protection is
+# engaged"); coreaudiod is launchd's own, KeepAlive-managed, so killing it is
+# enough -- launchd restarts it.
 sudo cp -R AES67Driver.driver /Library/Audio/Plug-Ins/HAL/
-sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+sudo killall coreaudiod
 system_profiler SPAudioDataType | grep -A 5 "AES67"   # verify it loaded
 ```
 

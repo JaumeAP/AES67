@@ -152,7 +152,7 @@ func runUninstallPlanTests() {
           "the PTP daemon is stopped")
     check(plain.first?.contains("bootout") == true,
           "the daemon goes first, while what it needs is still there")
-    check(plain.last?.contains("kickstart -kp system/com.apple.audio.coreaudiod") == true,
+    check(plain.last?.contains("killall coreaudiod") == true,
           "and Core Audio is restarted last, or the device stays until a reboot")
 
     // A job that was never registered must not stop the rest.
@@ -167,7 +167,7 @@ func runUninstallPlanTests() {
           "and removed when asked")
     check(withApps.contains { $0.contains("/Applications/AES67Controller.app") },
           "both of them")
-    check(withApps.last?.contains("kickstart") == true, "Core Audio still last")
+    check(withApps.last?.contains("killall coreaudiod") == true, "Core Audio still last")
 
     // Every path is quoted, and the whole thing survives the trip through
     // AppleScript.
