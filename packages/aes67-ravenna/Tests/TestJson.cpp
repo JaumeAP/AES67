@@ -57,6 +57,26 @@ TEST_CASE("What is not JSON is refused, and says where") {
     CHECK(parseJson(R"({"a":1} and then some)", value, error) == false);
 }
 
+TEST_CASE("Nesting past a sane depth is refused rather than recursed into") {
+    // This parser is reached from unauthenticated network bodies inside
+    // coreaudiod, and parseValue recurses one C++ stack frame per nesting
+    // level with no other bound on the request: without a depth limit, a
+    // few tens of KB of repeated '[' -- well under any byte-size cap --
+    // exhausts the thread stack and crashes the process before this
+    // function ever gets to return an error.
+    JsonValue value;
+    std::string error;
+
+    std::string deep(10000, '[');
+    deep.append(10000, ']');
+    CHECK(parseJson(deep, value, error) == false);
+    CHECK(error.empty() == false);
+
+    // A real IS-05/IS-08 body nests a handful of levels; well within that
+    // still parses.
+    CHECK(parseJson(R"({"a":[{"b":[1,2,3]}]})", value, error) == true);
+}
+
 TEST_CASE("Strings keep their escapes on the way in and out") {
     JsonValue value;
     std::string error;
