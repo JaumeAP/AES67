@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -46,8 +47,16 @@ public:
 
     PTPState& getState();
 
-    // Get diagnostic information
-    PTPDiagnostics& getDiagnostics();
+    // Get diagnostic information: a snapshot, not a live reference.
+    // diagnostics_ is written from whichever thread calls
+    // onPTPMeasurement() -- PTPSlave's own receive thread via the
+    // onMeasurement callback, or this class's own serviceLoop() thread --
+    // while this is called from the HAL/Manager-app-facing thread that
+    // reads PTP status for display. A reference into a mutex-protected
+    // member would let the caller read it outside the lock; a copy taken
+    // under the lock is the only version of "the current diagnostics" that
+    // means anything once two threads are involved.
+    PTPDiagnostics getDiagnostics();
 
     // Returns true if running in stub mode (no real PTP synchronization).
     // When true, isLocked/clockClass values are simulated and audio will
@@ -103,6 +112,7 @@ private:
 
     PTPState state_;
     PTPDiagnostics diagnostics_;
+    std::mutex diagnosticsMutex_;
     bool running_{false};
     bool stubMode_;
     int domain_{0};

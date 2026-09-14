@@ -1398,9 +1398,19 @@ bool StreamManager::saveAllStreamsInternal() {
 }
 
 void StreamManager::autoSaveIfEnabled() {
-    // NOTE: We're already holding streamsMutex_ when this is called
-    // from addStream/removeStream/updateMapping, so use the internal version
+    // Every real caller (addStream/removeStream/createTxStream/
+    // updateMapping) explicitly unlock()s streamsMutex_ before reaching this
+    // -- "see addStream" at each call site -- specifically so a callback and
+    // the disk write happen outside the lock. This used to assume the
+    // opposite ("we're already holding streamsMutex_") and called
+    // saveAllStreamsInternal(), which iterates streams_ with no lock of its
+    // own: a second thread (e.g. the SAP listener's
+    // updateReceiveStreamsFromAnnouncement(), itself calling addStream/
+    // removeStream) could be adding to or erasing from the same std::map at
+    // the same time. Locking here, once, is what saveAllStreams() already
+    // does for the same internal helper.
     if (autoSaveEnabled_) {
+        std::lock_guard<std::mutex> lock(streamsMutex_);
         saveAllStreamsInternal();
     }
 }

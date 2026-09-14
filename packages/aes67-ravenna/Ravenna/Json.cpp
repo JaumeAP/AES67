@@ -10,9 +10,20 @@ namespace {
 
 const JsonValue kNull{};
 
+// parseValue/parseObject/parseArray mutually recurse one call per nesting
+// level, and this is reached from unauthenticated network bodies -- IS-05
+// PATCH, IS-08 activations -- inside coreaudiod itself. A body of a few
+// tens of KB of repeated '[' is well under the request-size cap (which
+// bounds bytes, not nesting) and recurses one stack frame per bracket,
+// which exhausts the thread stack and crashes the process before any error
+// response can be sent. 64 is far past anything a real IS-05/IS-08 body
+// nests -- these are a handful of levels deep at most.
+constexpr int kMaxNestingDepth = 64;
+
 struct Parser {
     const std::string& text;
     size_t at = 0;
+    int depth = 0;
     std::string error;
 
     explicit Parser(const std::string& source) : text(source) {}
@@ -87,8 +98,13 @@ struct Parser {
         if (at >= text.size()) return fail("nothing to parse");
 
         const char c = text[at];
-        if (c == '{') return parseObject(out);
-        if (c == '[') return parseArray(out);
+        if (c == '{' || c == '[') {
+            if (depth >= kMaxNestingDepth) return fail("nested too deep");
+            ++depth;
+            const bool ok = (c == '{') ? parseObject(out) : parseArray(out);
+            --depth;
+            return ok;
+        }
         if (c == '"') {
             std::string value;
             if (!parseString(value)) return false;

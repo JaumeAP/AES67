@@ -78,7 +78,17 @@ AES67Device::AES67Device(const std::shared_ptr<aspl::Context>& context)
         .DeviceUID = "com.aes67.driver.device",
         .ModelUID = "com.aes67.driver.model",
         .CanBeDefault = true,
-        .CanBeDefaultForSystemSounds = false
+        .CanBeDefaultForSystemSounds = false,
+        // libASPL defaults this to true, which routes output through
+        // OnWriteMixedOutput (IORequestHandler's own no-op default) instead
+        // of AES67IOHandler::OnWriteClientOutput -- the only method that
+        // actually feeds a client's audio into the RTP transmit path.
+        // AES67IOHandler overrides the per-client, unmixed callbacks
+        // (OnReadClientInput/OnWriteClientOutput), which IORequestHandler.hpp
+        // documents as used only when EnableMixing is false. Left at the
+        // default, every write silently went nowhere: deterministic total
+        // TX audio loss on any normal run, one client, one output stream.
+        .EnableMixing = false
     })
     // Initialize ring buffers sized for maximum supported sample rate (384kHz)
     // This ensures buffers are always large enough regardless of sample rate changes
