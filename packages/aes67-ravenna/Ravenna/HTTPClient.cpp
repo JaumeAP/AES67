@@ -92,7 +92,7 @@ int connectTo(const std::string& host, uint16_t port, int timeoutMs, std::string
 
     struct timeval timeout {};
     timeout.tv_sec = timeoutMs / 1000;
-    timeout.tv_usec = (timeoutMs % 1000) * 1000;
+    timeout.tv_usec = static_cast<decltype(timeout.tv_usec)>(timeoutMs % 1000) * 1000;
     ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
