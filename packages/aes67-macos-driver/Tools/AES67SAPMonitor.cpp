@@ -190,16 +190,23 @@ int run(int argc, char* argv[]) {
         const AES67::SAPAnnouncement announcement =
             AES67::SAPListener::parseAnnouncement(buffer.data(), static_cast<size_t>(bytes),
                                                   fromText);
-        if (announcement.sessionDescription.empty()) {
-            ++unparsed;
-            fprintf(stderr, "[%s] unparsable SAP packet, %zd bytes\n", fromText, bytes);
-            continue;
-        }
+        // Checked before the empty-body test below: SAPListener::parseAnnouncement
+        // returns a deletion as soon as it reads the type bit, with no
+        // sessionDescription at all -- that is correct, not a parse failure, and
+        // the empty-body check below used to shadow this branch entirely, so
+        // every real deletion (found running this tool against
+        // dante-device-emulator's own exit announcement) printed as
+        // "unparsable" instead.
         if (announcement.isDeletion) {
             ++deletions;
             fprintf(stderr, "[%s] DELETE \"%s\" (%s:%d)\n", fromText,
                     announcement.sessionName.c_str(),
                     announcement.multicastAddress.c_str(), announcement.port);
+            continue;
+        }
+        if (announcement.sessionDescription.empty()) {
+            ++unparsed;
+            fprintf(stderr, "[%s] unparsable SAP packet, %zd bytes\n", fromText, bytes);
             continue;
         }
 
