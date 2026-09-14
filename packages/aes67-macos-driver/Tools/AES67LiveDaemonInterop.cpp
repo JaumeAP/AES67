@@ -111,7 +111,10 @@ void checkDaemonSourceIsDiscoverable(const Options& opts) {
                           std::chrono::milliseconds(opts.pollTimeoutMs);
     while (std::chrono::steady_clock::now() < deadline) {
         for (const auto& ann : listener.getDiscoveredStreams()) {
-            if (ann.sessionName == opts.daemonSourceName) {
+            // Contains, not equals: the daemon's own SAP announcer prefixes
+            // its own s= line with "Daemon <node id> " (sap.cpp), so the
+            // configured name survives as a suffix rather than verbatim.
+            if (ann.sessionName.find(opts.daemonSourceName) != std::string::npos) {
                 found = ann;
                 break;
             }
