@@ -31,9 +31,19 @@ set(VERSION_BUILD ${CMAKE_MATCH_4})
 
 project(AES67Driver
     VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
-    LANGUAGES CXX OBJCXX
+    LANGUAGES CXX
     DESCRIPTION "AES67/RAVENNA/Dante Audio Driver for macOS"
 )
+
+# Objective-C++ only where it is actually used: HALValidateAudioAccess.mm,
+# the tool's own APPLE-gated target below -- the one .mm file in this whole
+# package. Requiring OBJCXX unconditionally at the top made every configure
+# ask for an Objective-C++ compiler even to build aes67_net and its tests on
+# a platform with no Objective-C at all, which is exactly the "tests/tools
+# build cross-platform" claim this file's own header comment makes.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    enable_language(OBJCXX)
+endif()
 
 message(STATUS "AES67 Driver Build #${VERSION_BUILD}")
 

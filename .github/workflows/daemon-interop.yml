@@ -1,0 +1,190 @@
+# Live interop against a real, running bondagit/aes67-linux-daemon.
+#
+# Tests/support/DaemonSap and Tests/support/DaemonRtsp mirror that daemon's
+# SAP and RTSP from its source, read once and reproduced by hand -- a strong
+# check of fidelity at the moment they were written, but not proof that two
+# real processes on a real network still agree. That needs the daemon
+# actually running, which needs Linux: it does not build or run on macOS,
+# and this machine has no Docker or VM set up for it either. A GitHub
+# runner is Linux and free, which is the same reason linux-ptpd.yml exists.
+#
+# The daemon is built with -DFAKE_DRIVER=ON (its own buildfake.sh flags):
+# fake_driver_manager.cpp stands in for the RAVENNA ALSA kernel module, so
+# this needs no insmod, no real audio hardware and no root -- only its
+# RTSP/SAP/HTTP surface is under test here, not audio I/O.
+#
+# aes67_net -- RTSPClient, RTSPServer, SAPAnnouncer, SAPListener, the HTTP
+# client -- is portable in practice (see its own comment in
+# packages/aes67-macos-driver/CMakeLists.txt); this is the first job that
+# actually builds it on Linux rather than assuming so. The one thing that
+# needed fixing to get there: OBJCXX was required unconditionally at the
+# top of that CMakeLists, for a single .mm file that is APPLE-gated already.
+name: daemon-interop
+
+on:
+  push:
+    paths:
+      - 'packages/aes67-macos-driver/NetworkEngine/**'
+      - 'packages/aes67-macos-driver/Tools/AES67LiveDaemonInterop.cpp'
+      - 'packages/aes67-macos-driver/Tools/CMakeLists.txt'
+      - 'packages/aes67-macos-driver/CMakeLists.txt'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-ravenna/**'
+      - '.github/workflows/daemon-interop.yml'
+  pull_request:
+    paths:
+      - 'packages/aes67-macos-driver/NetworkEngine/**'
+      - 'packages/aes67-macos-driver/Tools/AES67LiveDaemonInterop.cpp'
+      - 'packages/aes67-macos-driver/Tools/CMakeLists.txt'
+      - 'packages/aes67-macos-driver/CMakeLists.txt'
+      - 'packages/aes67-core/**'
+      - 'packages/aes67-ravenna/**'
+      - '.github/workflows/daemon-interop.yml'
+
+jobs:
+  interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # A separate checkout, at its own path, rather than a submodule of
+      # this repository: the daemon is GPL-3.0 (compatible, this repo
+      # carries the same licence) but is not this project's code, and CI
+      # is the only place that needs it.
+      - name: Checkout aes67-linux-daemon
+        uses: actions/checkout@v4
+        with:
+          repository: bondagit/aes67-linux-daemon
+          submodules: recursive
+          path: external-daemon
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git \
+            libboost-thread-dev libboost-filesystem-dev libboost-log-dev \
+            libboost-program-options-dev \
+            libavahi-compat-libdnssd-dev uuid-dev
+
+      # -DWITH_AVAHI=OFF -DWITH_STREAMER=OFF -DFAKE_DRIVER=ON -DWITH_NMOS=OFF:
+      # the daemon's own buildfake.sh flags, minus NMOS -- this job does not
+      # exercise it. ENABLE_TESTS is off: its own unit tests are its own
+      # concern, not this job's.
+      - name: Build aes67-linux-daemon (fake driver)
+        run: |
+          cmake -S external-daemon/daemon -B external-daemon/build \
+            -DCPP_HTTPLIB_DIR="${GITHUB_WORKSPACE}/external-daemon/3rdparty/cpp-httplib" \
+            -DRAVENNA_ALSA_LKM_DIR="${GITHUB_WORKSPACE}/external-daemon/3rdparty/ravenna-alsa-lkm" \
+            -DBoost_NO_WARN_NEW_VERSIONS=1 \
+            -DENABLE_TESTS=OFF -DWITH_AVAHI=OFF -DFAKE_DRIVER=ON \
+            -DWITH_STREAMER=OFF -DWITH_NMOS=OFF -DWITH_SYSTEMD=OFF
+          cmake --build external-daemon/build -j
+          test -x external-daemon/build/aes67-daemon
+
+      # Only the one target this job needs: every other Tools/Tests target
+      # in this package links -framework Accelerate or opens libASPL, and a
+      # full configure of BUILD_TESTS/BUILD_EXAMPLES has no reason to run
+      # here. `cmake --build --target` builds this target's own dependency
+      # closure (aes67_net, aes67_core, aes67_ravenna) and nothing past it.
+      - name: Build AES67LiveDaemonInterop
+        run: |
+          cmake -S packages/aes67-macos-driver -B build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build --target AES67LiveDaemonInterop -j
+
+      # Same trick as linux-ptpd.yml: a GitHub runner's lo carries no
+      # MULTICAST flag by default, and SAP -- both this driver's and the
+      # daemon's -- needs one.
+      - name: Multicast on the loopback
+        run: |
+          sudo ip link set lo multicast on
+          ip link show lo
+
+      # sap_interval is 3s rather than the default 30s purely so this job
+      # does not sit through several real announce cycles; nothing else
+      # about the exchange changes at a shorter interval. One RTP source
+      # pre-configured in status.json -- this is what AES67LiveDaemonInterop
+      # reads back over SAP and RTSP as "the daemon's own source" (direction
+      # B in its own header comment); direction A needs nothing configured
+      # here; the daemon discovers it live.
+      - name: Configure the daemon
+        run: |
+          mkdir -p ci-daemon-run/webui-empty
+          cat > ci-daemon-run/daemon.conf <<'EOF'
+          {
+            "http_port": 8080,
+            "rtsp_port": 8854,
+            "http_base_dir": "./webui-empty",
+            "log_severity": 1,
+            "sample_rate": 48000,
+            "rtp_mcast_base": "239.1.0.1",
+            "rtp_port": 5004,
+            "ptp_domain": 0,
+            "sap_mcast_addr": "239.255.255.255",
+            "sap_interval": 3,
+            "status_file": "./status.json",
+            "interface_name": "lo",
+            "mdns_enabled": false,
+            "auto_sinks_update": true,
+            "nmos_enabled": false
+          }
+          EOF
+          cat > ci-daemon-run/status.json <<'EOF'
+          {
+            "sources": [
+              {
+                "id": 0,
+                "enabled": true,
+                "name": "CI Fake Source",
+                "io": "Audio Device",
+                "codec": "L24",
+                "address": "",
+                "max_samples_per_packet": 48,
+                "ttl": 15,
+                "payload_type": 98,
+                "dscp": 34,
+                "refclk_ptp_traceable": false,
+                "map": [0, 1]
+              }
+            ],
+            "sinks": []
+          }
+          EOF
+
+      - name: Start the daemon
+        run: |
+          cd ci-daemon-run
+          "${GITHUB_WORKSPACE}/external-daemon/build/aes67-daemon" -c daemon.conf \
+            > daemon.log 2>&1 &
+          echo $! > daemon.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/api/version > /dev/null; then
+              echo "daemon answering"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "daemon never answered /api/version" >&2
+          cat daemon.log >&2
+          exit 1
+
+      - name: Live interop
+        run: |
+          ./build/Tools/AES67LiveDaemonInterop \
+            --host 127.0.0.1 --rtsp-port 8854 --http-port 8080 \
+            --sap-group 239.255.255.255 \
+            --daemon-source-id 0 --daemon-source-name "CI Fake Source" \
+            --poll-timeout-ms 20000 --poll-interval-ms 500
+
+      - name: Daemon log
+        if: always()
+        run: cat ci-daemon-run/daemon.log || true
+
+      - name: Stop the daemon
+        if: always()
+        run: |
+          if [ -f ci-daemon-run/daemon.pid ]; then
+            kill "$(cat ci-daemon-run/daemon.pid)" 2>/dev/null || true
+          fi
