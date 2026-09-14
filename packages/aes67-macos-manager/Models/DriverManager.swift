@@ -188,6 +188,53 @@ class DriverManager: ObservableObject {
         }
     }
 
+    /// Writes a settings dictionary as pretty-printed JSON to `path` with
+    /// administrator privileges, the way the device-active flag and
+    /// discovery routing already do: staged unprivileged to a temporary file
+    /// and copied into place by a privileged script, never echoed from
+    /// inside it (a shell command is an AppleScript string literal, and JSON
+    /// is double quotes and newlines — putting it there ends the literal).
+    ///
+    /// Used for settings the driver reads from inside coreaudiod, whose HOME
+    /// is not the logged-in user's, so an unprivileged copy under ~/Library
+    /// would never be seen.
+    private func writeConfigWithPrivileges(_ obj: [String: Any], to path: String,
+                                           failureTitle: String, failureVerb: String) {
+        let staged = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("aes67-config-\(UUID().uuidString).json")
+        do {
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
+            try data.write(to: staged, options: .atomic)
+        } catch {
+            showAlert(title: failureTitle,
+                     message: "Could not \(failureVerb): \(error.localizedDescription)")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: staged) }
+
+        let directory = (path as NSString).deletingLastPathComponent
+        let q = PrivilegedScript.shellQuoted
+        guard let source = PrivilegedScript.adminShell([
+            "mkdir -p \(q(directory))",
+            "/bin/cp \(q(staged.path)) \(q(path))",
+            "chown root:wheel \(q(path))",
+            "chmod 644 \(q(path))",
+        ]) else {
+            showAlert(title: failureTitle,
+                     message: "The command could not be built. This is a defect, not something "
+                            + "to retry.")
+            return
+        }
+        let script = NSAppleScript(source: source)
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
+
+        if let error = error {
+            showAlert(title: failureTitle,
+                     message: "Could not \(failureVerb): \(error[NSAppleScript.errorMessage] ?? "Unknown error")")
+        }
+    }
+
     // MARK: - Driver Install / Uninstall (switch-driven, not lifecycle-bound)
     //
     // This app carries its own copy of AES67Driver.driver, embedded at build
@@ -640,10 +687,12 @@ class DriverManager: ObservableObject {
     @Published var ptpClockSourceKind: String = "internal" // "internal" | "localAudioDevice"
     @Published var ptpLockToDeviceUID: String = ""
 
-    private var ptpMasterConfigURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/AES67Driver/ptp_master.json")
-    }
+    // Same file convention and same privileged path as the device-active flag
+    // and discovery routing above, and for the same reason: the driver reads
+    // this from inside coreaudiod, whose HOME is not the logged-in user's, so
+    // a copy under ~/Library would never be seen.
+    private static let ptpMasterConfigPath =
+        "/Library/Application Support/AES67Driver/ptp_master.json"
 
     /// "Internal" plus every CoreAudio device that exposes its own clock
     /// domain (kAudioDevicePropertyClockDomain != 0) — same criterion as
@@ -759,7 +808,7 @@ class DriverManager: ObservableObject {
     /// (exactly the driver's original slave-only behavior) if the file
     /// doesn't exist yet.
     func loadPTPMasterSettings() {
-        guard let data = try? Data(contentsOf: ptpMasterConfigURL),
+        guard let data = FileManager.default.contents(atPath: Self.ptpMasterConfigPath),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             ptpMasterCapable = false
             ptpClockSourceKind = "internal"
@@ -793,33 +842,30 @@ class DriverManager: ObservableObject {
     /// startup (PTPClock's constructor) — changing it here doesn't affect
     /// an already-running driver; restart Core Audio (the existing
     /// "Restart Core Audio" action) to apply it.
+    ///
+    /// Written with administrator privileges, like the device-active flag:
+    /// coreaudiod cannot see a copy under this user's home.
     func savePTPMasterSettings() {
-        let dir = ptpMasterConfigURL.deletingLastPathComponent()
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let obj: [String: Any] = [
-                "version": "1.0",
-                "masterCapable": ptpMasterCapable,
-                "clockSourceKind": ptpClockSourceKind,
-                "ptpEnabled": ptpEnabled,
-                "requireLock": ptpRequireLock,
-                "lockToDeviceUID": ptpLockToDeviceUID,
-                "priority1": ptpPriority1,
-                "priority2": ptpPriority2,
-                "clockClass": ptpClockClass,
-                "clockAccuracy": ptpClockAccuracy,
-                "syncIntervalMs": ptpSyncIntervalMs,
-                "announceIntervalMs": ptpAnnounceIntervalMs,
-                "delayReqIntervalMs": ptpDelayReqIntervalMs,
-                "delayMechanism": ptpDelayMechanism,
-                "dscp": ptpDscp,
-            ]
-            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
-            try data.write(to: ptpMasterConfigURL, options: .atomic)
-        } catch {
-            showAlert(title: "Save Failed",
-                     message: "Could not save the PTP clock source setting: \(error.localizedDescription)")
-        }
+        let obj: [String: Any] = [
+            "version": "1.0",
+            "masterCapable": ptpMasterCapable,
+            "clockSourceKind": ptpClockSourceKind,
+            "ptpEnabled": ptpEnabled,
+            "requireLock": ptpRequireLock,
+            "lockToDeviceUID": ptpLockToDeviceUID,
+            "priority1": ptpPriority1,
+            "priority2": ptpPriority2,
+            "clockClass": ptpClockClass,
+            "clockAccuracy": ptpClockAccuracy,
+            "syncIntervalMs": ptpSyncIntervalMs,
+            "announceIntervalMs": ptpAnnounceIntervalMs,
+            "delayReqIntervalMs": ptpDelayReqIntervalMs,
+            "delayMechanism": ptpDelayMechanism,
+            "dscp": ptpDscp,
+        ]
+        writeConfigWithPrivileges(obj, to: Self.ptpMasterConfigPath,
+                                  failureTitle: "Save Failed",
+                                  failureVerb: "save the PTP clock source setting")
     }
 
     // MARK: - Stream Management
@@ -1315,10 +1361,12 @@ class DriverManager: ObservableObject {
     @Published var txChannelCount: Int = 128
     @Published var txAuxChannelEnabled: Bool = false
 
-    private var deviceChannelsConfigURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/AES67Driver/device_channels.json")
-    }
+    // Same file convention and same privileged path as the device-active
+    // flag above, and for the same reason: the driver reads this from inside
+    // coreaudiod, whose HOME is not the logged-in user's, so a copy under
+    // ~/Library would never be seen.
+    private static let deviceChannelsConfigPath =
+        "/Library/Application Support/AES67Driver/device_channels.json"
 
     /// Channels the device will actually expose on input: the RX selection
     /// plus its auxiliary group when enabled. Mirrors
@@ -1347,7 +1395,7 @@ class DriverManager: ObservableObject {
     }
 
     func loadDeviceChannelSettings() {
-        guard let data = try? Data(contentsOf: deviceChannelsConfigURL),
+        guard let data = FileManager.default.contents(atPath: Self.deviceChannelsConfigPath),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             rxChannelCount = 128
             rxAuxChannelEnabled = false
@@ -1372,22 +1420,16 @@ class DriverManager: ObservableObject {
         if !rxAuxChannelFitsAtCurrentCount { rxAuxChannelEnabled = false }
         if !txAuxChannelFitsAtCurrentCount { txAuxChannelEnabled = false }
 
-        let dir = deviceChannelsConfigURL.deletingLastPathComponent()
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let obj: [String: Any] = [
-                "version": "1.0",
-                "rxChannelCount": rxChannelCount,
-                "rxAuxChannelEnabled": rxAuxChannelEnabled,
-                "txChannelCount": txChannelCount,
-                "txAuxChannelEnabled": txAuxChannelEnabled,
-            ]
-            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
-            try data.write(to: deviceChannelsConfigURL, options: .atomic)
-        } catch {
-            showAlert(title: "Save Failed",
-                     message: "Could not save the channel count setting: \(error.localizedDescription)")
-        }
+        let obj: [String: Any] = [
+            "version": "1.0",
+            "rxChannelCount": rxChannelCount,
+            "rxAuxChannelEnabled": rxAuxChannelEnabled,
+            "txChannelCount": txChannelCount,
+            "txAuxChannelEnabled": txAuxChannelEnabled,
+        ]
+        writeConfigWithPrivileges(obj, to: Self.deviceChannelsConfigPath,
+                                  failureTitle: "Save Failed",
+                                  failureVerb: "save the channel count setting")
     }
 
     // MARK: - Compatibility Profile
@@ -1652,13 +1694,15 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             ?? Self.compatibilityProfiles[0]
     }
 
-    private var compatibilityProfileConfigURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/AES67Driver/compatibility_profile.json")
-    }
+    // Same file convention and same privileged path as the device-active
+    // flag above, and for the same reason: the driver reads this from inside
+    // coreaudiod, whose HOME is not the logged-in user's, so a copy under
+    // ~/Library would never be seen.
+    private static let compatibilityProfileConfigPath =
+        "/Library/Application Support/AES67Driver/compatibility_profile.json"
 
     func loadCompatibilityProfile() {
-        guard let data = try? Data(contentsOf: compatibilityProfileConfigURL),
+        guard let data = FileManager.default.contents(atPath: Self.compatibilityProfileConfigPath),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rawId = obj["profile"] as? String else {
             compatibilityProfileID = "aes67"
@@ -1678,16 +1722,10 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     }
 
     func saveCompatibilityProfile() {
-        let dir = compatibilityProfileConfigURL.deletingLastPathComponent()
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let obj: [String: Any] = ["version": "1.0", "profile": compatibilityProfileID]
-            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
-            try data.write(to: compatibilityProfileConfigURL, options: .atomic)
-        } catch {
-            showAlert(title: "Save Failed",
-                     message: "Could not save the compatibility profile: \(error.localizedDescription)")
-        }
+        let obj: [String: Any] = ["version": "1.0", "profile": compatibilityProfileID]
+        writeConfigWithPrivileges(obj, to: Self.compatibilityProfileConfigPath,
+                                  failureTitle: "Save Failed",
+                                  failureVerb: "save the compatibility profile")
     }
 
     // MARK: - Amplifier Unit
@@ -1754,10 +1792,12 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         }
     }
 
-    private var amplifierUnitConfigURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/AES67Driver/amplifier_unit.json")
-    }
+    // Same file convention and same privileged path as the device-active
+    // flag above, and for the same reason: the driver reads this from inside
+    // coreaudiod, whose HOME is not the logged-in user's, so a copy under
+    // ~/Library would never be seen.
+    private static let amplifierUnitConfigPath =
+        "/Library/Application Support/AES67Driver/amplifier_unit.json"
 
     func loadAmplifierUnit() {
         // Read the two values independently — they share this file but are
@@ -1765,7 +1805,7 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         // playout delay (which is what a single guard covering both did).
         // Mirrors the C++ side, where loadPlayoutDelay() reads its field
         // without regard to the unit index.
-        let obj = (try? Data(contentsOf: amplifierUnitConfigURL))
+        let obj = FileManager.default.contents(atPath: Self.amplifierUnitConfigPath)
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
 
         if let unit = obj["unitIndex"] as? Int, (1...3).contains(unit) {
@@ -1789,21 +1829,15 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     }
 
     func saveAmplifierUnit() {
-        let dir = amplifierUnitConfigURL.deletingLastPathComponent()
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let obj: [String: Any] = [
-                "version": "1.0",
-                "unitIndex": amplifierUnit,
-                "chainUnitChannels": chainUnitChannels,
-                "playoutDelaySamples": playoutDelaySamples,
-            ]
-            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted])
-            try data.write(to: amplifierUnitConfigURL, options: .atomic)
-        } catch {
-            showAlert(title: "Save Failed",
-                     message: "Could not save the amplifier unit: \(error.localizedDescription)")
-        }
+        let obj: [String: Any] = [
+            "version": "1.0",
+            "unitIndex": amplifierUnit,
+            "chainUnitChannels": chainUnitChannels,
+            "playoutDelaySamples": playoutDelaySamples,
+        ]
+        writeConfigWithPrivileges(obj, to: Self.amplifierUnitConfigPath,
+                                  failureTitle: "Save Failed",
+                                  failureVerb: "save the amplifier unit")
     }
 
     /// The source UDP ports this driver's TX flows will use for the
