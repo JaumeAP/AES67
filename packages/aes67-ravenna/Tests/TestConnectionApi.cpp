@@ -641,3 +641,54 @@ TEST_CASE("Bulk stages every resource it names and answers for each one") {
 
     CHECK(api.handle("POST", path("/bulk/senders"), R"({"id":"sender-1"})").status == 400);
 }
+
+TEST_CASE("An activation callback may read the resource back without deadlocking the request") {
+    // A real host's onReceiverActivation/onSenderActivation callback does
+    // exactly this -- the macOS driver's own ConnectionAPIServer reads the
+    // resource back with sender(id)/receiver(id) before it returns -- and
+    // both are called from inside handle() with resourcesMutex_ already
+    // held. A plain (non-recursive) mutex deadlocks the calling thread
+    // against itself here; this test hung TestConnectionAPI in the driver
+    // package until resourcesMutex_ became a std::recursive_mutex. Doctest
+    // has no per-case timeout, but CTest's TIMEOUT on this suite does: a
+    // regression here fails by this test never returning, not by an
+    // assertion.
+    ConnectionApi api = apiWithOne();
+
+    bool receiverCallbackRan = false;
+    api.onReceiverActivation([&](const std::string& id, const std::string&, bool,
+                                 std::string&) {
+        receiverCallbackRan = true;
+        const auto self = api.receiver(id);  // re-enters handle()'s lock
+        return self.has_value();
+    });
+
+    bool senderCallbackRan = false;
+    api.onSenderActivation([&](const std::string& id, const std::string&, bool,
+                               std::string&) {
+        senderCallbackRan = true;
+        const auto self = api.sender(id);  // re-enters handle()'s lock
+        return self.has_value();
+    });
+
+    JsonObject file;
+    file["data"] = JsonValue(kSdp);
+    file["type"] = JsonValue("application/sdp");
+    JsonObject connect;
+    connect["master_enable"] = JsonValue(true);
+    connect["transport_file"] = JsonValue(file);
+    connect["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+
+    CHECK(api.handle("PATCH", path("/single/receivers/receiver-1/staged/"),
+                     JsonValue(connect).serialise())
+              .status == 200);
+    CHECK(receiverCallbackRan);
+
+    JsonObject enableSender;
+    enableSender["master_enable"] = JsonValue(true);
+    enableSender["activation"] = JsonValue(JsonObject{{"mode", JsonValue("activate_immediate")}});
+    CHECK(api.handle("PATCH", path("/single/senders/sender-1/staged/"),
+                     JsonValue(enableSender).serialise())
+              .status == 200);
+    CHECK(senderCallbackRan);
+}

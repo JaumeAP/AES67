@@ -332,34 +332,66 @@ JsonValue stateAsJson(const ConnectionState& state, bool forSender) {
     return JsonValue(object);
 }
 
+ConnectionApi::ConnectionApi(ConnectionApi&& other) noexcept {
+    const std::lock_guard<std::recursive_mutex> held(other.resourcesMutex_);
+    senders_ = std::move(other.senders_);
+    receivers_ = std::move(other.receivers_);
+    onActivation_ = std::move(other.onActivation_);
+    onSenderActivation_ = std::move(other.onSenderActivation_);
+    interfaceAddress_ = std::move(other.interfaceAddress_);
+}
+
+ConnectionApi& ConnectionApi::operator=(ConnectionApi&& other) noexcept {
+    if (this == &other) return *this;
+    const std::lock_guard<std::recursive_mutex> heldThis(resourcesMutex_);
+    const std::lock_guard<std::recursive_mutex> heldOther(other.resourcesMutex_);
+    senders_ = std::move(other.senders_);
+    receivers_ = std::move(other.receivers_);
+    onActivation_ = std::move(other.onActivation_);
+    onSenderActivation_ = std::move(other.onSenderActivation_);
+    interfaceAddress_ = std::move(other.interfaceAddress_);
+    return *this;
+}
+
 void ConnectionApi::addSender(const ConnectionSender& sender) {
     ConnectionSender stored = sender;
     stored.staged.transportFile = stored.sdp;
     stored.active.transportFile = stored.sdp;
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
     senders_[stored.id] = stored;
 }
 
 void ConnectionApi::addReceiver(const ConnectionReceiver& receiver) {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
     receivers_[receiver.id] = receiver;
 }
 
-void ConnectionApi::removeSender(const std::string& id) { senders_.erase(id); }
+void ConnectionApi::removeSender(const std::string& id) {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
+    senders_.erase(id);
+}
 
-void ConnectionApi::removeReceiver(const std::string& id) { receivers_.erase(id); }
+void ConnectionApi::removeReceiver(const std::string& id) {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
+    receivers_.erase(id);
+}
 
 std::optional<ConnectionSender> ConnectionApi::sender(const std::string& id) const {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
     const auto found = senders_.find(id);
     if (found == senders_.end()) return std::nullopt;
     return found->second;
 }
 
 std::optional<ConnectionReceiver> ConnectionApi::receiver(const std::string& id) const {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
     const auto found = receivers_.find(id);
     if (found == receivers_.end()) return std::nullopt;
     return found->second;
 }
 
 std::vector<std::string> ConnectionApi::senderIds() const {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
     std::vector<std::string> ids;
     ids.reserve(senders_.size());
     for (const auto& [id, sender] : senders_) ids.push_back(id);
@@ -367,6 +399,7 @@ std::vector<std::string> ConnectionApi::senderIds() const {
 }
 
 std::vector<std::string> ConnectionApi::receiverIds() const {
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
     std::vector<std::string> ids;
     ids.reserve(receivers_.size());
     for (const auto& [id, receiver] : receivers_) ids.push_back(id);
@@ -699,6 +732,12 @@ ApiResponse ConnectionApi::patchInBulk(bool forSenders, const std::string& body)
 
 ApiResponse ConnectionApi::handle(const std::string& method, const std::string& path,
                                   const std::string& body) {
+    // Held for the whole call: every private helper handle() reaches
+    // (applyDueActivations, patchStagedSender, patchStagedReceiver,
+    // patchInBulk) is only ever reached from here, so nothing below
+    // re-locks resourcesMutex_.
+    const std::lock_guard<std::recursive_mutex> held(resourcesMutex_);
+
     // Every scheduled activation whose time has come happens here, before
     // anything is read or written. This API has no thread of its own, and a
     // controller only learns what is active by asking, so the request that

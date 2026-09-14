@@ -24,6 +24,7 @@
 
 #include <functional>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -116,6 +117,18 @@ struct ApiResponse {
 
 class ConnectionApi {
 public:
+    ConnectionApi() = default;
+
+    // Every production caller holds this by reference (NodeApi, ChannelMappingApi
+    // both take `const ConnectionApi&`); only test helpers build one locally and
+    // return it. resourcesMutex_ below makes the implicit copy/move deleted --
+    // std::mutex is neither -- so a move is written by hand for that, and copy
+    // stays deleted rather than implemented for a use nothing needs.
+    ConnectionApi(const ConnectionApi&) = delete;
+    ConnectionApi& operator=(const ConnectionApi&) = delete;
+    ConnectionApi(ConnectionApi&& other) noexcept;
+    ConnectionApi& operator=(ConnectionApi&& other) noexcept;
+
     /// Called when a receiver's staged state is activated, with the SDP it was
     /// given and whether it is enabled. This is where the host maps the
     /// stream's channels onto device channels -- aes67-core's
@@ -191,6 +204,25 @@ private:
     bool activateReceiver(ConnectionReceiver& receiver, ConnectionState state,
                           std::string& error);
 
+    // Guards senders_/receivers_ below. handle() -- the HTTP-handling
+    // entry point, which activates and PATCHes both maps -- and
+    // RegistrationClient's background registration thread, which reads
+    // them through sender()/receiver()/senderIds()/receiverIds() (NodeApi's
+    // senders()/receivers() call these), touch the same std::map from two
+    // threads with nothing between them until this. Held for the whole of
+    // handle(): every private helper it calls (patchStagedSender,
+    // patchStagedReceiver, patchInBulk, applyDueActivations) is reached only
+    // from there.
+    //
+    // Recursive, not a plain mutex: activateSender/activateReceiver, called
+    // from inside handle() with this already held, invoke the
+    // onSenderActivation_/onActivation_ callbacks a host registers, and the
+    // driver's own callback (ConnectionAPIServer.cpp) reads the resource back
+    // with sender(id)/receiver(id) -- the same public, locking accessors --
+    // before it returns. A plain mutex deadlocks the request thread against
+    // itself the moment a host does that; found as a real hang
+    // (TestConnectionAPI timed out) rather than reasoned out in advance.
+    mutable std::recursive_mutex resourcesMutex_;
     std::map<std::string, ConnectionSender> senders_;
     std::map<std::string, ConnectionReceiver> receivers_;
     ReceiverActivation onActivation_;
