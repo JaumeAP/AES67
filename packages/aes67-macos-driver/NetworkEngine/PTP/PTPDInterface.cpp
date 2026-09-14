@@ -128,15 +128,21 @@ void PTPDInterface::start() {
     }
 
     running_ = true;
-    diagnostics_.isConnected = true;
+    {
+        std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+        diagnostics_.isConnected = true;
+    }
 
     if (stubMode_) {
         // Stub mode: isLocked stays FALSE. The local clock fallback will be
         // used for media clock recovery instead.
         state_.isLocked.store(false);
         state_.clockClass.store(255); // Clock class 255 = slave-only, not traceable
-        diagnostics_.isLocked = false;
-        diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (NOT SYNCHRONIZED)";
+        {
+            std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+            diagnostics_.isLocked = false;
+            diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (NOT SYNCHRONIZED)";
+        }
 
         std::cerr << "[PTPDInterface] WARNING: PTP STUB MODE - clock is NOT synchronized. "
                   << "Using local clock fallback for media clock recovery. "
@@ -161,8 +167,11 @@ void PTPDInterface::start() {
             stubMode_ = true;
             state_.isLocked.store(false);
             state_.clockClass.store(255);
-            diagnostics_.isLocked = false;
-            diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
+            {
+                std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+                diagnostics_.isLocked = false;
+                diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
+            }
             return;
         }
         std::cout << "[PTPDInterface] PTPArbitrator started on "
@@ -175,8 +184,11 @@ void PTPDInterface::start() {
             stubMode_ = true;
             state_.isLocked.store(false);
             state_.clockClass.store(255);
-            diagnostics_.isLocked = false;
-            diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
+            {
+                std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+                diagnostics_.isLocked = false;
+                diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
+            }
             return;
         }
 
@@ -203,6 +215,7 @@ void PTPDInterface::serviceLoop() {
                              serviceClient_->getGrandmasterID());
         } else if (!serviceClient_->hasFreshStatus()) {
             state_.isLocked.store(false);
+            std::lock_guard<std::mutex> lock(diagnosticsMutex_);
             diagnostics_.isLocked = false;
         }
         std::this_thread::sleep_for(
@@ -228,8 +241,11 @@ void PTPDInterface::stop() {
     }
 
     state_.isLocked.store(false);
-    diagnostics_.isConnected = false;
-    diagnostics_.isLocked = false;
+    {
+        std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+        diagnostics_.isConnected = false;
+        diagnostics_.isLocked = false;
+    }
 
     std::cout << "[PTPDInterface] Stopped" << '\n';
 }
@@ -238,7 +254,8 @@ PTPState& PTPDInterface::getState() {
     return state_;
 }
 
-PTPDiagnostics& PTPDInterface::getDiagnostics() {
+PTPDiagnostics PTPDInterface::getDiagnostics() {
+    std::lock_guard<std::mutex> lock(diagnosticsMutex_);
     if (ptpArbitrator_ && !stubMode_) {
         ptpArbitrator_->updateDiagnostics(diagnostics_);
     } else if (ptpSlave_ && !stubMode_) {
@@ -264,23 +281,27 @@ void PTPDInterface::onPTPMeasurement(int64_t offsetNs, int64_t pathDelayNs,
 
     // Lock state is determined by whichever slave-side path is active — only
     // update if it says locked.
+    bool nowLocked;
     if (ptpArbitrator_) {
-        bool slaveLocked = ptpArbitrator_->isSlaveLocked();
-        state_.isLocked.store(slaveLocked);
-        diagnostics_.isLocked = slaveLocked;
+        nowLocked = ptpArbitrator_->isSlaveLocked();
     } else if (ptpSlave_) {
-        bool slaveLocked = ptpSlave_->isLocked();
-        state_.isLocked.store(slaveLocked);
-        diagnostics_.isLocked = slaveLocked;
+        nowLocked = ptpSlave_->isLocked();
     } else {
         // Daemon path: there is no local slave to ask, and the `locked`
         // argument is the daemon's own answer. Ignoring it here is what made
         // a measurement from the daemon arrive without ever setting the lock.
-        state_.isLocked.store(locked);
-        diagnostics_.isLocked = locked;
+        nowLocked = locked;
     }
+    state_.isLocked.store(nowLocked);
 
-    // Update diagnostics (non-atomic, for UI/monitoring)
+    // Called from whichever thread owns the active PTP path -- PTPSlave's
+    // own receive thread via the onMeasurement callback, or this class's
+    // serviceLoop() thread -- while getDiagnostics() reads the same fields
+    // from the HAL/Manager-app-facing thread. diagnostics_.masterClockID is
+    // a std::string; an unsynchronized write racing a read/copy elsewhere is
+    // undefined behavior, not just a stale value.
+    std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+    diagnostics_.isLocked = nowLocked;
     diagnostics_.currentOffset = static_cast<double>(offsetNs);
     diagnostics_.offsetNs = offsetNs;
     diagnostics_.frequencyOffset = driftPpb / 1000.0; // ppb to ppm
