@@ -76,7 +76,13 @@ private:
     ApiResponse postActivation(const std::string& body);
     /// Works the action into the matrix. The whole change is decided before
     /// any of it is applied, so a bad cell leaves the grid as it was.
-    ApiResponse applyAction(const JsonValue& action);
+    ///
+    /// `commit=false` runs every validation and would-be-mapping check this
+    /// does, then restores the matrix exactly as the failure path already
+    /// does on a refusal -- a dry run, for postActivation()'s scheduled
+    /// branch to ask "would this be refused" without a controller having to
+    /// wait for the scheduled time to find out the answer was always no.
+    ApiResponse applyAction(const JsonValue& action, bool commit = true);
     /// Fires whatever is due. Called at the top of every request, which is
     /// the only clock this API is driven by.
     void applyDueActivations();
