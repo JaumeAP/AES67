@@ -64,7 +64,15 @@ public:
             }
         }
         
-        // Shift remaining samples to the beginning of the buffer
+        // Shift remaining samples to the beginning of the buffer. When
+        // downsampling (ratio_ < 1), each step of the loop above adds more
+        // than one frame to inputIndex, so the loop can exit with inputIndex
+        // past bufferPos_ rather than exactly at it -- remaining negative,
+        // meaning every buffered frame was already consumed with room to
+        // spare, not that -1 frames are left. Assigning that straight to
+        // bufferPos_ left it negative, and the next call's fill loop wrote
+        // buffer_[bufferPos_ * channels_ + ch] at a negative index: an
+        // out-of-bounds heap write, not just a wrong resample.
         int remaining = bufferPos_ - static_cast<int>(inputIndex);
         if (remaining > 0) {
             // size_t throughout: these are a pointer offset and a byte count,
@@ -74,7 +82,7 @@ public:
                    buffer_.data() + static_cast<size_t>(inputIndex) * static_cast<size_t>(channels_),
                    static_cast<size_t>(remaining) * static_cast<size_t>(channels_) * sizeof(float));
         }
-        bufferPos_ = remaining;
+        bufferPos_ = remaining > 0 ? remaining : 0;
         
         return outputIndex;
     }
