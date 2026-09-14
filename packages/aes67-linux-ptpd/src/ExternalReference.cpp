@@ -204,9 +204,29 @@ void ExternalReference::apply(const t41ptp::ServoOutcome& outcome) {
     }
 
     if (outcome.adjustFrequency) {
+        // ptp-servo.h's own contract: freqAdjustNsps comes out unclamped by
+        // design ("the caller touching real hardware is the one place a
+        // final correction from anywhere passes through one clamp"), and
+        // Fine mode is exactly the case that needs it -- its freqAdjustNsps
+        // is freqTermNsps + proportionalTermNsps + integralTermNsps summed
+        // with no re-clamp of the total, unlike Frequency mode's
+        // state.driftNsps just above. Each term can independently approach
+        // tuning_.maxFreqAdjustNsps on its own; summed, a sustained
+        // near-limit drift plus a wound-up integrator can reach roughly
+        // double it. The Teensy caller of this same servo
+        // (t41-ptp/src/ptp/ptp-discipline.cpp, PTPBase::adjustFrequency)
+        // already clamps here, at the equivalent point, before its own
+        // hardware call.
+        double freqAdjustNsps = outcome.freqAdjustNsps;
+        if (freqAdjustNsps > tuning_.maxFreqAdjustNsps) {
+            freqAdjustNsps = tuning_.maxFreqAdjustNsps;
+        } else if (freqAdjustNsps < -tuning_.maxFreqAdjustNsps) {
+            freqAdjustNsps = -tuning_.maxFreqAdjustNsps;
+        }
+
         struct timex adjustment {};
         adjustment.modes = ADJ_FREQUENCY;
-        adjustment.freq = frequencyFieldFor(outcome.freqAdjustNsps);
+        adjustment.freq = frequencyFieldFor(freqAdjustNsps);
         if (::clock_adjtime(clock_->clockId(), &adjustment) < 0) {
             std::fprintf(stderr, "[ptpd] steering the PHC: %s\n", std::strerror(errno));
         }
