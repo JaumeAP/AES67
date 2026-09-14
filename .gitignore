@@ -60,3 +60,7 @@ Icon
 # npx-skills universal-format mirror of .claude/skills/ (not read by any
 # tooling in this repository; .claude/skills/ is the copy that matters).
 .agents/
+
+# Per-machine Claude Code permission overrides (e.g. additionalDirectories) --
+# local to the machine that set them, not a repository setting.
+.claude/settings.local.json
