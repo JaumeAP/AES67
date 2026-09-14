@@ -83,7 +83,7 @@ target_compile_features(AES67SAPMonitor PRIVATE cxx_std_17)
 # No Apple framework, same as AES67SAPMonitor above.
 add_executable(AES67LiveDaemonInterop AES67LiveDaemonInterop.cpp)
 target_include_directories(AES67LiveDaemonInterop PRIVATE ${PROJECT_SOURCE_DIR})
-target_link_libraries(AES67LiveDaemonInterop PRIVATE aes67_net)
+target_link_libraries(AES67LiveDaemonInterop PRIVATE aes67_net_portable)
 target_compile_features(AES67LiveDaemonInterop PRIVATE cxx_std_17)
 
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
