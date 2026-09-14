@@ -338,7 +338,11 @@ std::string NMOSRegistrationClient::buildSenderData(const std::string& senderId,
          // HTTP, and manifest_href names an HTTP URL. Null says "ask me
          // another way" instead of pointing at something that will 404.
          << "    \"manifest_href\": null,\n"
-         << "    \"subscription\": { \"receiver_id\": null, \"active\": true }\n"
+         << "    \"subscription\": { \"receiver_id\": "
+         << (sender.subscribedReceiverId.empty()
+                 ? "null"
+                 : "\"" + jsonEscape(sender.subscribedReceiverId) + "\"")
+         << ", \"active\": " << (sender.masterEnable ? "true" : "false") << " }\n"
          << "  }";
     return json.str();
 }
@@ -375,8 +379,11 @@ std::string NMOSRegistrationClient::buildReceiverData(const std::string& receive
          // decodes: nothing else belongs here, however much the driver
          // might wish it did.
          << "    \"caps\": { \"media_types\": [\"audio/L16\", \"audio/L24\"] },\n"
-         << "    \"subscription\": { \"sender_id\": null, \"active\": "
-         << (receiver.active ? "true" : "false") << " }\n"
+         << "    \"subscription\": { \"sender_id\": "
+         << (receiver.subscribedSenderId.empty()
+                 ? "null"
+                 : "\"" + jsonEscape(receiver.subscribedSenderId) + "\"")
+         << ", \"active\": " << (receiver.masterEnable ? "true" : "false") << " }\n"
          << "  }";
     return json.str();
 }
@@ -647,7 +654,8 @@ void NMOSRegistrationClient::stop() {
     if (heartbeatThread_.joinable()) heartbeatThread_.join();
 }
 
-bool NMOSRegistrationClient::postResource(const std::string& body) {
+bool NMOSRegistrationClient::postResource(const std::string& type, const std::string& id,
+                                          const std::string& body) {
     NMOSRegistry registry;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -658,7 +666,26 @@ bool NMOSRegistrationClient::postResource(const std::string& body) {
     HTTPClient client(registry.host, registry.port);
     const HTTPResponse response =
         client.post(registrationPath(registry.apiVersion), body, "application/json");
-    return response.error.empty() && (response.status == 200 || response.status == 201);
+    if (!response.error.empty()) return false;
+    if (response.status == 201) return true;
+
+    // 200 is the same "may be a stale copy" answer postNode() already
+    // refuses to accept at face value, for the identical IS-04 sec 4.2
+    // reason: syncResources() re-POSTs every resource on every call with
+    // the same deterministic id, so once a resource has been created, a
+    // change to it (a stream's channel count, its encoding) gets 200 back
+    // forever after -- accepting that left the registry serving the OLD
+    // description to every controller while this driver believed the
+    // update had landed.
+    if (response.status == 200) {
+        HTTPClient remover(registry.host, registry.port);
+        (void)remover.del(registrationPath(registry.apiVersion) + "/" + type + "/" + id);
+        const HTTPResponse again =
+            client.post(registrationPath(registry.apiVersion), body, "application/json");
+        return again.error.empty() && again.status == 201;
+    }
+
+    return false;
 }
 
 bool NMOSRegistrationClient::deleteResource(const std::string& type, const std::string& id) {
@@ -709,9 +736,10 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
 
     // The device names what is under it, so it goes first and the
     // registry never holds a device pointing at things it has not seen.
-    bool allAccepted = postResource(buildDeviceBody(deviceId, nodeId, nodeLabel, senderIds,
-                                                    receiverIds, controlHref, versionSeconds,
-                                                    versionNanos));
+    bool allAccepted =
+        postResource("devices", deviceId,
+                     buildDeviceBody(deviceId, nodeId, nodeLabel, senderIds, receiverIds,
+                                     controlHref, versionSeconds, versionNanos));
 
     std::vector<std::pair<std::string, std::string>> published;
     published.emplace_back("devices", deviceId);
@@ -722,12 +750,15 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
 
         // Source, then flow, then sender: each names the one before it.
         allAccepted &= postResource(
+            "sources", sourceId,
             buildSourceBody(sourceId, deviceId, senders[i], versionSeconds, versionNanos));
         allAccepted &= postResource(
+            "flows", flowId,
             buildFlowBody(flowId, sourceId, deviceId, senders[i], versionSeconds, versionNanos));
-        allAccepted &= postResource(buildSenderBody(senderIds[i], flowId, deviceId, senders[i],
-                                                    versionSeconds, versionNanos,
-                                                    node_.interfaceName));
+        allAccepted &= postResource(
+            "senders", senderIds[i],
+            buildSenderBody(senderIds[i], flowId, deviceId, senders[i], versionSeconds,
+                            versionNanos, node_.interfaceName));
 
         published.emplace_back("sources", sourceId);
         published.emplace_back("flows", flowId);
@@ -735,9 +766,10 @@ bool NMOSRegistrationClient::syncResources(const std::vector<NMOSSenderResource>
     }
 
     for (size_t i = 0; i < receivers.size(); i++) {
-        allAccepted &= postResource(buildReceiverBody(receiverIds[i], deviceId, receivers[i],
-                                                      versionSeconds, versionNanos,
-                                                      node_.interfaceName));
+        allAccepted &= postResource(
+            "receivers", receiverIds[i],
+            buildReceiverBody(receiverIds[i], deviceId, receivers[i], versionSeconds,
+                              versionNanos, node_.interfaceName));
         published.emplace_back("receivers", receiverIds[i]);
     }
 

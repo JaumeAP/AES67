@@ -314,7 +314,18 @@ std::vector<DiscoveredService> parseServiceResponse(const uint8_t* packet, size_
         } else if (type == kTypeSRV && dataLength >= 6) {
             std::string host;
             size_t ignored = 0;
-            if (readName(packet, length, data + 6, host, ignored)) {
+            // Bounded by this record's own declared end, not the whole
+            // packet -- same reasoning as the TXT branch below. A
+            // dataLength that understates the real target name (a
+            // malformed or spoofed response) would otherwise let readName
+            // walk straight into the next record's bytes and hand back
+            // whatever they decode to as this SRV's resolved host, which
+            // RegistryBrowser stores and the node then tries to register
+            // against. Backward compression pointers inside the name are
+            // unaffected: a jump target is always earlier in the packet,
+            // and the forward read that resumes there stays under this
+            // same, still-generous bound.
+            if (readName(packet, data + dataLength, data + 6, host, ignored)) {
                 DiscoveredService& service = owned(owner);
                 service.port = readBE16(packet + data + 4);
                 service.hostName = host;

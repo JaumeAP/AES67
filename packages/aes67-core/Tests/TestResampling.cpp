@@ -14,6 +14,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <vector>
 
 using namespace AES67;
 
@@ -299,6 +300,52 @@ TEST_CASE("Sample Rate Adapter Qualities") {
 
     // All should be created successfully
     CHECK(true);
+
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Downsampling across many calls does not walk bufferPos_ negative") {
+    // Every earlier case here upsamples (48000 -> 96000, ratio exactly 2), which
+    // never exercises this: LinearResampler's internal loop adds 1/ratio_ to
+    // inputIndex per output frame, and when ratio_ < 1 -- downsampling -- that
+    // step is bigger than one frame, so the loop can overshoot bufferPos_
+    // rather than land on it exactly. "remaining = bufferPos_ -
+    // int(inputIndex)" then comes out negative, and assigning that straight to
+    // bufferPos_ (the bug this pins) left it negative going into the next
+    // call's fill loop, which indexes buffer_[bufferPos_ * channels_ + ch]: an
+    // out-of-bounds write, not just a wrong resample. 96000 -> 44100 is a
+    // common real pair (ratio_ = 0.459375, step 1/ratio_ = 2.177) and neither
+    // rate is a multiple of the other, so it overshoots on most calls rather
+    // than landing exactly.
+    std::cout << "Test: downsampling 96000 -> 44100 across many process() calls... ";
+
+    SampleRateAdapter adapter(96000, 44100, 2, SampleRateAdapter::ConversionQuality::GOOD);
+
+    constexpr int kChannels = 2;
+    constexpr int kInputFrames = 480;    // 5 ms at 96 kHz
+    constexpr int kOutputCapacity = 512; // comfortably more than 480 * ratio_
+
+    std::vector<float> input(static_cast<size_t>(kInputFrames) * kChannels);
+    std::vector<float> output(static_cast<size_t>(kOutputCapacity) * kChannels);
+
+    for (int call = 0; call < 500; ++call) {
+        for (int i = 0; i < kInputFrames; ++i) {
+            for (int ch = 0; ch < kChannels; ++ch) {
+                input[static_cast<size_t>(i) * kChannels + ch] =
+                    static_cast<float>(std::sin(0.01 * (call * kInputFrames + i)));
+            }
+        }
+        const int produced = adapter.process(input.data(), kInputFrames, output.data(),
+                                             kOutputCapacity);
+        // A negative bufferPos_ from the previous call would have already
+        // corrupted the heap before this assertion ever ran; ASan (the
+        // package's own AES67_ANALYSE=1 run) is what actually catches that.
+        // This just pins the visible symptom: a call must never claim to
+        // have produced more frames than the caller gave it room for, or a
+        // negative amount.
+        CHECK(produced >= 0);
+        CHECK(produced <= kOutputCapacity);
+    }
 
     std::cout << "PASS" << std::endl;
 }

@@ -92,6 +92,21 @@ struct ConnectionPatch {
     bool activateImmediate{false};
 };
 
+/// What IS-05's own connection state says about one resource, read back
+/// from the real Ravenna::ConnectionApi this server drives -- not guessed
+/// at from whether a stream object happens to exist. A stream that exists
+/// is not necessarily the one a controller last enabled: master_enable is
+/// PATCHed independently of the resource itself, and a receiver/sender
+/// pair name each other by id, neither of which either the direct Node API
+/// or the NMOS registration client used to have any way to ask this about.
+struct ConnectionActiveState {
+    bool exists{false};       ///< false when this server knows no such id
+    bool masterEnable{false}; ///< IS-05's own word for "is this switched on"
+    /// A sender's connected receiver_id, or a receiver's connected
+    /// sender_id -- empty when nothing is on the other end.
+    std::string peerId;
+};
+
 using ConnectionSenderLister = std::function<std::vector<ConnectionSender>()>;
 using ConnectionReceiverLister = std::function<std::vector<ConnectionReceiver>()>;
 /// Applies a patch to one receiver. False means the driver refused it,
@@ -131,6 +146,16 @@ public:
 
     /// The href that goes in the IS-04 device's `controls`.
     std::string controlHref(const std::string& host) const;
+
+    /// IS-05's own answer for what a sender/receiver is actually doing --
+    /// master_enable and the id on the other end of the connection -- for
+    /// whoever else on this driver publishes the same resource under the
+    /// same id (the direct Node API, the NMOS registration client) and
+    /// would otherwise have no way to ask this server rather than infer it.
+    /// `exists` is false, the rest default, for an id this server has never
+    /// heard of.
+    ConnectionActiveState senderActiveState(const std::string& senderId) const;
+    ConnectionActiveState receiverActiveState(const std::string& receiverId) const;
 
     /// The pure half: what a request means and what comes back. Exposed so
     /// the routing can be read without a socket.

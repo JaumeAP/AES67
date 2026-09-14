@@ -95,6 +95,67 @@ TEST_CASE("The SRV carries the port the RTSP server is actually on") {
     CHECK(found);
 }
 
+TEST_CASE("An SRV's target name is read only from inside its own declared length") {
+    // readName() used to be bounded by the whole packet here, not this
+    // record's own data length -- the same reasoning the TXT branch right
+    // below already gets right. A response whose SRV dataLength understates
+    // its real target name (malformed, or crafted) let the reader walk
+    // straight past the record's own boundary into whatever bytes came
+    // next and hand those back as the resolved host.
+    //
+    // This patches one real packet's SRV dataLength down to 6 -- priority,
+    // weight and port, and no room left for a target name at all -- without
+    // touching the target name bytes physically still sitting right after
+    // it. The fixed reader has nothing to read inside that shrunk boundary
+    // and must refuse; the bug this pins is a reader that keeps going
+    // regardless and finds the real name a few bytes past where the record
+    // said it ended.
+    const SessionAdvertisement session = testSession();
+    std::vector<uint8_t> packet = buildAnnouncement(session);
+
+    // The port sits at data+4 (priority, weight, then port), same as "The
+    // SRV carries the port the RTSP server is actually on" above -- found
+    // the same way, by its literal value, rather than by the owner name's
+    // bytes: those also appear as both PTRs' RDATA, earlier in the packet,
+    // so anchoring on the first match of the name finds a PTR, not the SRV.
+    size_t portAt = std::string::npos;
+    for (size_t i = 0; i + 1 < packet.size(); ++i) {
+        if (read16(packet, i) == session.port) {
+            portAt = i;
+            break;
+        }
+    }
+    REQUIRE(portAt != std::string::npos);
+    const size_t data = portAt - 4;         // priority(2) + weight(2) before port
+    const size_t dataLengthAt = data - 2;   // dataLength(2) right before the data
+    const uint16_t realDataLength = read16(packet, dataLengthAt);
+    REQUIRE(realDataLength > 6);  // there really is a target name past it
+
+    // Shrink only the SRV record's own declared length. The real target
+    // name bytes are left exactly where they are -- physically still in the
+    // packet, still readable by the loop's own `length` bound -- which is
+    // the point: they no longer belong to this record's own span, and the
+    // fixed reader has to notice.
+    packet[dataLengthAt] = 0;
+    packet[dataLengthAt + 1] = 6;
+
+    // The answer count at offset 6 (fixed header, RFC 1035) is trimmed to
+    // match: PTR, subtype PTR, SRV, and no further record. Otherwise the
+    // loop would try to read a fourth record starting where the (still
+    // present) real target name bytes are, and get lost in that on its own
+    // account -- a second, broader question about how this parser recovers
+    // from a corrupted dataLength in general, not the one this pins.
+    REQUIRE(read16(packet, 6) == 5);
+    packet[6] = 0;
+    packet[7] = 3;
+
+    const auto services = parseServiceResponse(packet.data(), packet.size(), kRtspService);
+    REQUIRE(services.size() == 1);
+    // hostName defaults to empty; the fixed reader leaves it that way rather
+    // than reading past dataLength to find "box.local" still sitting there.
+    CHECK(services[0].hostName.empty());
+}
+
 TEST_CASE("An empty TXT is one zero-length string, not an empty record") {
     // RFC 6763 sec 6.1. A resolver that sees a zero-length TXT record treats
     // the service as absent, so this is the difference between a session

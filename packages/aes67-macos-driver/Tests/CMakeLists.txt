@@ -535,6 +535,20 @@ target_include_directories(TestNetworkQoS PRIVATE
 
 target_link_libraries(TestNetworkQoS PRIVATE aes67_net)
 
+# Test: millisToAbsolute()'s conversion, including the out-of-range case an
+# unclamped PTPMasterConfig interval can reach. AudioThreadPriority.cpp is
+# in DRIVER_SOURCES (Mach thread policy, not portable), so it is compiled
+# in directly rather than pulled from aes67_net, the same way TestPCMCodec
+# compiles PCMCodec.cpp below.
+add_executable(TestAudioThreadPriority
+    TestAudioThreadPriority.cpp
+    ../Driver/AudioThreadPriority.cpp
+)
+
+target_include_directories(TestAudioThreadPriority PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(TestAudioThreadPriority PRIVATE doctest_headers)
+target_compile_features(TestAudioThreadPriority PRIVATE cxx_std_17)
+
 target_link_libraries(TestNetworkQoS PRIVATE doctest_headers)
 target_compile_features(TestNetworkQoS PRIVATE cxx_std_17)
 
@@ -793,6 +807,7 @@ add_test(NAME MDNSBrowser COMMAND TestMDNSBrowser)
 add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
+add_test(NAME AudioThreadPriority COMMAND TestAudioThreadPriority)
 add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME DaemonRTSPInterop COMMAND TestDaemonRTSPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
@@ -849,6 +864,7 @@ set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PCMCodec PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(SDPFetcher PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NetworkQoS PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(AudioThreadPriority PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPMasterBoxInterop PROPERTIES LABELS "unit;interop" TIMEOUT 60)
 set_tests_properties(NMOSRegistration PROPERTIES LABELS "unit;network" TIMEOUT 60)
 set_tests_properties(NMOSHeartbeat PROPERTIES LABELS "unit;timing;network" TIMEOUT 60)

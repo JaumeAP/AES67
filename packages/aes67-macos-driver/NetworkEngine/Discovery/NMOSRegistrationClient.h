@@ -97,6 +97,14 @@ struct NMOSSenderResource {
     /// "L16" or "L24" — what goes in the flow's media_type as audio/L16
     /// or audio/L24.
     std::string encoding{"L24"};
+    /// IS-05's master_enable for this sender, read from the real Connection
+    /// API rather than assumed. True by default: a caller with no
+    /// Connection API to ask (ConnectionAPIServer not running) keeps this
+    /// resource's previous, always-subscribed answer rather than reporting
+    /// a controller has switched off a sender it never touched.
+    bool masterEnable{true};
+    /// The receiver_id IS-05 has this sender connected to, empty for none.
+    std::string subscribedReceiverId;
 };
 
 /// One receive stream. IS-04 receivers advertise what they CAN take, not
@@ -109,7 +117,17 @@ struct NMOSReceiverResource {
     /// one. Empty is a receiver that is configured and idle, which is a
     /// state a controller needs to see.
     std::string subscribedMulticastAddress;
+    /// A receive stream exists for this resource. Not the same question as
+    /// IS-05's master_enable below -- a stream that exists can still have
+    /// been switched off by a controller without being torn down -- but
+    /// still the answer when there is no Connection API to ask.
     bool active{false};
+    /// IS-05's master_enable for this receiver, read from the real
+    /// Connection API. Defaults to `active` above so a caller with no
+    /// Connection API to ask keeps this resource's previous behavior.
+    bool masterEnable{false};
+    /// The sender_id IS-05 has this receiver connected to, empty for none.
+    std::string subscribedSenderId;
 };
 
 class NMOSRegistrationClient {
@@ -296,8 +314,13 @@ private:
     /// otherwise.
     void versionNow(int64_t& seconds, int32_t& nanos) const;
 
-    /// POSTs one already-built body. Shared by everything above.
-    bool postResource(const std::string& body);
+    /// POSTs one already-built body. Shared by everything above. `type` and
+    /// `id` are what a 200 needs to delete and repost -- see postNode() for
+    /// why a 200 cannot simply be accepted -- so unlike postNode() this
+    /// cannot infer them from a single node, and every call site already
+    /// has them at hand (they immediately follow with the same pair, to
+    /// track what got published).
+    bool postResource(const std::string& type, const std::string& id, const std::string& body);
     /// DELETEs one resource by type and id, e.g. ("senders", id).
     bool deleteResource(const std::string& type, const std::string& id);
 

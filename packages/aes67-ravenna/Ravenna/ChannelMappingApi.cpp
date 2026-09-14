@@ -201,7 +201,7 @@ ApiResponse ChannelMappingApi::activeMap() const {
     return jsonResponse(200, JsonValue(body));
 }
 
-ApiResponse ChannelMappingApi::applyAction(const JsonValue& action) {
+ApiResponse ChannelMappingApi::applyAction(const JsonValue& action, bool commit) {
     if (!action.isObject()) return errorResponse(400, "action has to be an object");
     for (const auto& [outputId, cells] : action.asObject()) {
         if (outputId != kDeviceOutputId) {
@@ -305,6 +305,15 @@ ApiResponse ChannelMappingApi::applyAction(const JsonValue& action) {
         }
     }
 
+    if (!commit) {
+        // The grid takes; this call only asked whether it would. Restored
+        // exactly like the refusal path just above -- the device has to be
+        // left carrying what it was carrying either way.
+        mapper_.clearAll();
+        for (const ChannelMapping& old : previous) mapper_.addMapping(old);
+        return activeMap();
+    }
+
     // And what was set on an input with nothing flowing is kept for the
     // stream that has not arrived yet.
     for (const auto& [receiverId, routes] : waiting) routing_.rememberRoutes(receiverId, routes);
@@ -337,8 +346,10 @@ void ChannelMappingApi::applyDueActivations() {
             ++activation;
             continue;
         }
-        // What a scheduled activation the matrix refuses has nobody left to
-        // tell: the answer went out with the 202. The grid stays as it was.
+        // postActivation() already dry-ran this against the state at the
+        // time it was scheduled, so a refusal here means something changed
+        // in the meantime -- and there is still nobody left to tell: the
+        // 202 already went out. The grid stays as it was either way.
         (void)applyAction(activation->action);
         activation = pending_.erase(activation);
     }
@@ -401,8 +412,14 @@ ApiResponse ChannelMappingApi::postActivation(const std::string& body) {
 
     // Read before it is promised, so a grid that could never be applied is
     // refused now rather than dropped silently when its time comes.
-    const JsonValue& action = queued.action;
-    if (!action.isObject()) return errorResponse(400, "action has to be an object");
+    // applyAction(action, /*commit=*/false) runs every check the real
+    // activation will -- output id, cell shape, channel bounds, input
+    // existence -- and restores the matrix regardless of the answer, so
+    // this can ask "would this be refused" without a controller having to
+    // wait for the scheduled time to find out applyDueActivations()
+    // silently threw the answer away.
+    ApiResponse dryRun = applyAction(queued.action, /*commit=*/false);
+    if (dryRun.status < 200 || dryRun.status > 299) return dryRun;
 
     const JsonValue envelope = activationEnvelope(queued);
     pending_.push_back(queued);

@@ -208,6 +208,23 @@ TEST_CASE("PTPDInterface Reads The Daemon When Its Socket Is There") {
     ptp.stop();
 }
 
+TEST_CASE("Falling back to stub mode reports no PTP connection") {
+    // start() sets isConnected true unconditionally before it knows which
+    // path it is taking, on the assumption every path below sets it back
+    // down where that is wrong. Explicit stub mode is one such path; without
+    // root, binding 319/320 fails and PTPDInterface falls back to it too --
+    // this repository's own PTPSlave has never been run against a real
+    // grandmaster for exactly that reason. Either way, the Manager app's
+    // diagnostics read this field and reported "Connected to PTP Master:
+    // Yes" with no PTP connection at all.
+    PTPDInterface ptp(true);  // explicit stub mode: no network PTP whatsoever
+    REQUIRE(ptp.init("lo0"));
+    ptp.start();
+    CHECK(ptp.isStubMode());
+    CHECK(!ptp.getDiagnostics().isConnected);
+    ptp.stop();
+}
+
 TEST_CASE("Without The Daemon The In-Process Path Is Unchanged") {
     // No socket at that path: init() must take the old road, not wait for a
     // daemon that is not coming.

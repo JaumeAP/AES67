@@ -279,6 +279,36 @@ TEST_CASE("A scheduled activation is refused rather than forgotten") {
               .status == 400);
 }
 
+TEST_CASE("A scheduled activation naming a bad grid is refused now, not silently later") {
+    // postActivation()'s scheduled branch used to check only that "action"
+    // was a JSON object before answering 202 and queuing it -- the same
+    // validation the immediate branch actually runs (output id, cell shape,
+    // channel bounds, input existence) happened only later, inside
+    // applyDueActivations(), which discards a refusal there with no way to
+    // tell the controller: the answer already went out with the 202.
+    StreamChannelMapper mapper;
+    ReceiverRouting routing(mapper);
+    ConnectionApi connections = withTwoReceivers();
+    ChannelMappingApi api(mapper, routing, connections);
+
+    const ApiResponse scheduled = api.handle(
+        "POST", path("/map/activations"),
+        R"({"activation":{"mode":"activate_scheduled_relative","requested_time":"5:0"},)"
+        R"("action":{"device":{"40":{"input":"nobody","channel_index":0}}}})");
+    CHECK(scheduled.status == 404);
+
+    // Refused now means nothing was queued: a controller that reads the
+    // activation list back sees nothing waiting, not a promise that was
+    // always going to fail.
+    CHECK(bodyOf(api.handle("GET", path("/map/activations/"), "")).asObject().empty());
+
+    // The matrix itself is untouched by having been asked: applyAction's
+    // dry run restores it, so this is not "refused, but half-applied"
+    // either.
+    const JsonValue after = bodyOf(api.handle("GET", path("/map/active/"), ""));
+    CHECK_FALSE(isFed(after, 40));
+}
+
 TEST_CASE("The API answers where a controller starts looking") {
     StreamChannelMapper mapper;
     ReceiverRouting routing(mapper);
