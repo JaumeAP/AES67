@@ -140,6 +140,12 @@ void PTPDInterface::start() {
         state_.clockClass.store(255); // Clock class 255 = slave-only, not traceable
         {
             std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+            // isConnected was set true just above, unconditionally, before
+            // stubMode_ was known -- stub mode is exactly "no PTP
+            // connection at all", so it has to come back down here or the
+            // Manager app reports a connection to a master that was never
+            // there.
+            diagnostics_.isConnected = false;
             diagnostics_.isLocked = false;
             diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (NOT SYNCHRONIZED)";
         }
@@ -169,6 +175,7 @@ void PTPDInterface::start() {
             state_.clockClass.store(255);
             {
                 std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+                diagnostics_.isConnected = false;
                 diagnostics_.isLocked = false;
                 diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
             }
@@ -186,6 +193,7 @@ void PTPDInterface::start() {
             state_.clockClass.store(255);
             {
                 std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+                diagnostics_.isConnected = false;
                 diagnostics_.isLocked = false;
                 diagnostics_.masterClockID = "STUB-LOCAL-CLOCK (PTP START FAILED)";
             }
