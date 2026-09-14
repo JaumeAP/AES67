@@ -1524,11 +1524,13 @@ class DriverManager: ObservableObject {
               usesFixedMulticastPerFlowSourcePort: false, requiredMulticastPrefix: ""),
         .init(id: "st2110-30",
               name: "SMPTE ST 2110-30 (Level A)",
-              caveats: "Level A only — Levels B and C need 125 µs packets, which this driver's "
-                     + "transmitter can't emit (it is fixed at 1 ms). ST 2110-30 also requires "
-                     + "stricter PTP than AES67, and this driver's PTP has never been verified "
-                     + "against a real grandmaster. Enforces the parameters it can check; "
-                     + "it is not a conformance claim.",
+              caveats: "The mandatory level, and the safe common ground: gear claiming any "
+                     + "higher level must support this one too. 48 kHz, 1 ms packets, up to 8 "
+                     + "channels per stream. Pick Level B instead for 125 µs packets. ST "
+                     + "2110-30 also requires stricter PTP than AES67, and this driver's PTP "
+                     + "has never been verified against a real grandmaster. Selecting this "
+                     + "profile enforces the parameters it can check; it is not a conformance "
+                     + "claim.",
               domainIsFixed: false, fixedDomain: 0, recommendedPtpDomain: -1,
               direction: .any, maxTotalChannels: 0, ptpRole: .any,
               maxUnits: 1, recommendedMulticastAddress: "", recommendedDscp: -1,
