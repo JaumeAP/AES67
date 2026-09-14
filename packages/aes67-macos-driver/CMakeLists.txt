@@ -31,9 +31,19 @@ set(VERSION_BUILD ${CMAKE_MATCH_4})
 
 project(AES67Driver
     VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
-    LANGUAGES CXX OBJCXX
+    LANGUAGES CXX
     DESCRIPTION "AES67/RAVENNA/Dante Audio Driver for macOS"
 )
+
+# Objective-C++ only where it is actually used: HALValidateAudioAccess.mm,
+# the tool's own APPLE-gated target below -- the one .mm file in this whole
+# package. Requiring OBJCXX unconditionally at the top made every configure
+# ask for an Objective-C++ compiler even to build aes67_net and its tests on
+# a platform with no Objective-C at all, which is exactly the "tests/tools
+# build cross-platform" claim this file's own header comment makes.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    enable_language(OBJCXX)
+endif()
 
 message(STATUS "AES67 Driver Build #${VERSION_BUILD}")
 
@@ -251,6 +261,32 @@ add_library(aes67_net STATIC ${AES67_NET_SOURCES})
 target_link_libraries(aes67_net PUBLIC aes67_core aes67_ravenna)
 # The driver is a bundle, so everything linked into it has to be relocatable.
 set_target_properties(aes67_net PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# The subset of AES67_NET_SOURCES that is actually portable today, as
+# opposed to the "portable in practice" this file used to claim for the
+# whole of it. Five of aes67_net's files reach into APIs a Linux runner does
+# not have -- net/if_dl.h (NetworkInterfaceDetection, PTPSlave, PTPMaster),
+# CommonCrypto (NMOSRegistrationClient), the parts of Bonjour's dns_sd.h
+# beyond what Avahi's compat shim implements (MDNSBrowser) -- found by
+# daemon-interop.yml actually trying to build aes67_net there rather than by
+# reading every header by hand.
+#
+# Fixing those five belongs to whoever needs aes67_net itself on Linux; this
+# is the narrower, already-true claim: a tool that only announces, listens,
+# serves and fetches SDP over RTSP and SAP does not need any of them; a
+# second static library built from only that half of the same sources gives
+# such a tool a target that actually configures and links on Linux, without
+# restructuring what every existing consumer of aes67_net already links.
+set(AES67_NET_PORTABLE_SOURCES
+    NetworkEngine/Discovery/SAPListener.cpp
+    NetworkEngine/Discovery/RTSPServer.cpp
+    NetworkEngine/Discovery/SAPAnnouncer.cpp
+    NetworkEngine/Discovery/RTSPClient.cpp
+    NetworkEngine/Discovery/SDPFetcher.cpp
+)
+add_library(aes67_net_portable STATIC ${AES67_NET_PORTABLE_SOURCES})
+target_link_libraries(aes67_net_portable PUBLIC aes67_core aes67_ravenna)
+set_target_properties(aes67_net_portable PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 
 # ============================================================================

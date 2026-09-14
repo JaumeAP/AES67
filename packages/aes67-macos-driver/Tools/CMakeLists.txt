@@ -76,6 +76,16 @@ target_include_directories(AES67SAPMonitor PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(AES67SAPMonitor PRIVATE aes67_net)
 target_compile_features(AES67SAPMonitor PRIVATE cxx_std_17)
 
+# AES67 Live Daemon Interop: the same SAP/RTSP surface AES67InteropSim dry-
+# runs, driven against a REAL aes67-linux-daemon process instead -- built and
+# started by a Linux CI job (this driver's own AudioServerPlugIn is macOS-
+# only, but aes67_net is not, and the daemon does not build on macOS at all).
+# No Apple framework, same as AES67SAPMonitor above.
+add_executable(AES67LiveDaemonInterop AES67LiveDaemonInterop.cpp)
+target_include_directories(AES67LiveDaemonInterop PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(AES67LiveDaemonInterop PRIVATE aes67_net_portable)
+target_compile_features(AES67LiveDaemonInterop PRIVATE cxx_std_17)
+
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against
 # no driver code, so it validates what is installed, not this build tree.
@@ -94,6 +104,7 @@ message(STATUS "  - AES67TestSender")
 message(STATUS "  - AES67TestReceiver")
 message(STATUS "  - AES67ImpairmentRelay")
 message(STATUS "  - AES67SAPMonitor")
+message(STATUS "  - AES67LiveDaemonInterop")
 message(STATUS "  - HALValidate")
 message(STATUS "")
 message(STATUS "Run test sender:")
