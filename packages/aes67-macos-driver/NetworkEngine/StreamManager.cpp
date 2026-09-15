@@ -7,6 +7,7 @@
 #include "StreamManager.h"
 #include "NetworkEngine/NetworkUtils.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
+#include "NetworkEngine/TxSession.h"
 #include "NetworkEngine/Discovery/SDPFetcher.h"
 #include "Driver/DebugLog.h"
 #include <algorithm>
@@ -336,17 +337,8 @@ StreamID StreamManager::createTxStream(
     std::unique_lock<std::mutex> lock(streamsMutex_);
 
     // Build SDP session for transmit stream
-    SDPSession sdp;
-    sdp.sessionName = name;
-    sdp.connectionAddress = multicastIP;
-    sdp.port = port;
-    sdp.numChannels = numChannels;
-    sdp.sampleRate = currentDeviceSampleRate_.load();
-    sdp.encoding = "L24"; // Use L24 for best quality
-    sdp.payloadType = 97; // Dynamic payload type
-    sdp.sessionID = static_cast<uint64_t>(std::time(nullptr));
-    sdp.sessionVersion = 1;
-    sdp.dscp = dscp; // -1 = inherit the active profile's DSCP (createTransmitter)
+    SDPSession sdp = announcedTxSession(name, multicastIP, port, numChannels,
+                                        currentDeviceSampleRate_.load(), dscp);
 
     // Validate
     std::string error;

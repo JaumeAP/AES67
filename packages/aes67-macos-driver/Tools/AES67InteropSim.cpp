@@ -31,6 +31,7 @@
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
 #include "NetworkEngine/ProfileAdapter.h"
+#include "NetworkEngine/TxSession.h"
 #include "Profiles/CompatibilityProfile.h"
 #include "support/DaemonSap.h"
 
@@ -91,20 +92,14 @@ std::string daemonSdp(unsigned channels) {
         "a=recvonly\r\n";
 }
 
-/// The transmit session this driver announces, as StreamManager::createTxStream()
-/// builds it, with the origin address AES67Device's announcer fills in from the
-/// interface it announces on.
+/// The transmit session this driver announces: announcedTxSession(), the same
+/// call createTxStream() makes, plus the origin address AES67Device's announcer
+/// fills in from the interface it announces on and the grandmaster the PTP
+/// layer supplies once it has one.
 SDPSession ourTxSession() {
-    SDPSession sdp;
-    sdp.sessionName = "macOS AES67";
+    SDPSession sdp = announcedTxSession("macOS AES67", "239.69.83.20", 5004, 8, 48000,
+                                        /*dscp=*/-1);
     sdp.originAddress = "192.168.1.60";
-    sdp.connectionAddress = "239.69.83.20";
-    sdp.port = 5004;
-    sdp.numChannels = 8;
-    sdp.sampleRate = 48000;
-    sdp.encoding = "L24";
-    sdp.payloadType = 97;
-    sdp.ptimeUs = 1000;
     sdp.ptpDomain = 0;
     sdp.ptpMasterMAC = "00-60-2b-11-22-33";
     return sdp;

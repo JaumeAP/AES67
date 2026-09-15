@@ -194,6 +194,9 @@ public:
     //
 
     /// Create a TX stream that reads from device output channels and sends RTP.
+    /// The session it announces is NetworkEngine/TxSession.h's
+    /// announcedTxSession(), shared with the interop simulations so that a
+    /// change here reaches them.
     /// sourcePort binds the transmitter's local UDP port explicitly instead
     /// of leaving it kernel-assigned — 0 (default) for every profile but
     /// DMA. See CompatibilityProfile::useFixedMulticastWithPerFlowSourcePort.
