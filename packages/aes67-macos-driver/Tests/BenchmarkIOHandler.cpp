@@ -50,7 +50,10 @@ public:
         , outputBuffers_(MakeRingBufferArray<kNumChannels>(512))
         , inputUnderruns_(0)
         , outputUnderruns_(0)
-        , ioRunning_(false)
+        // True: the handler reads this before touching the buffers, the way
+        // the real IO thread does between StartIO and StopIO, and a benchmark
+        // of a handler that returns silence measures nothing.
+        , ioRunning_(true)
         , rtInterface_(inputBuffers_, outputBuffers_, inputUnderruns_, outputUnderruns_, ioRunning_)
     {
         // Create I/O handler using RT-safe interface

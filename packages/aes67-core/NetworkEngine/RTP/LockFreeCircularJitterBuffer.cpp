@@ -81,13 +81,20 @@ bool LockFreeCircularJitterBuffer::addPacket(const uint8_t* packetData, size_t p
         now.time_since_epoch()).count();
     slot.arrivalTime.store(arrivalTime, std::memory_order_relaxed);
 
+    // Count the packet BEFORE publishing the slot, not after. Every consumer
+    // decrement happens after a successful READY -> READING transition, so if
+    // the slot became visible first the consumer could take it in the gap and
+    // decrement a counter still holding zero -- validPackets_ is a size_t, so
+    // that wraps to SIZE_MAX and getBufferedPacketCount() reports a full
+    // buffer until the producer closes the window. Counting first can only
+    // ever overcount by the packets in flight, which costs a consumer CAS that
+    // fails and returns false.
+    totalPackets_.fetch_add(1, std::memory_order_relaxed);
+    validPackets_.fetch_add(1, std::memory_order_relaxed);
+
     // Transition from WRITING to READY with release semantics
     // This makes all the data writes visible to readers
     slot.state.store(SlotState::READY, std::memory_order_release);
-
-    // Update statistics
-    totalPackets_.fetch_add(1, std::memory_order_relaxed);
-    validPackets_.fetch_add(1, std::memory_order_relaxed);
 
     return true;
 }

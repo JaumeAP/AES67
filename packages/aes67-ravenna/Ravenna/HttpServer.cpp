@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
@@ -17,6 +18,12 @@ namespace {
 
 constexpr size_t kMaxRequestBytes = 65536;
 constexpr int kRequestTimeoutMs = 300;
+/// A ceiling on the whole connection, not just on one silent poll().
+/// kRequestTimeoutMs bounds how long a peer may say NOTHING; a peer that sends
+/// one byte just inside it never trips it, so 64 KiB of request was still
+/// hours inside this loop -- and this is the daemon's only thread, so its
+/// whole main loop waits with it.
+constexpr int kRequestDeadlineMs = 10000;
 
 std::string statusTextFor(int status) {
     switch (status) {
@@ -208,7 +215,11 @@ size_t HttpServer::service() {
         std::string text;
         size_t expectedBody = std::string::npos;
 
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds(kRequestDeadlineMs);
+
         while (text.size() < kMaxRequestBytes) {
+            if (std::chrono::steady_clock::now() >= deadline) break;
             struct pollfd reading {};
             reading.fd = client;
             reading.events = POLLIN;

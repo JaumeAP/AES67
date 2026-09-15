@@ -134,7 +134,7 @@ private:
             FD_ZERO(&rd);
             int maxFd = -1;
             for (int fd : {eventFd_, generalFd_}) {
-                if (fd >= 0) { FD_SET(fd, &rd); if (fd > maxFd) maxFd = fd; }
+                addReadable(fd, &rd, maxFd);
             }
             if (maxFd < 0) break;
 

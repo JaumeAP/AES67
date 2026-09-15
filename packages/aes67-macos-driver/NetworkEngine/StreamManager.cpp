@@ -69,6 +69,19 @@ void StreamManager::ensurePTPClockForDomain(int domain) {
 }
 
 StreamManager::~StreamManager() {
+    // The callbacks go first, before removeAllStreams() below raises one per
+    // open stream. They are owned by whoever registered them -- AES67Device,
+    // whose lambda reaches nodeRouter_ and nmosSyncMutex_, both declared after
+    // streamManager_ and therefore already destroyed by the time this runs:
+    // `if (nodeRouter_)` still passes, because ~unique_ptr does not null its
+    // pointer, so touch() took a mutex in freed memory and requestNMOSSync()
+    // locked a destroyed std::mutex. Every teardown with a stream still open.
+    // An object being destroyed has nothing useful to tell an observer, and
+    // the try/catch below catches exceptions, not a use-after-free.
+    streamAddedCallback_ = nullptr;
+    streamRemovedCallback_ = nullptr;
+    streamStatusCallback_ = nullptr;
+
     // removeAllStreams() joins threads, closes sockets and touches containers,
     // any of which can throw. Letting that out of a destructor during unwinding
     // is std::terminate, and this one runs at driver teardown, where an
@@ -347,6 +360,15 @@ StreamID StreamManager::createTxStream(
     sdp.sessionID = static_cast<uint64_t>(std::time(nullptr));
     sdp.sessionVersion = 1;
     sdp.dscp = dscp; // -1 = inherit the active profile's DSCP (createTransmitter)
+    // SDPSession defaults this to "recvonly", and building the session field
+    // by field left every transmit stream carrying that default. Two
+    // consumers read it: saveAllStreamsInternal() persists it, and
+    // loadSavedStreams() decides isTransmit from it -- so after one restart
+    // the driver built an RTPReceiver on its own transmit group instead of the
+    // transmitter, which is silent, total TX loss with the channels counted as
+    // RX. The other is SDPParser's writer, which put `a=recvonly` into the SAP
+    // announcement, the RTSP DESCRIBE body and the IS-05 sender transport file.
+    sdp.direction = "sendonly";
 
     // Validate
     std::string error;

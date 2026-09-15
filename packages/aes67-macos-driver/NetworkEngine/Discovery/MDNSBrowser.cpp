@@ -201,8 +201,9 @@ private:
                running_.load(std::memory_order_acquire)) {
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(fd, &readfds);
-            const SelectOutcome outcome = waitReadable(fd, &readfds, kSelectTimeoutMs);
+            int maxFd = -1;
+            if (!addReadable(fd, &readfds, maxFd)) return;
+            const SelectOutcome outcome = waitReadable(maxFd, &readfds, kSelectTimeoutMs);
             if (outcome == SelectOutcome::Failed) return;
             if (outcome == SelectOutcome::Timeout ||
                 outcome == SelectOutcome::Interrupted) continue; // a signal is not an answer
@@ -242,8 +243,9 @@ private:
             if (fd < 0) break;
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(fd, &readfds);
-            const SelectOutcome outcome = waitReadable(fd, &readfds, kSelectTimeoutMs);
+            int maxFd = -1;
+            if (!addReadable(fd, &readfds, maxFd)) break;
+            const SelectOutcome outcome = waitReadable(maxFd, &readfds, kSelectTimeoutMs);
             if (outcome == SelectOutcome::Failed) break;
             if (outcome == SelectOutcome::Timeout ||
                 outcome == SelectOutcome::Interrupted) continue; // re-check running_

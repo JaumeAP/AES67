@@ -840,6 +840,46 @@ TEST_CASE("A malformed record fails the whole description") {
     }
 }
 
+TEST_CASE("An rtpmap for a format the m= line did not select is ignored") {
+    // A multi-format offer is legal, and every a=rtpmap line used to be taken:
+    // the payload type on the line was split out and dropped, so the LAST line
+    // won whatever the m= line had selected. The session below is PT 96, 24-bit
+    // stereo; taking the PT 97 line left it claiming L16 and 8 channels, and a
+    // receiver decoding the real PT 96 traffic at the wrong width and stride
+    // produces noise with nothing reported.
+    const auto session = SDPParser::parseString(
+        "v=0\r\n"
+        "o=- 1 0 IN IP4 192.168.1.100\r\n"
+        "s=Studio A\r\n"
+        "c=IN IP4 239.69.83.171\r\n"
+        "t=0 0\r\n"
+        "m=audio 5004 RTP/AVP 96\r\n"
+        "a=rtpmap:96 L24/48000/2\r\n"
+        "a=rtpmap:97 L16/48000/8\r\n");
+    REQUIRE(session.has_value());
+    CHECK(session->payloadType == 96);
+    CHECK(session->encoding == "L24");
+    CHECK(session->numChannels == 2);
+}
+
+TEST_CASE("A media line whose numbers do not fit their fields is refused") {
+    // Both narrow -- port into uint16_t, payloadType into uint8_t -- and an
+    // unchecked assignment reduced them modulo the width instead: port 70000
+    // became 4464 and the driver bound a port nobody had asked for.
+    const std::string head = "v=0\r\ns=Studio A\r\nc=IN IP4 239.69.83.171\r\n";
+    const std::string rtpmap = "a=rtpmap:96 L24/48000/2\r\n";
+    CHECK_FALSE(SDPParser::parseString(
+        head + "m=audio 70000 RTP/AVP 96\r\n" + rtpmap).has_value());
+    CHECK_FALSE(SDPParser::parseString(
+        head + "m=audio 65536 RTP/AVP 96\r\n" + rtpmap).has_value());
+    CHECK_FALSE(SDPParser::parseString(
+        head + "m=audio 5004 RTP/AVP 353\r\n" + rtpmap).has_value());
+    // A zero channel count is not a stream anything here can carry, and it
+    // reached the Manager app as a UInt16 underflow while rendering it.
+    CHECK_FALSE(SDPParser::parseString(
+        head + "m=audio 5004 RTP/AVP 96\r\n" + "a=rtpmap:96 L24/48000/0\r\n").has_value());
+}
+
 TEST_CASE("A description that parses but describes nothing usable is refused") {
     // Every record is well formed; what is missing is the session name, which
     // validation requires.

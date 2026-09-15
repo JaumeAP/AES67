@@ -43,6 +43,18 @@ void AES67IOHandler::OnReadClientInput(
         return;
     }
 
+    // The interface's references are only good while AES67Device still owns
+    // the storage behind them, and isIORunning() is how the device says so.
+    // The flag existed for exactly this and had no reader anywhere, which made
+    // RTSafeStreamInterface.h's lifetime guarantee untrue: ~AES67Device clears
+    // it before it destroys anything, and a cycle arriving after that would
+    // otherwise read freed ring buffers on the real-time thread, inside
+    // coreaudiod. Silence is the right answer for a device that is going away.
+    if (!rtInterface_.isIORunning()) {
+        std::memset(bytes, 0, bytesCount);
+        return;
+    }
+
     // RT-SAFE: Use cached format values instead of calling stream->GetPhysicalFormat()
     // (virtual method call is not safe on the RT audio thread)
     const UInt32 channelCount = cachedChannelCount_;
@@ -84,6 +96,13 @@ void AES67IOHandler::OnWriteClientOutput(
     // libASPL provides Float32 interleaved frames in canonical format.
 
     if (!frames) {
+        return;
+    }
+
+    // Same guard as OnReadClientInput: no storage to write into once the
+    // device has begun tearing down. Nothing to zero here -- this direction
+    // only consumes.
+    if (!rtInterface_.isIORunning()) {
         return;
     }
 

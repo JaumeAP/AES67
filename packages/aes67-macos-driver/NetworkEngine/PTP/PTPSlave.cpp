@@ -17,6 +17,7 @@
 #include "Profiles/PtpIntervals.h"
 #include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "NetworkEngine/NetworkUtils.h"
+#include "NetworkEngine/SelectWait.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -458,14 +459,8 @@ void PTPSlave::receiveThread() {
         FD_ZERO(&readfds);
 
         int maxfd = -1;
-        if (eventSocket_ >= 0) {
-            FD_SET(eventSocket_, &readfds);
-            maxfd = std::max(maxfd, eventSocket_);
-        }
-        if (generalSocket_ >= 0) {
-            FD_SET(generalSocket_, &readfds);
-            maxfd = std::max(maxfd, generalSocket_);
-        }
+        addReadable(eventSocket_, &readfds, maxfd);
+        addReadable(generalSocket_, &readfds, maxfd);
 
         if (maxfd < 0) break;
 
