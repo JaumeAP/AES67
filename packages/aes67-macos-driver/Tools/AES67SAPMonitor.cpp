@@ -74,10 +74,20 @@ std::string sdpLine(const std::string& sdp, const std::string& prefix) {
 struct Destination {
     std::string firstSdp;
     std::string firstSource;
+    std::string sessionName;
     uint64_t    announcements{0};
     uint64_t    conflicting{0};       // announcements whose SDP differs from the first
+    uint64_t    withdrawals{0};       // deletions carrying an identity announced here
     std::map<std::string, uint64_t> bySource;
 };
+
+/// The identity RFC 2974 SS 6 gives a session: the 16-bit message id hash and
+/// the 32-bit originating source, together. A deletion carries these and
+/// nothing else -- no session name, no connection address -- so they are the
+/// only way to say which announcement it withdraws.
+uint64_t sapIdentity(uint16_t msgIdHash, uint32_t originatingSource) {
+    return (static_cast<uint64_t>(msgIdHash) << 32) | originatingSource;
+}
 
 } // namespace
 
@@ -160,6 +170,9 @@ int run(int argc, char* argv[]) {
     }
 
     std::map<std::string, Destination> destinations;   // keyed by address:port
+    // SAP identity -> the destination it was announced for, so that a deletion
+    // can say what it withdraws.
+    std::map<uint64_t, std::string> announcedIdentities;
     uint64_t packets = 0, unparsed = 0, deletions = 0;
 
     std::vector<char> buffer(65536);
@@ -199,9 +212,24 @@ int run(int argc, char* argv[]) {
         // "unparsable" instead.
         if (announcement.isDeletion) {
             ++deletions;
-            fprintf(stderr, "[%s] DELETE \"%s\" (%s:%d)\n", fromText,
-                    announcement.sessionName.c_str(),
-                    announcement.multicastAddress.c_str(), announcement.port);
+            // The name and the address are empty in a deletion, and printing
+            // them gave DELETE "" (:0) -- true, and of no use to anyone. What
+            // a deletion carries is the identity, so it is printed, and looked
+            // up among the announcements already heard to say what it takes
+            // away.
+            const auto withdrawn = announcedIdentities.find(
+                sapIdentity(announcement.msgIdHash, announcement.originatingSource));
+            if (withdrawn == announcedIdentities.end()) {
+                fprintf(stderr, "[%s] DELETE hash=0x%04X origin=0x%08X "
+                                "(no announcement for it was heard here)\n",
+                        fromText, announcement.msgIdHash, announcement.originatingSource);
+            } else {
+                Destination& target = destinations[withdrawn->second];
+                ++target.withdrawals;
+                fprintf(stderr, "[%s] DELETE hash=0x%04X origin=0x%08X -> \"%s\" on %s\n",
+                        fromText, announcement.msgIdHash, announcement.originatingSource,
+                        target.sessionName.c_str(), withdrawn->second.c_str());
+            }
             continue;
         }
         if (announcement.sessionDescription.empty()) {
@@ -216,10 +244,14 @@ int run(int argc, char* argv[]) {
         ++destination.announcements;
         ++destination.bySource[fromText];
 
+        announcedIdentities[sapIdentity(announcement.msgIdHash,
+                                        announcement.originatingSource)] = key;
+
         const bool first = destination.firstSdp.empty();
         if (first) {
             destination.firstSdp    = announcement.sessionDescription;
             destination.firstSource = fromText;
+            destination.sessionName = announcement.sessionName;
         } else if (announcement.sessionDescription != destination.firstSdp) {
             ++destination.conflicting;
         }
@@ -259,6 +291,10 @@ int run(int argc, char* argv[]) {
         for (const auto& source : pair.second.bySource) {
             fprintf(stderr, "      %s: %llu\n", source.first.c_str(),
                     static_cast<unsigned long long>(source.second));
+        }
+        if (pair.second.withdrawals > 0) {
+            fprintf(stderr, "    Withdrawn:     %llu deletion(s)\n",
+                    static_cast<unsigned long long>(pair.second.withdrawals));
         }
         if (pair.second.conflicting > 0) {
             fprintf(stderr, "    CONFLICTING DESCRIPTIONS: %llu announcements disagree "
