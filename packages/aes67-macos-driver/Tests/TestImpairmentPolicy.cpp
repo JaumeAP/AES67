@@ -142,6 +142,12 @@ TEST_CASE("Without delay there is nothing to move a packet in front of") {
     for (const Departure& departure : order) {
         CHECK(departure.dueMs == static_cast<double>(departure.arrivalMs));
     }
+    // And the decision says so. It used to report every drawn packet as
+    // reordered whether or not its due time had moved, so the relay printed a
+    // reordered count for a run in which nothing left out of order -- the
+    // disagreement this case was written about, reported by the relay itself.
+    CHECK(std::none_of(order.begin(), order.end(),
+                       [](const Departure& d) { return d.reordered; }));
 }
 
 TEST_CASE("Uniform loss drops about what it is asked to") {
