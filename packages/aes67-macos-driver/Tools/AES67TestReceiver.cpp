@@ -428,6 +428,7 @@ int run(int argc, char* argv[]) {
                                                             : AES67::RTP::PT_AES67_L24;
     uint64_t totalReordered = 0, totalDuplicates = 0, totalRestarts = 0;
     uint64_t totalFormatChanges = 0, totalWrongPayloadType = 0;
+    uint64_t totalWrongChannelCount = 0;
     int64_t  totalLost = 0;
 
     for (const auto& pair : sources) {
@@ -471,6 +472,31 @@ int run(int argc, char* argv[]) {
         }
         fprintf(stderr, "\n");
 
+        // The channel count --channels asks for, tested rather than printed.
+        // RTP carries no channel count, so it comes out of the two numbers
+        // that are in the packets: a payload of `frames x channels x bytes`,
+        // and the frame count the timestamp step gives. Without this the tool
+        // took an expectation on the command line, echoed it in the banner and
+        // never checked it -- a sender wired for 8 channels and heard by a
+        // receiver told to expect 2 reported success.
+        const size_t sourceBytesPerSample =
+            source.payloadType == AES67::RTP::PT_AES67_L16 ? 2 : 3;
+        if (source.timestampStep > 0) {
+            const size_t divisor = sourceBytesPerSample * source.timestampStep;
+            const size_t carried = divisor > 0 ? source.payloadSize / divisor : 0;
+            const bool exact = divisor > 0 && source.payloadSize % divisor == 0;
+            fprintf(stderr, "    Channels:     %zu%s", carried,
+                    exact ? "" : " (payload is not a whole number of frames)");
+            if (!exact || carried != channels) {
+                fprintf(stderr, "  [expected %u]", channels);
+                ++totalWrongChannelCount;
+            }
+            fprintf(stderr, "\n");
+        } else {
+            fprintf(stderr, "    Channels:     unknown (no two consecutive packets "
+                            "to read a frame count from)\n");
+        }
+
         totalLost       += source.lost();
         totalReordered  += source.outOfOrder;
         totalDuplicates += source.duplicates;
@@ -498,7 +524,8 @@ int run(int argc, char* argv[]) {
         fprintf(stderr, "  Check: multicast routing, firewall, sender is running\n");
     } else if (nonZeroSamples == 0) {
         fprintf(stderr, "\n  PACKETS RECEIVED BUT ALL SILENCE\n");
-        fprintf(stderr, "  Check: audio is routed to driver output channels 9-16\n");
+        fprintf(stderr, "  Check: the sender has audio routed to the device channels the "
+                        "stream is mapped to\n");
     } else {
         fprintf(stderr, "\n  AUDIO DETECTED!\n");
     }
@@ -513,6 +540,9 @@ int run(int argc, char* argv[]) {
     }
     if (totalWrongPayloadType > 0) {
         fprintf(stderr, "  PAYLOAD TYPE NEVER MATCHED --encoding %s\n", encoding.c_str());
+    }
+    if (totalWrongChannelCount > 0) {
+        fprintf(stderr, "  CHANNEL COUNT NEVER MATCHED --channels %u\n", channels);
     }
     if (totalRestarts > 0) {
         fprintf(stderr, "  SEQUENCE RESTARTED (%llu times)\n", totalRestarts);
