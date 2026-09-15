@@ -37,16 +37,22 @@ target_link_libraries(AES67TestReceiver PRIVATE aes67_net)
 target_compile_features(AES67TestReceiver PRIVATE cxx_std_17)
 target_link_libraries(AES67TestReceiver PRIVATE "-framework Accelerate")
 
-# AES67 Interop Simulation: dry-run against the RAVENNA aes67-linux-daemon
+# AES67 Interop Simulation: dry-run against the RAVENNA aes67-linux-daemon.
+# Tests/support/DaemonSap.cpp is the daemon's own send and receive path,
+# mirrored from its source; this tool reports on that oracle rather than
+# carrying a second copy of the daemon's rules, which is why it compiles a
+# Tests file and needs Tests/ on its include path for "support/DaemonSap.h".
 add_executable(AES67InteropSim
     AES67InteropSim.cpp
-    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../Tests/support/DaemonSap.cpp
 )
-target_include_directories(AES67InteropSim PRIVATE ${PROJECT_SOURCE_DIR})
+target_include_directories(AES67InteropSim PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Tests
+)
 target_link_libraries(AES67InteropSim PRIVATE aes67_net)
 
 target_compile_features(AES67InteropSim PRIVATE cxx_std_17)
-target_link_libraries(AES67InteropSim PRIVATE "-framework Accelerate")
 
 # Dante Interop Simulation: dry-run against Dante Controller 4.18's own SAP
 # and SDP handling, in both directions, under every profile.
