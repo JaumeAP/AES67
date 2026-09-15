@@ -8,7 +8,6 @@
 #include <array>
 #include <chrono>
 #include <atomic>
-#include <uuid/uuid.h>
 
 namespace AES67 {
 

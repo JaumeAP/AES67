@@ -11,10 +11,17 @@
 // and the same regular expression inside.
 //
 // The limits are the limits of that approach and are worth saying out loud: a
-// key that appears twice gives the first, a key inside a nested object is
-// found as readily as one at the top level, and a string value containing an
-// escaped quote ends early. Anything that needs more than that wants a parser,
-// and aes67-ravenna has one.
+// key that appears twice gives the first, and a key inside a nested object is
+// found as readily as one at the top level. Anything that needs more than that
+// wants a parser, and aes67-ravenna has one.
+//
+// A string value containing an escaped quote used to end early here, which
+// made this the reading half of a round trip that lost data: jsonEscape wrote
+// the escapes and nothing ever undid them. extractStringField now matches a
+// whole JSON string and returns it unescaped.
+//
+// The unsigned readers narrower than 64 bits return nothing for a value that
+// does not fit, rather than the value reduced modulo their width.
 //
 #pragma once
 

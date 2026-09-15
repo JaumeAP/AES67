@@ -174,9 +174,20 @@ void RTPTransmitter::resetStatistics() {
 }
 
 bool RTPTransmitter::updateMapping(const ChannelMapping& newMapping) {
-    // Validate mapping
-    if (newMapping.deviceChannelStart + sdp_.numChannels > 128) {
-        return false;
+    // Every channel this would read from has to be one the device has, whether
+    // the mapping routes them itself or takes the block it was given -- the
+    // same check RTPReceiver::updateMapping makes, which this had only the
+    // block half of.
+    if (newMapping.routes.empty()) {
+        if (newMapping.deviceChannelStart + sdp_.numChannels > 128) {
+            return false;
+        }
+    } else {
+        for (const ChannelRoute& route : newMapping.routes) {
+            if (route.deviceChannel >= 128 || route.streamChannel >= sdp_.numChannels) {
+                return false;
+            }
+        }
     }
 
     // Stop, update, restart
@@ -242,10 +253,14 @@ void RTPTransmitter::transmitLoop() {
 }
 
 bool RTPTransmitter::readDeviceChannels(float* interleavedAudio, size_t frameCount) {
-    // Validate mapping
-    const size_t deviceChannelEnd = mapping_.deviceChannelStart + sdp_.numChannels;
-    if (deviceChannelEnd > 128) {
-        return false;
+    // Validate mapping. Only meaningful for the sequential case: a routed
+    // mapping names its device channels one by one and each is checked below,
+    // exactly as RTPReceiver does.
+    if (mapping_.routes.empty()) {
+        const size_t deviceChannelEnd = mapping_.deviceChannelStart + sdp_.numChannels;
+        if (deviceChannelEnd > 128) {
+            return false;
+        }
     }
 
     // Stack-allocated temporary buffer for reading each channel
@@ -257,22 +272,52 @@ bool RTPTransmitter::readDeviceChannels(float* interleavedAudio, size_t frameCou
     float channelBuffer[kMaxFrames];
     bool hadUnderrun = false;
 
-    // Read each device channel and interleave into output
-    // Result: [ch0_f0, ch1_f0, ch0_f1, ch1_f1, ...]
-    for (size_t streamChannel = 0; streamChannel < sdp_.numChannels; ++streamChannel) {
-        const size_t deviceChannel = mapping_.deviceChannelStart + streamChannel;
-
-        // Batch read from ring buffer
+    // The mirror of RTPReceiver::mapChannelsToDevice. This used to read the
+    // sequential block unconditionally and ignore ChannelMapping::routes
+    // altogether, while StreamChannelMapper recorded ownership against the
+    // routes and RTPReceiver honoured them: a stream persisted with
+    // deviceChannelStart=64 and routes onto 0-7 had its channels marked as
+    // owned at 0-7 and was transmitted from 64-71 -- a block it does not own
+    // and another stream may be driving. Wrong audio on the wire, no error.
+    const auto readFrom = [&](size_t deviceChannel) {
+        if (deviceChannel >= 128) {
+            std::memset(channelBuffer, 0, frameCount * sizeof(float));
+            return;
+        }
         const size_t samplesRead = deviceChannels_[deviceChannel].read(channelBuffer, frameCount);
-
         if (samplesRead < frameCount) {
             // Ring buffer underrun - fill remainder with silence
             std::memset(&channelBuffer[samplesRead], 0,
                        (frameCount - samplesRead) * sizeof(float));
             hadUnderrun = true;
         }
+    };
 
-        // Interleave this channel into output
+    // Read each device channel and interleave into output
+    // Result: [ch0_f0, ch1_f0, ch0_f1, ch1_f1, ...]
+    for (size_t streamChannel = 0; streamChannel < sdp_.numChannels; ++streamChannel) {
+        if (mapping_.routes.empty()) {
+            readFrom(mapping_.deviceChannelStart + streamChannel);
+            interleaveChannel(channelBuffer, interleavedAudio, frameCount,
+                              sdp_.numChannels, streamChannel);
+            continue;
+        }
+
+        // A stream channel with no route carries silence: there is no device
+        // channel to take it from, and the slot still has to be filled or the
+        // interleaved packet keeps whatever was in the buffer. The first route
+        // wins if a controller gave a stream channel more than one source --
+        // the other direction is a mix, which this driver does not do.
+        bool routed = false;
+        for (const ChannelRoute& route : mapping_.routes) {
+            if (route.streamChannel != streamChannel) continue;
+            readFrom(route.deviceChannel);
+            routed = true;
+            break;
+        }
+        if (!routed) {
+            std::memset(channelBuffer, 0, frameCount * sizeof(float));
+        }
         interleaveChannel(channelBuffer, interleavedAudio, frameCount,
                           sdp_.numChannels, streamChannel);
     }

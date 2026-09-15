@@ -511,5 +511,36 @@ TEST_CASE("A stream with no route for a channel does not carry it") {
     CHECK(mapping.deviceChannels() == std::vector<int>{0, 1, 2, 3});
 }
 
+TEST_CASE("A routed mapping cannot take a device channel another stream owns") {
+    // Overlap detection walked the sequential block while ownership was
+    // recorded against the routes, so for a routed mapping the two were
+    // different sets: a mapping whose block was free passed the check and then
+    // claimed routed channels another stream already owned. Two RTPReceiver
+    // threads on one SPSCRingBuffer, whose contract is a single producer.
+    StreamChannelMapper mapper;
+
+    ChannelMapping first;
+    first.streamID = StreamID::generate();
+    first.streamName = "First";
+    first.streamChannelCount = 2;
+    first.deviceChannelStart = 0;
+    first.deviceChannelCount = 2;
+    REQUIRE(mapper.addMapping(first));
+
+    // A free block of its own, but its routes point back into the first
+    // stream's channels.
+    ChannelMapping second;
+    second.streamID = StreamID::generate();
+    second.streamName = "Second";
+    second.streamChannelCount = 2;
+    second.deviceChannelStart = 2;
+    second.deviceChannelCount = 2;
+    second.routes = {{0, 0}};
+
+    CHECK_FALSE(mapper.addMapping(second));
+    // And the first stream still owns what it was given.
+    CHECK(mapper.getStreamForDeviceChannel(0) == first.streamID);
+}
+
 } // namespace Tests
 } // namespace AES67

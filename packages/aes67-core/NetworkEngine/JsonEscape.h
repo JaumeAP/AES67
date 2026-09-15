@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <cstddef>
 #include <string>
 
 namespace AES67 {
@@ -54,6 +55,67 @@ inline std::string jsonEscape(const std::string& s) {
                 } else {
                     out.push_back(c);
                 }
+        }
+    }
+    return out;
+}
+
+/// Undoes jsonEscape: the reader half of the round trip.
+///
+/// It was missing for as long as the writer existed, so every reader in this
+/// repository took what jsonEscape had produced and handed back something
+/// else: `My "Main" Feed` was written correctly and read back as `My \`, and
+/// `two\nlines` came back as ten literal characters. Names reach these files
+/// straight off the network -- an SDP session name is written into
+/// streams.json unvalidated -- so a remote device with a quote in its name was
+/// enough to corrupt the configuration the next boot restores.
+///
+/// `\u00XX` is decoded for the range jsonEscape writes it in (below a space).
+/// A `\uXXXX` above 0x7F is left as it was written rather than guessed at:
+/// nothing here emits one, and the alternative is inventing an encoding.
+inline std::string jsonUnescape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] != '\\' || i + 1 >= s.size()) {
+            out.push_back(s[i]);
+            continue;
+        }
+        const char next = s[++i];
+        switch (next) {
+            case '"': out.push_back('"'); break;
+            case '\\': out.push_back('\\'); break;
+            case '/': out.push_back('/'); break;
+            case 'b': out.push_back('\b'); break;
+            case 'f': out.push_back('\f'); break;
+            case 'n': out.push_back('\n'); break;
+            case 'r': out.push_back('\r'); break;
+            case 't': out.push_back('\t'); break;
+            case 'u': {
+                unsigned value = 0;
+                bool ok = (i + 4 < s.size());
+                for (size_t digit = 1; ok && digit <= 4; ++digit) {
+                    const char hex = s[i + digit];
+                    if (hex >= '0' && hex <= '9') value = value * 16 + static_cast<unsigned>(hex - '0');
+                    else if (hex >= 'a' && hex <= 'f') value = value * 16 + static_cast<unsigned>(hex - 'a' + 10);
+                    else if (hex >= 'A' && hex <= 'F') value = value * 16 + static_cast<unsigned>(hex - 'A' + 10);
+                    else ok = false;
+                }
+                if (ok && value <= 0x7F) {
+                    out.push_back(static_cast<char>(value));
+                    i += 4;
+                } else {
+                    // Not one of ours: keep the text as written.
+                    out.push_back('\\');
+                    out.push_back('u');
+                }
+                break;
+            }
+            default:
+                // Not an escape this writes. Keep both characters rather than
+                // silently eating the backslash.
+                out.push_back('\\');
+                out.push_back(next);
         }
     }
     return out;

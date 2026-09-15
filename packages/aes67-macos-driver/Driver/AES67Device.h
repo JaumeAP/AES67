@@ -219,15 +219,23 @@ private:
     std::shared_ptr<aspl::Stream> inputStream_;
     std::shared_ptr<aspl::Stream> outputStream_;
 
+    // RT-safe interface (compile-time boundary for IO handler)
+    // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
+    //
+    // Declared BEFORE ioHandler_, which holds a reference to it: members are
+    // destroyed in reverse order, so this outlives the handler rather than
+    // dying under it. Both are after inputBuffers_/outputBuffers_ for the same
+    // reason. Ordering alone is not the whole guard -- aspl::Device keeps a
+    // shared_ptr to the handler in its own base subobject, destroyed after
+    // every member here -- which is why ~AES67Device also clears ioRunning_
+    // and calls SetIOHandler(nullptr) before anything is torn down.
+    std::unique_ptr<RTSafeStreamInterface> rtInterface_;
+
     // IO Handler
     std::shared_ptr<AES67IOHandler> ioHandler_;
 
     // Stream Manager (manages all AES67 network streams)
     std::unique_ptr<StreamManager> streamManager_;
-
-    // RT-safe interface (compile-time boundary for IO handler)
-    // Created during Initialize(), references inputBuffers_/outputBuffers_/atomics
-    std::unique_ptr<RTSafeStreamInterface> rtInterface_;
 
     /// Every session on the network, however it was found: what SAP
     /// announces and what registers `_rtsp._tcp` and describes itself over

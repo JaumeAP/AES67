@@ -265,8 +265,14 @@ bool SDPParser::parseMediaLine(const std::string& line, SDPSession& session) {
 
     session.mediaType = parts[0];
 
+    // Both of these narrow -- port into uint16_t, payloadType into uint8_t --
+    // and an unchecked assignment is a silent reduction modulo the width:
+    // "m=audio 70000" became port 4464 and a payload type of 353 became 97.
+    // A description this cannot represent is one this does not accept.
     try {
-        session.port = std::stoi(parts[1]);
+        const int port = std::stoi(parts[1]);
+        if (port < 0 || port > 65535) return false;
+        session.port = static_cast<uint16_t>(port);
     } catch (...) {
         return false;
     }
@@ -274,7 +280,9 @@ bool SDPParser::parseMediaLine(const std::string& line, SDPSession& session) {
     session.transport = parts[2];
 
     try {
-        session.payloadType = std::stoi(parts[3]);
+        const int payloadType = std::stoi(parts[3]);
+        if (payloadType < 0 || payloadType > 127) return false; // RFC 3550 sec 5.1
+        session.payloadType = static_cast<uint8_t>(payloadType);
     } catch (...) {
         return false;
     }
@@ -331,16 +339,44 @@ bool SDPParser::parseRTPMapAttribute(const std::string& value, SDPSession& sessi
         return false;
     }
 
-    session.encoding = formatParts[0];
-
+    // The whole line is validated first, and only then does it get to say
+    // whether it applies here: a malformed record fails the description
+    // whatever format it describes.
+    int linePayloadType = 0;
+    uint32_t sampleRate = 0;
+    uint16_t numChannels = session.numChannels;
     try {
-        session.sampleRate = std::stoul(formatParts[1]);
+        linePayloadType = std::stoi(parts[0]);
+        sampleRate = static_cast<uint32_t>(std::stoul(formatParts[1]));
         if (formatParts.size() >= 3) {
-            session.numChannels = std::stoi(formatParts[2]);
+            // Narrows into uint16_t, and a channel count of 0 or one that does
+            // not fit is not a stream anything here can carry.
+            const long channels = std::stol(formatParts[2]);
+            if (channels < 1 || channels > 65535) return false;
+            numChannels = static_cast<uint16_t>(channels);
         }
     } catch (...) {
         return false;
     }
+
+    // parts[0] is the payload type this line describes, and it used to be
+    // split out and then dropped. A description may legally offer several
+    // formats -- "m=audio 5004 RTP/AVP 96" with an a=rtpmap for 96 and another
+    // for 97 -- and taking every line left the LAST one winning regardless of
+    // which format the m= line selected: the right payload type with the wrong
+    // encoding and channel count, so the receiver accepted the real traffic
+    // and decoded it at the wrong width and stride. Noise, with nothing
+    // reported. A line for a format this session did not select is well formed
+    // and simply not ours.
+    //
+    // m= is parsed before its attributes (parse() walks the description in
+    // order and a=rtpmap belongs to the media section above it), so
+    // session.payloadType is the selected format by the time this runs.
+    if (linePayloadType != static_cast<int>(session.payloadType)) return true;
+
+    session.encoding = formatParts[0];
+    session.sampleRate = sampleRate;
+    session.numChannels = numChannels;
 
     return true;
 }

@@ -905,6 +905,15 @@ bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
     const uint16_t channels = current.numChannels;
     const std::string name = current.sessionName;
 
+    // Read BEFORE removeStream() erases the entry this asks about. It used to
+    // be read after, where it was always nullopt and .value_or(0) handed
+    // createTxStream an ephemeral source port -- which is precisely the thing
+    // the comment below says must be preserved, since under the Dolby scheme
+    // the source port is what identifies a flow.
+    const uint16_t sourcePort = wasStopped
+        ? stoppedSourcePort
+        : streamManager_->getSourcePort(running->id).value_or(0);
+
     if (!wasStopped && !streamManager_->removeStream(running->id)) return false;
 
     // createTxStream, not createTxStreamFlows: this is ONE flow, and the flow
@@ -912,10 +921,7 @@ bool AES67Device::applySenderConnectionPatch(const std::string& senderId,
     // four through it gave that flow flow 0's source port, which under the
     // Dolby scheme -- where the source port is what identifies a flow --
     // collided with the flow still running beside it. The source port is the
-    // one this flow already had.
-    const uint16_t sourcePort = wasStopped
-        ? stoppedSourcePort
-        : streamManager_->getSourcePort(running->id).value_or(0);
+    // one this flow already had, read above while the stream still existed.
     const StreamID createdId = streamManager_->createTxStream(
         name, address, port, channels, wantedMapping, sourcePort);
     const std::vector<StreamID> created =
@@ -1201,6 +1207,35 @@ void AES67Device::syncNMOSResources() {
 }
 
 AES67Device::~AES67Device() {
+    // Before anything else: tell the IO handler the storage is going away, and
+    // take it off the HAL.
+    //
+    // ioRunning_ is what AES67IOHandler checks before it touches the ring
+    // buffers. It used to be cleared on the LAST line of this destructor,
+    // which is after every member it protects has already been destroyed, and
+    // nothing read it anyway.
+    //
+    // SetIOHandler(nullptr) is the other half, and the one that matters most:
+    // aspl::Device holds a shared_ptr to the handler in its own base
+    // subobject, which is destroyed only after every derived member, so the
+    // handler stayed registered with the HAL while the buffers it reads were
+    // freed. Passing nullptr swaps in libASPL's no-op handler and drops that
+    // reference here, where the storage is still alive.
+    ioRunning_.store(false);
+    SetIOHandler(std::shared_ptr<aspl::IORequestHandler>{});
+
+    // And the stream callbacks, for the same reason the subsystems below are
+    // stopped here: the lambda installed on streamManager_ reaches nodeRouter_
+    // and nmosSyncMutex_, which are declared after it and so are destroyed
+    // first. ~StreamManager clears these itself now, but it raises one per
+    // open stream and the members it would reach are still alive at this
+    // point, which is the only moment clearing them is free.
+    if (streamManager_) {
+        streamManager_->setStreamAddedCallback(nullptr);
+        streamManager_->setStreamRemovedCallback(nullptr);
+        streamManager_->setStreamStatusCallback(nullptr);
+    }
+
     // Stop announcing first: its sender thread calls back into streamManager_,
     // which must still be alive (it is - declared before the announcer, so
     // destroyed after it - but stop promptly regardless).

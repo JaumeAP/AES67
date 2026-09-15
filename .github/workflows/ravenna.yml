@@ -33,12 +33,11 @@ jobs:
         with:
           submodules: recursive
 
-      # aes67-core includes <uuid/uuid.h>, which comes with the SDK on macOS
-      # and is a package here.
-      # uuid-dev for aes67-core's <uuid/uuid.h>; the rest is the analysis
-      # half of each gate, which AES67_ANALYSE=1 below turns on.
+      # The analysis half of each gate, which AES67_ANALYSE=1 below turns on.
+      # uuid-dev used to be here too, for an <uuid/uuid.h> that aes67-core
+      # included and never called a function from.
       - name: Dependencies
-        run: sudo apt-get update && sudo apt-get install -y uuid-dev clang-tidy cppcheck clang
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy cppcheck clang
 
       # The packages' own gates, not a second description of them here.
       - name: aes67-profiles

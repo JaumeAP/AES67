@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 
 namespace AES67::Ravenna {
@@ -23,6 +24,10 @@ constexpr size_t kMaxRequestBytes = 8192;
 /// Long enough for a device on the same link, short enough that a connection
 /// that says nothing cannot hold the loop.
 constexpr int kRequestTimeoutMs = 200;
+/// A ceiling on the whole connection, not just on one silent poll(): a peer
+/// sending one byte just inside kRequestTimeoutMs never trips it, and this
+/// loop serves one connection at a time.
+constexpr int kRequestDeadlineMs = 5000;
 
 }  // namespace
 
@@ -126,7 +131,10 @@ size_t RtspServer::service() {
         if (client < 0) break;
 
         std::string text;
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds(kRequestDeadlineMs);
         while (text.size() < kMaxRequestBytes) {
+            if (std::chrono::steady_clock::now() >= deadline) break;
             struct pollfd reading {};
             reading.fd = client;
             reading.events = POLLIN;
