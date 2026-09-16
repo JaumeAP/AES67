@@ -4,6 +4,7 @@
 // Implementation of common types and utilities
 //
 
+#include <tuple>
 #include <algorithm>
 #include "Types.h"
 #include <random>
@@ -97,17 +98,11 @@ StreamID StreamID::generate() {
 // ============================================================================
 
 void Statistics::reset() {
-    packetsReceived.store(0, std::memory_order_relaxed);
-    packetsLost.store(0, std::memory_order_relaxed);
-    malformedPackets.store(0, std::memory_order_relaxed);
-    outOfOrderPackets.store(0, std::memory_order_relaxed);
-    underruns.store(0, std::memory_order_relaxed);
-    overruns.store(0, std::memory_order_relaxed);
-    jitterNs.store(0, std::memory_order_relaxed);
-    latencyNs.store(0, std::memory_order_relaxed);
-    bytesReceived.store(0, std::memory_order_relaxed);
-    bytesSent.store(0, std::memory_order_relaxed);
-    lastPacketTimeNs.store(0, std::memory_order_relaxed);
+    std::apply(
+        [this](auto... counter) {
+            ((this->*counter.first).store(0, std::memory_order_relaxed), ...);
+        },
+        counters());
 }
 
 double Statistics::getPacketLossPercent() const {
@@ -134,16 +129,16 @@ int64_t Statistics::timeSinceLastPacketMs() const {
 StatisticsSnapshot Statistics::snapshot() const {
     // Create a consistent snapshot of all atomic statistics
     StatisticsSnapshot snap;
-    snap.packetsReceived = packetsReceived.load(std::memory_order_relaxed);
-    snap.packetsLost = packetsLost.load(std::memory_order_relaxed);
-    snap.malformedPackets = malformedPackets.load(std::memory_order_relaxed);
-    snap.outOfOrderPackets = outOfOrderPackets.load(std::memory_order_relaxed);
-    snap.underruns = underruns.load(std::memory_order_relaxed);
-    snap.overruns = overruns.load(std::memory_order_relaxed);
-    snap.jitterNs = jitterNs.load(std::memory_order_relaxed);
-    snap.latencyNs = latencyNs.load(std::memory_order_relaxed);
-    snap.bytesReceived = bytesReceived.load(std::memory_order_relaxed);
-    snap.bytesSent = bytesSent.load(std::memory_order_relaxed);
+    std::apply(
+        [this, &snap](auto... counter) {
+            ((snap.*counter.second = (this->*counter.first).load(std::memory_order_relaxed)), ...);
+        },
+        counters());
+
+    // Read again, with the ordering this one has always been read with here
+    // and in timeSinceLastPacketMs(). Leaving it to the relaxed walk above
+    // would be a change to what this field synchronises with, which is not
+    // what collecting the list in one place is for.
     snap.lastPacketTimeNs = lastPacketTimeNs.load(std::memory_order_acquire);
     return snap;
 }
