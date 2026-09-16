@@ -10,6 +10,8 @@
 #include "NetworkEngine/StreamManager.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
 #include "Driver/SDPParser.h"
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <cassert>
 #include <utility>
@@ -662,3 +664,59 @@ TEST_CASE("An Explicit Framecount Is What The Budget Measures") {
 // Main Test Runner
 //
 
+
+TEST_CASE("A Transmit Stream Comes Back From Disk As A Transmitter") {
+    std::cout << "Test: a saved TX stream is restored as TX, not as a receiver... ";
+
+    // The bug this pins was silent and total: the role was read back out of
+    // the announced direction, a sender announces a=recvonly because that is
+    // what a reader of the description can do with it, and so every transmit
+    // stream came back from streams.json as an RTPReceiver on its own transmit
+    // group -- no audio out, and the channels counted against the receive
+    // budget. The role is a field in the file now; this is that, end to end.
+    // AES67_CONFIG_PATH names the file, not the directory holding it.
+    const std::string directory = "/tmp/aes67-streammanager-roundtrip";
+    const std::string file = directory + "/streams.json";
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directories(directory);
+    setenv("AES67_CONFIG_PATH", file.c_str(), 1);
+
+    StreamID created;
+    {
+        ManagerFixture fixture;
+        ChannelMapping mapping = createTestMapping(2, 0);
+        created = fixture.manager.createTxStream("Saved Sender", "239.69.3.3", 5004, 2, mapping);
+        if (created.isNull()) {
+            unsetenv("AES67_CONFIG_PATH");
+            std::filesystem::remove_all(directory);
+            std::cout << "SKIP (no transmit stream could be created here)" << std::endl;
+            return;
+        }
+        CHECK(fixture.manager.getTransmitSessions().size() == 1);
+        REQUIRE(fixture.manager.saveAllStreams());
+    }
+
+    {
+        ManagerFixture restored;
+        restored.manager.setAutoSave(false);
+        REQUIRE(restored.manager.loadSavedStreams());
+
+        // The whole point: on the transmit side, and only there.
+        const std::vector<SDPSession> transmitting = restored.manager.getTransmitSessions();
+        const std::vector<SDPSession> receiving = restored.manager.getReceiveSessions();
+        CHECK(transmitting.size() == 1);
+        CHECK(receiving.empty());
+        if (!transmitting.empty()) {
+            CHECK(transmitting.front().sessionName == "Saved Sender");
+            CHECK(transmitting.front().connectionAddress == "239.69.3.3");
+            CHECK(transmitting.front().numChannels == 2);
+            // And what it announces is still what a reader of the description
+            // can do with it, which is receive.
+            CHECK(transmitting.front().direction == "recvonly");
+        }
+    }
+
+    unsetenv("AES67_CONFIG_PATH");
+    std::filesystem::remove_all(directory);
+    std::cout << "PASS" << std::endl;
+}

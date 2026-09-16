@@ -47,6 +47,17 @@ StreamConfigManager::StreamConfigManager() {
     if (!existingConfig.empty()) {
         configPath_ = existingConfig;
         AES67_LOGF("StreamConfigManager: Found config at: %s", configPath_.c_str());
+    } else if (const char* override_ = std::getenv("AES67_CONFIG_PATH");
+               override_ != nullptr && override_[0] != '\0') {
+        // An override is an instruction, not a hint about where to look. It
+        // used to be consulted only while searching for a file that already
+        // existed, so setting it and starting with nothing saved wrote to the
+        // system path below instead -- which an unprivileged process cannot
+        // create, so the first save failed and said so nowhere anyone would
+        // look. Found writing the round-trip test in TestStreamManager.
+        configPath_ = override_;
+        AES67_LOGF("StreamConfigManager: No existing config; AES67_CONFIG_PATH says: %s",
+                   configPath_.c_str());
     } else {
         // Default to system-wide location for new configs
         configPath_ = "/Library/Application Support/AES67Driver/" + defaultConfigFile_;
