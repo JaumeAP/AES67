@@ -111,6 +111,26 @@ TEST_CASE("A writable override is taken") {
     ::unsetenv("AES67_TEST_CONFIG_PATH");
 }
 
+TEST_CASE("A bare file name is judged against the current directory") {
+    // configSearchPaths()'s own contract: an override is taken whole and
+    // names a file, not a directory, so a bare name with no '/' at all
+    // resolves relative to the current directory the same way
+    // std::ifstream(path) would read it. This used to answer "not writable"
+    // for every such override, whatever the current directory's actual
+    // permissions -- the walk that decides never looked at it.
+    const TempDirectory cwd;
+    const std::string previous = std::filesystem::current_path().string();
+    std::filesystem::current_path(cwd.path());
+
+    ::setenv("AES67_TEST_CONFIG_PATH", "bare.json", 1);
+    const std::string chosen = firstWritableConfigPath("AES67_TEST_CONFIG_PATH", "streams.json");
+    ::unsetenv("AES67_TEST_CONFIG_PATH");
+
+    std::filesystem::current_path(previous);
+
+    CHECK(chosen == "bare.json");
+}
+
 TEST_CASE("What comes back is always one of the paths that were searched") {
     const TempDirectory home;
     ::setenv("HOME", home.path().c_str(), 1);

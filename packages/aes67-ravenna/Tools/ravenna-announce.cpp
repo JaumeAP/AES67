@@ -121,33 +121,46 @@ int main(int argc, char** argv) {
         const std::string option = argv[i];
         const char* value = nullptr;
         long long number = 0;
-        auto need = [&]() { value = ToolOptions::value(argc, argv, i); return value != nullptr; };
+        // Both print usage() themselves on failure, which is what let the
+        // fifteen call sites below drop it: it used to be pasted at each one
+        // by hand, and a change to what a refusal does needed re-touching
+        // every one of them.
+        auto need = [&]() {
+            value = ToolOptions::value(argc, argv, i);
+            if (value == nullptr) usage();
+            return value != nullptr;
+        };
+        auto needInt = [&](long long lo, long long hi) {
+            const bool ok = ToolOptions::integerOption(argc, argv, i, lo, hi, number);
+            if (!ok) usage();
+            return ok;
+        };
 
         if (option == "--help" || option == "-h") { usage(); return 0; }
-        else if (option == "--interface") { if (!need()) { usage(); return 2; } interfaceName = value; }
-        else if (option == "--address") { if (!need()) { usage(); return 2; } addressText = value; }
-        else if (option == "--host") { if (!need()) { usage(); return 2; } hostName = value; }
-        else if (option == "--name") { if (!need()) { usage(); return 2; } sessionName = value; nameGiven = true; }
-        else if (option == "--group") { if (!need()) { usage(); return 2; } group = value; }
-        else if (option == "--port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) { usage(); return 2; } streamPort = static_cast<uint16_t>(number); }
+        else if (option == "--interface") { if (!need()) return 2; interfaceName = value; }
+        else if (option == "--address") { if (!need()) return 2; addressText = value; }
+        else if (option == "--host") { if (!need()) return 2; hostName = value; }
+        else if (option == "--name") { if (!need()) return 2; sessionName = value; nameGiven = true; }
+        else if (option == "--group") { if (!need()) return 2; group = value; }
+        else if (option == "--port") { if (!needInt(1, 65535)) return 2; streamPort = static_cast<uint16_t>(number); }
         // Zero asks the kernel for a free port, and the SRV record advertises
         // whichever one it gave: RtspServer::start reports it back through
         // port(), which is what mdns.start() below is handed. Refusing 0 took
         // that away, and openListenSocket's own `if (port == 0)` branch with
         // it.
-        else if (option == "--rtsp-port") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) { usage(); return 2; } rtspPort = static_cast<uint16_t>(number); }
-        else if (option == "--channels") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) { usage(); return 2; } channels = static_cast<uint16_t>(number); }
-        else if (option == "--device-channel") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) { usage(); return 2; } deviceChannel = static_cast<uint16_t>(number); }
-        else if (option == "--rate") { if (!ToolOptions::integerOption(argc, argv, i, 1, 4294967295LL, number)) { usage(); return 2; } sampleRate = static_cast<uint32_t>(number); }
-        else if (option == "--encoding") { if (!need()) { usage(); return 2; } encoding = value; }
+        else if (option == "--rtsp-port") { if (!needInt(0, 65535)) return 2; rtspPort = static_cast<uint16_t>(number); }
+        else if (option == "--channels") { if (!needInt(1, 65535)) return 2; channels = static_cast<uint16_t>(number); }
+        else if (option == "--device-channel") { if (!needInt(0, 65535)) return 2; deviceChannel = static_cast<uint16_t>(number); }
+        else if (option == "--rate") { if (!needInt(1, 4294967295LL)) return 2; sampleRate = static_cast<uint32_t>(number); }
+        else if (option == "--encoding") { if (!need()) return 2; encoding = value; }
         // Zero is left to the packet-size check below, which refuses a packet
         // time that carries no samples and says so with the rate in hand.
-        else if (option == "--ptime-us") { if (!ToolOptions::integerOption(argc, argv, i, 0, 4294967295LL, number)) { usage(); return 2; } ptimeUs = static_cast<uint32_t>(number); }
-        else if (option == "--ptp-gmid") { if (!need()) { usage(); return 2; } ptpGrandmaster = value; }
+        else if (option == "--ptime-us") { if (!needInt(0, 4294967295LL)) return 2; ptimeUs = static_cast<uint32_t>(number); }
+        else if (option == "--ptp-gmid") { if (!need()) return 2; ptpGrandmaster = value; }
         // IEEE 1588 carries domainNumber in one octet.
-        else if (option == "--ptp-domain") { if (!ToolOptions::integerOption(argc, argv, i, 0, 255, number)) { usage(); return 2; } ptpDomain = static_cast<int>(number); }
+        else if (option == "--ptp-domain") { if (!needInt(0, 255)) return 2; ptpDomain = static_cast<int>(number); }
         // Zero here too, for the same reason: HttpServer::start takes it.
-        else if (option == "--nmos-port") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) { usage(); return 2; } nmosPort = static_cast<uint16_t>(number); }
+        else if (option == "--nmos-port") { if (!needInt(0, 65535)) return 2; nmosPort = static_cast<uint16_t>(number); }
         else { ToolOptions::unknownOption(option.c_str()); usage(); return 2; }
     }
 

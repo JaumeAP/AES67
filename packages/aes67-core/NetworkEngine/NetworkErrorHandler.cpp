@@ -9,7 +9,7 @@ namespace AES67 {
 std::unique_ptr<NetworkErrorHandler> g_networkErrorHandler;
 
 NetworkErrorHandler::NetworkErrorHandler()
-    : lastRecoveryAttempt_(std::chrono::steady_clock::now()) {}
+    : lastRecoveryAttemptTicks_(std::chrono::steady_clock::now().time_since_epoch().count()) {}
 
 NetworkErrorHandler::~NetworkErrorHandler() = default;
 
@@ -33,10 +33,14 @@ void NetworkErrorHandler::reportError(const NetworkError& error) {
     
     LOG_ERROR(logMsg.str());
     
-    // Check if we need to attempt recovery based on error frequency
-    auto now = std::chrono::steady_clock::now();
-    auto timeSinceLastRecovery = std::chrono::duration_cast<std::chrono::seconds>(
-        now - lastRecoveryAttempt_);
+    // Check if we need to attempt recovery based on error frequency. Read
+    // once into a local time_point rather than racing attemptRecovery()'s
+    // write of the same field from another thread.
+    const auto now = std::chrono::steady_clock::now();
+    const std::chrono::steady_clock::time_point lastRecovery(
+        std::chrono::steady_clock::duration(lastRecoveryAttemptTicks_.load()));
+    const auto timeSinceLastRecovery =
+        std::chrono::duration_cast<std::chrono::seconds>(now - lastRecovery);
     
     // If we've had many recent errors, consider attempting recovery
     if (recentErrorCount_.load() > MAX_RECENT_ERRORS && 
@@ -80,7 +84,7 @@ bool NetworkErrorHandler::attemptRecovery() {
     recentErrorCount_.store(0);
     
     // What reportError's cooldown is measured from.
-    lastRecoveryAttempt_ = std::chrono::steady_clock::now();
+    lastRecoveryAttemptTicks_.store(std::chrono::steady_clock::now().time_since_epoch().count());
     
     return true;
 }

@@ -560,6 +560,71 @@ TEST_CASE("A Controller's Patch Is Not The Automatic Follow It Can Be Switched O
     std::cout << "PASS" << std::endl;
 }
 
+TEST_CASE("A Refused Update Leaves The Stored Mapping Untouched") {
+    // updateMapping() used to commit the mapper's own bookkeeping and
+    // it->second.mapping before the receiver or transmitter's own
+    // updateMapping had a chance to refuse the same mapping -- so a refusal
+    // there left StreamManager's records naming a mapping neither RTP object
+    // was actually running under. This is the gate before that one: a
+    // mapping StreamChannelMapper itself refuses (declared with no channels
+    // at all) must not reach either commit.
+    std::cout << "Test: a mapping the mapper refuses leaves getMapping() unchanged... ";
+    ManagerFixture fixture;
+    fixture.manager.setAutoSave(false);
+
+    SDPSession sdp = createTestSDP("Rollback Guard", 5004, 2, 48000);
+    sdp.originAddress = "192.168.1.51";
+    const StreamID id = fixture.manager.addStream(sdp);
+    if (id.isNull()) {
+        std::cout << "SKIP (no stream could be added here)" << std::endl;
+        return;
+    }
+
+    const std::optional<ChannelMapping> before = fixture.manager.getMapping(id);
+    REQUIRE(before.has_value());
+
+    ChannelMapping invalid = *before;
+    invalid.deviceChannelCount = 0;  // StreamChannelMapper::validateMapping refuses this
+
+    CHECK_FALSE(fixture.manager.updateMapping(id, invalid));
+
+    const std::optional<ChannelMapping> after = fixture.manager.getMapping(id);
+    REQUIRE(after.has_value());
+    CHECK(after->deviceChannelStart == before->deviceChannelStart);
+    CHECK(after->deviceChannelCount == before->deviceChannelCount);
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("An Accepted Update Commits To Both The Mapper And The Stream") {
+    // The happy path through the same reordering: mapper_, the receiver or
+    // transmitter, and it->second.mapping all have to agree once
+    // updateMapping() returns true.
+    std::cout << "Test: a valid update is visible through getMapping() afterwards... ";
+    ManagerFixture fixture;
+    fixture.manager.setAutoSave(false);
+
+    SDPSession sdp = createTestSDP("Commit Guard", 5004, 2, 48000);
+    sdp.originAddress = "192.168.1.52";
+    const StreamID id = fixture.manager.addStream(sdp);
+    if (id.isNull()) {
+        std::cout << "SKIP (no stream could be added here)" << std::endl;
+        return;
+    }
+
+    const std::optional<ChannelMapping> before = fixture.manager.getMapping(id);
+    REQUIRE(before.has_value());
+
+    ChannelMapping moved = *before;
+    moved.deviceChannelStart = before->deviceChannelStart == 0 ? 4 : 0;
+
+    REQUIRE(fixture.manager.updateMapping(id, moved));
+
+    const std::optional<ChannelMapping> after = fixture.manager.getMapping(id);
+    REQUIRE(after.has_value());
+    CHECK(after->deviceChannelStart == moved.deviceChannelStart);
+    std::cout << "PASS" << std::endl;
+}
+
 TEST_CASE("Sixty-Four Channels Are Accepted At 125 us Under RAVENNA") {
     std::cout << "Test: 64 channels of L24 at 125 us pass validation under RAVENNA... ";
     ManagerFixture fixture;

@@ -623,6 +623,7 @@ bool StreamManager::updateMapping(const StreamID& id, const ChannelMapping& newM
     }
 
     // Update mapper
+    const ChannelMapping oldMapping = it->second.mapping;
     ChannelMapping completeMapping = newMapping;
     completeMapping.streamID = id;
     completeMapping.streamName = it->second.mapping.streamName;
@@ -632,10 +633,15 @@ bool StreamManager::updateMapping(const StreamID& id, const ChannelMapping& newM
         return false;
     }
 
-    // Update managed stream
-    it->second.mapping = completeMapping;
-
-    // Update receiver/transmitter
+    // Update receiver/transmitter before committing anything the caller can
+    // read back: mapper_.updateMapping() above already replaced this
+    // stream's entry in the mapper's own bookkeeping, and if the RTP
+    // object's own updateMapping refuses the same mapping, that commit has
+    // to be undone rather than left standing while it->second.mapping still
+    // names the mapping the live receiver or transmitter is actually
+    // running under -- StreamManager's records and the RTP object's own
+    // state disagreeing, with the false return the only sign anything went
+    // wrong.
     bool updated = false;
     if (it->second.receiver) {
         updated = it->second.receiver->updateMapping(completeMapping);
@@ -643,7 +649,18 @@ bool StreamManager::updateMapping(const StreamID& id, const ChannelMapping& newM
         updated = it->second.transmitter->updateMapping(completeMapping);
     }
 
-    if (!updated) return false;
+    if (!updated) {
+        // oldMapping was accepted once already, so this call is expected to
+        // succeed; if it somehow does not, the mapper's bookkeeping is left
+        // pointing at a mapping neither RTP object is running, which is the
+        // pre-existing failure mode this restores rather than worsens.
+        mapper_.updateMapping(oldMapping);
+        return false;
+    }
+
+    // Only now: the mapper and the RTP object agree, so this is safe to hand
+    // back to whoever reads it->second.mapping next.
+    it->second.mapping = completeMapping;
 
     const StreamInfo changed = it->second.info;
     lock.unlock();   // see addStream

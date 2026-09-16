@@ -542,5 +542,42 @@ TEST_CASE("A routed mapping cannot take a device channel another stream owns") {
     CHECK(mapper.getStreamForDeviceChannel(0) == first.streamID);
 }
 
+TEST_CASE("mappingFitsDevice checks the block the two RTP classes actually read") {
+    // Its two callers are RTPReceiver::updateMapping and
+    // RTPTransmitter::updateMapping, and in the no-routes case both read
+    // deviceChannelStart + sdp_.numChannels (the stream's own width), never
+    // deviceChannelCount. A mapping whose declared deviceChannelCount is
+    // larger than the stream, but whose start-plus-stream-width still fits,
+    // is one those two would apply correctly -- and this used to reject it.
+    ChannelMapping generous;
+    generous.deviceChannelStart = 100;
+    generous.deviceChannelCount = 28; // would end at 128 if read
+    // routes left empty: the block case.
+
+    // A two-channel stream only reaches 100 + 2 = 102, well inside 128.
+    CHECK(mappingFitsDevice(generous, /*streamChannelCount=*/2));
+
+    // The stream's own width is still the boundary that matters: one that
+    // does not fit is still refused.
+    ChannelMapping tooWide;
+    tooWide.deviceChannelStart = 120;
+    CHECK_FALSE(mappingFitsDevice(tooWide, /*streamChannelCount=*/16));
+    CHECK(mappingFitsDevice(tooWide, /*streamChannelCount=*/8));
+}
+
+TEST_CASE("mappingFitsDevice still checks every route by itself") {
+    ChannelMapping routed;
+    routed.routes = {{0, 0}, {1, 127}};
+    CHECK(mappingFitsDevice(routed, /*streamChannelCount=*/2));
+
+    ChannelMapping deviceOutOfRange;
+    deviceOutOfRange.routes = {{0, 128}};
+    CHECK_FALSE(mappingFitsDevice(deviceOutOfRange, /*streamChannelCount=*/1));
+
+    ChannelMapping streamOutOfRange;
+    streamOutOfRange.routes = {{5, 0}};
+    CHECK_FALSE(mappingFitsDevice(streamOutOfRange, /*streamChannelCount=*/2));
+}
+
 } // namespace Tests
 } // namespace AES67

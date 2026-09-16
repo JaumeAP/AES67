@@ -63,6 +63,46 @@ namespace {
 
 } // namespace
 
+namespace {
+
+/// One log-interval field, read from either of the two keys a settings file
+/// may carry it under.
+///
+/// The millisecond key is read first, so that the exponent key wins when a
+/// file has both: a file written by this driver carries both, and one
+/// written by an older build or by ManagerApp carries only the
+/// milliseconds. Reading the old key is what keeps a settings file that
+/// predates the exponent from silently reverting to the default.
+///
+/// The result is clamped to -9..21, the range Profiles/PtpIntervals.h
+/// treats as an interval to follow, not merely to what fits in int8_t. Two
+/// reasons, and the first is not cosmetic: narrowing a raw JSON int straight
+/// to int8_t is implementation-defined before C++20 and wraps under C++20's
+/// own rule, so "logSyncInterval": 200 became -56 rather than being
+/// refused. -56 is outside -9..21, and ptpLogIntervalToNanoseconds already
+/// answers 0 for that -- which is a period of zero, pinning PTPMaster's
+/// transmit loop at "now" forever: a busy loop flooding the segment with
+/// Sync and Follow_Up at real-time priority. Clamping only to int8_t's own
+/// range stops the wraparound but not this: -56 fits in an int8_t perfectly
+/// well. Clamping to the domain the conversion actually honours stops both
+/// at once, for a value that wrapped and for one that did not.
+///
+/// This was two copies of the same nine lines, one per field, before it was
+/// a function -- the same shape this codebase had already paid for once
+/// with JsonFields.h's own hand-written regex.
+int8_t migrateLogInterval(const std::string& json, const char* msKey, const char* logKey,
+                         int8_t current) {
+    if (auto v = extractIntField(json, msKey)) {
+        current = msToLogInterval(*v);
+    }
+    if (auto v = extractIntField(json, logKey)) {
+        current = static_cast<int8_t>(std::clamp(*v, -9, 21));
+    }
+    return current;
+}
+
+} // namespace
+
 PTPMasterSettings PTPMasterSettingsManager::load() {
     PTPMasterSettings settings; // defaults: masterCapable=false, i.e. old slave-only behavior
 
@@ -82,35 +122,10 @@ PTPMasterSettings PTPMasterSettingsManager::load() {
     if (auto v = extractIntField(json, "priority2")) settings.priority2 = *v;
     if (auto v = extractIntField(json, "clockClass")) settings.clockClass = *v;
     if (auto v = extractIntField(json, "clockAccuracy")) settings.clockAccuracy = *v;
-    // The millisecond keys first, so that the exponent wins when a file has
-    // both: a file written by this driver carries both, and one written by an
-    // older build or by ManagerApp carries only the milliseconds. Reading the
-    // old key is what keeps a settings file that predates this from silently
-    // reverting to the defaults.
-    if (auto v = extractIntField(json, "syncIntervalMs")) {
-        settings.logSyncInterval = msToLogInterval(*v);
-    }
-    if (auto v = extractIntField(json, "announceIntervalMs")) {
-        settings.logAnnounceInterval = msToLogInterval(*v);
-    }
-    // Clamped to the range Profiles/PtpIntervals.h treats as an interval to
-    // follow, -9..21, not merely to what fits in int8_t. Two reasons, and
-    // the first is not cosmetic: narrowing a raw JSON int straight to int8_t
-    // is implementation-defined before C++20 and wraps under C++20's own
-    // rule, so "logSyncInterval": 200 became -56 rather than being refused.
-    // -56 is outside -9..21, and ptpLogIntervalToNanoseconds already answers
-    // 0 for that -- which is a period of zero, pinning PTPMaster's transmit
-    // loop at "now" forever: a busy loop flooding the segment with Sync and
-    // Follow_Up at real-time priority. Clamping only to int8_t's own range
-    // stops the wraparound but not this: -56 fits in an int8_t perfectly
-    // well. Clamping to the domain the conversion actually honours stops
-    // both at once, for a value that wrapped and for one that did not.
-    if (auto v = extractIntField(json, "logSyncInterval")) {
-        settings.logSyncInterval = static_cast<int8_t>(std::clamp(*v, -9, 21));
-    }
-    if (auto v = extractIntField(json, "logAnnounceInterval")) {
-        settings.logAnnounceInterval = static_cast<int8_t>(std::clamp(*v, -9, 21));
-    }
+    settings.logSyncInterval = migrateLogInterval(json, "syncIntervalMs", "logSyncInterval",
+                                                  settings.logSyncInterval);
+    settings.logAnnounceInterval = migrateLogInterval(json, "announceIntervalMs", "logAnnounceInterval",
+                                                      settings.logAnnounceInterval);
     if (auto v = extractIntField(json, "delayReqIntervalMs")) settings.delayReqIntervalMs = *v;
     if (auto v = extractStringField(json, "delayMechanism")) settings.delayMechanism = *v;
     if (auto v = extractIntField(json, "dscp")) settings.dscp = *v;
