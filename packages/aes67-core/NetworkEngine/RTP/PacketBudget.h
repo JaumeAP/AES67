@@ -68,6 +68,28 @@ constexpr uint32_t framesPerPacket(uint32_t sampleRate, uint32_t ptimeUs, uint32
     return static_cast<uint32_t>((static_cast<uint64_t>(sampleRate) * ptimeUs) / 1000000ULL);
 }
 
+/// How long the frames in one packet last, as a fraction that divides
+/// exactly: `whole` nanoseconds plus `remainder`/`sampleRate` of one more.
+///
+/// A sender that rounds this to whole microseconds sends at a rate that is
+/// not the one it is carrying. At 48 kHz and 1 ms the division is exact and
+/// nothing shows; at 44.1 kHz, which the RAVENNA and Generic profiles both
+/// permit, 44 frames last 997.7324 us and a 997 us interval is 0.07% fast --
+/// enough to drain the ring buffer the device fills, steadily, for as long as
+/// the stream runs. At 125 us it is 0.33%. Carrying the remainder costs an
+/// add and a compare per packet and removes the error entirely.
+struct PacketInterval {
+    uint64_t wholeNs = 0;
+    uint32_t remainder = 0;   ///< numerator over `sampleRate`
+};
+
+constexpr PacketInterval packetInterval(uint32_t framesPerPacketCount, uint32_t sampleRate) {
+    if (sampleRate == 0) return PacketInterval{};
+    const uint64_t numerator = static_cast<uint64_t>(framesPerPacketCount) * 1000000000ULL;
+    return PacketInterval{numerator / sampleRate,
+                          static_cast<uint32_t>(numerator % sampleRate)};
+}
+
 /// The RTP packet, header included, for this many channels at this many
 /// samples each.
 constexpr size_t rtpPacketBytes(uint16_t channels, size_t bytesPerSample, uint32_t framesPerPacket) {

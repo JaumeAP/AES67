@@ -81,6 +81,44 @@ TEST_CASE("Degenerate inputs give zero rather than a division by zero") {
     CHECK(fits(1, 3, 1));
 }
 
+TEST_CASE("A packet's length is a fraction, and the fraction divides exactly") {
+    // 48 kHz at 1 ms: 48 frames, exactly a millisecond, nothing left over.
+    const auto at48 = packetInterval(48, 48000);
+    CHECK(at48.wholeNs == 1000000);
+    CHECK(at48.remainder == 0);
+
+    // 44.1 kHz at 1 ms: 44 frames last 997.732 ... us -- 44 thousand million
+    // nanoseconds over 44100 -- and the truncation a sender used to pace on,
+    // 997 us, is 0.07% fast, which drains the ring buffer the device fills for
+    // as long as the stream runs.
+    const auto at441 = packetInterval(44, 44100);
+    CHECK(at441.wholeNs == 997732);
+    CHECK(at441.remainder == 18800);
+
+    // Carrying the remainder puts the error back to nothing: one packet's
+    // worth of frames, summed over a second, is a second.
+    uint64_t totalNs = 0;
+    uint32_t carry = 0;
+    const auto step = packetInterval(44, 44100);
+    int packets = 0;
+    for (; totalNs < 1000000000ULL; ++packets) {
+        uint64_t ns = step.wholeNs;
+        carry += step.remainder;
+        if (carry >= 44100) { ns += carry / 44100; carry %= 44100; }
+        totalNs += ns;
+    }
+    // 44100/44 = 1002.27 packets a second; at 1002 the sum is just under a
+    // second and at 1003 just over, and the error is nanoseconds either way.
+    CHECK(packets == 1003);
+    CHECK(totalNs > 999900000ULL);
+    CHECK(totalNs < 1000800000ULL);
+
+    // A rate of zero is a question with no answer, not a division by zero.
+    const auto none = packetInterval(48, 0);
+    CHECK(none.wholeNs == 0);
+    CHECK(none.remainder == 0);
+}
+
 TEST_CASE("Usable in a constant expression") {
     static_assert(fits(8, 3, 48), "AES67's baseline flow fits");
     static_assert(!fits(64, 3, 48), "and 64 channels at 1 ms does not");

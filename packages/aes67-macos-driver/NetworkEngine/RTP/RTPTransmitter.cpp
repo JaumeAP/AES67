@@ -7,6 +7,7 @@
 #include "RTPTransmitter.h"
 #include "SimpleRTP.h"
 #include "PCMCodec.h"
+#include "NetworkEngine/RTP/PacketBudget.h"
 #include "Driver/DebugLog.h"
 #include <cstring>
 #include <random>
@@ -209,13 +210,30 @@ void RTPTransmitter::transmitLoop() {
     // Derived in the constructor, consistent with packetInterval_.
     const size_t samplesPerPacket = samplesPerPacket_;
 
+    // The interval as a fraction, not rounded to whole microseconds: the
+    // frames in one packet last framesPerPacket/sampleRate seconds, which at
+    // 48 kHz divides exactly and at 44.1 kHz does not. packetInterval_ keeps
+    // the rounded value for everything that only needs an order of magnitude;
+    // the loop below paces on the exact one, carrying the remainder, so the
+    // rate this sends at is the rate it carries. Rounded, 44.1 kHz went out
+    // 0.07% fast and drained the ring buffer the device fills.
+    const PacketBudget::PacketInterval exact =
+        PacketBudget::packetInterval(static_cast<uint32_t>(samplesPerPacket), sdp_.sampleRate);
+    uint32_t remainderCarry = 0;
+
     auto nextTransmitTime = startTime_;
     bool unsupportedEncodingLogged = false;
 
     while (running_) {
         // Wait until next transmit time (precise 1ms intervals)
         std::this_thread::sleep_until(nextTransmitTime);
-        nextTransmitTime += packetInterval_;
+        uint64_t stepNs = exact.wholeNs;
+        remainderCarry += exact.remainder;
+        if (sdp_.sampleRate > 0 && remainderCarry >= sdp_.sampleRate) {
+            stepNs += remainderCarry / sdp_.sampleRate;
+            remainderCarry %= sdp_.sampleRate;
+        }
+        nextTransmitTime += std::chrono::nanoseconds(stepNs);
 
         // Read audio from device channels (silence-fills on underrun)
         // Always send packets even with empty ring buffers — AES67 requires
