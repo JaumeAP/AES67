@@ -2130,11 +2130,20 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     /// Empty when the driver isn't loaded, is an older build without this
     /// property, or simply hasn't heard any announcements yet — none of
     /// which are errors worth surfacing differently.
-    func fetchDiscoveredSessions() -> [DiscoveredSession] {
+    /// The array a custom AudioObject property publishes, as dictionaries.
+    ///
+    /// Empty when the driver is not loaded, is an older build without the
+    /// property, or simply has nothing to report — none of which are errors
+    /// worth telling apart here, and all of which the caller shows the same
+    /// way. Written once because the three readers below were the same eleven
+    /// lines with one selector changed.
+    private func fetchPropertyArray(
+        _ selector: AudioObjectPropertySelector
+    ) -> [[String: Any]] {
         guard let deviceID = findAES67DeviceID() else { return [] }
 
         var address = AudioObjectPropertyAddress(
-            mSelector: Self.kDiscoveredSessionsPropertySelector,
+            mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
@@ -2151,7 +2160,11 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
             return []
         }
 
-        return entries.compactMap { entry in
+        return entries
+    }
+
+    func fetchDiscoveredSessions() -> [DiscoveredSession] {
+        return fetchPropertyArray(Self.kDiscoveredSessionsPropertySelector).compactMap { entry in
             guard let name = entry["sessionName"] as? String,
                   let source = entry["sourceAddress"] as? String else { return nil }
             // Older drivers publish no "sources" key at all; everything they
@@ -2184,27 +2197,7 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     /// the driver isn't loaded, is an older build without this property, or
     /// simply hasn't heard any PTP traffic yet — none of which are errors.
     func fetchPtpPeers() -> [DiscoveredPeer] {
-        guard let deviceID = findAES67DeviceID() else { return [] }
-
-        var address = AudioObjectPropertyAddress(
-            mSelector: Self.kPtpPeersPropertySelector,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        guard AudioObjectHasProperty(deviceID, &address) else { return [] }
-
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else {
-            return []
-        }
-
-        var cfArray: Unmanaged<CFArray>? = nil
-        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
-              let entries = cfArray?.takeRetainedValue() as? [[String: Any]] else {
-            return []
-        }
-
-        return entries.compactMap { entry in
+        return fetchPropertyArray(Self.kPtpPeersPropertySelector).compactMap { entry in
             guard let clockId = entry["clockId"] as? String else { return nil }
             let roleStr = entry["role"] as? String ?? "unknown"
             return DiscoveredPeer(
@@ -2228,19 +2221,7 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
     }
 
     func fetchRtcpReceivers() -> [RtcpReceiver] {
-        guard let deviceID = findAES67DeviceID() else { return [] }
-        var address = AudioObjectPropertyAddress(
-            mSelector: Self.kRtcpReceiversPropertySelector,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        guard AudioObjectHasProperty(deviceID, &address) else { return [] }
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr else { return [] }
-        var cfArray: Unmanaged<CFArray>? = nil
-        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &cfArray) == noErr,
-              let entries = cfArray?.takeRetainedValue() as? [[String: Any]] else { return [] }
-        return entries.compactMap { entry in
+        return fetchPropertyArray(Self.kRtcpReceiversPropertySelector).compactMap { entry in
             guard let ssrc = entry["ssrc"] as? Int64 else { return nil }
             return RtcpReceiver(
                 ssrc: UInt32(truncatingIfNeeded: ssrc),

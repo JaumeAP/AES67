@@ -102,13 +102,13 @@ struct DiscoveredSessionsView: View {
     @ViewBuilder
     private var content: some View {
         if !driverManager.isDriverInstalled {
-            notice("The driver isn't installed, so nothing is listening for announcements. Turn it on from the main window.",
+            NoticeView(text: "The driver isn't installed, so nothing is listening for announcements. Turn it on from the main window.",
                    icon: "power")
         } else if !canReceive {
-            notice("\(driverManager.activeCompatibilityProfile.name) is transmit-only — this driver can't receive, so discovered sessions can't be added under it.",
+            NoticeView(text: "\(driverManager.activeCompatibilityProfile.name) is transmit-only — this driver can't receive, so discovered sessions can't be added under it.",
                    icon: "lock.fill")
         } else if sessions.isEmpty {
-            notice("Nothing found yet. Devices repeat their announcements every 30 seconds or so, registered services are asked again periodically, and a session disappears here once it stops being either.",
+            NoticeView(text: "Nothing found yet. Devices repeat their announcements every 30 seconds or so, registered services are asked again periodically, and a session disappears here once it stops being either.",
                    icon: "antenna.radiowaves.left.and.right")
         } else {
             List(sessions) { session in
@@ -143,20 +143,6 @@ struct DiscoveredSessionsView: View {
         .padding(.vertical, 4)
     }
 
-    private func notice(_ text: String, icon: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 32))
-                .foregroundColor(.secondary)
-            Text(text)
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 
     private var footer: some View {
         HStack {

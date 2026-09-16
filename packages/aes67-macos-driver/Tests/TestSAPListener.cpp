@@ -207,8 +207,8 @@ TEST_CASE("A multicast connection address keeps the address and drops the TTL") 
         "v=0\r\ns=Unicast\r\nc=IN IP4 192.168.1.7\r\nm=audio 5004 RTP/AVP 97\r\n";
     CHECK(parse(buildSAP(unicast)).multicastAddress == "192.168.1.7");
 
-    // Same again on the last line of a body with no trailing newline: that
-    // is a second copy of the parsing, and it had the same defect.
+    // Same again on the last line of a body with no trailing newline, which
+    // used to be parsed by a second copy of this and had the same defect.
     const std::string unterminated =
         "v=0\r\ns=Last\r\nm=audio 5004 RTP/AVP 97\r\nc=IN IP4 239.1.1.9/16";
     CHECK(parse(buildSAP(unterminated)).multicastAddress == "239.1.1.9");
@@ -220,4 +220,48 @@ TEST_CASE("A media port that is not a number does not become one") {
 
     CHECK(announced.sessionName == "Bad Port");
     CHECK(announced.port == 0);
+}
+
+
+TEST_CASE("A trailing newline changes nothing about what is read") {
+    // The last line used to go through its own copy of the parsing, and the
+    // two had begun to differ. This is the property that copy made hard to
+    // keep: the same description, with and without the final CRLF, says the
+    // same thing -- whichever field happens to be last.
+    const std::string body =
+        "v=0\r\n"
+        "o=- 1 1 IN IP4 192.168.1.50\r\n"
+        "s=Either Way\r\n"
+        "c=IN IP4 239.1.1.11/32\r\n"
+        "t=0 0\r\n"
+        "m=audio 5006 RTP/AVP 97\r\n"
+        "a=rtpmap:97 L24/48000/2";
+
+    const SAPAnnouncement without = parse(buildSAP(body));
+    const SAPAnnouncement with = parse(buildSAP(body + "\r\n"));
+
+    CHECK(without.sessionName == with.sessionName);
+    CHECK(without.multicastAddress == with.multicastAddress);
+    CHECK(without.port == with.port);
+
+    CHECK(with.sessionName == "Either Way");
+    CHECK(with.multicastAddress == "239.1.1.11");
+    CHECK(with.port == 5006);
+
+    // And with each of the three fields in turn as the unterminated last
+    // line, because which one it is used to be what decided whether the
+    // second copy knew about it.
+    const std::string nameLast =
+        "v=0\r\nc=IN IP4 239.1.1.12/32\r\nm=audio 5008 RTP/AVP 97\r\ns=Name Last";
+    const SAPAnnouncement named = parse(buildSAP(nameLast));
+    CHECK(named.sessionName == "Name Last");
+    CHECK(named.multicastAddress == "239.1.1.12");
+    CHECK(named.port == 5008);
+
+    const std::string portLast =
+        "v=0\r\ns=Port Last\r\nc=IN IP4 239.1.1.13/32\r\nm=audio 5010 RTP/AVP 97";
+    const SAPAnnouncement ported = parse(buildSAP(portLast));
+    CHECK(ported.sessionName == "Port Last");
+    CHECK(ported.multicastAddress == "239.1.1.13");
+    CHECK(ported.port == 5010);
 }

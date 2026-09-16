@@ -64,6 +64,20 @@ std::string ChannelMapping::getValidationError() const {
     return "";  // Valid
 }
 
+bool mappingFitsDevice(const ChannelMapping& mapping, uint16_t streamChannelCount) {
+    if (mapping.routes.empty()) {
+        // The block it was given: start plus the stream's whole width.
+        return mapping.deviceChannelStart + streamChannelCount <=
+               StreamChannelMapper::kMaxDeviceChannels;
+    }
+
+    for (const ChannelRoute& route : mapping.routes) {
+        if (route.deviceChannel >= StreamChannelMapper::kMaxDeviceChannels) return false;
+        if (route.streamChannel >= streamChannelCount) return false;
+    }
+    return true;
+}
+
 std::vector<int> ChannelMapping::deviceChannels() const {
     std::vector<int> channels;
     if (routes.empty()) {

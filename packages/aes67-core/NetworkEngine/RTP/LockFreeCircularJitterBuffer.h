@@ -55,16 +55,17 @@ public:
     bool addPacket(const uint8_t* packetData, size_t packetLength,
                    uint32_t sequenceNumber, uint64_t presentationTime);
 
-    // Get the next packet that should be played based on sequence number
-    // Should be called from audio thread
+    /// Takes the packet with this sequence number, if the slot it indexes
+    /// holds that packet and it fits. Called from the audio thread.
+    ///
+    /// The caller says which packet it wants; this buffer keeps no idea of
+    /// where the stream is up to. It used to: there was a second reader,
+    /// getPacketBySequence, identical but for a line that advanced a member
+    /// nothing ever read -- RTPReceiver has always tracked the expected
+    /// sequence itself and passed it in.
     bool getNextPacket(uint8_t* outputBuffer, size_t bufferSize,
                        size_t& outputLength, uint64_t& presentationTime,
-                       uint32_t expectedSequenceNumber);
-
-    // Get a packet by sequence number (for out-of-order packets)
-    bool getPacketBySequence(uint8_t* outputBuffer, size_t bufferSize,
-                             size_t& outputLength, uint64_t& presentationTime,
-                             uint32_t sequenceNumber);
+                       uint32_t sequenceNumber);
 
     // Get buffer statistics
     size_t getBufferedPacketCount() const;
@@ -80,6 +81,7 @@ private:
     // Round up to the next power of 2 (returns v unchanged if already a power of 2)
     static size_t nextPowerOf2(size_t v);
 
+
     // Actual buffer size after clamping and power-of-2 rounding (set once at construction)
     const size_t bufferSize_;
 
@@ -89,9 +91,6 @@ private:
     // Circular buffer to hold packets indexed by sequence number
     // Dynamically allocated at construction, size is bufferSize_
     std::vector<LockFreeBufferPacket> buffer_;
-
-    // Expected sequence number for the audio thread
-    std::atomic<uint32_t> expectedSequenceNumber_{0};
 
     // Statistics
     std::atomic<size_t> totalPackets_{0};

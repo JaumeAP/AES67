@@ -312,86 +312,73 @@ std::string connectionAddress(const std::string& line) {
     return address;
 }
 
+/// One SDP line, already stripped of its line ending.
+///
+/// The body of this used to be written twice in parseSDPInfo below -- once
+/// inside the loop over lines and once again afterwards, for a last line with
+/// no newline after it -- and the two had already started to differ: the loop
+/// carried an `a=rtpmap:` branch the tail did not. That branch does nothing
+/// today, so nothing was wrong yet; the next field added to one copy and not
+/// the other would have been read out of an announcement ending in a newline
+/// and not out of one that does not.
+void parseSDPLine(const std::string& line, SAPAnnouncement& announcement) {
+    // Parse session name
+    if (line.length() >= 2 && line.substr(0, 2) == "s=") {
+        announcement.sessionName = line.substr(2);
+    }
+    // Parse connection information
+    else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
+        // Format: c=<nettype> <addrtype> <address>[/<ttl>[/<count>]]
+        announcement.multicastAddress = connectionAddress(line);
+    }
+    // Parse media information
+    else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
+        // Format: m=audio <port> RTP/AVP <payload_type>
+        size_t portStart = line.find(' ', 2);
+        if (portStart != std::string::npos) {
+            portStart++; // Skip the space
+            size_t portEnd = line.find(' ', portStart);
+            if (portEnd != std::string::npos) {
+                std::string portStr = line.substr(portStart, portEnd - portStart);
+                try {
+                    announcement.port = std::stoi(portStr);
+                } catch (...) {
+                    announcement.port = 0;
+                }
+            }
+        }
+    }
+    // Parse RTP attribute (a=rtpmap)
+    else if (line.length() >= 9 && line.substr(0, 9) == "a=rtpmap:") {
+        // Format: a=rtpmap:<payload_type> <encoding_name>/<clock_rate>[/<channels>]
+        // This can be used for additional stream information if needed
+    }
+}
+
 /// Pull the session name, connection address and media port out of an SDP
 /// body. Free function rather than a member: parseAnnouncement is static, and
 /// this is the only thing it needs.
+///
+/// RFC 4566 SS 5 ends every line with CRLF, and a sender that leaves the last
+/// one off is still describing the same session -- so the last line is a line
+/// like the others here, rather than a second copy of the parsing.
 void parseSDPInfo(const std::string& sdp, SAPAnnouncement& announcement) {
-    // Parse the SDP content to extract stream information
     size_t lastPos = 0;
-    size_t pos = 0;
 
-    while ((pos = sdp.find('\n', lastPos)) != std::string::npos) {
-        std::string line = sdp.substr(lastPos, pos - lastPos);
+    while (lastPos < sdp.length()) {
+        const size_t pos = sdp.find('\n', lastPos);
+        const bool lastLine = (pos == std::string::npos);
+
+        std::string line = lastLine ? sdp.substr(lastPos)
+                                    : sdp.substr(lastPos, pos - lastPos);
         if (!line.empty() && line.back() == '\r') {
             line.pop_back(); // Remove carriage return if present
         }
 
-        // Parse session name
-        if (line.length() >= 2 && line.substr(0, 2) == "s=") {
-            announcement.sessionName = line.substr(2);
-        }
-        // Parse connection information
-        else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
-            // Format: c=<nettype> <addrtype> <address>[/<ttl>[/<count>]]
-            announcement.multicastAddress = connectionAddress(line);
-        }
-        // Parse media information
-        else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
-            // Format: m=audio <port> RTP/AVP <payload_type>
-            size_t portStart = line.find(' ', 2);
-            if (portStart != std::string::npos) {
-                portStart++; // Skip the space
-                size_t portEnd = line.find(' ', portStart);
-                if (portEnd != std::string::npos) {
-                    std::string portStr = line.substr(portStart, portEnd - portStart);
-                    try {
-                        announcement.port = std::stoi(portStr);
-                    } catch (...) {
-                        announcement.port = 0;
-                    }
-                }
-            }
-        }
-        // Parse RTP attribute (a=rtpmap)
-        else if (line.length() >= 9 && line.substr(0, 9) == "a=rtpmap:") {
-            // Format: a=rtpmap:<payload_type> <encoding_name>/<clock_rate>[/<channels>]
-            // This can be used for additional stream information if needed
-        }
+        parseSDPLine(line, announcement);
 
+        if (lastLine) break;
         lastPos = pos + 1;
-    }
-
-    // Handle the final line without newline
-    if (lastPos < sdp.length()) {
-        std::string line = sdp.substr(lastPos);
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-
-        // Parse session name
-        if (line.length() >= 2 && line.substr(0, 2) == "s=") {
-            announcement.sessionName = line.substr(2);
-        }
-        // Parse connection information
-        else if (line.length() >= 2 && line.substr(0, 2) == "c=") {
-            announcement.multicastAddress = connectionAddress(line);
-        }
-        // Parse media information
-        else if (line.length() >= 2 && line.substr(0, 2) == "m=") {
-            size_t portStart = line.find(' ', 2);
-            if (portStart != std::string::npos) {
-                portStart++; // Skip the space
-                size_t portEnd = line.find(' ', portStart);
-                if (portEnd != std::string::npos) {
-                    std::string portStr = line.substr(portStart, portEnd - portStart);
-                    try {
-                        announcement.port = std::stoi(portStr);
-                    } catch (...) {
-                        announcement.port = 0;
-                    }
-                }
-            }
-        }
     }
 }
 

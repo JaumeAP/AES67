@@ -104,9 +104,9 @@ struct ControllerWindow: View {
             Divider()
 
             if let error = discovery.lastError {
-                notice(error, icon: "exclamationmark.triangle")
+                NoticeView(text: error, icon: "exclamationmark.triangle")
             } else if sessions.isEmpty {
-                notice("Nothing found yet. Announcements repeat every 30 seconds or so, and a registered service is asked again periodically.",
+                NoticeView(text: "Nothing found yet. Announcements repeat every 30 seconds or so, and a registered service is asked again periodically.",
                        icon: "antenna.radiowaves.left.and.right")
             } else {
                 List(sessions) { session in
@@ -129,18 +129,4 @@ struct ControllerWindow: View {
         return "\(destination)  ·  from \(session.sourceAddress)  ·  \(session.routeLabel)"
     }
 
-    private func notice(_ text: String, icon: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 32))
-                .foregroundColor(.secondary)
-            Text(text)
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 }

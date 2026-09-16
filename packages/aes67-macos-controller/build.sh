@@ -69,6 +69,7 @@ swiftc -o AES67Controller \
   "$MANAGER/Models/NmosController.swift" \
   "$MANAGER/Models/SessionList.swift" \
   "$MANAGER/Views/RoutingMatrixView.swift" \
+  "$MANAGER/Views/NoticeView.swift" \
   Models/DiscoveryService.swift \
   Views/DeviceListView.swift \
   Views/LinkView.swift \

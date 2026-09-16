@@ -171,18 +171,9 @@ void RTPTransmitter::resetStatistics() {
 bool RTPTransmitter::updateMapping(const ChannelMapping& newMapping) {
     // Every channel this would read from has to be one the device has, whether
     // the mapping routes them itself or takes the block it was given -- the
-    // same check RTPReceiver::updateMapping makes, which this had only the
-    // block half of.
-    if (newMapping.routes.empty()) {
-        if (newMapping.deviceChannelStart + sdp_.numChannels > 128) {
-            return false;
-        }
-    } else {
-        for (const ChannelRoute& route : newMapping.routes) {
-            if (route.deviceChannel >= 128 || route.streamChannel >= sdp_.numChannels) {
-                return false;
-            }
-        }
+    // same check RTPReceiver::updateMapping makes, and now literally so.
+    if (!mappingFitsDevice(newMapping, sdp_.numChannels)) {
+        return false;
     }
 
     // Stop, update, restart

@@ -133,5 +133,27 @@ constexpr uint8_t payloadTypeFor(std::string_view encoding) {
     return PT_DYNAMIC;
 }
 
+/// What a received sequence number says about the one that was expected:
+/// how many went missing, and whether this one is behind rather than ahead.
+struct SequenceGap {
+    uint16_t lost{0};        ///< Packets between expected and received
+    bool outOfOrder{false};  ///< Received is behind expected: late, or a duplicate
+};
+
+/// Signed 16-bit arithmetic on purpose. RFC 3550 SS 5.1 lets the sequence
+/// number wrap at 65535, so the difference has to be read as a two's
+/// complement to tell a forward gap (packets lost) from a backward one (a
+/// packet that arrived late): 0 minus 65535 is +1, one packet on, and not
+/// 65535 packets lost.
+///
+/// Equal is neither: nothing is lost and nothing arrived late.
+constexpr SequenceGap sequenceGap(uint16_t expected, uint16_t received) {
+    if (received == expected) return {};
+
+    const int16_t difference = static_cast<int16_t>(received - expected);
+    if (difference > 0) return {static_cast<uint16_t>(difference), false};
+    return {0, true};
+}
+
 }  // namespace RTP
 }  // namespace AES67
