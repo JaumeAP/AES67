@@ -31,11 +31,11 @@ DiscoverySettingsManager::DiscoverySettingsManager() {
     constexpr bool kSystemBeforeHome = true;
     configPath_ = findExistingConfig(kConfigPathEnvVar, kDefaultConfigFile, kSystemBeforeHome);
     if (configPath_.empty()) {
-        const std::vector<std::string> paths =
-            configSearchPaths(kConfigPathEnvVar, kDefaultConfigFile, kSystemBeforeHome);
-        configPath_ = paths.empty()
-            ? std::string("/Library/Application Support/AES67Driver/") + kDefaultConfigFile
-            : paths.front();
+        // Not the system-wide path unconditionally: coreaudiod runs as
+        // _coreaudiod and cannot create it, and neither can a tool or a
+        // test. The first of the same search paths this process could
+        // actually write, in the same order it already searches them.
+        configPath_ = firstWritableConfigPath(kConfigPathEnvVar, kDefaultConfigFile, kSystemBeforeHome);
     }
 }
 

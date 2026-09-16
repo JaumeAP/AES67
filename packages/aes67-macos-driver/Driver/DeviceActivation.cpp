@@ -25,7 +25,14 @@ DeviceActivationManager::DeviceActivationManager() {
     if (!existing.empty()) {
         configPath_ = existing;
     } else {
-        configPath_ = "/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile);
+        // Not the system-wide path unconditionally: coreaudiod runs as
+        // _coreaudiod and cannot create it, and neither can a tool or a
+        // test. The first of the same search paths getConfigSearchPaths()
+        // already searches, system before home, that this process could
+        // actually write.
+        configPath_ = firstWritableConfigPath("AES67_DEVICE_ACTIVATION_PATH",
+                                              kDefaultConfigFile,
+                                              /*systemBeforeHome=*/true);
     }
 }
 

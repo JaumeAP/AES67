@@ -243,3 +243,37 @@ TEST_CASE("A file written before the exponent existed is still read") {
     CHECK(read.logSyncInterval == -2);
     CHECK(read.logAnnounceInterval == 1);
 }
+
+
+TEST_CASE("A raw exponent that would wrap the int8_t is clamped, not wrapped") {
+    // The severe one: narrowing a JSON int straight to int8_t wraps under
+    // C++20's own rule, and 200 wraps to -56 -- which used to reach
+    // PTPMaster's constructor as a legitimate-looking exponent, and -56 is a
+    // period of zero nanoseconds. A zero period pins the transmit loop at
+    // "now" forever: a busy loop flooding the segment with Sync and
+    // Follow_Up at real-time priority. 30000 wraps the other way, to 48,
+    // which is a period of about 272 years -- PTP silently disabled instead.
+    const TempConfig high("{\n  \"logSyncInterval\": 200\n}\n");
+    const PTPMasterSettings readHigh = PTPMasterSettingsManager().load();
+    CHECK(readHigh.logSyncInterval >= -9);
+    CHECK(readHigh.logSyncInterval <= 21);
+    CHECK(readHigh.logSyncInterval != -56);
+
+    const TempConfig low("{\n  \"logAnnounceInterval\": 30000\n}\n");
+    const PTPMasterSettings readLow = PTPMasterSettingsManager().load();
+    CHECK(readLow.logAnnounceInterval >= -9);
+    CHECK(readLow.logAnnounceInterval <= 21);
+    CHECK(readLow.logAnnounceInterval != 48);
+}
+
+TEST_CASE("An in-range exponent outside what a port should follow is clamped too") {
+    // Not every int8_t is an interval to follow, per Profiles/PtpIntervals.h:
+    // -56 fits in an int8_t without wrapping anything, and would still be a
+    // zero-nanosecond period if it reached PTPMaster unclamped. Clamping to
+    // int8_t's own range alone would have let this one through.
+    const TempConfig temp("{\n  \"logSyncInterval\": -56\n}\n");
+    const PTPMasterSettings read = PTPMasterSettingsManager().load();
+
+    CHECK(read.logSyncInterval >= -9);
+    CHECK(read.logSyncInterval <= 21);
+}

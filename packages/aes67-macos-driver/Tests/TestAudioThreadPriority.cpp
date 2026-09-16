@@ -4,7 +4,7 @@
 //
 // millisToAbsolute() -- ns * tb.denom / tb.numer cast straight to a
 // uint32_t -- had no test at all, and no caller between it and
-// PTPMasterConfig::syncIntervalMs/announceIntervalMs, which are read from
+// PTPMasterConfig::logSyncInterval/logAnnounceInterval, which are read from
 // a JSON file with no min/max clamp anywhere on the way. Once the double
 // on the way in exceeds what a uint32_t can hold, the cast is undefined
 // behavior, not a wrapped or saturated one -- the kind of bug a plain build
@@ -29,8 +29,8 @@ TEST_CASE("An ordinary packet period converts to a small, sane tick count") {
 }
 
 TEST_CASE("A period past what a uint32_t can hold is clamped, not cast into UB") {
-    // Roughly what a hand-edited ptp_master.json's syncIntervalMs/
-    // announceIntervalMs would need to reach to overflow -- the finding
+    // Roughly what a hand-edited ptp_master.json's logSyncInterval/
+    // logAnnounceInterval would need to produce a period of, to overflow -- the finding
     // that found this used ~4300 ms as the threshold; this is comfortably
     // past it and past anything a real audio period is.
     const std::uint32_t huge = AudioThreadPriority::millisToAbsoluteForTest(1.0e9);

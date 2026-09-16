@@ -96,10 +96,10 @@ private:
 
     // The two message intervals, settled once in the constructor. The log
     // values are what goes on the wire; the periods are what the transmit
-    // loop waits, derived from those same log values. Read these rather than
-    // config_.syncIntervalMs and config_.announceIntervalMs: two numbers for
-    // one rate is how a port ends up announcing 125 ms while sending every
-    // 100.
+    // loop waits, derived from those same log values -- both from
+    // config_.logSyncInterval and config_.logAnnounceInterval, the exponent
+    // itself, so there are no two numbers for one rate to disagree the way
+    // a millisecond figure and its rounding used to.
     int8_t logSyncInterval_;
     int8_t logAnnounceInterval_;
     std::chrono::nanoseconds syncPeriod_;

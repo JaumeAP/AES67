@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include "PTPMasterSettings.h"
 #include "NetworkEngine/JsonEscape.h"
@@ -20,7 +21,16 @@ PTPMasterSettingsManager::PTPMasterSettingsManager() {
     if (!existing.empty()) {
         configPath_ = existing;
     } else {
-        configPath_ = "/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile);
+        // Not the system-wide path unconditionally: coreaudiod runs as
+        // _coreaudiod and cannot create it, and neither can a tool or a
+        // test. The first of the same search paths this process could
+        // actually write -- the system one when it is already there, so an
+        // installed driver keeps its settings where it kept them. See
+        // StreamConfigManager's constructor, fixed the same way for the
+        // same reason.
+        configPath_ = firstWritableConfigPath("AES67_PTP_MASTER_CONFIG_PATH",
+                                              kDefaultConfigFile,
+                                              /*systemBeforeHome=*/true);
     }
 }
 
@@ -83,11 +93,23 @@ PTPMasterSettings PTPMasterSettingsManager::load() {
     if (auto v = extractIntField(json, "announceIntervalMs")) {
         settings.logAnnounceInterval = msToLogInterval(*v);
     }
+    // Clamped to the range Profiles/PtpIntervals.h treats as an interval to
+    // follow, -9..21, not merely to what fits in int8_t. Two reasons, and
+    // the first is not cosmetic: narrowing a raw JSON int straight to int8_t
+    // is implementation-defined before C++20 and wraps under C++20's own
+    // rule, so "logSyncInterval": 200 became -56 rather than being refused.
+    // -56 is outside -9..21, and ptpLogIntervalToNanoseconds already answers
+    // 0 for that -- which is a period of zero, pinning PTPMaster's transmit
+    // loop at "now" forever: a busy loop flooding the segment with Sync and
+    // Follow_Up at real-time priority. Clamping only to int8_t's own range
+    // stops the wraparound but not this: -56 fits in an int8_t perfectly
+    // well. Clamping to the domain the conversion actually honours stops
+    // both at once, for a value that wrapped and for one that did not.
     if (auto v = extractIntField(json, "logSyncInterval")) {
-        settings.logSyncInterval = static_cast<int8_t>(*v);
+        settings.logSyncInterval = static_cast<int8_t>(std::clamp(*v, -9, 21));
     }
     if (auto v = extractIntField(json, "logAnnounceInterval")) {
-        settings.logAnnounceInterval = static_cast<int8_t>(*v);
+        settings.logAnnounceInterval = static_cast<int8_t>(std::clamp(*v, -9, 21));
     }
     if (auto v = extractIntField(json, "delayReqIntervalMs")) settings.delayReqIntervalMs = *v;
     if (auto v = extractStringField(json, "delayMechanism")) settings.delayMechanism = *v;
