@@ -44,7 +44,11 @@ bool RtspServer::start(uint16_t port, std::string& error) {
     if (!openListenSocket(port, listener_, error,
                           " (554 needs privilege; any port above 1024 works,"
                           " the SRV record carries it)")) {
-        listener_ = -1;
+        // stop() rather than clearing the descriptor by hand: it is also what
+        // puts port_ back to 0, and a server that failed to start must not
+        // still answer port() with the one it had before -- that number goes
+        // straight into an mDNS SRV record.
+        stop();
         return false;
     }
     port_ = port;

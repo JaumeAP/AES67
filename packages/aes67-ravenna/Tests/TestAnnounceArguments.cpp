@@ -105,3 +105,23 @@ TEST_CASE("An Option Nobody Has Heard Of Is Refused By Name") {
     CHECK(mentions(result.output, "Unknown option"));
     CHECK(mentions(result.output, "--there-is-no-such-option"));
 }
+
+
+TEST_CASE("Port zero still asks the kernel for one") {
+    // RtspServer::start and HttpServer::start take 0 to mean "any free port"
+    // and report back which one they got, and line 333 hands that to
+    // mdns.start() for the SRV record. Bounding these two options to 1..65535
+    // took the only way of asking for it away, and made openListenSocket's
+    // own `if (port == 0)` branch unreachable from anything that ships.
+    const ToolRun ephemeral = runTool(AES67_TOOL_ANNOUNCE,
+        std::string(kRequired) + " --rtsp-port 0 --nmos-port 0 --help");
+
+    CHECK(ephemeral.status == 0);
+    CHECK(mentions(ephemeral.output, "usage:"));
+
+    // A port that does not fit the field is still refused.
+    const ToolRun tooBig = runTool(AES67_TOOL_ANNOUNCE,
+                                   std::string(kRequired) + " --rtsp-port 65536");
+    CHECK(tooBig.status == 2);
+    CHECK(mentions(tooBig.output, "must be between"));
+}

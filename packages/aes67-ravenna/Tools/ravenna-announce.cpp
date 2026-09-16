@@ -130,7 +130,12 @@ int main(int argc, char** argv) {
         else if (option == "--name") { if (!need()) return 2; sessionName = value; nameGiven = true; }
         else if (option == "--group") { if (!need()) return 2; group = value; }
         else if (option == "--port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; streamPort = static_cast<uint16_t>(number); }
-        else if (option == "--rtsp-port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; rtspPort = static_cast<uint16_t>(number); }
+        // Zero asks the kernel for a free port, and the SRV record advertises
+        // whichever one it gave: RtspServer::start reports it back through
+        // port(), which is what mdns.start() below is handed. Refusing 0 took
+        // that away, and openListenSocket's own `if (port == 0)` branch with
+        // it.
+        else if (option == "--rtsp-port") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) return 2; rtspPort = static_cast<uint16_t>(number); }
         else if (option == "--channels") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; channels = static_cast<uint16_t>(number); }
         else if (option == "--device-channel") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) return 2; deviceChannel = static_cast<uint16_t>(number); }
         else if (option == "--rate") { if (!ToolOptions::integerOption(argc, argv, i, 1, 4294967295LL, number)) return 2; sampleRate = static_cast<uint32_t>(number); }
@@ -141,7 +146,8 @@ int main(int argc, char** argv) {
         else if (option == "--ptp-gmid") { if (!need()) return 2; ptpGrandmaster = value; }
         // IEEE 1588 carries domainNumber in one octet.
         else if (option == "--ptp-domain") { if (!ToolOptions::integerOption(argc, argv, i, 0, 255, number)) return 2; ptpDomain = static_cast<int>(number); }
-        else if (option == "--nmos-port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; nmosPort = static_cast<uint16_t>(number); }
+        // Zero here too, for the same reason: HttpServer::start takes it.
+        else if (option == "--nmos-port") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) return 2; nmosPort = static_cast<uint16_t>(number); }
         else { ToolOptions::unknownOption(option.c_str()); usage(); return 2; }
     }
 

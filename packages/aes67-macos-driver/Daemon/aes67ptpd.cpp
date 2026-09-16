@@ -138,8 +138,14 @@ int run(int argc, char** argv) {
             // The queue our PTP travels in. Unmarked by default: on a
             // segment that treats DSCP, PTP left unmarked queues behind
             // the audio it is timing. EF is 46; Dante marks PTP CS7 (56).
-            // The field is six bits, so 0..63 and nothing else.
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 0, 63, number)) return 2;
+            //
+            // The field is six bits, so 0..63 -- and -1, which is not a DSCP
+            // but the sentinel for "do not mark at all": it is what
+            // PTPSlaveConfig::dscp defaults to and what PTPSlave.cpp:363 and
+            // PTPMaster.cpp:215 test with `>= 0` before setting the option.
+            // There is no other way to ask for unmarked on this command line,
+            // and std::stoi took it before this range existed.
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, -1, 63, number)) return 2;
             config.dscp = static_cast<int>(number);
         } else if (flag == "--multicast-loopback") {
             // Same-host testing: without it the kernel never delivers this

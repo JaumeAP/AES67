@@ -222,3 +222,23 @@ TEST_CASE("A Value In Range Is Still Taken") {
     CHECK(live.status == 0);
     CHECK(mentions(live.output, "Usage:"));
 }
+
+
+TEST_CASE("The PTP daemon still takes the sentinel that means unmarked") {
+    // -1 is not a DSCP. It is what PTPSlaveConfig::dscp defaults to and what
+    // PTPSlave.cpp:363 and PTPMaster.cpp:215 test with `>= 0` before marking
+    // anything, and it is the only way to ask for unmarked on this command
+    // line. Bounding the option to the six bits of the field refused it, and
+    // a LaunchDaemon plist that passed it stopped starting.
+    const ToolRun sentinel = runTool(AES67_TOOL_PTP_DAEMON, "--dscp -1");
+    CHECK_FALSE(mentions(sentinel.output, "must be between"));
+
+    // The six bits are still the six bits either side of it.
+    const ToolRun tooBig = runTool(AES67_TOOL_PTP_DAEMON, "--dscp 64");
+    CHECK(tooBig.status == 2);
+    CHECK(mentions(tooBig.output, "must be between"));
+
+    const ToolRun tooSmall = runTool(AES67_TOOL_PTP_DAEMON, "--dscp -2");
+    CHECK(tooSmall.status == 2);
+    CHECK(mentions(tooSmall.output, "must be between"));
+}

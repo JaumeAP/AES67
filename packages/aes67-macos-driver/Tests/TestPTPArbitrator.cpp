@@ -7,10 +7,10 @@
 // no suite for this file at all.
 //
 // Offline, like TestPTPMaster: mostly constructed and asked rather than run.
-// start() binds 319 and 320, which this driver has no privilege for, so the
-// one case that calls it checks the refusal path and the invariant that
-// holds either way -- isRunning() agreeing with what start() returned. What
-// a running monitor thread then does belongs with the loopback tier.
+// The one case that calls start() puts it on loopback and on the high ports
+// AES67PTPStressRun uses, so nothing it sends leaves this machine and nothing
+// it binds is wanted by another suite. What a PTP exchange then does belongs
+// with the loopback tier.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
@@ -150,21 +150,31 @@ TEST_CASE("One That Never Started Is Not Running And Is Not Locked") {
     CHECK_FALSE(arbitrator.isSlaveLocked());
 }
 
-TEST_CASE("Starting Without The Privilege To Bind 319 Fails Cleanly") {
-    PTPArbitrator arbitrator(defaultConfig());
+TEST_CASE("Starting And Stopping Is Symmetric, On Ports Nothing Else Uses") {
+    // This case used to be written as "starting without the privilege to bind
+    // 319 fails cleanly", on the assumption that an unprivileged process
+    // cannot have those ports. On macOS it can -- README.md:142 measured it --
+    // so the refusal branch was never taken and what actually happened was a
+    // real PTP master transmitting Announce and Sync, on the two ports
+    // TestPTPMaster, PTPLoopback and PTPService also want.
+    //
+    // Loopback and the high ports AES67PTPStressRun uses, so the exchange
+    // stays on this machine and contends with nothing. What is checked is the
+    // invariant either outcome has to satisfy: isRunning() agrees with what
+    // start() returned, and stop() is symmetric and repeatable.
+    PTPArbitratorConfig config = defaultConfig();
+    config.masterConfig.eventPort = 20319;
+    config.masterConfig.generalPort = 20320;
+    config.slaveConfig.eventPort = 20319;
+    config.slaveConfig.generalPort = 20320;
 
-    // PTP's event and general ports are 319 and 320, both privileged, and
-    // this driver runs in user space. Unprivileged, PTPMaster::start()
-    // cannot create its sockets and the arbitrator must report that rather
-    // than claim to be running -- the branch that says so had never been
-    // reached by a test. Run with the privilege, the same call succeeds, so
-    // both outcomes are checked for the invariant that actually matters:
-    // isRunning() agrees with what start() returned.
+    PTPArbitrator arbitrator(config);
+
     const bool started = arbitrator.start();
     CHECK(arbitrator.isRunning() == started);
 
     if (started) {
-        // A second start is refused while the first is up, whoever we are.
+        // A second start is refused while the first is up.
         CHECK_FALSE(arbitrator.start());
     } else {
         // Nothing was left half-built: no thread to join, no socket open.
@@ -172,7 +182,6 @@ TEST_CASE("Starting Without The Privilege To Bind 319 Fails Cleanly") {
         CHECK_FALSE(arbitrator.isSlaveLocked());
     }
 
-    // Symmetric either way, and a second stop is still not an error.
     arbitrator.stop();
     CHECK_FALSE(arbitrator.isRunning());
     arbitrator.stop();

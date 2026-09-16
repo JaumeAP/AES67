@@ -300,13 +300,19 @@ TEST_CASE("The Diagnostics Property Answers Before Initialize Too") {
     CFRelease(value);
 }
 
-TEST_CASE("The Three List Properties Are Empty Arrays With Nothing On The Network") {
+TEST_CASE("The Three List Properties Answer With An Array, Whatever Is On The Network") {
     auto device = makeDevice();
     device->Initialize();
 
-    // Sessions, PTP peers and RTCP reporters: nothing has been heard on a
-    // machine with no multicast route, and each has to say so as an empty
-    // array rather than as a null the app would have to special-case.
+    // Sessions, PTP peers and RTCP reporters. What is checked is that each
+    // answers with an array of dictionaries rather than a null the app would
+    // have to special-case -- not that the array is empty.
+    //
+    // Initialize() starts the SAP listener, the PTP peer observer and the
+    // RTCP monitor (AES67Device.cpp:333, :684, :696), so on a segment with an
+    // AES67 or Dante device on it these lists fill up on their own, and a
+    // case that asserted zero would be asserting that the machine running the
+    // tests is alone on its network.
     for (AudioObjectPropertySelector selector : {kDiscoveredSessionsPropertySelector,
                                                  kPtpPeersPropertySelector,
                                                  kRtcpReceiversPropertySelector}) {
@@ -316,7 +322,16 @@ TEST_CASE("The Three List Properties Are Empty Arrays With Nothing On The Networ
         REQUIRE(status == kAudioHardwareNoError);
         REQUIRE(value != nullptr);
         REQUIRE(CFGetTypeID(value) == CFArrayGetTypeID());
-        CHECK(CFArrayGetCount(static_cast<CFArrayRef>(value)) == 0);
+
+        auto array = static_cast<CFArrayRef>(value);
+        const CFIndex count = CFArrayGetCount(array);
+        CHECK(count >= 0);
+        for (CFIndex i = 0; i < count; ++i) {
+            // Whatever was heard, it is published as a dictionary: an array
+            // with anything else in it is one the Swift side cannot read.
+            INFO("selector: " << selector << " element: " << i);
+            CHECK(CFGetTypeID(CFArrayGetValueAtIndex(array, i)) == CFDictionaryGetTypeID());
+        }
         CFRelease(value);
     }
 }
