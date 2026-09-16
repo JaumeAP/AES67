@@ -77,9 +77,9 @@ add_subdirectory(packages/aes67-linux-ptpd)
 # kernel's headers, and out of ALL for the same reason it always was -- a
 # configure that succeeds is not a promise that a build will.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux"
-   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm/driver/Makefile")
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver/Makefile")
     add_custom_target(ravenna-alsa-lkm
-        COMMAND make -C "${CMAKE_CURRENT_SOURCE_DIR}/external/ravenna-alsa-lkm/driver"
+        COMMAND make -C "${CMAKE_CURRENT_SOURCE_DIR}/external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver"
         COMMENT "RAVENNA ALSA kernel module"
         VERBATIM)
 endif()

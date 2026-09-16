@@ -123,14 +123,16 @@ if(BUILD_TESTS)
         target_sources(TestOptions PRIVATE src/Options.cpp)
 
         # What this daemon sends, against the rules of a real slave: the
-        # RAVENNA ALSA kernel module, vendored under external/ravenna-alsa-lkm.
+        # RAVENNA ALSA kernel module, which arrives inside the
+        # external/aes67-linux-daemon submodule -- a recursive checkout is
+        # what puts it on disk.
         #
         # The module's own PTP receive path, compiled into the test rather
         # than mirrored in C++ beside it: Tests/support/lkm holds the handful
         # of kernel names PTP.c uses, and RavennaSlave.cpp is the shim that
         # frames a payload the way a netfilter hook delivers one. An upstream
         # change now breaks this test instead of quietly outdating a comment.
-        set(lkm_driver ${CMAKE_CURRENT_SOURCE_DIR}/../../external/ravenna-alsa-lkm/driver)
+        set(lkm_driver ${CMAKE_CURRENT_SOURCE_DIR}/../../external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver)
 
         # The module is C and uses bool, true and false throughout. In a kernel
         # build those arrive with <linux/types.h>, which MTAL_stdint.h includes

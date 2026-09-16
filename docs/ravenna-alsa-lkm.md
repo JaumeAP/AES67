@@ -1,16 +1,21 @@
 # ravenna-alsa-lkm
 
-Not a package: a checkout, under `external/` beside doctest, and this file.
-It was `packages/ravenna-alsa-lkm` -- three files of wrapper around a
-submodule -- until the wrapper stopped earning its place.
+Not a package, and not a submodule of this repository either: it arrives
+inside `external/aes67-linux-daemon`, at `3rdparty/ravenna-alsa-lkm`, which is
+a submodule of the daemon. `git submodule update --init --recursive` is what
+puts it on disk; a non-recursive one leaves the path empty.
 
 The RAVENNA/AES67 ALSA kernel module: Merging Technologies' driver, through
 [`bondagit/ravenna-alsa-lkm`](https://github.com/bondagit/ravenna-alsa-lkm),
-vendored under `external/` as a submodule, pinned to the **`aes67-daemon`**
-branch.
+on the **`aes67-daemon`** branch.
 
-Nothing is written here. What this package holds is the checkout, the one
-command that builds it and the gate that says whether it is there.
+This repository carried a second checkout of it, directly under `external/`,
+until the two of them were the same module at two revisions in one tree. The
+one that stayed is the daemon's, which means the revision is the daemon's
+choice: moving the module means moving `external/aes67-linux-daemon`.
+
+Nothing is written here. What this file holds is where the checkout is, the
+one command that builds it and the gate that says whether it is there.
 
 ## The user-space half, and which one
 
@@ -23,7 +28,7 @@ in a user-space process, and the module does nothing without one.
 There are two of those, and this tree uses the second:
 
 - **The Butler** (`Merging_RAVENNA_Daemon`), which the checkout carries under
-  `external/ravenna-alsa-lkm/Butler/`. It is a 5.5 MB ELF binary, not source,
+  `external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/Butler/`. It is a 5.5 MB ELF binary, not source,
   under a licence of its own (`Butler/LICENSE.md`) rather than the module's
   GPL -- and the public build is **limited to 8 inputs and outputs unless a
   Merging device is present**.
@@ -35,7 +40,7 @@ There are two of those, and this tree uses the second:
   not fetching it is. To see it anyway:
 
   ```bash
-  git -C external/ravenna-alsa-lkm sparse-checkout disable
+  git -C external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm sparse-checkout disable
   ```
 - **[`bondagit/aes67-linux-daemon`](https://github.com/bondagit/aes67-linux-daemon)**,
   GPL-3.0, which drives the same module over the same netlink interface
@@ -46,18 +51,19 @@ There are two of those, and this tree uses the second:
 
 The branch pin is what makes that choice real rather than nominal. `master` is
 Merging's module as it stands; `aes67-daemon` is the same module with the
-patches that daemon needs, and it is what the pinned commit is on. Without the
-pin an update would quietly move to a module the free daemon does not drive.
+patches that daemon needs, and it is the branch the daemon's own submodule is
+on -- which is now the only pin there is, and the daemon's to move.
 
-Building and running the daemon is its business, from its own checkout:
+Building and running the daemon is its business, from the checkout this
+repository now carries:
 
 ```bash
-git clone https://github.com/bondagit/aes67-linux-daemon.git
+git submodule update --init --recursive external/aes67-linux-daemon
 # then follow its README: it wants Boost, Avahi and this module inserted first
-sudo insmod external/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko
+sudo insmod external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko
 ```
 
-## Why it is its own package
+## Why it has a file of its own
 
 It is its own thing. This is kernel C, built by the kernel's own build system
 against the running kernel's headers; the daemon above it is a user-space
@@ -75,7 +81,7 @@ what the core's own is measured against.
 A virtual ALSA device whose playback and capture streams are RTP on the wire.
 It carries its own PTP slave clock and clocks every source and sink from it,
 and it talks to the daemon over netlink for configuration and status. See
-`external/ravenna-alsa-lkm/README.md`.
+`external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/README.md`.
 
 ## Building
 

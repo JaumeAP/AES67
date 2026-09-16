@@ -1,15 +1,17 @@
-# Compiles the RAVENNA ALSA kernel module this repository vendors.
+# Compiles the RAVENNA ALSA kernel module this repository reaches.
 #
-# Not ours: external/ravenna-alsa-lkm is Merging's module, mirrored as a
-# submodule, and aes67-linux-ptpd compiles one file out of it -- driver/PTP.c,
-# with stubbed kernel headers -- to hold this project's grandmaster against
-# what a real slave decides about a packet. That test says what the module
-# DECIDES. It says nothing about whether the module still builds.
+# Not ours, and not a submodule of ours either: it arrives at
+# external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm, inside the daemon,
+# which is why the checkout below is recursive. aes67-linux-ptpd compiles one
+# file out of it -- driver/PTP.c, with stubbed kernel headers -- to hold this
+# project's grandmaster against what a real slave decides about a packet. That
+# test says what the module DECIDES. It says nothing about whether the module
+# still builds.
 #
-# It is worth knowing, because it has not always: the branch this tracks
-# carries a fix for kernel 7.2, and the day a newer kernel breaks it is the day
-# the device this interoperates with stops existing on new installations. A Mac
-# cannot tell us that. A Linux runner can, for the price of a compile.
+# It is worth knowing, because it has not always: a kernel that has moved on
+# is the day the device this interoperates with stops existing on new
+# installations. A Mac cannot tell us that. A Linux runner can, for the price
+# of a compile.
 #
 # Compiles only. The .ko comes out built against the headers apt installed, not
 # against the kernel the runner is running, so insmod would refuse it on
@@ -21,11 +23,15 @@ name: ravenna-lkm
 on:
   push:
     paths:
-      - 'external/ravenna-alsa-lkm'
+      # The pointer this repository tracks. The module itself is a submodule
+      # of the daemon, so no filter here can name it: it moves when this does.
+      - 'external/aes67-linux-daemon'
       - '.github/workflows/ravenna-lkm.yml'
   pull_request:
     paths:
-      - 'external/ravenna-alsa-lkm'
+      # The pointer this repository tracks. The module itself is a submodule
+      # of the daemon, so no filter here can name it: it moves when this does.
+      - 'external/aes67-linux-daemon'
       - '.github/workflows/ravenna-lkm.yml'
 
 jobs:
@@ -62,8 +68,8 @@ jobs:
         run: |
           release="$(ls /lib/modules | sort -V | tail -1)"
           echo "Building against ${release}"
-          make -C external/ravenna-alsa-lkm/driver modules \
+          make -C external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver modules \
             KSRC="/lib/modules/${release}/build/" KBUILD_MODPOST_WARN=1
 
       - name: The module has to exist
-        run: test -f external/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko
+        run: test -f external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver/MergingRavennaALSA.ko

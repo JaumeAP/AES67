@@ -89,9 +89,10 @@ ctest --test-dir build --output-on-failure
 ```
 
 That builds the driver, which pulls the core in with it: 42 test suites, plus
-the core's 19. `external/doctest` is the submodule those two share; the other two are the RAVENNA
-kernel module and the Linux AES67 daemon that configures it, neither of which
-anything on macOS reads.
+the core's 19. `external/doctest` is the submodule those two share; the other
+is the Linux AES67 daemon, which brings the RAVENNA kernel module it drives
+along as a submodule of its own. Neither is read by anything on macOS, and
+both want `--recurse-submodules` to be on disk at all.
 
 `t41-ptp` is cross-compiled for an ARM Cortex-M7 and is not wired into the
 CMake tree. Its host tests run on the Mac; its board build needs PlatformIO.
