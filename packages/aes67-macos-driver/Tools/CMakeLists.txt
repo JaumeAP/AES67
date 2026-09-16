@@ -145,27 +145,34 @@ if(BUILD_TESTS)
     # target needs it -- gating the whole block on it, as this once did, put
     # the two simulations above back to being built and never run under
     # -DBUILD_PTP_DAEMON=OFF, with nothing said.
+    # This whole block, not just the target inside it: ToolArguments is the
+    # one thing here that needs aes67ptpd (for $<TARGET_FILE:aes67ptpd>), and
+    # it is indented under its own if rather than left flush with the code
+    # around it -- the second time a test in this file was gated on the wrong
+    # condition (the block comment above tells the first story), and this
+    # tree has five independent optional-build toggles a third one could
+    # still land on.
     if(TARGET aes67ptpd)
-    add_executable(TestToolArguments ../Tests/TestToolArguments.cpp)
-    target_link_libraries(TestToolArguments PRIVATE doctest_headers)
-    # support/ToolProcess.h: starting a program and reading what it said is
-    # the same job in every package that has one, so it lives in the core's
-    # test support rather than once per package.
-    target_include_directories(TestToolArguments PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../aes67-core/Tests)
-    target_compile_features(TestToolArguments PRIVATE cxx_std_17)
-    target_compile_definitions(TestToolArguments PRIVATE
-        AES67_TOOL_SENDER="$<TARGET_FILE:AES67TestSender>"
-        AES67_TOOL_RECEIVER="$<TARGET_FILE:AES67TestReceiver>"
-        AES67_TOOL_SAP_MONITOR="$<TARGET_FILE:AES67SAPMonitor>"
-        AES67_TOOL_PTP_STRESS="$<TARGET_FILE:AES67PTPStressRun>"
-        AES67_TOOL_LIVE_INTEROP="$<TARGET_FILE:AES67LiveDaemonInterop>"
-        AES67_TOOL_PTP_DAEMON="$<TARGET_FILE:aes67ptpd>")
-    add_dependencies(TestToolArguments
-        AES67TestSender AES67TestReceiver AES67SAPMonitor AES67PTPStressRun
-        AES67LiveDaemonInterop aes67ptpd)
-    add_test(NAME ToolArguments COMMAND TestToolArguments)
-    set_tests_properties(ToolArguments PROPERTIES LABELS "unit" TIMEOUT 60)
+        add_executable(TestToolArguments ../Tests/TestToolArguments.cpp)
+        target_link_libraries(TestToolArguments PRIVATE doctest_headers)
+        # support/ToolProcess.h: starting a program and reading what it said
+        # is the same job in every package that has one, so it lives in the
+        # core's test support rather than once per package.
+        target_include_directories(TestToolArguments PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../aes67-core/Tests)
+        target_compile_features(TestToolArguments PRIVATE cxx_std_17)
+        target_compile_definitions(TestToolArguments PRIVATE
+            AES67_TOOL_SENDER="$<TARGET_FILE:AES67TestSender>"
+            AES67_TOOL_RECEIVER="$<TARGET_FILE:AES67TestReceiver>"
+            AES67_TOOL_SAP_MONITOR="$<TARGET_FILE:AES67SAPMonitor>"
+            AES67_TOOL_PTP_STRESS="$<TARGET_FILE:AES67PTPStressRun>"
+            AES67_TOOL_LIVE_INTEROP="$<TARGET_FILE:AES67LiveDaemonInterop>"
+            AES67_TOOL_PTP_DAEMON="$<TARGET_FILE:aes67ptpd>")
+        add_dependencies(TestToolArguments
+            AES67TestSender AES67TestReceiver AES67SAPMonitor AES67PTPStressRun
+            AES67LiveDaemonInterop aes67ptpd)
+        add_test(NAME ToolArguments COMMAND TestToolArguments)
+        set_tests_properties(ToolArguments PROPERTIES LABELS "unit" TIMEOUT 60)
     else()
         message(STATUS "BUILD_PTP_DAEMON is off: ToolArguments skipped")
     endif()

@@ -70,30 +70,43 @@ int main(int argc, char** argv) {
     uint16_t generalPort = 20320;
     std::string csvPath;
 
+    const char* text = nullptr;
+    long long number = 0;
+
+    // Both print the usage on failure, so the six call sites below do not
+    // have to paste it themselves.
+    auto need = [&](int argc, char** argv, int& i) {
+        text = AES67::ToolOptions::value(argc, argv, i);
+        if (text == nullptr) printUsage(argv[0]);
+        return text != nullptr;
+    };
+    auto needInt = [&](int argc, char** argv, int& i, long long lo, long long hi) {
+        const bool ok = AES67::ToolOptions::integerOption(argc, argv, i, lo, hi, number);
+        if (!ok) printUsage(argv[0]);
+        return ok;
+    };
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        long long number = 0;
 
         if (arg == "--interface") {
-            const char* text = AES67::ToolOptions::value(argc, argv, i);
-            if (text == nullptr) { printUsage(argv[0]); return 1; }
+            if (!need(argc, argv, i)) return 1;
             interfaceName = text;
         }
         else if (arg == "--seconds") {
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) { printUsage(argv[0]); return 1; }
+            if (!needInt(argc, argv, i, 1, 2147483647LL)) return 1;
             durationSec = static_cast<int>(number);
         }
         else if (arg == "--event-port") {
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) { printUsage(argv[0]); return 1; }
+            if (!needInt(argc, argv, i, 1, 65535)) return 1;
             eventPort = static_cast<uint16_t>(number);
         }
         else if (arg == "--general-port") {
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) { printUsage(argv[0]); return 1; }
+            if (!needInt(argc, argv, i, 1, 65535)) return 1;
             generalPort = static_cast<uint16_t>(number);
         }
         else if (arg == "--csv") {
-            const char* text = AES67::ToolOptions::value(argc, argv, i);
-            if (text == nullptr) { printUsage(argv[0]); return 1; }
+            if (!need(argc, argv, i)) return 1;
             csvPath = text;
         }
         else if (arg == "--help" || arg == "-h") { printUsage(argv[0]); return 0; }

@@ -66,14 +66,23 @@ std::string ChannelMapping::getValidationError() const {
 
 bool mappingFitsDevice(const ChannelMapping& mapping, uint16_t streamChannelCount) {
     if (mapping.routes.empty()) {
-        // The block it was given. Both widths, because deviceChannels() emits
-        // deviceChannelStart .. +deviceChannelCount and the two need not
-        // agree with the stream's: a mapping declaring sixteen device
-        // channels for a two-channel stream still lands sixteen of them, and
-        // checking only the stream's width let it run off the end of
-        // StreamChannelMapper's 128-entry owner table.
-        const uint32_t width = std::max<uint32_t>(streamChannelCount, mapping.deviceChannelCount);
-        return mapping.deviceChannelStart + width <= StreamChannelMapper::kMaxDeviceChannels;
+        // The block it was given, sized by the stream's own width -- which
+        // is exactly what RTPReceiver and RTPTransmitter's audio-copy loops
+        // read in this case (deviceChannelStart + sdp_.numChannels; neither
+        // ever reads deviceChannelCount when routes is empty). An earlier
+        // version of this check also weighed deviceChannelCount, on the
+        // reasoning that ChannelMapping::deviceChannels() emits
+        // deviceChannelStart..+deviceChannelCount and could run off the end
+        // of StreamChannelMapper's owner table -- true of that method, but
+        // this function's only two callers are RTPReceiver::updateMapping
+        // and RTPTransmitter::updateMapping, and by the time either runs,
+        // StreamManager::updateMapping has already asked
+        // StreamChannelMapper::updateMapping to validate and commit the same
+        // mapping, which is what actually owns deviceChannelCount and
+        // overlap correctness. Weighing it again here rejected an update the
+        // two real callers would have applied safely.
+        return mapping.deviceChannelStart + streamChannelCount <=
+               StreamChannelMapper::kMaxDeviceChannels;
     }
 
     for (const ChannelRoute& route : mapping.routes) {

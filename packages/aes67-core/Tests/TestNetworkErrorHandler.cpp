@@ -84,14 +84,19 @@ TEST_CASE("A recovery attempt always runs, and says so") {
 TEST_CASE("A recovery attempt clears the recent count, not the total") {
     // The two counts are different questions: how many errors there have
     // been, and how many since the last attempt at doing something about
-    // them. reportError's threshold reads the second.
+    // them. reportError's threshold reads the second, and this used to check
+    // only the first -- true before this attemptRecovery() call and after
+    // it, and so true even if the recent count had stopped being cleared at
+    // all.
     NetworkErrorHandler handler;
     handler.reportError(NetworkErrorType::CONNECTION_TIMEOUT, "no reply", "RTSPClient");
     handler.reportError(NetworkErrorType::SOCKET_ERROR, "refused", "RTPReceiver", 61);
     REQUIRE(handler.getErrorCount() == 2);
+    REQUIRE(handler.getRecentErrorCount() == 2);
 
     CHECK(handler.attemptRecovery());
     CHECK(handler.getErrorCount() == 2);
+    CHECK(handler.getRecentErrorCount() == 0);
 }
 
 TEST_CASE("Reset clears the count") {

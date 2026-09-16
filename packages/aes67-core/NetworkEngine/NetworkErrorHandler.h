@@ -51,6 +51,11 @@ public:
     
     // Get error count
     size_t getErrorCount() const;
+
+    /// Errors since the last recovery attempt, or since construction if
+    /// there has not been one. What reportError()'s threshold reads, and
+    /// what attemptRecovery() clears.
+    size_t getRecentErrorCount() const { return recentErrorCount_.load(); }
     
     // Reset error statistics
     void reset();
@@ -76,7 +81,14 @@ private:
     // Error statistics
     std::atomic<size_t> totalErrorCount_{0};
     std::atomic<size_t> recentErrorCount_{0};
-    std::chrono::steady_clock::time_point lastRecoveryAttempt_;
+
+    // steady_clock::time_point itself, not atomic: reportError() reads this
+    // and attemptRecovery() writes it, and nothing serialized the two, which
+    // is a data race (undefined behavior) whenever two callers report an
+    // error around the same time -- and every socket in the driver shares
+    // one NetworkErrorHandler. Storing the tick count as a plain integer
+    // keeps this lock-free like the two counters above it.
+    std::atomic<std::chrono::steady_clock::rep> lastRecoveryAttemptTicks_;
     
     // Constants
     static constexpr size_t MAX_RECENT_ERRORS = 10;

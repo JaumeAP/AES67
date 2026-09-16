@@ -62,9 +62,12 @@ struct ChannelMapping {
     // Helper to check if a device channel is used by this mapping
     bool containsDeviceChannel(int deviceCh) const;
 
-    // Get device channel end (exclusive)
-    uint16_t getDeviceChannelEnd() const {
-        return deviceChannelStart + deviceChannelCount;
+    // Get device channel end (exclusive). uint32_t rather than uint16_t: both
+    // operands are uint16_t, and their sum is what a truncating uint16_t
+    // return would silently wrap if either field were ever near 65535 --
+    // harmless today only because kMaxDeviceChannels (128) keeps both small.
+    uint32_t getDeviceChannelEnd() const {
+        return static_cast<uint32_t>(deviceChannelStart) + deviceChannelCount;
     }
 };
 

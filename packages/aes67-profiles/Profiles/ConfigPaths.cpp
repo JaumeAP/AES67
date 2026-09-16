@@ -56,20 +56,35 @@ namespace {
 
 /// Whether this process could create `filePath` without being told no.
 bool couldWrite(const std::string& filePath) {
-    const size_t lastSlash = filePath.find_last_of('/');
-    if (lastSlash == std::string::npos) return false;
+    // std::filesystem::path::parent_path() over hand-rolled find_last_of/
+    // substr/resize surgery: it already normalizes what the manual walk did
+    // not -- a trailing slash, a repeated one, "." and ".." components --
+    // and this file already includes <filesystem> and calls
+    // std::filesystem::create_directories() a few lines below, in
+    // ensureParentDirectory(). ::access() stays rather than a
+    // filesystem::status() permission bit: POSIX mode bits do not reliably
+    // reflect what this effective uid can do (ACLs, some mounted
+    // filesystems), which is exactly what access() asks the kernel directly.
+    std::filesystem::path dir = std::filesystem::path(filePath).parent_path();
+
+    // A bare file name has no parent component at all -- configSearchPaths()'s
+    // own contract says an override is taken whole and names a file, not a
+    // directory, and it resolves relative to the current directory the same
+    // way std::ifstream(filePath) would read it.
+    if (dir.empty()) dir = ".";
 
     // Up to the first component that exists: that is the one that has to be
     // writable, because everything under it would be created.
-    std::string dir = filePath.substr(0, lastSlash);
-    while (!dir.empty()) {
-        struct stat st;
-        if (stat(dir.c_str(), &st) == 0) {
-            return S_ISDIR(st.st_mode) && ::access(dir.c_str(), W_OK) == 0;
+    for (;;) {
+        std::error_code existsEc;
+        if (std::filesystem::exists(dir, existsEc) && !existsEc) {
+            std::error_code dirEc;
+            return std::filesystem::is_directory(dir, dirEc) && !dirEc &&
+                   ::access(dir.c_str(), W_OK) == 0;
         }
-        const size_t slash = dir.find_last_of('/');
-        if (slash == std::string::npos || slash == 0) break;
-        dir.resize(slash);
+        const std::filesystem::path parent = dir.parent_path();
+        if (parent == dir) break; // reached the root without finding one
+        dir = parent;
     }
     return false;
 }
