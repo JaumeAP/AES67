@@ -68,6 +68,16 @@ struct ChannelMapping {
     }
 };
 
+/// Whether every channel this mapping touches exists: each device channel
+/// below StreamChannelMapper::kMaxDeviceChannels, and each stream channel
+/// below `streamChannelCount`. True for a mapping that can be applied.
+///
+/// One answer rather than two: RTPReceiver::updateMapping and
+/// RTPTransmitter::updateMapping each carried this, and the transmitter's had
+/// only the block half of it until somebody noticed -- a routed mapping went
+/// through unchecked in the direction that reads device channels.
+bool mappingFitsDevice(const ChannelMapping& mapping, uint16_t streamChannelCount);
+
 /// Central coordinator for mapping AES67 streams to the 128-channel device.
 ///
 /// Prevents channel overlaps, auto-assigns channels, validates mappings,

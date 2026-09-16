@@ -70,33 +70,6 @@ TEST_CASE("RTP Header Network Byte Order") {
 }
 
 //
-// Sequence Number Tests
-//
-
-TEST_CASE("Sequence Number Increment") {
-    std::cout << "Test: Sequence number increment and wrap... ";
-
-    uint16_t seq = 0;
-
-    // Normal increment
-    for (int i = 0; i < 100; ++i) {
-        CHECK(seq == i);
-        seq++;
-    }
-
-    // Test wrap-around
-    seq = 65534;
-    seq++;
-    CHECK(seq == 65535);
-    seq++;
-    CHECK(seq == 0);
-    seq++;
-    CHECK(seq == 1);
-
-    std::cout << "PASS" << std::endl;
-}
-
-//
 // Timestamp Tests
 //
 

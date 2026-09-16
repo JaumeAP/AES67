@@ -38,7 +38,6 @@ LockFreeCircularJitterBuffer::LockFreeCircularJitterBuffer(size_t depth)
     }
 
     // Initialize expected sequence number
-    expectedSequenceNumber_.store(0, std::memory_order_relaxed);
 }
 
 LockFreeCircularJitterBuffer::~LockFreeCircularJitterBuffer() = default;
@@ -100,71 +99,10 @@ bool LockFreeCircularJitterBuffer::addPacket(const uint8_t* packetData, size_t p
 }
 
 bool LockFreeCircularJitterBuffer::getNextPacket(uint8_t* outputBuffer, size_t bufferSize,
-                                              size_t& outputLength, uint64_t& presentationTime,
-                                              uint32_t expectedSequenceNumber) {
-    // Get the buffer index based on expected sequence number
-    size_t index = getIndex(expectedSequenceNumber);
-    LockFreeBufferPacket& slot = buffer_[index];
-
-    // Try to atomically transition from READY to READING
-    // This gives us exclusive read access to the slot
-    SlotState expected = SlotState::READY;
-    if (!slot.state.compare_exchange_strong(expected, SlotState::READING,
-                                            std::memory_order_acquire,
-                                            std::memory_order_relaxed)) {
-        // Slot is not READY (either EMPTY, WRITING, or already READING)
-        return false;
-    }
-
-    // We now have exclusive read access (state is READING)
-    // The writer cannot modify this slot until we transition to EMPTY
-
-    // Load the sequence number with acquire to ensure we see all writes
-    uint32_t storedSequence = slot.sequenceNumber.load(std::memory_order_acquire);
-
-    // Check if it matches the expected sequence number
-    if (storedSequence != expectedSequenceNumber) {
-        // Wrong packet in this slot (stale from a previous wrap-around).
-        // The slot held a valid packet that was counted in validPackets_,
-        // so we must decrement before releasing the slot back to EMPTY.
-        slot.state.store(SlotState::EMPTY, std::memory_order_release);
-        validPackets_.fetch_sub(1, std::memory_order_relaxed);
-        return false;
-    }
-
-    // Load the length
-    size_t storedLength = slot.length.load(std::memory_order_acquire);
-
-    // Check if output buffer is large enough
-    if (storedLength > bufferSize) {
-        // Can't use this packet - release the slot back to EMPTY
-        slot.state.store(SlotState::EMPTY, std::memory_order_release);
-        validPackets_.fetch_sub(1, std::memory_order_relaxed);
-        return false;
-    }
-
-    // Copy data to output buffer (safe because state is READING)
-    std::memcpy(outputBuffer, slot.data, storedLength);
-    outputLength = storedLength;
-    presentationTime = slot.presentationTime.load(std::memory_order_acquire);
-
-    // Transition from READING to EMPTY with release semantics
-    // This makes the slot available for writing again
-    slot.state.store(SlotState::EMPTY, std::memory_order_release);
-
-    // Update expected sequence number
-    expectedSequenceNumber_.store(expectedSequenceNumber + 1, std::memory_order_relaxed);
-
-    // Update statistics
-    validPackets_.fetch_sub(1, std::memory_order_relaxed);
-
-    return true;
-}
-
-bool LockFreeCircularJitterBuffer::getPacketBySequence(uint8_t* outputBuffer, size_t bufferSize,
-                                                   size_t& outputLength, uint64_t& presentationTime,
-                                                   uint32_t sequenceNumber) {
-    // Get the buffer index based on sequence number
+                                                 size_t& outputLength,
+                                                 uint64_t& presentationTime,
+                                                 uint32_t sequenceNumber) {
+    // Get the buffer index based on the sequence number
     size_t index = getIndex(sequenceNumber);
     LockFreeBufferPacket& slot = buffer_[index];
 
@@ -184,7 +122,7 @@ bool LockFreeCircularJitterBuffer::getPacketBySequence(uint8_t* outputBuffer, si
     // Load the sequence number with acquire to ensure we see all writes
     uint32_t storedSequence = slot.sequenceNumber.load(std::memory_order_acquire);
 
-    // Check if it matches the requested sequence number
+    // Check if it matches the sequence number asked for
     if (storedSequence != sequenceNumber) {
         // Wrong packet in this slot (stale from a previous wrap-around).
         // The slot held a valid packet that was counted in validPackets_,
@@ -236,7 +174,6 @@ void LockFreeCircularJitterBuffer::reset() {
     validPackets_.store(0, std::memory_order_relaxed);
 
     // Reset expected sequence number
-    expectedSequenceNumber_.store(0, std::memory_order_relaxed);
 }
 
 } // namespace AES67

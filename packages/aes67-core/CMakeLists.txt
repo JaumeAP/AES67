@@ -114,7 +114,7 @@ if(AES67_CORE_TESTS)
     # support/ headers shared with the packages that consume this one.
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Tests)
 
-    foreach(suite SDPParser NonBlockingLogger Types RTPHeader PacketBudget PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings DiscoverySettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable JsonText)
+    foreach(suite SDPParser NonBlockingLogger Types RTPHeader PacketBudget PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings DiscoverySettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping LockFreeJitterBuffer StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable JsonText)
         set(extra_sources "")
         if(suite STREQUAL "StreamConfig")
             set(extra_sources ${AES67_SEAM_STUB})

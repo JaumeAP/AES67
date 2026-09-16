@@ -160,27 +160,71 @@ TEST_CASE("RTP Header Size") {
     std::cout << "PASS" << std::endl;
 }
 
-TEST_CASE("Sequence Number Handling") {
-    std::cout << "Test: Sequence number handling... ";
+//
+// What a sequence number says about the one before it
+//
+// This replaced two test cases, one here and one in TestRTPTransmitter, that
+// declared a local uint16_t and checked that C++ wraps it at 65535. Neither
+// reached a line of this repository. What decides whether a packet was lost
+// or merely late is RTP::sequenceGap, which RTPReceiver::updateStats counts
+// with, and nothing had ever run it.
+//
 
-    uint16_t seq = 0;
+TEST_CASE("A sequence number one on from the last loses nothing") {
+    const SequenceGap gap = sequenceGap(/*expected=*/41, /*received=*/41);
 
-    // Normal increment
-    for (int i = 0; i < 100; ++i) {
-        CHECK(seq == i);
-        seq++;
-    }
+    CHECK(gap.lost == 0);
+    CHECK_FALSE(gap.outOfOrder);
+}
 
-    // Wrap-around
-    seq = 65534;
-    seq++;
-    CHECK(seq == 65535);
-    seq++;
-    CHECK(seq == 0);
-    seq++;
-    CHECK(seq == 1);
+TEST_CASE("A forward gap is the packets that did not arrive") {
+    // Expecting 42 and getting 45 means 43 and 44 never came: three ahead,
+    // two missing -- the count is the distance, which is what RFC 3550's
+    // expected-minus-received is.
+    CHECK(sequenceGap(42, 45).lost == 3);
+    CHECK_FALSE(sequenceGap(42, 45).outOfOrder);
 
-    std::cout << "PASS" << std::endl;
+    CHECK(sequenceGap(0, 1).lost == 1);
+    CHECK(sequenceGap(1000, 1001).lost == 1);
+}
+
+TEST_CASE("A backward gap is one packet that came late") {
+    // Behind is not a loss: the packet is here, out of order, and counting it
+    // as tens of thousands lost is what unsigned arithmetic would have done.
+    const SequenceGap late = sequenceGap(/*expected=*/100, /*received=*/98);
+
+    CHECK(late.lost == 0);
+    CHECK(late.outOfOrder);
+
+    // A repeat of the one before is backward by one, and counts the same.
+    CHECK(sequenceGap(100, 99).outOfOrder);
+}
+
+TEST_CASE("The wrap at 65535 is a step forward, not sixty-five thousand lost") {
+    // The whole reason the difference is read as a signed 16-bit value.
+    // Unsigned, 0 minus 65535 is 1 -- right by luck -- but 1 minus 65535 is
+    // 2 and 65535 minus 0 is 65535, which as a loss count would swamp every
+    // statistic the driver reports.
+    CHECK(sequenceGap(/*expected=*/0, /*received=*/0).lost == 0);
+    CHECK(sequenceGap(/*expected=*/65535, /*received=*/0).lost == 1);
+    CHECK(sequenceGap(/*expected=*/65535, /*received=*/2).lost == 3);
+
+    // And backward across the same wrap is still just late.
+    const SequenceGap late = sequenceGap(/*expected=*/1, /*received=*/65534);
+    CHECK(late.lost == 0);
+    CHECK(late.outOfOrder);
+}
+
+TEST_CASE("Half the sequence space is where forward stops being forward") {
+    // A two's-complement difference splits the 65536 values in half: up to
+    // 32767 ahead reads as a gap, and 32768 or more reads as behind. That is
+    // the definition, and it is worth having written down -- 32768 packets
+    // is 32 seconds at 1 ms, so either answer is a stream that is gone.
+    CHECK(sequenceGap(0, 32767).lost == 32767);
+    CHECK_FALSE(sequenceGap(0, 32767).outOfOrder);
+
+    CHECK(sequenceGap(0, 32768).lost == 0);
+    CHECK(sequenceGap(0, 32768).outOfOrder);
 }
 
 //

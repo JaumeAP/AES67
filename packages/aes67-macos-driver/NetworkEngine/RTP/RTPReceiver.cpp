@@ -9,6 +9,7 @@
 #include "PCMCodec.h"
 #include "Driver/DebugLog.h"
 #include "NetworkEngine/SelectWait.h"
+#include "NetworkEngine/RTP/RTPHeader.h"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -250,16 +251,8 @@ int64_t RTPReceiver::getTimeSinceLastPacket() const {
 bool RTPReceiver::updateMapping(const ChannelMapping& newMapping) {
     // Every channel this would write to has to be one the device has, whether
     // the mapping routes them itself or takes the block it was given.
-    if (newMapping.routes.empty()) {
-        if (newMapping.deviceChannelStart + sdp_.numChannels > 128) {
-            return false;
-        }
-    } else {
-        for (const ChannelRoute& route : newMapping.routes) {
-            if (route.deviceChannel >= 128 || route.streamChannel >= sdp_.numChannels) {
-                return false;
-            }
-        }
+    if (!mappingFitsDevice(newMapping, sdp_.numChannels)) {
+        return false;
     }
 
     // Stop, update, restart
@@ -672,16 +665,14 @@ void RTPReceiver::updateStats(uint16_t sequenceNumber, size_t payloadSize) {
     // gaps (reordered/duplicate packets), even across 16-bit wraparound.
     uint64_t currentPacketCount = stats_.packetsReceived.load(std::memory_order_relaxed);
     if (currentPacketCount > 0) {
-        uint16_t expected = lastSequenceNumber_.load(std::memory_order_relaxed) + 1;
-        if (sequenceNumber != expected) {
-            int16_t gap = static_cast<int16_t>(sequenceNumber - expected);
-            if (gap > 0) {
-                // Forward gap: packets between expected and sequenceNumber were lost
-                stats_.packetsLost.fetch_add(static_cast<uint64_t>(gap), std::memory_order_relaxed);
-            } else {
-                // Negative gap: packet arrived out of order (or duplicate)
-                stats_.outOfOrderPackets.fetch_add(1, std::memory_order_relaxed);
-            }
+        const uint16_t expected =
+            static_cast<uint16_t>(lastSequenceNumber_.load(std::memory_order_relaxed) + 1);
+        const RTP::SequenceGap gap = RTP::sequenceGap(expected, sequenceNumber);
+
+        if (gap.lost > 0) {
+            stats_.packetsLost.fetch_add(gap.lost, std::memory_order_relaxed);
+        } else if (gap.outOfOrder) {
+            stats_.outOfOrderPackets.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
