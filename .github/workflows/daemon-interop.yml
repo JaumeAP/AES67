@@ -66,7 +66,8 @@ jobs:
           sudo apt-get install -y build-essential cmake git \
             libboost-thread-dev libboost-filesystem-dev libboost-log-dev \
             libboost-program-options-dev \
-            libavahi-compat-libdnssd-dev uuid-dev
+            libavahi-compat-libdnssd-dev uuid-dev \
+            gstreamer1.0-tools gstreamer1.0-plugins-good
 
       # -DWITH_AVAHI=OFF -DWITH_STREAMER=OFF -DFAKE_DRIVER=ON -DWITH_NMOS=OFF:
       # the daemon's own buildfake.sh flags, minus NMOS -- this job does not
@@ -170,6 +171,32 @@ jobs:
           cat daemon.log >&2
           exit 1
 
+      # A receive path that is not the daemon's and not ours: GStreamer's own
+      # rtpL24depay, told the format out of the SDP this driver announces and
+      # nothing else. The daemon cannot answer this question in this job -- its
+      # receive path is the kernel module, which a fake driver manager stands in
+      # for -- and "the packets were taken off the wire and depayloaded by
+      # somebody else's code" is worth having on its own.
+      #
+      # It starts before the interop tool because that tool is what sends: it
+      # waits, quietly, until direction C reaches the sending part. num-buffers
+      # ends it at a thousand packets, which is a quarter of what goes out, and
+      # the timeout turns a stream that never arrives into a failed step rather
+      # than a hung job.
+      # The status goes to a file rather than being waited on: each step is its
+      # own shell, and a background process from an earlier one is nobody's
+      # child here.
+      - name: GStreamer, listening
+        run: |
+          nohup bash -c 'timeout 120 gst-launch-1.0 -q \
+            udpsrc address=239.1.0.77 port=5104 multicast-iface=lo \
+            caps="application/x-rtp,media=(string)audio,clock-rate=(int)48000,encoding-name=(string)L24,channels=(int)2,payload=(int)97" \
+            ! rtpL24depay ! fakesink num-buffers=1000 \
+            > ci-daemon-run/gst.log 2>&1; echo $? > ci-daemon-run/gst.status' \
+            > /dev/null 2>&1 &
+          sleep 1
+          echo "gst-launch-1.0 waiting on 239.1.0.77:5104"
+
       # --audio-group/--audio-port are direction C: the tool configures a sink
       # on the daemon with the SDP this driver announces, sends RTP to that
       # group, and reads the daemon's own sink status back. 239.1.0.77 is clear
@@ -183,6 +210,30 @@ jobs:
             --audio-group 239.1.0.77 --audio-port 5104 \
             --sink-id 1 --audio-seconds 4 \
             --poll-timeout-ms 20000 --poll-interval-ms 500
+
+      # Exit 0 means it saw its thousand buffers and stopped at end of stream:
+      # a receiver written by somebody else took this driver's packets off the
+      # wire, read the RTP header, and depayloaded L24 at 48 kHz in two
+      # channels without complaint.
+      - name: GStreamer, what it got
+        run: |
+          for i in $(seq 1 60); do
+            [ -f ci-daemon-run/gst.status ] && break
+            sleep 1
+          done
+          if [ ! -f ci-daemon-run/gst.status ]; then
+            echo "gst-launch-1.0 never finished" >&2
+            cat ci-daemon-run/gst.log >&2 || true
+            exit 1
+          fi
+          status="$(cat ci-daemon-run/gst.status)"
+          cat ci-daemon-run/gst.log || true
+          if [ "$status" = "0" ]; then
+            echo "gst-launch-1.0 depayloaded 1000 L24 packets"
+          else
+            echo "gst-launch-1.0 exited $status" >&2
+            exit 1
+          fi
 
       - name: Daemon log
         if: always()
