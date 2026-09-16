@@ -30,6 +30,7 @@ on:
       - 'packages/aes67-macos-driver/CMakeLists.txt'
       - 'packages/aes67-core/**'
       - 'packages/aes67-ravenna/**'
+      - 'external/aes67-linux-daemon'
       - '.github/workflows/daemon-interop.yml'
   pull_request:
     paths:
@@ -39,6 +40,7 @@ on:
       - 'packages/aes67-macos-driver/CMakeLists.txt'
       - 'packages/aes67-core/**'
       - 'packages/aes67-ravenna/**'
+      - 'external/aes67-linux-daemon'
       - '.github/workflows/daemon-interop.yml'
 
 jobs:
@@ -49,16 +51,20 @@ jobs:
         with:
           submodules: recursive
 
-      # A separate checkout, at its own path, rather than a submodule of
-      # this repository: the daemon is GPL-3.0 (compatible, this repo
-      # carries the same licence) but is not this project's code, and CI
-      # is the only place that needs it.
-      - name: Checkout aes67-linux-daemon
-        uses: actions/checkout@v4
-        with:
-          repository: bondagit/aes67-linux-daemon
-          submodules: recursive
-          path: external-daemon
+      # The daemon arrives with the checkout above: external/aes67-linux-daemon
+      # is a submodule of this repository, and `submodules: recursive` brings
+      # it along with its own two -- cpp-httplib and its copy of
+      # ravenna-alsa-lkm -- which is what its build wants pointed at below.
+      #
+      # It used to be a second checkout of bondagit/aes67-linux-daemon at that
+      # repository's default branch, which meant this job built whatever that
+      # branch happened to be on the day it ran: a green run said nothing about
+      # what the next one would build, and a red one could be somebody else's
+      # commit. The submodule records a commit, so what this driver is checked
+      # against changes only when somebody changes it here.
+      #
+      # GPL-3.0, which this repository carries too, and which NOTICE gives its
+      # own row.
 
       - name: Dependencies
         run: |
@@ -75,14 +81,14 @@ jobs:
       # concern, not this job's.
       - name: Build aes67-linux-daemon (fake driver)
         run: |
-          cmake -S external-daemon/daemon -B external-daemon/build \
-            -DCPP_HTTPLIB_DIR="${GITHUB_WORKSPACE}/external-daemon/3rdparty/cpp-httplib" \
-            -DRAVENNA_ALSA_LKM_DIR="${GITHUB_WORKSPACE}/external-daemon/3rdparty/ravenna-alsa-lkm" \
+          cmake -S external/aes67-linux-daemon/daemon -B external/aes67-linux-daemon/build \
+            -DCPP_HTTPLIB_DIR="${GITHUB_WORKSPACE}/external/aes67-linux-daemon/3rdparty/cpp-httplib" \
+            -DRAVENNA_ALSA_LKM_DIR="${GITHUB_WORKSPACE}/external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm" \
             -DBoost_NO_WARN_NEW_VERSIONS=1 \
             -DENABLE_TESTS=OFF -DWITH_AVAHI=OFF -DFAKE_DRIVER=ON \
             -DWITH_STREAMER=OFF -DWITH_NMOS=OFF -DWITH_SYSTEMD=OFF
-          cmake --build external-daemon/build -j
-          test -x external-daemon/build/aes67-daemon
+          cmake --build external/aes67-linux-daemon/build -j
+          test -x external/aes67-linux-daemon/build/aes67-daemon
 
       # Only the one target this job needs: every other Tools/Tests target
       # in this package links -framework Accelerate or opens libASPL, and a
@@ -157,7 +163,7 @@ jobs:
       - name: Start the daemon
         run: |
           cd ci-daemon-run
-          "${GITHUB_WORKSPACE}/external-daemon/build/aes67-daemon" -c daemon.conf \
+          "${GITHUB_WORKSPACE}/external/aes67-linux-daemon/build/aes67-daemon" -c daemon.conf \
             > daemon.log 2>&1 &
           echo $! > daemon.pid
           for i in $(seq 1 30); do
