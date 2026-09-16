@@ -75,15 +75,24 @@ run "aes67-linux-ptpd"   packages/aes67-linux-ptpd/scripts/gate.sh
 # 7.9 MB of the 8.7 this submodule weighs, and nothing here builds, installs
 # or runs any of it. It cannot be deleted, being tracked in a repository that
 # is not ours, so it is not fetched instead.
-lkm="external/ravenna-alsa-lkm"
-if [ -d "$lkm/Butler" ]; then
+#
+# Every checkout of it, not just ours. external/aes67-linux-daemon carries
+# bondagit/ravenna-alsa-lkm as a submodule of its own, the same repository on
+# the same branch, so a recursive clone puts Butler/ back by a second path --
+# and excluding it from one checkout while a copy of it sits in the other is
+# not excluding it.
+for lkm in external/ravenna-alsa-lkm external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm; do
+  [ -d "$lkm/Butler" ] || continue
   echo
-  echo "######## ravenna-alsa-lkm"
+  echo "######## $lkm"
   echo "==> Excluding Butler/ from the checkout (a binary nothing here uses)"
   git -C "$lkm" sparse-checkout init --no-cone > /dev/null 2>&1 || true
   printf '/*\n!/Butler/\n' | git -C "$lkm" sparse-checkout set --stdin > /dev/null 2>&1 \
     || echo "note: sparse-checkout not available; Butler/ stays on disk, unused"
-fi
+done
+# Our own checkout, named rather than left to whatever the loop above ended
+# on: building the daemon's nested copy is not what this step is for.
+lkm="external/ravenna-alsa-lkm"
 if [ -f "$lkm/driver/Makefile" ] && [ "$(uname -s)" = "Linux" ] \
    && [ -d "/lib/modules/$(uname -r)/build" ]; then
   run "ravenna-alsa-lkm" make -C "$lkm/driver"

@@ -8,3 +8,7 @@
 	path = external/ravenna-alsa-lkm
 	url = https://github.com/bondagit/ravenna-alsa-lkm.git
 	branch = aes67-daemon
+[submodule "external/aes67-linux-daemon"]
+	path = external/aes67-linux-daemon
+	url = https://github.com/bondagit/aes67-linux-daemon.git
+	branch = master
