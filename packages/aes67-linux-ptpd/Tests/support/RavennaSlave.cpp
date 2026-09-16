@@ -9,7 +9,7 @@
 // mirror was faithful, and a comment is what guaranteed it -- an upstream
 // change would have left it quietly wrong rather than failing anything.
 //
-// So the module's own file is compiled instead (external/ravenna-alsa-lkm/
+// So the module's own file is compiled instead (external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/
 // driver/PTP.c, with Tests/support/lkm standing in for the handful of kernel
 // names it uses) and this is the shim around it: a synthetic Ethernet, IP and
 // UDP frame around each PTP payload, because that is what the module reads

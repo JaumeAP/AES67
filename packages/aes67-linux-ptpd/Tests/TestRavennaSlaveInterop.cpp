@@ -4,7 +4,7 @@
 // This grandmaster against the RAVENNA ALSA module's rules for a master.
 //
 // The module is the slave half of the Linux device this repository vendors
-// (external/ravenna-alsa-lkm), and it is stricter than IEEE 1588: it elects
+// (external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm), and it is stricter than IEEE 1588: it elects
 // one master and drops everything else, it wants the domain it was configured
 // with, and it drops its lock when Sync sequence numbers are not contiguous.
 // support/RavennaSlave compiles the module's own PTP.c and wraps it; this

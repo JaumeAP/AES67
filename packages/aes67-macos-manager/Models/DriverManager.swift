@@ -2126,10 +2126,6 @@ Dolby with automatic discovery. The driver finds Dolby elements on the network b
         return .free
     }
 
-    /// Sessions currently announced, straight from the running driver.
-    /// Empty when the driver isn't loaded, is an older build without this
-    /// property, or simply hasn't heard any announcements yet — none of
-    /// which are errors worth surfacing differently.
     /// The array a custom AudioObject property publishes, as dictionaries.
     ///
     /// Empty when the driver is not loaded, is an older build without the

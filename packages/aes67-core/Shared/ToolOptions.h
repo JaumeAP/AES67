@@ -21,7 +21,9 @@
 //
 #pragma once
 
+#include <cctype>
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -77,11 +79,15 @@ inline bool realOption(int argc, char* argv[], int& i,
     const char* text = value(argc, argv, i);
     if (text == nullptr) return false;
 
-    errno = 0;
     char* end = nullptr;
     const double parsed = std::strtod(text, &end);
 
-    if (end == text || *end != '\0' || errno == ERANGE) {
+    // Not errno == ERANGE: strtod sets it for underflow as well as overflow,
+    // and an underflow has still read the number -- "1e-320" comes back as a
+    // representable subnormal with ERANGE set, and refusing it as "not a
+    // number" is a refusal whose reason is false. Overflow is the case that
+    // has to be caught, and it is the one that comes back not finite.
+    if (end == text || *end != '\0' || !std::isfinite(parsed)) {
         std::fprintf(stderr, "Error: %s wants a number, not \"%s\"\n", flag, text);
         return false;
     }
@@ -107,8 +113,13 @@ inline bool unsignedOption(int argc, char* argv[], int& i,
     if (text == nullptr) return false;
 
     // strtoull accepts a leading '-' and wraps it around, which is how
-    // `--ssrc -1` would otherwise have become 0xFFFFFFFF.
-    if (text[0] == '-') {
+    // `--ssrc -1` would otherwise have become 0xFFFFFFFF. It also skips
+    // leading whitespace before looking at the sign, so the minus has to be
+    // looked for where strtoull would look for it and not only at text[0]:
+    // `--ssrc " -1"` is one argument, and it wrapped.
+    const char* sign = text;
+    while (std::isspace(static_cast<unsigned char>(*sign))) ++sign;
+    if (*sign == '-') {
         std::fprintf(stderr, "Error: %s wants an unsigned number, not \"%s\"\n", flag, text);
         return false;
     }

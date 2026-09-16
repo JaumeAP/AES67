@@ -31,9 +31,17 @@ enum NetworkInterfaces {
             defer { ptr = ptr?.pointee.ifa_next }
 
             let interface = ptr!.pointee
-            let family = interface.ifa_addr.pointee.sa_family
 
-            if family == UInt8(AF_INET) {
+            // An interface with no address bound -- a down utun or ppp
+            // device, or one torn down between getifaddrs building the list
+            // and this walk reaching it -- comes back with ifa_addr NULL.
+            // The pointer is implicitly unwrapped, so dereferencing it
+            // trapped, and taking the two copies of this walk down to one
+            // made that a single crash both the Manager's settings screen and
+            // its first-run check would take.
+            guard let address = interface.ifa_addr else { continue }
+
+            if address.pointee.sa_family == UInt8(AF_INET) {
                 let name = String(cString: interface.ifa_name)
                 if !name.hasPrefix("lo") && !interfaces.contains(name) {
                     interfaces.append(name)

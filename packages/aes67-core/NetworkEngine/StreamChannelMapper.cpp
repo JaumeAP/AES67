@@ -66,9 +66,14 @@ std::string ChannelMapping::getValidationError() const {
 
 bool mappingFitsDevice(const ChannelMapping& mapping, uint16_t streamChannelCount) {
     if (mapping.routes.empty()) {
-        // The block it was given: start plus the stream's whole width.
-        return mapping.deviceChannelStart + streamChannelCount <=
-               StreamChannelMapper::kMaxDeviceChannels;
+        // The block it was given. Both widths, because deviceChannels() emits
+        // deviceChannelStart .. +deviceChannelCount and the two need not
+        // agree with the stream's: a mapping declaring sixteen device
+        // channels for a two-channel stream still lands sixteen of them, and
+        // checking only the stream's width let it run off the end of
+        // StreamChannelMapper's 128-entry owner table.
+        const uint32_t width = std::max<uint32_t>(streamChannelCount, mapping.deviceChannelCount);
+        return mapping.deviceChannelStart + width <= StreamChannelMapper::kMaxDeviceChannels;
     }
 
     for (const ChannelRoute& route : mapping.routes) {

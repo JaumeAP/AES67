@@ -161,10 +161,10 @@ StatisticsSnapshot RTPTransmitter::getStatistics() const {
 }
 
 void RTPTransmitter::resetStatistics() {
-    // Statistics::reset() is these counters' own answer, and it also clears
-    // lastPacketTimeNs, which this had written out ten of the eleven lines of
-    // and left behind -- so after a reset, timeSinceLastPacketMs() still
-    // measured from a packet no counter admitted to any more.
+    // Statistics::reset() is these counters' own answer, rather than ten of
+    // its eleven stores written out here again. A transmitter keeps no
+    // last-packet time of its own: the eleventh store clears a field nothing
+    // in this repository writes.
     stats_.reset();
 }
 

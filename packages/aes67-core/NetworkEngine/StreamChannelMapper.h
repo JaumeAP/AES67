@@ -70,7 +70,14 @@ struct ChannelMapping {
 
 /// Whether every channel this mapping touches exists: each device channel
 /// below StreamChannelMapper::kMaxDeviceChannels, and each stream channel
-/// below `streamChannelCount`. True for a mapping that can be applied.
+/// below `streamChannelCount`.
+///
+/// A range check and nothing more. ChannelMapping::getValidationError() is
+/// the full answer to whether a mapping can be applied -- it also refuses a
+/// null stream id, a zero count and two routes landing on one device channel
+/// -- and StreamChannelMapper::addMapping asks it. This is what the two RTP
+/// classes need before swapping a mapping under a running stream, which is
+/// that nothing indexes off the end.
 ///
 /// One answer rather than two: RTPReceiver::updateMapping and
 /// RTPTransmitter::updateMapping each carried this, and the transmitter's had

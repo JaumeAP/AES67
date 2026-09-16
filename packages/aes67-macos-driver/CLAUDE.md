@@ -221,7 +221,7 @@ There is no `.pkg`: `make dmg` builds the disk image that is the whole delivery.
 
 Manager app can be built standalone: `cd ../aes67-macos-manager && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
-CTest names map 1:1 to `Tests/*.cpp` — `Tests/CMakeLists.txt` is the list, not this file, with one exception: `InteropSim`, `DanteInteropSim` and `ToolArguments` are registered in `Tools/CMakeLists.txt`, because they name targets defined there and `Tools/` is configured after `Tests/`; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
+Most CTest names map 1:1 to `Tests/*.cpp`, and `Tests/CMakeLists.txt` is that list, not this file. Three do not: `ToolArguments` is `Tests/TestToolArguments.cpp` registered from `Tools/CMakeLists.txt`, because it names targets defined there and `Tools/` is configured after `Tests/`, and `InteropSim` and `DanteInteropSim` are the `Tools/*.cpp` programs themselves, run as tests because they check themselves and return non-zero; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
 
 Always build out-of-source in a `build/` directory as shown above. The root-level `Makefile`, `CTestTestfile.cmake` and `CPackConfig.cmake`/`CPackSourceConfig.cmake` — stale artifacts of a prior in-source build, carrying another machine's absolute paths — were deleted on 2026-09-04, along with two arm64 binaries committed under `Examples/`; `.gitignore` now names all of them so an in-source run cannot put them back.
 
@@ -229,7 +229,7 @@ Always build out-of-source in a `build/` directory as shown above. The root-leve
 
 ```
 Driver/          AudioServerPlugIn (libASPL): device declaration, IO callbacks, SDP parsing
-NetworkEngine/   RTP, PTP, stream lifecycle, resampling, SAP/RTSP discovery
+NetworkEngine/   RTP, PTP, stream lifecycle, SAP/RTSP discovery
 Shared/          Cross-cutting: what is left that is macOS-specific; the ring buffer, types, config, logging and error recovery are in the core
 Tools/           CLI sender/receiver for exercising the RTP path over loopback (no hardware needed)
 Tests/           One CMake target + CTest entry per subsystem, plus multi-stream/full-path integration tests
