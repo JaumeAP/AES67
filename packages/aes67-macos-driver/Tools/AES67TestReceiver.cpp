@@ -29,6 +29,8 @@
 //   --interface <ip>  Local interface IP to join the group on (default: system)
 //
 
+#include "ToolOptions.h"
+
 #include <exception>
 #include <cstdio>
 #include <cstdlib>
@@ -197,12 +199,37 @@ int run(int argc, char* argv[]) {
     // Parse arguments
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--ip" && i + 1 < argc)           multicastIP = argv[++i];
-        else if (arg == "--port" && i + 1 < argc)     port = static_cast<uint16_t>(atoi(argv[++i]));
-        else if (arg == "--channels" && i + 1 < argc)  channels = static_cast<uint16_t>(atoi(argv[++i]));
-        else if (arg == "--encoding" && i + 1 < argc)  encoding = argv[++i];
-        else if (arg == "--duration" && i + 1 < argc)  duration = atoi(argv[++i]);
-        else if (arg == "--interface" && i + 1 < argc) interfaceIP = argv[++i];
+        long long number = 0;
+
+        if (arg == "--ip") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return 1;
+            multicastIP = text;
+        }
+        else if (arg == "--port") {
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 1;
+            port = static_cast<uint16_t>(number);
+        }
+        else if (arg == "--channels") {
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 128, number)) return 1;
+            channels = static_cast<uint16_t>(number);
+        }
+        else if (arg == "--encoding") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return 1;
+            encoding = text;
+        }
+        else if (arg == "--duration") {
+            // Zero is the documented "run until interrupted". What it must
+            // not be is what a misspelt number quietly turned into.
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 0, 2147483647LL, number)) return 1;
+            duration = static_cast<int>(number);
+        }
+        else if (arg == "--interface") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return 1;
+            interfaceIP = text;
+        }
         else if (arg == "--help" || arg == "-h") {
             fprintf(stderr,
                 "AES67 Test Receiver - receives RTP multicast and reports statistics\n\n"
@@ -222,11 +249,8 @@ int run(int argc, char* argv[]) {
         }
     }
 
-    // Validate
-    if (channels == 0 || channels > 128) {
-        fprintf(stderr, "Error: channels must be 1-128\n");
-        return 1;
-    }
+    // Validate. The channel count is checked where it is parsed, along with
+    // every other number.
     if (encoding != "L16" && encoding != "L24") {
         fprintf(stderr, "Error: encoding must be L16 or L24\n");
         return 1;

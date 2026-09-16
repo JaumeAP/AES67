@@ -29,6 +29,8 @@
 // Output: one CSV line per second to stdout (t,locked,offsetNs,pathDelayNs,
 // syncSent,delayRespSent,announceSent), a summary to stderr at the end.
 //
+#include "ToolOptions.h"
+
 #include "NetworkEngine/PTP/PTPMaster.h"
 #include "NetworkEngine/PTP/PTPSlave.h"
 #include "NetworkEngine/PTP/PTPClockSource.h"
@@ -70,15 +72,30 @@ int main(int argc, char** argv) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        auto next = [&]() -> std::string {
-            if (i + 1 >= argc) { printUsage(argv[0]); std::exit(1); }
-            return argv[++i];
-        };
-        if (arg == "--interface") interfaceName = next();
-        else if (arg == "--seconds") durationSec = std::atoi(next().c_str());
-        else if (arg == "--event-port") eventPort = static_cast<uint16_t>(std::atoi(next().c_str()));
-        else if (arg == "--general-port") generalPort = static_cast<uint16_t>(std::atoi(next().c_str()));
-        else if (arg == "--csv") csvPath = next();
+        long long number = 0;
+
+        if (arg == "--interface") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) { printUsage(argv[0]); return 1; }
+            interfaceName = text;
+        }
+        else if (arg == "--seconds") {
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) return 1;
+            durationSec = static_cast<int>(number);
+        }
+        else if (arg == "--event-port") {
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 1;
+            eventPort = static_cast<uint16_t>(number);
+        }
+        else if (arg == "--general-port") {
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 1;
+            generalPort = static_cast<uint16_t>(number);
+        }
+        else if (arg == "--csv") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) { printUsage(argv[0]); return 1; }
+            csvPath = text;
+        }
         else if (arg == "--help" || arg == "-h") { printUsage(argv[0]); return 0; }
         else { std::fprintf(stderr, "Unknown option: %s\n", arg.c_str()); printUsage(argv[0]); return 1; }
     }
