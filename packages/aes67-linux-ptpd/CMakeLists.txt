@@ -145,6 +145,13 @@ if(BUILD_TESTS)
         # force-include says what is happening; a stub that quietly supplied
         # them would not.
         set(lkm_ptp_options "-include" "stdbool.h")
+
+        # Only when the file is there. It used to be, for anybody who ran
+        # `git submodule update --init`, because the module was this
+        # repository's own submodule; reached through the daemon it needs
+        # --recursive, and a source listed in add_executable that is not on
+        # disk stops the configure of the whole tree rather than this suite.
+        if(EXISTS ${lkm_driver}/PTP.c)
         add_executable(TestRavennaSlaveInterop
             Tests/TestRavennaSlaveInterop.cpp
             Tests/support/RavennaSlave.cpp
@@ -207,6 +214,11 @@ if(BUILD_TESTS)
             # while another build of this suite is doing the same.
             set_tests_properties(GrandmasterOnTheWire PROPERTIES
                 LABELS "network" TIMEOUT 120)
+        endif()
+        else()
+            message(STATUS
+                "ravenna-alsa-lkm not checked out: RavennaSlaveInterop skipped "
+                "(git submodule update --init --recursive)")
         endif()
 
     # The parsers, fed what nobody wrote a test for: Tests/fuzz/FuzzParsers.cpp.
