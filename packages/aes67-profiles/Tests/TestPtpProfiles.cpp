@@ -12,6 +12,10 @@
 #include "doctest.h"
 
 #include "Profiles/PtpProfiles.h"
+#include "Profiles/PtpIntervals.h"
+
+#include <cmath>
+#include <cstdint>
 
 using namespace AES67;
 
@@ -122,4 +126,62 @@ TEST_CASE("One interval conversion, exact where the two used to disagree") {
     CHECK(ptpLogIntervalToNanoseconds(22) == 0ull);
     static_assert(ptpLogIntervalToNanoseconds(-4) == 62500000ull,
                   "usable at compile time too");
+}
+
+
+//
+// Exhaustive over the whole int8_t domain -- 256 values, cheap enough to
+// enumerate completely rather than sample. This is what the severe defect
+// found in this driver's PTPMasterSettings::load() should have been caught
+// by well before it reached three independent code reviews: a raw exponent
+// wrapped into a value like -56 was still a legal int8_t, and nothing
+// checked what it actually meant.
+//
+
+TEST_CASE("Every int8_t is either an interval to follow or answers zero, never garbage") {
+    for (int raw = -128; raw <= 127; ++raw) {
+        const auto logInterval = static_cast<int8_t>(raw);
+        const uint64_t ns = ptpLogIntervalToNanoseconds(logInterval);
+        const uint32_t ms = ptpLogIntervalToMilliseconds(logInterval);
+
+        INFO("logInterval: " << static_cast<int>(logInterval));
+
+        if (logInterval < -9 || logInterval > 21) {
+            // Outside the domain this driver's PTP ports actually run in:
+            // both conversions say so with zero, which a caller reads as
+            // "not an interval to follow" -- never as a legitimate period,
+            // and in particular never as the near-infinite or near-zero
+            // period a naive shift would produce for the ends of the range.
+            CHECK(ns == 0);
+            CHECK(ms == 0);
+        } else {
+            // Inside it, both answer a real, bounded period: at least a
+            // microsecond (finer than any PTP rate this driver configures)
+            // and at most the ~24.3 days 2^21 seconds is.
+            CHECK(ns >= 1000);
+            CHECK(ns <= 2'097'152'000'000'000ull);
+            CHECK(ms >= 1);
+        }
+
+        // Whichever branch, no result is ever the pathological near-zero
+        // period that pins a transmit loop at "now" forever -- the busy
+        // loop this whole domain check exists to keep unreachable.
+        CHECK_FALSE((ns > 0 && ns < 1000));
+    }
+}
+
+TEST_CASE("Nanoseconds and milliseconds agree at every legal interval") {
+    // Same domain, cross-checked: the two conversions are two different
+    // formulas (one exact, one rounded to the nearest millisecond), and
+    // they have disagreed with each other's predecessors before. They must
+    // not disagree by more than the millisecond rounding itself allows.
+    for (int raw = -9; raw <= 21; ++raw) {
+        const auto logInterval = static_cast<int8_t>(raw);
+        const uint64_t ns = ptpLogIntervalToNanoseconds(logInterval);
+        const uint32_t ms = ptpLogIntervalToMilliseconds(logInterval);
+
+        INFO("logInterval: " << static_cast<int>(logInterval));
+        const double msFromNs = static_cast<double>(ns) / 1'000'000.0;
+        CHECK(std::abs(msFromNs - static_cast<double>(ms)) < 1.0);
+    }
 }

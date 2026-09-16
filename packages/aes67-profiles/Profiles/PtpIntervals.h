@@ -23,10 +23,28 @@ inline constexpr int8_t kPtpLogIntervalReserved = 0x7F;
 /// Milliseconds for a log2-second interval, rounded to nearest. Exact for
 /// every value from -7 (7.8125 ms, returned as 8) up to 21 (2^21 s); outside
 /// that a caller has already decided the interval is not one to follow.
+///
+/// The lower bound is not cosmetic: without it, any logInterval at or below
+/// -32 shifts `1u` by 32 or more bits, which the standard leaves undefined
+/// for a 32-bit operand -- not merely wrong, unspecified. On this compiler
+/// and architecture that came back as though the shift count had wrapped
+/// modulo 32, producing a plausible-looking millisecond figure for a value
+/// that should have been refused; nothing about that behaviour is
+/// guaranteed, on this target or the next one. And this is reachable from
+/// the network, not only from a hand-edited file: PTPSlave.cpp passes
+/// header.logMessageInterval -- one byte off the wire, from a Sync,
+/// Delay_Resp or Announce a peer sent -- straight into logIntervalToMs(),
+/// which calls this. Any device on the segment, real or hostile, choosing
+/// that byte reaches this undefined behaviour on every message it sends.
+/// ptpLogIntervalToNanoseconds already refused below -9; this was the one
+/// place in the file that did not, found by an exhaustive sweep of the
+/// whole int8_t domain rather than by the handful of documented examples
+/// anyone had thought to try.
 constexpr uint32_t ptpLogIntervalToMilliseconds(int8_t logInterval) {
     if (logInterval >= 0) {
         return logInterval > 21 ? 0u : (1000u << logInterval);
     }
+    if (logInterval < -9) return 0u;
     // 1000 / 2^n, rounded: add half the divisor before dividing.
     const uint32_t divisor = 1u << static_cast<unsigned>(-logInterval);
     return (1000u + divisor / 2u) / divisor;
