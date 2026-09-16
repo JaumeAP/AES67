@@ -86,9 +86,18 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
     // Store bound interface for proper IP_DROP_MEMBERSHIP on close()
     boundInterfaceAddr_ = ifaceAddr;
 
+    // Only a multicast destination gets a group join, and the two options
+    // around it. A session description may legally name a unicast address --
+    // the parser takes one, IS-05 can stage one, and this driver's own tools
+    // send to one -- and IP_ADD_MEMBERSHIP on 127.0.0.1 fails with EINVAL, so
+    // the stream never opened at all. Found by pointing ffmpeg at this
+    // receiver over the loopback, 2026-09-16.
+    const uint32_t destination = ntohl(inet_addr(multicastIP));
+    const bool isMulticast = (destination >> 28) == 0xE;   // 224.0.0.0/4
+
     // Bind multicast reception to a specific interface (prevents duplicate
     // packets on machines with multiple NICs, common in pro audio setups)
-    if (interfaceIP) {
+    if (isMulticast && interfaceIP) {
         if (setsockopt(sockfd_, IPPROTO_IP, IP_MULTICAST_IF, &ifaceAddr, sizeof(ifaceAddr)) < 0) {
             (void)fprintf(stderr, "AES67 RTP openReceiver: IP_MULTICAST_IF failed for %s:%u iface=%s (errno=%d: %s)\n",
                     multicastIP, port, interfaceIP, errno, strerror(errno));
@@ -100,18 +109,25 @@ bool RTPSocket::openReceiver(const char* multicastIP, uint16_t port, const char*
                 interfaceIP, multicastIP, port);
     }
 
-    // Join multicast group on the specified interface
-    struct ip_mreq mreq;
-    mreq.imr_multiaddr.s_addr = inet_addr(multicastIP);
-    mreq.imr_interface = ifaceAddr;
-    multicastGroupAddr_.s_addr = mreq.imr_multiaddr.s_addr; // remember for rejoinMulticast()
+    // Join multicast group on the specified interface. A unicast destination
+    // has nothing to join: the bind above is all it needs, and
+    // multicastGroupAddr_ stays zero, which is what close() and
+    // rejoinMulticast() already test before dropping or re-joining.
+    if (isMulticast) {
+        struct ip_mreq mreq;
+        mreq.imr_multiaddr.s_addr = inet_addr(multicastIP);
+        mreq.imr_interface = ifaceAddr;
+        multicastGroupAddr_.s_addr = mreq.imr_multiaddr.s_addr; // for rejoinMulticast()
 
-    if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-        (void)fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
-                multicastIP, port, errno, strerror(errno));
-        ::close(sockfd_);
-        sockfd_ = -1;
-        return false;
+        if (setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+            (void)fprintf(stderr, "AES67 RTP openReceiver: IP_ADD_MEMBERSHIP failed for %s:%u (errno=%d: %s)\n",
+                    multicastIP, port, errno, strerror(errno));
+            ::close(sockfd_);
+            sockfd_ = -1;
+            return false;
+        }
+    } else {
+        multicastGroupAddr_.s_addr = 0;
     }
 
     // Set non-blocking mode
@@ -333,11 +349,13 @@ void RTPSocket::rejoinMulticast() {
 
 void RTPSocket::close() {
     if (sockfd_ >= 0) {
-        // Leave multicast group if receiver
-        // Use the same interface address that was used for IP_ADD_MEMBERSHIP
-        if (isReceiver_) {
+        // Leave multicast group if receiver, and only if there was one to
+        // join: a unicast destination leaves multicastGroupAddr_ at zero, and
+        // dropping a membership nobody took logs an errno on every close.
+        // Use the same interface address that was used for IP_ADD_MEMBERSHIP.
+        if (isReceiver_ && multicastGroupAddr_.s_addr != 0) {
             struct ip_mreq mreq;
-            mreq.imr_multiaddr = multicastAddr_.sin_addr;
+            mreq.imr_multiaddr = multicastGroupAddr_;
             mreq.imr_interface = boundInterfaceAddr_;
             if (setsockopt(sockfd_, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
                 // Log but don't fail — socket is closing anyway.
