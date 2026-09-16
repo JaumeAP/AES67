@@ -10,6 +10,7 @@
 #include "PTPMaster.h"
 #include "NetworkEngine/NetworkUtils.h"
 
+#include <algorithm>
 #include <cmath>
 #include "Driver/AudioThreadPriority.h"
 
@@ -437,30 +438,63 @@ void PTPMaster::receiveThread() {
 void PTPMaster::transmitThread() {
     AudioThreadPriority::configureForRealTime(PeriodMs(syncPeriod_));
 
-    auto lastAnnounce = std::chrono::steady_clock::now() - announcePeriod_;
-    auto lastSync = std::chrono::steady_clock::now();
-    auto lastBMCATick = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    // Deadlines, not stamps of when something last happened. Restamping from
+    // the moment of the send and then sleeping a fixed tick rounds every
+    // period up to the next tick and never gives the slack back, so the rate
+    // drifts slow and stays slow: at a 125 ms Sync interval and a 10 ms tick
+    // an outside observer (Eines' aoip-stress ptp, 2026-09-16) measured a mean
+    // of 131.9 ms -- 5.5% slower than the logSyncInterval this master
+    // announces, which is the number every slave sizes its timeouts from.
+    constexpr auto kBMCAPeriod = std::chrono::milliseconds(200);
+    // How long the loop may sleep in one go, so that stop() is still noticed
+    // promptly. It bounds the wait, not the period.
+    constexpr auto kMaxSleep = std::chrono::milliseconds(10);
+
+    auto nextAnnounce = std::chrono::steady_clock::now();
+    auto nextSync = std::chrono::steady_clock::now() + syncPeriod_;
+    auto nextBMCATick = std::chrono::steady_clock::now();
+
+    // Advances a deadline by its period, and resynchronises it to now when the
+    // thread was held off for longer than one period: a deadline left in the
+    // past would otherwise be met by a burst of catch-up messages, which is
+    // worse for a slave than the interval it missed.
+    const auto advance = [](std::chrono::steady_clock::time_point& deadline,
+                            std::chrono::steady_clock::duration period,
+                            std::chrono::steady_clock::time_point now) {
+        deadline += period;
+        if (deadline <= now) deadline = now + period;
+    };
 
     while (running_.load(std::memory_order_acquire)) {
         const auto now = std::chrono::steady_clock::now();
 
-        if (now - lastBMCATick >= std::chrono::milliseconds(200)) {
+        if (now >= nextBMCATick) {
             evaluateBMCA();
-            lastBMCATick = now;
+            advance(nextBMCATick, kBMCAPeriod, now);
         }
 
         if (role_.load(std::memory_order_acquire) == PTPMasterRole::Master) {
-            if (now - lastAnnounce >= announcePeriod_) {
+            if (now >= nextAnnounce) {
                 sendAnnounce();
-                lastAnnounce = now;
+                advance(nextAnnounce, announcePeriod_, now);
             }
-            if (now - lastSync >= syncPeriod_) {
+            if (now >= nextSync) {
                 sendSyncAndFollowUp();
-                lastSync = now;
+                advance(nextSync, syncPeriod_, now);
             }
+        } else {
+            // Not sending: keep the deadlines from falling behind, so taking
+            // the role back does not start with a burst.
+            if (now >= nextAnnounce) advance(nextAnnounce, announcePeriod_, now);
+            if (now >= nextSync) advance(nextSync, syncPeriod_, now);
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Sleep to the earliest deadline rather than a fixed tick, so a period
+        // is not quantised to the tick either.
+        auto wakeAt = std::min({nextAnnounce, nextSync, nextBMCATick});
+        const auto ceiling = std::chrono::steady_clock::now() + kMaxSleep;
+        if (wakeAt > ceiling) wakeAt = ceiling;
+        std::this_thread::sleep_until(wakeAt);
     }
 }
 
