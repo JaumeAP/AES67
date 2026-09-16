@@ -170,12 +170,18 @@ jobs:
           cat daemon.log >&2
           exit 1
 
+      # --audio-group/--audio-port are direction C: the tool configures a sink
+      # on the daemon with the SDP this driver announces, sends RTP to that
+      # group, and reads the daemon's own sink status back. 239.1.0.77 is clear
+      # of the source's own 239.1.0.1 above.
       - name: Live interop
         run: |
           ./build/Tools/AES67LiveDaemonInterop \
             --host 127.0.0.1 --rtsp-port 8854 --http-port 8080 \
             --sap-group 239.255.255.255 \
             --daemon-source-id 0 --daemon-source-name "CI Fake Source" \
+            --audio-group 239.1.0.77 --audio-port 5104 \
+            --sink-id 1 --audio-seconds 4 \
             --poll-timeout-ms 20000 --poll-interval-ms 500
 
       - name: Daemon log

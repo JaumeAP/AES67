@@ -28,18 +28,36 @@
 //      through its REST API (GET /api/browse/sources/sap) rather than
 //      through anything internal to this driver.
 //
+//   C) The audio itself, which A and B do not touch: a sink is configured on
+//      the daemon with the SDP this driver announces for a transmit stream,
+//      RTP is sent to the group that SDP names, and the daemon's own sink
+//      status says whether it is receiving and whether its sequence, SSRC or
+//      payload-type checks fired. This is the first thing in this project
+//      that puts audio in front of a receiver somebody else wrote.
+//
 // Exit code is the number of checks that failed, capped at 255, so a CI
 // step fails loudly rather than needing its output parsed.
 //
 #include "Driver/SDPParser.h"
+#include "NetworkEngine/JsonEscape.h"
+#include "NetworkEngine/JsonFields.h"
+#include "NetworkEngine/RTP/PacketBudget.h"
+#include "NetworkEngine/RTP/RTPHeader.h"
 #include "NetworkEngine/Discovery/RTSPClient.h"
+#include "NetworkEngine/TxSession.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
 #include "NetworkEngine/TxSession.h"
 #include "Ravenna/HTTPClient.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -72,6 +90,10 @@ int parseInt(const std::string& text, int fallback) {
 
 struct Options {
     std::string host{"127.0.0.1"};
+    std::string audioGroup{"239.1.0.77"};
+    uint16_t audioPort{5104};
+    int sinkId{1};
+    int audioSeconds{3};
     uint16_t rtspPort{8854};
     uint16_t httpPort{8080};
     std::string sapGroup{"239.255.255.255"};
@@ -92,6 +114,10 @@ Options parseArgs(int argc, char** argv) {
         else if (key == "--sap-group") opts.sapGroup = value;
         else if (key == "--daemon-source-id") opts.daemonSourceId = parseInt(value, opts.daemonSourceId);
         else if (key == "--daemon-source-name") opts.daemonSourceName = value;
+        else if (key == "--audio-group") opts.audioGroup = value;
+        else if (key == "--audio-port") opts.audioPort = static_cast<uint16_t>(parseInt(value, opts.audioPort));
+        else if (key == "--sink-id") opts.sinkId = parseInt(value, opts.sinkId);
+        else if (key == "--audio-seconds") opts.audioSeconds = parseInt(value, opts.audioSeconds);
         else if (key == "--poll-timeout-ms") opts.pollTimeoutMs = parseInt(value, opts.pollTimeoutMs);
         else if (key == "--poll-interval-ms") opts.pollIntervalMs = parseInt(value, opts.pollIntervalMs);
     }
@@ -206,6 +232,142 @@ void checkThisDriverIsDiscoverable(const Options& opts) {
     }
 }
 
+
+/// Direction C: the audio. A sink on the daemon, configured with the SDP this
+/// driver announces, and RTP sent to the group that SDP names.
+void checkTheDaemonReceivesOurAudio(const Options& opts) {
+    std::printf("\n[C] Audio into the daemon's own receive path\n");
+
+    // The session this driver would announce for a transmit stream, not one
+    // written for the occasion: announcedTxSession() is what createTxStream()
+    // calls, so what the daemon is handed here is what a real stream carries.
+    SDPSession session = announcedTxSession("CI Audio Test", opts.audioGroup, opts.audioPort,
+                                            2, 48000, /*dscp=*/-1);
+    session.originAddress = opts.host;
+    const std::string sdp = SDPParser::generate(session);
+
+    // PUT /api/sink/<id>, daemon/README.md. use_sdp takes the description from
+    // the body rather than fetching a URL; ignore_refclk_gmid because this
+    // driver announces no a=ts-refclk until a grandmaster is known, and the
+    // daemon otherwise holds the sink waiting for a clock to agree with --
+    // which is a separate question from whether the packets arrive.
+    const std::string body =
+        std::string("{\"name\":\"CI Audio Test\",\"io\":\"Audio Device\",\"delay\":576,") +
+        "\"use_sdp\":true,\"source\":\"\",\"sdp\":\"" + jsonEscape(sdp) + "\"," +
+        "\"ignore_refclk_gmid\":true,\"map\":[0,1]}";
+
+    const std::string sinkPath = "/api/sink/" + std::to_string(opts.sinkId);
+    {
+        HTTPClient http(opts.host, opts.httpPort);
+        const HTTPResponse put = http.perform("PUT", sinkPath, body, "application/json");
+        check("the daemon took the sink", put.ok(),
+              put.ok() ? sinkPath : "status " + std::to_string(put.status) + " " +
+                                        (put.error.empty() ? put.body : put.error));
+        if (!put.ok()) return;
+    }
+
+    // The sender: a plain UDP socket and the core's RTP header, because what
+    // is under test is the daemon's receive path, not ours. L24 at 48 kHz in
+    // 1 ms packets, paced on the exact length of a packet.
+    const int sock = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        check("audio socket", false, std::strerror(errno));
+        return;
+    }
+    in_addr iface{};
+    ::inet_pton(AF_INET, opts.host.c_str(), &iface);
+    ::setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, &iface, sizeof(iface));
+    const unsigned char ttl = 1;
+    ::setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
+    const unsigned char loop = 1;   // both ends are this host
+    ::setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+
+    sockaddr_in destination{};
+    destination.sin_family = AF_INET;
+    destination.sin_port = htons(opts.audioPort);
+    ::inet_pton(AF_INET, opts.audioGroup.c_str(), &destination.sin_addr);
+
+    constexpr uint32_t kFrames = 48;      // 1 ms at 48 kHz
+    constexpr uint16_t kChannels = 2;
+    constexpr uint32_t kRate = 48000;
+    constexpr double kPi = 3.14159265358979323846;
+    const auto step = PacketBudget::packetInterval(kFrames, kRate);
+    uint32_t carry = 0;
+
+    std::vector<uint8_t> packet(sizeof(RTP::RTPHeader) + kFrames * kChannels * 3);
+    uint16_t sequence = 1;
+    uint32_t timestamp = 0;
+    double phase = 0.0;
+    const double increment = 2.0 * kPi * 1000.0 / kRate;
+
+    auto next = std::chrono::steady_clock::now();
+    const auto until = next + std::chrono::seconds(opts.audioSeconds);
+    uint64_t sent = 0, sendFailures = 0;
+
+    while (std::chrono::steady_clock::now() < until) {
+        std::this_thread::sleep_until(next);
+        uint64_t stepNs = step.wholeNs;
+        carry += step.remainder;
+        if (carry >= kRate) { stepNs += carry / kRate; carry %= kRate; }
+        next += std::chrono::nanoseconds(stepNs);
+
+        RTP::RTPHeader header{};
+        header.version = 2;
+        header.payloadType = 97;
+        header.sequenceNumber = sequence++;
+        header.timestamp = timestamp;
+        header.ssrc = 0x43490001;
+        header.toNetworkOrder();
+        std::memcpy(packet.data(), &header, sizeof(header));
+
+        uint8_t* payload = packet.data() + sizeof(header);
+        for (uint32_t frame = 0; frame < kFrames; ++frame) {
+            const double sample = std::sin(phase);
+            phase += increment;
+            if (phase >= 2.0 * kPi) phase -= 2.0 * kPi;
+            const int32_t value = static_cast<int32_t>(sample * 8388607.0);
+            for (uint16_t channel = 0; channel < kChannels; ++channel) {
+                const size_t at = (static_cast<size_t>(frame) * kChannels + channel) * 3;
+                payload[at] = static_cast<uint8_t>((value >> 16) & 0xFF);
+                payload[at + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+                payload[at + 2] = static_cast<uint8_t>(value & 0xFF);
+            }
+        }
+
+        if (::sendto(sock, packet.data(), packet.size(), 0,
+                     reinterpret_cast<sockaddr*>(&destination), sizeof(destination)) < 0) {
+            ++sendFailures;
+        } else {
+            ++sent;
+        }
+        timestamp += kFrames;
+    }
+    ::close(sock);
+
+    check("audio went out", sent > 0 && sendFailures == 0,
+          std::to_string(sent) + " packets, " + std::to_string(sendFailures) + " send failures");
+
+    // What the daemon itself made of it: GET /api/sink/status/<id>.
+    HTTPClient http(opts.host, opts.httpPort);
+    const HTTPResponse status = http.get("/api/sink/status/" + std::to_string(opts.sinkId));
+    check("the daemon answered for the sink", status.ok(),
+          status.ok() ? status.body : "status " + std::to_string(status.status) + " " + status.error);
+    if (status.ok()) {
+        const auto flag = [&status](const char* name) {
+            const auto value = extractBoolField(status.body, name);
+            return value.has_value() && *value;
+        };
+        check("the daemon is receiving our RTP", flag("receiving_rtp_packet"), status.body);
+        check("no sequence error", !flag("rtp_seq_id_error"), "rtp_seq_id_error");
+        check("no SSRC error", !flag("rtp_ssrc_error"), "rtp_ssrc_error");
+        check("no payload type error", !flag("rtp_payload_type_error"), "rtp_payload_type_error");
+    }
+
+    const HTTPResponse removed = http.perform("DELETE", sinkPath, "", "");
+    check("the sink was removed", removed.ok(),
+          removed.ok() ? sinkPath : "status " + std::to_string(removed.status));
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -217,6 +379,7 @@ int main(int argc, char** argv) {
 
     checkDaemonSourceIsDiscoverable(opts);
     checkThisDriverIsDiscoverable(opts);
+    checkTheDaemonReceivesOurAudio(opts);
 
     std::printf("\n%d check(s) failed\n", fails);
     return fails > 255 ? 255 : fails;
