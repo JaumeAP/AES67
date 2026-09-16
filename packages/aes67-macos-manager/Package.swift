@@ -33,10 +33,16 @@ let package = Package(
                 "Views/NoticeView.swift",
                 "Views/ChannelMappingView.swift",
                 "Views/ChannelMapDiagnosticView.swift",
+                "Views/RoutingMatrixView.swift",
                 "Models/StreamInfo.swift",
                 "Models/DriverManager.swift",
                 "Models/MenuBarManager.swift",
-                "Models/NetworkInterfaces.swift"
+                "Models/NetworkInterfaces.swift",
+                "Models/DolbyModelCatalog.swift",
+                "Models/NmosResources.swift",
+                "Models/NmosController.swift",
+                "Models/SessionList.swift",
+                "Models/PrivilegedScript.swift"
             ]
         )
     ]
