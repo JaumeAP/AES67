@@ -6,14 +6,17 @@
 // and what the UI is told about it. 88 lines that nothing reached: there was
 // no suite for this file at all.
 //
-// Offline, like TestPTPMaster: constructed and asked, never started. start()
-// binds 319 and 320 and spawns a monitor thread, which belongs with the
-// loopback tier; what is decided before any of that is the object's own.
+// Offline, like TestPTPMaster: mostly constructed and asked rather than run.
+// start() binds 319 and 320, which this driver has no privilege for, so the
+// one case that calls it checks the refusal path and the invariant that
+// holds either way -- isRunning() agreeing with what start() returned. What
+// a running monitor thread then does belongs with the loopback tier.
 //
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
 #include "NetworkEngine/PTP/PTPArbitrator.h"
+#include "NetworkEngine/PTP/PTPClockSource.h"
 #include "NetworkEngine/PTP/PTPDiagnostics.h"
 
 using namespace AES67;
@@ -110,4 +113,68 @@ TEST_CASE("A Locked Device Kind With No Device Falls Back To The Internal Clock"
     // point of testing it here.
     PTPArbitrator arbitrator(config);
     CHECK(arbitrator.role() == PTPRole::Slave);
+}
+
+TEST_CASE("The Chosen Clock Source Is The One Announced") {
+    PTPArbitrator arbitrator(defaultConfig());
+
+    // What ManagerApp's "currently locked to" reads, and what PTPMaster
+    // stamps into Announce: an unconfigured driver serves this Mac's own
+    // free-running clock, which IEEE 1588 §7.6.2.4 numbers 248 and whose
+    // accuracy is honestly Unknown rather than a figure nobody measured.
+    const PTPClockSource& source = arbitrator.clockSource();
+    CHECK(source.clockClass() == 248);
+    CHECK(source.clockAccuracy() == PTPClockAccuracy::Unknown);
+    CHECK_FALSE(source.name().empty());
+    CHECK(source.currentTimeNs() > 0);
+}
+
+TEST_CASE("A Locked Device Kind With No Device Still Announces The Internal Clock") {
+    PTPArbitratorConfig config = defaultConfig();
+    config.clockSourceKind = PTPClockSourceKind::LocalAudioDevice;
+    config.lockToDeviceID = kAudioObjectUnknown;
+
+    // The fallback the constructor takes is not just "some source": it has
+    // to be the internal one, because announcing a locked device's accuracy
+    // while locked to nothing is the failure that matters here.
+    PTPArbitrator arbitrator(config);
+    CHECK(arbitrator.clockSource().clockClass() == 248);
+}
+
+TEST_CASE("One That Never Started Is Not Running And Is Not Locked") {
+    PTPArbitrator arbitrator(defaultConfig());
+
+    // Both are read by the diagnostics UI on a timer, before anything has
+    // been started and after everything has been stopped.
+    CHECK_FALSE(arbitrator.isRunning());
+    CHECK_FALSE(arbitrator.isSlaveLocked());
+}
+
+TEST_CASE("Starting Without The Privilege To Bind 319 Fails Cleanly") {
+    PTPArbitrator arbitrator(defaultConfig());
+
+    // PTP's event and general ports are 319 and 320, both privileged, and
+    // this driver runs in user space. Unprivileged, PTPMaster::start()
+    // cannot create its sockets and the arbitrator must report that rather
+    // than claim to be running -- the branch that says so had never been
+    // reached by a test. Run with the privilege, the same call succeeds, so
+    // both outcomes are checked for the invariant that actually matters:
+    // isRunning() agrees with what start() returned.
+    const bool started = arbitrator.start();
+    CHECK(arbitrator.isRunning() == started);
+
+    if (started) {
+        // A second start is refused while the first is up, whoever we are.
+        CHECK_FALSE(arbitrator.start());
+    } else {
+        // Nothing was left half-built: no thread to join, no socket open.
+        CHECK(arbitrator.role() == PTPRole::Slave);
+        CHECK_FALSE(arbitrator.isSlaveLocked());
+    }
+
+    // Symmetric either way, and a second stop is still not an error.
+    arbitrator.stop();
+    CHECK_FALSE(arbitrator.isRunning());
+    arbitrator.stop();
+    CHECK_FALSE(arbitrator.isRunning());
 }
