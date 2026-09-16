@@ -449,19 +449,8 @@ target_include_directories(TestSessionDirectory PRIVATE
 target_link_libraries(TestSessionDirectory PRIVATE doctest_headers)
 target_compile_features(TestSessionDirectory PRIVATE cxx_std_17)
 
-# Test: what AES67ImpairmentRelay does to a packet, without the sockets.
-# Tools/ImpairmentPolicy.h is the relay's decision, separated so the order it
-# sends packets in can be asserted rather than inferred from a receiver.
-add_executable(TestImpairmentPolicy
-    TestImpairmentPolicy.cpp
-)
-
-target_include_directories(TestImpairmentPolicy PRIVATE
-    ${PROJECT_SOURCE_DIR}
-)
-
-target_link_libraries(TestImpairmentPolicy PRIVATE doctest_headers)
-target_compile_features(TestImpairmentPolicy PRIVATE cxx_std_17)
+# The impairment policy suite went with the relay to
+# Eines/packages/aoip-stress-lab on 2026-09-16 (tests/test_aoip_impair.cpp).
 
 # Test: this slave against the bytes t41-ptp emits when it runs, replayed
 # from a fixture its own host build generates (make -C test fixture there).
@@ -812,7 +801,6 @@ add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME DaemonRTSPInterop COMMAND TestDaemonRTSPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
 add_test(NAME PTPT41Interop COMMAND TestPTPT41Interop)
-add_test(NAME ImpairmentPolicy COMMAND TestImpairmentPolicy)
 add_test(NAME SessionDirectory COMMAND TestSessionDirectory)
 add_test(NAME RTSPSessionDiscovery COMMAND TestRTSPSessionDiscovery)
 add_test(NAME DiscoveryBridge COMMAND TestDiscoveryBridge)

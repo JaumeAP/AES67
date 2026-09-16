@@ -34,10 +34,9 @@ Test and interop tooling, the whole inventory. Everything in `packages/aes67-mac
 4. `AES67TestSender` — sine-wave RTP multicast with optional SAP announcements.
 5. `AES67TestReceiver` — RTP receive statistics per SSRC, RFC 3550 §A.1/A.3: loss, reordering and duplication counted apart.
 6. `AES67SAPMonitor` — hears SAP announcements through `SAPListener::parseAnnouncement`, the same parser the driver runs.
-7. `AES67ImpairmentRelay` — relays one multicast group to another under loss, bursts, delay, jitter and reordering, in user space, with no root and no packet-filter state.
+7. Degrading a live stream — loss, bursts, delay, jitter, reordering — is `aoip-stress impair` in the Eines repository (`packages/aoip-stress-lab`) since 2026-09-16. It forwards datagrams without reading them, so nothing in it was ever about this driver.
 8. `packages/aes67-ravenna/Tools/ravenna-announce` — advertises one session over mDNS and answers RTSP for it; sends no audio.
-9. `HALValidate` — Core Audio HAL conformance against whatever `coreaudiod` has loaded, through Apple's client API only. Needs the driver installed.
-10. `QuickCapture` — minimal Core Audio capture: whether non-zero samples arrive.
+9. `HALValidate` and `QuickCapture` — Core Audio HAL conformance against whatever `coreaudiod` has loaded, and a minimal capture from any device. Both moved to `Eines/packages/macos-audio-development/tools` on 2026-09-16: neither links driver code. `scripts/validate-hal.sh` still drives the first one, finding it in the usual checkout or through `HAL_VALIDATE`.
 11. `AES67PTPStressRun` — this driver's own `PTPMaster` and `PTPSlave` against each other over a live interface for a sustained period, sampling lock, offset and path delay every second.
 
 The Eines repository carries `packages/dante-device-emulator`, a Dante device in AES67 mode for live tests, and `packages/aoip-stress-lab`.
