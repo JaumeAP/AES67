@@ -29,7 +29,7 @@
 // Output: one CSV line per second to stdout (t,locked,offsetNs,pathDelayNs,
 // syncSent,delayRespSent,announceSent), a summary to stderr at the end.
 //
-#include "ToolOptions.h"
+#include "Shared/ToolOptions.h"
 
 #include "NetworkEngine/PTP/PTPMaster.h"
 #include "NetworkEngine/PTP/PTPSlave.h"
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
             csvPath = text;
         }
         else if (arg == "--help" || arg == "-h") { printUsage(argv[0]); return 0; }
-        else { std::fprintf(stderr, "Unknown option: %s\n", arg.c_str()); printUsage(argv[0]); return 1; }
+        else { AES67::ToolOptions::unknownOption(arg.c_str()); printUsage(argv[0]); return 1; }
     }
 
     std::signal(SIGINT, onSignal);

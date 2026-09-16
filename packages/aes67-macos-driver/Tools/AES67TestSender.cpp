@@ -20,7 +20,7 @@
 //   --no-sap          Disable SAP announcements
 //
 
-#include "ToolOptions.h"
+#include "Shared/ToolOptions.h"
 
 #include <iterator>
 #include <algorithm>
@@ -299,7 +299,7 @@ int run(int argc, char* argv[]) {
                 argv[0]);
             return 0;
         } else {
-            fprintf(stderr, "Unknown option: %s (use --help)\n", arg.c_str());
+            AES67::ToolOptions::unknownOption(arg.c_str());
             return 1;
         }
     }

@@ -1,8 +1,9 @@
 //
 // ToolOptions.h
-// AES67 macOS Driver
-// Command-line values, read once and checked, for the tools in this
-// directory.
+// AES67 core
+// Command-line values, read once and checked, for the executables in this
+// tree: the tools under packages/aes67-macos-driver/Tools, the two PTP
+// daemons, and packages/aes67-ravenna's announcer.
 //
 // They all used to read their numbers with atoi()/atof(), which have no way
 // of saying "that was not a number": both answer 0. So `--duration abc` ran
@@ -13,8 +14,10 @@
 // unknown-option branch and was reported as an option nobody had heard of,
 // which is not what happened.
 //
-// Header-only and free of everything but the C library: these are tools with
-// a main(), not a library, and the only thing they share is this.
+// Header-only and free of everything but the C library: these are programs
+// with a main(), not a library, and the only thing they share is this. It
+// lives in the core for the same reason the profiles do -- three packages
+// need it, and none of them should carry a copy.
 //
 #pragma once
 
@@ -125,6 +128,14 @@ inline bool unsignedOption(int argc, char* argv[], int& i,
 
     out = parsed;
     return true;
+}
+
+/// The one wording for an option none of these programs knows. They said it
+/// six different ways -- "Unknown option: x (use --help)", "unknown option:
+/// x" -- which is a difference with nothing behind it, and a suite that
+/// checks what a program says has to know which spelling each one picked.
+inline void unknownOption(const char* flag) {
+    std::fprintf(stderr, "Unknown option: %s (use --help)\n", flag);
 }
 
 } // namespace ToolOptions

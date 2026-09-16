@@ -16,6 +16,7 @@
 //
 #include "ExternalReference.h"
 #include "Grandmaster.h"
+#include "Options.h"
 #include "PhcClock.h"
 #include "PtpSockets.h"
 
@@ -31,77 +32,23 @@ std::atomic<bool> g_running{true};
 
 void handleSignal(int) { g_running.store(false, std::memory_order_release); }
 
-void usage() {
-    std::fprintf(stderr,
-                 "usage: aes67-ptpd [--interface NAME] [--profile NAME]\n"
-                 "                  [--priority1 N] [--priority2 N] [--utc-offset N]\n"
-                 "                  [--phc /dev/ptpN] [--reference]\n"
-                 "                  [--reference-channel N]\n"
-                 "                  [--allow-software-timestamps] [--verbose]\n"
-                 "\n"
-                 "profiles: aes67, aes67-tight, default1588, gptp\n"
-                 "          (packages/aes67-profiles holds the numbers)\n");
-}
-
-/// The argument after `name`, or nullptr when it is missing. Reporting the
-/// missing value is the caller's, which is what lets it name the option.
-const char* valueFor(int argc, char** argv, int& index) {
-    if (index + 1 >= argc) return nullptr;
-    return argv[++index];
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
     using namespace AES67::LinuxPtpd;
 
-    GrandmasterConfig config;
-    std::string phcDevice;
-    bool allowSoftwareTimestamps = false;
-    bool useReference = false;
-    unsigned int referenceChannel = 0;
-
-    for (int i = 1; i < argc; ++i) {
-        const std::string option = argv[i];
-        const char* value = nullptr;
-
-        if (option == "--help" || option == "-h") {
-            usage();
-            return 0;
-        } else if (option == "--allow-software-timestamps") {
-            allowSoftwareTimestamps = true;
-        } else if (option == "--verbose" || option == "-v") {
-            config.verbose = true;
-        } else if (option == "--reference") {
-            useReference = true;
-        } else if (option == "--reference-channel") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            useReference = true;
-            referenceChannel = static_cast<unsigned int>(std::atoi(value));
-        } else if (option == "--interface") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            config.interfaceName = value;
-        } else if (option == "--profile") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            config.profileName = value;
-        } else if (option == "--priority1") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            config.priority1 = static_cast<uint8_t>(std::atoi(value));
-        } else if (option == "--priority2") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            config.priority2 = static_cast<uint8_t>(std::atoi(value));
-        } else if (option == "--utc-offset") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            config.currentUtcOffset = static_cast<int16_t>(std::atoi(value));
-        } else if (option == "--phc") {
-            if ((value = valueFor(argc, argv, i)) == nullptr) { usage(); return 2; }
-            phcDevice = value;
-        } else {
-            std::fprintf(stderr, "unknown option: %s\n", option.c_str());
-            usage();
-            return 2;
-        }
+    CommandLine cli;
+    switch (parseCommandLine(argc, argv, cli)) {
+        case CommandLineResult::UsagePrinted: return 0;
+        case CommandLineResult::Bad: return 2;
+        case CommandLineResult::Ok: break;
     }
+
+    const GrandmasterConfig& config = cli.config;
+    const std::string& phcDevice = cli.phcDevice;
+    const bool allowSoftwareTimestamps = cli.allowSoftwareTimestamps;
+    const bool useReference = cli.useReference;
+    const unsigned int referenceChannel = cli.referenceChannel;
 
     // The status line is one a second and has to arrive as it is written: on
     // a pipe -- which is what systemd hands a service -- stdout is block

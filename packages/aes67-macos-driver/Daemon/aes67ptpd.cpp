@@ -33,6 +33,7 @@
 
 #include "NetworkEngine/PTP/PTPService.h"
 #include "NetworkEngine/PTP/PTPSlave.h"
+#include "Shared/ToolOptions.h"
 
 namespace {
 
@@ -99,19 +100,25 @@ int run(int argc, char** argv) {
     std::string socketPath = AES67::kPTPServiceSocketPath;
     bool verbose = false;
 
+    // std::stoi is what this used to read its numbers with, and it stops at
+    // the first character that is not a digit without reporting that it did:
+    // --domain 0x10 was domain 0, and --dscp 46, was 46. Nothing checked a
+    // range either, so a domain outside the byte the wire carries and a DSCP
+    // outside the six bits of the field both went through as written.
     for (int i = 1; i < argc; ++i) {
         const std::string flag = argv[i];
+        long long number = 0;
         auto next = [&]() -> std::string {
-            if (i + 1 >= argc) {
-                (void)std::fprintf(stderr, "%s needs a value\n", flag.c_str());
-                std::exit(2);
-            }
-            return argv[++i];
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) std::exit(2);
+            return text;
         };
         if (flag == "--interface") {
             config.interfaceName = next();
         } else if (flag == "--domain") {
-            config.domain = std::stoi(next());
+            // IEEE 1588 carries domainNumber in one octet.
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 0, 255, number)) return 2;
+            config.domain = static_cast<int>(number);
         } else if (flag == "--socket") {
             socketPath = next();
         } else if (flag == "--mechanism") {
@@ -123,12 +130,17 @@ int run(int argc, char** argv) {
                 return 2;
             }
         } else if (flag == "--delay-req-ms") {
-            config.delayReqIntervalMs = std::stoi(next());
+            // An interval of zero is a Delay_Req flood at whatever rate the
+            // loop can manage, aimed at somebody else's grandmaster.
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) return 2;
+            config.delayReqIntervalMs = static_cast<int>(number);
         } else if (flag == "--dscp") {
             // The queue our PTP travels in. Unmarked by default: on a
             // segment that treats DSCP, PTP left unmarked queues behind
             // the audio it is timing. EF is 46; Dante marks PTP CS7 (56).
-            config.dscp = std::stoi(next());
+            // The field is six bits, so 0..63 and nothing else.
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 0, 63, number)) return 2;
+            config.dscp = static_cast<int>(number);
         } else if (flag == "--multicast-loopback") {
             // Same-host testing: without it the kernel never delivers this
             // slave's Delay_Req to a master in another process on this
@@ -140,7 +152,7 @@ int run(int argc, char** argv) {
             Usage();
             return 0;
         } else {
-            (void)std::fprintf(stderr, "unknown option: %s\n", flag.c_str());
+            AES67::ToolOptions::unknownOption(flag.c_str());
             Usage();
             return 2;
         }

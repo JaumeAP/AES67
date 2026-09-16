@@ -125,7 +125,7 @@ message(STATUS "  ./Tools/AES67TestReceiver --ip 239.1.1.2 --port 5004 --duratio
 # Tools/ is configured after Tests/. Moving them there would mean reordering
 # the two subdirectories for no other reason.
 #
-if(BUILD_TESTS)
+if(BUILD_TESTS AND TARGET aes67ptpd)
     # The two offline simulations check themselves and return non-zero when a
     # claim fails -- they have since they were written -- and nothing ran
     # them. The gate built both and threw the result away, so "run the two
@@ -142,16 +142,22 @@ if(BUILD_TESTS)
     # at a build layout.
     add_executable(TestToolArguments ../Tests/TestToolArguments.cpp)
     target_link_libraries(TestToolArguments PRIVATE doctest_headers)
+    # support/ToolProcess.h: starting a program and reading what it said is
+    # the same job in every package that has one, so it lives in the core's
+    # test support rather than once per package.
+    target_include_directories(TestToolArguments PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../aes67-core/Tests)
     target_compile_features(TestToolArguments PRIVATE cxx_std_17)
     target_compile_definitions(TestToolArguments PRIVATE
         AES67_TOOL_SENDER="$<TARGET_FILE:AES67TestSender>"
         AES67_TOOL_RECEIVER="$<TARGET_FILE:AES67TestReceiver>"
         AES67_TOOL_SAP_MONITOR="$<TARGET_FILE:AES67SAPMonitor>"
         AES67_TOOL_PTP_STRESS="$<TARGET_FILE:AES67PTPStressRun>"
-        AES67_TOOL_LIVE_INTEROP="$<TARGET_FILE:AES67LiveDaemonInterop>")
+        AES67_TOOL_LIVE_INTEROP="$<TARGET_FILE:AES67LiveDaemonInterop>"
+        AES67_TOOL_PTP_DAEMON="$<TARGET_FILE:aes67ptpd>")
     add_dependencies(TestToolArguments
         AES67TestSender AES67TestReceiver AES67SAPMonitor AES67PTPStressRun
-        AES67LiveDaemonInterop)
+        AES67LiveDaemonInterop aes67ptpd)
     add_test(NAME ToolArguments COMMAND TestToolArguments)
     set_tests_properties(ToolArguments PROPERTIES LABELS "unit" TIMEOUT 60)
 endif()
