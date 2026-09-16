@@ -16,6 +16,7 @@
 //
 #pragma once
 
+#include <atomic>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -81,20 +82,28 @@ public:
     /// three servers that hold one hand port() straight through to a test
     /// that is about to connect to it.
     void close() {
-        if (fd_ >= 0) {
-            ::shutdown(fd_, SHUT_RDWR);
-            ::close(fd_);
-            fd_ = -1;
+        const int fd = fd_.load(std::memory_order_relaxed);
+        if (fd >= 0) {
+            ::shutdown(fd, SHUT_RDWR);
+            ::close(fd);
+            fd_.store(-1, std::memory_order_relaxed);
         }
-        port_ = 0;
+        port_.store(0, std::memory_order_relaxed);
     }
 
-    int fd() const { return fd_; }
-    uint16_t port() const { return port_; }
+    int fd() const { return fd_.load(std::memory_order_relaxed); }
+    uint16_t port() const { return port_.load(std::memory_order_relaxed); }
 
 private:
-    int fd_{-1};
-    uint16_t port_{0};
+    // Atomic, not plain: the four servers this is shared by each run
+    // accept() on a worker thread that reads fd() while the main thread's
+    // destructor can be calling close() at the same time. ThreadSanitizer
+    // caught the plain-int version of this as a real data race in
+    // TestHTTPClient -- close()'s write and serve()'s read of fd_ racing,
+    // undefined behavior whether or not the socket call itself was already
+    // safe to make concurrently with a shutdown().
+    std::atomic<int> fd_{-1};
+    std::atomic<uint16_t> port_{0};
 };
 
 /// Sends one request to a server on the loopback and reads until the peer
