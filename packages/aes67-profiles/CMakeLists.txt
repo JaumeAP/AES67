@@ -57,7 +57,7 @@ if(BUILD_TESTS)
         endif()
 
         enable_testing()
-        foreach(suite CompatibilityProfile DolbyModelCatalog PtpProfiles)
+        foreach(suite CompatibilityProfile DolbyModelCatalog PtpProfiles ConfigPaths)
             add_executable(Test${suite} Tests/Test${suite}.cpp)
             target_link_libraries(Test${suite} PRIVATE aes67_profiles doctest_headers)
             add_test(NAME ${suite} COMMAND Test${suite})

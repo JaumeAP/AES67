@@ -9,8 +9,7 @@ namespace AES67 {
 std::unique_ptr<NetworkErrorHandler> g_networkErrorHandler;
 
 NetworkErrorHandler::NetworkErrorHandler()
-    : lastRecoveryAttempt_(std::chrono::steady_clock::now()),
-      recoveryStartTime_(std::chrono::steady_clock::now()) {}
+    : lastRecoveryAttempt_(std::chrono::steady_clock::now()) {}
 
 NetworkErrorHandler::~NetworkErrorHandler() = default;
 
@@ -70,15 +69,6 @@ void NetworkErrorHandler::reset() {
 }
 
 bool NetworkErrorHandler::attemptRecovery() {
-    if (recoveryActive_.load()) {
-        // Already in recovery, don't start another
-        return false;
-    }
-    
-    // Set recovery flag
-    recoveryActive_.store(true);
-    recoveryStartTime_ = std::chrono::steady_clock::now();
-    
     LOG_INFO("Starting network recovery procedure...");
     
     // There are no recovery steps of its own to run here: what recovers a
@@ -89,11 +79,8 @@ bool NetworkErrorHandler::attemptRecovery() {
     LOG_INFO("Network recovery completed");
     recentErrorCount_.store(0);
     
-    // Update recovery timestamp
+    // What reportError's cooldown is measured from.
     lastRecoveryAttempt_ = std::chrono::steady_clock::now();
-    
-    // Clear recovery flag after a delay
-    recoveryActive_.store(false);
     
     return true;
 }

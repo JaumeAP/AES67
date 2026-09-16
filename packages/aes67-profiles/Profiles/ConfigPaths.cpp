@@ -52,6 +52,43 @@ std::string findExistingConfig(const char* envVar, const std::string& fileName,
     return "";
 }
 
+namespace {
+
+/// Whether this process could create `filePath` without being told no.
+bool couldWrite(const std::string& filePath) {
+    const size_t lastSlash = filePath.find_last_of('/');
+    if (lastSlash == std::string::npos) return false;
+
+    // Up to the first component that exists: that is the one that has to be
+    // writable, because everything under it would be created.
+    std::string dir = filePath.substr(0, lastSlash);
+    while (!dir.empty()) {
+        struct stat st;
+        if (stat(dir.c_str(), &st) == 0) {
+            return S_ISDIR(st.st_mode) && ::access(dir.c_str(), W_OK) == 0;
+        }
+        const size_t slash = dir.find_last_of('/');
+        if (slash == std::string::npos || slash == 0) break;
+        dir.resize(slash);
+    }
+    return false;
+}
+
+} // namespace
+
+std::string firstWritableConfigPath(const char* envVar, const std::string& fileName,
+                                    bool systemBeforeHome) {
+    const std::vector<std::string> paths = configSearchPaths(envVar, fileName, systemBeforeHome);
+    for (const auto& path : paths) {
+        if (couldWrite(path)) return path;
+    }
+
+    // None of them: hand back the first anyway, so the caller behaves as it
+    // did before this function existed and the refusal surfaces where it
+    // always did, at the save.
+    return paths.empty() ? std::string{} : paths.front();
+}
+
 bool ensureParentDirectory(const std::string& filePath, const char* who) {
     const size_t lastSlash = filePath.find_last_of('/');
     if (lastSlash == std::string::npos) return false;

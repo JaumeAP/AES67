@@ -49,16 +49,23 @@ public:
     void reportError(NetworkErrorType type, const std::string& message, 
                      const std::string& source = "", int errorCode = 0);
     
-    // Check if we're in a recovery state
-    bool isInRecovery() const { return recoveryActive_.load(); }
-    
     // Get error count
     size_t getErrorCount() const;
     
     // Reset error statistics
     void reset();
     
-    // Perform recovery action if needed
+    /// Marks a recovery attempt: clears the recent error count so the next
+    /// failure is judged on its own, and stamps the time so reportError's
+    /// cooldown holds.
+    ///
+    /// It has no recovery steps of its own, and there is nothing to be "in":
+    /// what recovers a socket is its owner reopening it, synchronously,
+    /// somewhere else. This class used to carry a recoveryActive_ latch and
+    /// an isInRecovery() to read it, set and cleared inside this one call --
+    /// so the guard against a second recovery covered a window that lasted
+    /// exactly as long as the call, and no caller could ever observe the flag
+    /// set. A latch that nothing can be caught by is not a latch.
     bool attemptRecovery();
     
 private:
@@ -70,10 +77,6 @@ private:
     std::atomic<size_t> totalErrorCount_{0};
     std::atomic<size_t> recentErrorCount_{0};
     std::chrono::steady_clock::time_point lastRecoveryAttempt_;
-    
-    // Recovery state
-    std::atomic<bool> recoveryActive_{false};
-    std::chrono::steady_clock::time_point recoveryStartTime_;
     
     // Constants
     static constexpr size_t MAX_RECENT_ERRORS = 10;
