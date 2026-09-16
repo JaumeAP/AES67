@@ -115,3 +115,41 @@ message(STATUS "Run test sender:")
 message(STATUS "  ./Tools/AES67TestSender --ip 239.1.1.1 --port 5004 --channels 8 --freq 1000")
 message(STATUS "Run test receiver:")
 message(STATUS "  ./Tools/AES67TestReceiver --ip 239.1.1.2 --port 5004 --duration 10")
+
+# ============================================================================
+# What the gate runs
+# ============================================================================
+#
+# These entries live here rather than in Tests/CMakeLists.txt, which is
+# otherwise the list, because they name targets defined in this file and
+# Tools/ is configured after Tests/. Moving them there would mean reordering
+# the two subdirectories for no other reason.
+#
+if(BUILD_TESTS)
+    # The two offline simulations check themselves and return non-zero when a
+    # claim fails -- they have since they were written -- and nothing ran
+    # them. The gate built both and threw the result away, so "run the two
+    # simulations after touching SDP generation, SAP or the profiles" was a
+    # sentence in CLAUDE.md and nothing else. Neither opens a socket: the
+    # packets they parse are built in the process that parses them.
+    add_test(NAME InteropSim COMMAND AES67InteropSim)
+    add_test(NAME DanteInteropSim COMMAND DanteInteropSim)
+    set_tests_properties(InteropSim DanteInteropSim
+        PROPERTIES LABELS "unit;interop" TIMEOUT 60)
+
+    # The tools' command lines, run as a user runs them: the suite spawns
+    # these binaries, so it is told where CMake put them rather than guessing
+    # at a build layout.
+    add_executable(TestToolArguments ../Tests/TestToolArguments.cpp)
+    target_link_libraries(TestToolArguments PRIVATE doctest_headers)
+    target_compile_features(TestToolArguments PRIVATE cxx_std_17)
+    target_compile_definitions(TestToolArguments PRIVATE
+        AES67_TOOL_SENDER="$<TARGET_FILE:AES67TestSender>"
+        AES67_TOOL_RECEIVER="$<TARGET_FILE:AES67TestReceiver>"
+        AES67_TOOL_SAP_MONITOR="$<TARGET_FILE:AES67SAPMonitor>"
+        AES67_TOOL_PTP_STRESS="$<TARGET_FILE:AES67PTPStressRun>")
+    add_dependencies(TestToolArguments
+        AES67TestSender AES67TestReceiver AES67SAPMonitor AES67PTPStressRun)
+    add_test(NAME ToolArguments COMMAND TestToolArguments)
+    set_tests_properties(ToolArguments PROPERTIES LABELS "unit" TIMEOUT 60)
+endif()

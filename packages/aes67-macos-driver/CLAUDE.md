@@ -221,7 +221,7 @@ There is no `.pkg`: `make dmg` builds the disk image that is the whole delivery.
 
 Manager app can be built standalone: `cd ../aes67-macos-manager && ./build.sh` (add `--force` to skip its up-to-date check; it does a raw `swiftc` compile, not SwiftPM, though `Package.swift` exists for editor/IDE support).
 
-CTest names map 1:1 to `Tests/*.cpp` — `Tests/CMakeLists.txt` is the list, not this file; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
+CTest names map 1:1 to `Tests/*.cpp` — `Tests/CMakeLists.txt` is the list, not this file, with one exception: `InteropSim`, `DanteInteropSim` and `ToolArguments` are registered in `Tools/CMakeLists.txt`, because they name targets defined there and `Tools/` is configured after `Tests/`; suites whose subject lives in the core were moved to that repository and run in its gate. `BenchmarkIOHandler` is built but not registered as a CTest — run it directly for RT performance characterisation.
 
 Always build out-of-source in a `build/` directory as shown above. The root-level `Makefile`, `CTestTestfile.cmake` and `CPackConfig.cmake`/`CPackSourceConfig.cmake` — stale artifacts of a prior in-source build, carrying another machine's absolute paths — were deleted on 2026-09-04, along with two arm64 binaries committed under `Examples/`; `.gitignore` now names all of them so an in-source run cannot put them back.
 

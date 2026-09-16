@@ -25,6 +25,8 @@
 //   --verbose         Print the whole SDP of every announcement
 //
 
+#include "ToolOptions.h"
+
 #include <exception>
 #include <cstdio>
 #include <cstdlib>
@@ -102,10 +104,28 @@ int run(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--interface" && i + 1 < argc)     interfaceIP = argv[++i];
-        else if (arg == "--group" && i + 1 < argc)    group = argv[++i];
-        else if (arg == "--port" && i + 1 < argc)     port = static_cast<uint16_t>(atoi(argv[++i]));
-        else if (arg == "--duration" && i + 1 < argc) duration = atoi(argv[++i]);
+        long long number = 0;
+
+        if (arg == "--interface") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return 1;
+            interfaceIP = text;
+        }
+        else if (arg == "--group") {
+            const char* text = AES67::ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return 1;
+            group = text;
+        }
+        else if (arg == "--port") {
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 1;
+            port = static_cast<uint16_t>(number);
+        }
+        else if (arg == "--duration") {
+            // Zero is the documented "run until interrupted", as in the
+            // receiver.
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 0, 2147483647LL, number)) return 1;
+            duration = static_cast<int>(number);
+        }
         else if (arg == "--verbose")                  verbose = true;
         else if (arg == "--help" || arg == "-h") {
             fprintf(stderr,
