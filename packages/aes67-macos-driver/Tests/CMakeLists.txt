@@ -177,6 +177,33 @@ target_link_libraries(TestPTPArbitrator PRIVATE aes67_net doctest_headers
     "-framework CoreAudio" "-framework CoreFoundation")
 target_compile_features(TestPTPArbitrator PRIVATE cxx_std_17)
 
+# Test: the local clock reference, and the list of what could be one.
+# AudioClockDeviceList and CoreAudioClockSource were compiled into five suites
+# and exercised by none, at 0% of 191 lines. CoreAudio directly, and no
+# device is started: see the suite's own header for why not.
+add_executable(TestAudioClockDevices
+    TestAudioClockDevices.cpp
+    ../NetworkEngine/PTP/CoreAudioClockSource.cpp
+    ../NetworkEngine/PTP/AudioClockDeviceList.cpp
+)
+target_include_directories(TestAudioClockDevices PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(TestAudioClockDevices PRIVATE aes67_net doctest_headers
+    "-framework CoreAudio" "-framework CoreFoundation")
+target_compile_features(TestAudioClockDevices PRIVATE cxx_std_17)
+
+# Test: the _nmos-node._tcp record set, which is how a controller finds this
+# driver without a registry. The records are aes67-ravenna's, so this links
+# the library that builds them.
+add_executable(TestNodeAdvertiser
+    TestNodeAdvertiser.cpp
+    ../NetworkEngine/Discovery/NodeAdvertiser.cpp
+)
+target_include_directories(TestNodeAdvertiser PRIVATE ${PROJECT_SOURCE_DIR})
+# aes67_ravenna alone: it links aes67_net itself, and naming both put the
+# archive on the command line twice.
+target_link_libraries(TestNodeAdvertiser PRIVATE aes67_ravenna doctest_headers)
+target_compile_features(TestNodeAdvertiser PRIVATE cxx_std_17)
+
 # Test: PTP Master / BMCA — offline only, see TestPTPMaster.cpp's own header
 # comment for why it doesn't touch sockets. PTPMaster.cpp is compiled in: the
 # suite was named for it and tested only what it is built on, which is why its
@@ -819,6 +846,8 @@ add_test(NAME RTPTransmitter COMMAND TestRTPTransmitter)
 add_test(NAME PTPClock COMMAND TestPTPClock)
 add_test(NAME PTPMaster COMMAND TestPTPMaster)
 add_test(NAME PTPArbitrator COMMAND TestPTPArbitrator)
+add_test(NAME AudioClockDevices COMMAND TestAudioClockDevices)
+add_test(NAME NodeAdvertiser COMMAND TestNodeAdvertiser)
 add_test(NAME AES67DeviceOffline COMMAND TestAES67DeviceOffline)
 add_test(NAME PTPLoopback COMMAND TestPTPLoopback)
 add_test(NAME PTPService COMMAND TestPTPService)
@@ -883,6 +912,8 @@ set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
 # `timing`, the sanitizer runs skip `network`, and a full local ctest runs it.
 set_tests_properties(PTPMaster PROPERTIES LABELS "unit;timing;network" TIMEOUT 90)
 set_tests_properties(PTPArbitrator PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(AudioClockDevices PROPERTIES LABELS "unit" TIMEOUT 60)
+set_tests_properties(NodeAdvertiser PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(AES67DeviceOffline PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(DeviceActivation PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(StreamManager PROPERTIES LABELS "unit" TIMEOUT 60)
