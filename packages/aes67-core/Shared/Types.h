@@ -8,6 +8,8 @@
 #include <array>
 #include <chrono>
 #include <atomic>
+#include <tuple>
+#include <utility>
 
 namespace AES67 {
 
@@ -116,72 +118,20 @@ struct Statistics {
     std::atomic<uint64_t> bytesReceived{0};
     std::atomic<uint64_t> bytesSent{0};
 
-    // Default constructor
     Statistics() = default;
 
-    // Move constructor (atomics need explicit handling)
-    Statistics(Statistics&& other) noexcept
-        : packetsReceived(other.packetsReceived.load(std::memory_order_relaxed))
-        , packetsLost(other.packetsLost.load(std::memory_order_relaxed))
-        , malformedPackets(other.malformedPackets.load(std::memory_order_relaxed))
-        , outOfOrderPackets(other.outOfOrderPackets.load(std::memory_order_relaxed))
-        , underruns(other.underruns.load(std::memory_order_relaxed))
-        , overruns(other.overruns.load(std::memory_order_relaxed))
-        , lastPacketTimeNs(other.lastPacketTimeNs.load(std::memory_order_relaxed))
-        , jitterNs(other.jitterNs.load(std::memory_order_relaxed))
-        , latencyNs(other.latencyNs.load(std::memory_order_relaxed))
-        , bytesReceived(other.bytesReceived.load(std::memory_order_relaxed))
-        , bytesSent(other.bytesSent.load(std::memory_order_relaxed))
-    {}
-
-    // Move assignment
-    Statistics& operator=(Statistics&& other) noexcept {
-        if (this != &other) {
-            packetsReceived.store(other.packetsReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            packetsLost.store(other.packetsLost.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            malformedPackets.store(other.malformedPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            outOfOrderPackets.store(other.outOfOrderPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            underruns.store(other.underruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            overruns.store(other.overruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            lastPacketTimeNs.store(other.lastPacketTimeNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            jitterNs.store(other.jitterNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            latencyNs.store(other.latencyNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            bytesReceived.store(other.bytesReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            bytesSent.store(other.bytesSent.load(std::memory_order_relaxed), std::memory_order_relaxed);
-        }
+    // The atomics are not copyable, so all four of these have to be written
+    // out. What they must not do is each carry its own list of the fields --
+    // that is five lists, and a counter added to the struct is a counter
+    // forgotten in four places. They walk counters() instead.
+    Statistics(const Statistics& other) { copyCountersFrom(other); }
+    Statistics& operator=(const Statistics& other) {
+        if (this != &other) copyCountersFrom(other);
         return *this;
     }
-
-    // Copy constructor (creates a snapshot of current values)
-    Statistics(const Statistics& other)
-        : packetsReceived(other.packetsReceived.load(std::memory_order_relaxed))
-        , packetsLost(other.packetsLost.load(std::memory_order_relaxed))
-        , malformedPackets(other.malformedPackets.load(std::memory_order_relaxed))
-        , outOfOrderPackets(other.outOfOrderPackets.load(std::memory_order_relaxed))
-        , underruns(other.underruns.load(std::memory_order_relaxed))
-        , overruns(other.overruns.load(std::memory_order_relaxed))
-        , lastPacketTimeNs(other.lastPacketTimeNs.load(std::memory_order_relaxed))
-        , jitterNs(other.jitterNs.load(std::memory_order_relaxed))
-        , latencyNs(other.latencyNs.load(std::memory_order_relaxed))
-        , bytesReceived(other.bytesReceived.load(std::memory_order_relaxed))
-        , bytesSent(other.bytesSent.load(std::memory_order_relaxed))
-    {}
-
-    // Copy assignment
-    Statistics& operator=(const Statistics& other) {
-        if (this != &other) {
-            packetsReceived.store(other.packetsReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            packetsLost.store(other.packetsLost.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            malformedPackets.store(other.malformedPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            outOfOrderPackets.store(other.outOfOrderPackets.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            underruns.store(other.underruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            overruns.store(other.overruns.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            lastPacketTimeNs.store(other.lastPacketTimeNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            jitterNs.store(other.jitterNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            latencyNs.store(other.latencyNs.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            bytesReceived.store(other.bytesReceived.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            bytesSent.store(other.bytesSent.load(std::memory_order_relaxed), std::memory_order_relaxed);
-        }
+    Statistics(Statistics&& other) noexcept { copyCountersFrom(other); }
+    Statistics& operator=(Statistics&& other) noexcept {
+        if (this != &other) copyCountersFrom(other);
         return *this;
     }
 
@@ -196,6 +146,37 @@ struct Statistics {
 
     /// Create a non-atomic snapshot for consistent multi-field reads.
     StatisticsSnapshot snapshot() const;
+
+private:
+    /// Every counter, named once: the atomic here, paired with the plain
+    /// field it becomes in StatisticsSnapshot. reset(), snapshot() and the
+    /// four copy and move members above all walk this, so a counter added to
+    /// this struct is added to the list beneath it and nowhere else.
+    static constexpr auto counters() {
+        return std::make_tuple(
+            std::pair{&Statistics::packetsReceived, &StatisticsSnapshot::packetsReceived},
+            std::pair{&Statistics::packetsLost, &StatisticsSnapshot::packetsLost},
+            std::pair{&Statistics::malformedPackets, &StatisticsSnapshot::malformedPackets},
+            std::pair{&Statistics::outOfOrderPackets, &StatisticsSnapshot::outOfOrderPackets},
+            std::pair{&Statistics::underruns, &StatisticsSnapshot::underruns},
+            std::pair{&Statistics::overruns, &StatisticsSnapshot::overruns},
+            std::pair{&Statistics::lastPacketTimeNs, &StatisticsSnapshot::lastPacketTimeNs},
+            std::pair{&Statistics::jitterNs, &StatisticsSnapshot::jitterNs},
+            std::pair{&Statistics::latencyNs, &StatisticsSnapshot::latencyNs},
+            std::pair{&Statistics::bytesReceived, &StatisticsSnapshot::bytesReceived},
+            std::pair{&Statistics::bytesSent, &StatisticsSnapshot::bytesSent});
+    }
+
+    void copyCountersFrom(const Statistics& other) {
+        std::apply(
+            [&](auto... counter) {
+                ((this->*counter.first)
+                     .store((other.*counter.first).load(std::memory_order_relaxed),
+                            std::memory_order_relaxed),
+                 ...);
+            },
+            counters());
+    }
 };
 
 // ============================================================================
