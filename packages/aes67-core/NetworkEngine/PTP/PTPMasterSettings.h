@@ -9,6 +9,7 @@
 //
 #pragma once
 
+#include "NetworkEngine/PTP/PTPIntervals.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -63,11 +64,26 @@ struct PTPMasterSettings {
     /// clock is disciplined by something that knows better.
     int clockAccuracy{0xFE};
 
-    /// How often this port sends Sync when it is the master, and Announce.
-    /// 125 ms and 1 s are the media profile's values and what PTPMaster
-    /// used before this was settable.
-    int syncIntervalMs{125};
-    int announceIntervalMs{1000};
+    /// How often this port sends Sync when it is the master, and Announce,
+    /// as IEEE 1588 carries them: log2 seconds. -3 is 125 ms and 0 is one
+    /// second, the media profile's values and what PTPMaster used before
+    /// this was settable.
+    ///
+    /// The exponent rather than milliseconds because milliseconds cannot say
+    /// every legal rate -- sixteen Sync per second is 62.5 ms, and an int
+    /// rounds it before anybody can object. These fields used to be
+    /// syncIntervalMs and announceIntervalMs, and the rounding happened in
+    /// PTPMaster's constructor, after the value had been chosen, written to
+    /// disk and read back. A file written with the old keys is still read:
+    /// see load(), which falls back to them.
+    int8_t logSyncInterval{-3};
+    int8_t logAnnounceInterval{0};
+
+    /// The same two as a person reads them. Fractional on purpose: 62.5 is
+    /// the answer for sixteen a second, and rounding it is what this type
+    /// exists to stop doing.
+    double syncIntervalMs() const { return logIntervalToMs(logSyncInterval); }
+    double announceIntervalMs() const { return logIntervalToMs(logAnnounceInterval); }
 
     /// How often this port asks for the path delay when it is a slave.
     int delayReqIntervalMs{1000};

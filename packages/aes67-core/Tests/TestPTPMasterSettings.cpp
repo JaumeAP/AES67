@@ -67,8 +67,12 @@ TEST_CASE("The defaults are the behaviour from before the feature existed") {
     CHECK(defaults.priority2 == 128);
     CHECK(defaults.clockClass == 248);
     CHECK(defaults.clockAccuracy == 0xFE);
-    CHECK(defaults.syncIntervalMs == 125);
-    CHECK(defaults.announceIntervalMs == 1000);
+    // -3 is 125 ms and 0 is one second: the exponent is what is stored, and
+    // the millisecond figures are what it renders to.
+    CHECK(defaults.logSyncInterval == -3);
+    CHECK(defaults.logAnnounceInterval == 0);
+    CHECK(defaults.syncIntervalMs() == doctest::Approx(125.0));
+    CHECK(defaults.announceIntervalMs() == doctest::Approx(1000.0));
     CHECK(defaults.delayReqIntervalMs == 1000);
     CHECK(defaults.delayMechanism == "e2e");
     CHECK(defaults.dscp == -1);
@@ -144,8 +148,8 @@ TEST_CASE("Saving and loading round-trips every field") {
     written.priority2 = 90;
     written.clockClass = 13;
     written.clockAccuracy = 0x21;
-    written.syncIntervalMs = 250;
-    written.announceIntervalMs = 2000;
+    written.logSyncInterval = -2;   // 250 ms
+    written.logAnnounceInterval = 1; // 2 s
     written.delayReqIntervalMs = 125;
     written.delayMechanism = "p2p";
     written.dscp = 46;
@@ -163,8 +167,8 @@ TEST_CASE("Saving and loading round-trips every field") {
     CHECK(read.priority2 == written.priority2);
     CHECK(read.clockClass == written.clockClass);
     CHECK(read.clockAccuracy == written.clockAccuracy);
-    CHECK(read.syncIntervalMs == written.syncIntervalMs);
-    CHECK(read.announceIntervalMs == written.announceIntervalMs);
+    CHECK(read.logSyncInterval == written.logSyncInterval);
+    CHECK(read.logAnnounceInterval == written.logAnnounceInterval);
     CHECK(read.delayReqIntervalMs == written.delayReqIntervalMs);
     CHECK(read.delayMechanism == written.delayMechanism);
     CHECK(read.dscp == written.dscp);
@@ -201,4 +205,41 @@ TEST_CASE("A malformed file falls back to the defaults rather than half-reading 
 
     CHECK(settings.masterCapable == false);
     CHECK(settings.clockSourceKind == "internal");
+}
+
+
+TEST_CASE("A rate milliseconds cannot express survives a round trip") {
+    // Sixteen Sync a second is 62.5 ms. Stored as an int of milliseconds it
+    // came back as 62 or 63, which is not a legal interval at all and which
+    // PTPMaster then rounded again on the way to the wire. As an exponent it
+    // is -4, and -4 is what comes back.
+    const TempConfig temp("{}\n");
+    PTPMasterSettingsManager manager;
+
+    PTPMasterSettings written;
+    written.logSyncInterval = -4;
+
+    REQUIRE(manager.save(written));
+    const PTPMasterSettings read = PTPMasterSettingsManager().load();
+
+    CHECK(read.logSyncInterval == -4);
+    CHECK(read.syncIntervalMs() == doctest::Approx(62.5));
+}
+
+TEST_CASE("A file written before the exponent existed is still read") {
+    // ManagerApp writes syncIntervalMs and announceIntervalMs, and so did
+    // every build before this one. Losing them would put a configured master
+    // back to the defaults on the first read, silently.
+    const TempConfig temp(
+        "{\n"
+        "  \"masterCapable\": true,\n"
+        "  \"syncIntervalMs\": 250,\n"
+        "  \"announceIntervalMs\": 2000\n"
+        "}\n");
+
+    const PTPMasterSettings read = PTPMasterSettingsManager().load();
+
+    CHECK(read.masterCapable);
+    CHECK(read.logSyncInterval == -2);
+    CHECK(read.logAnnounceInterval == 1);
 }

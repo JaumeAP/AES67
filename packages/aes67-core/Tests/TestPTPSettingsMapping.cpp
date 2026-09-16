@@ -22,8 +22,8 @@ TEST_CASE("The Configured Dataset Reaches Both Engines") {
     PTPMasterSettings settings;
     settings.priority1 = 100;
     settings.priority2 = 90;
-    settings.syncIntervalMs = 250;
-    settings.announceIntervalMs = 2000;
+    settings.logSyncInterval = -2;   // 250 ms
+    settings.logAnnounceInterval = 1; // 2 s
     settings.delayReqIntervalMs = 125;
     settings.delayMechanism = "p2p";
     settings.dscp = 46;
@@ -38,8 +38,8 @@ TEST_CASE("The Configured Dataset Reaches Both Engines") {
 
     CHECK(master.priority1 == 100);
     CHECK(master.priority2 == 90);
-    CHECK(master.syncIntervalMs == 250);
-    CHECK(master.announceIntervalMs == 2000);
+    CHECK(master.logSyncInterval == -2);
+    CHECK(master.logAnnounceInterval == 1);
     CHECK(master.dscp == 46);
 }
 
@@ -60,8 +60,8 @@ TEST_CASE("The Defaults Leave Everything Where The Code Had It") {
     CHECK(slave.dscp == slaveBefore.dscp);
     CHECK(master.priority1 == masterBefore.priority1);
     CHECK(master.priority2 == masterBefore.priority2);
-    CHECK(master.syncIntervalMs == masterBefore.syncIntervalMs);
-    CHECK(master.announceIntervalMs == masterBefore.announceIntervalMs);
+    CHECK(master.logSyncInterval == masterBefore.logSyncInterval);
+    CHECK(master.logAnnounceInterval == masterBefore.logAnnounceInterval);
     CHECK(master.dscp == masterBefore.dscp);
 }
 

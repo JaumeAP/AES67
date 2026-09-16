@@ -21,8 +21,8 @@ void applyPTPSettings(const PTPMasterSettings& settings,
     // Master side: where we sit in BMCA and how often we speak.
     masterConfig.priority1 = static_cast<uint8_t>(settings.priority1);
     masterConfig.priority2 = static_cast<uint8_t>(settings.priority2);
-    masterConfig.syncIntervalMs = settings.syncIntervalMs;
-    masterConfig.announceIntervalMs = settings.announceIntervalMs;
+    masterConfig.logSyncInterval = settings.logSyncInterval;
+    masterConfig.logAnnounceInterval = settings.logAnnounceInterval;
     masterConfig.dscp = settings.dscp;
 }
 

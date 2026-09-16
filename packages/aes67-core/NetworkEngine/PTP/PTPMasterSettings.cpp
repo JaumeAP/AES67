@@ -1,3 +1,4 @@
+#include <cmath>
 #include "PTPMasterSettings.h"
 #include "NetworkEngine/JsonEscape.h"
 #include "NetworkEngine/JsonFields.h"
@@ -71,8 +72,23 @@ PTPMasterSettings PTPMasterSettingsManager::load() {
     if (auto v = extractIntField(json, "priority2")) settings.priority2 = *v;
     if (auto v = extractIntField(json, "clockClass")) settings.clockClass = *v;
     if (auto v = extractIntField(json, "clockAccuracy")) settings.clockAccuracy = *v;
-    if (auto v = extractIntField(json, "syncIntervalMs")) settings.syncIntervalMs = *v;
-    if (auto v = extractIntField(json, "announceIntervalMs")) settings.announceIntervalMs = *v;
+    // The millisecond keys first, so that the exponent wins when a file has
+    // both: a file written by this driver carries both, and one written by an
+    // older build or by ManagerApp carries only the milliseconds. Reading the
+    // old key is what keeps a settings file that predates this from silently
+    // reverting to the defaults.
+    if (auto v = extractIntField(json, "syncIntervalMs")) {
+        settings.logSyncInterval = msToLogInterval(*v);
+    }
+    if (auto v = extractIntField(json, "announceIntervalMs")) {
+        settings.logAnnounceInterval = msToLogInterval(*v);
+    }
+    if (auto v = extractIntField(json, "logSyncInterval")) {
+        settings.logSyncInterval = static_cast<int8_t>(*v);
+    }
+    if (auto v = extractIntField(json, "logAnnounceInterval")) {
+        settings.logAnnounceInterval = static_cast<int8_t>(*v);
+    }
     if (auto v = extractIntField(json, "delayReqIntervalMs")) settings.delayReqIntervalMs = *v;
     if (auto v = extractStringField(json, "delayMechanism")) settings.delayMechanism = *v;
     if (auto v = extractIntField(json, "dscp")) settings.dscp = *v;
@@ -101,8 +117,16 @@ bool PTPMasterSettingsManager::save(const PTPMasterSettings& settings) {
     json << "  \"priority2\": " << settings.priority2 << ",\n";
     json << "  \"clockClass\": " << settings.clockClass << ",\n";
     json << "  \"clockAccuracy\": " << settings.clockAccuracy << ",\n";
-    json << "  \"syncIntervalMs\": " << settings.syncIntervalMs << ",\n";
-    json << "  \"announceIntervalMs\": " << settings.announceIntervalMs << ",\n";
+    // Both: the exponent is what this driver reads back, and the rounded
+    // milliseconds are what ManagerApp's PTP screen shows and writes. An app
+    // that only knows the old keys keeps working, and loses only what
+    // milliseconds could never express anyway.
+    json << "  \"logSyncInterval\": " << static_cast<int>(settings.logSyncInterval) << ",\n";
+    json << "  \"logAnnounceInterval\": " << static_cast<int>(settings.logAnnounceInterval) << ",\n";
+    json << "  \"syncIntervalMs\": " << static_cast<long long>(std::llround(settings.syncIntervalMs()))
+         << ",\n";
+    json << "  \"announceIntervalMs\": "
+         << static_cast<long long>(std::llround(settings.announceIntervalMs())) << ",\n";
     json << "  \"delayReqIntervalMs\": " << settings.delayReqIntervalMs << ",\n";
     json << "  \"delayMechanism\": \"" << jsonEscape(settings.delayMechanism) << "\",\n";
     json << "  \"dscp\": " << settings.dscp << "\n";

@@ -109,8 +109,8 @@ int main(int argc, char** argv) {
     masterConfig.interfaceName = interfaceName;
     masterConfig.eventPort = eventPort;
     masterConfig.generalPort = generalPort;
-    masterConfig.announceIntervalMs = 250;
-    masterConfig.syncIntervalMs = 125;
+    masterConfig.logAnnounceInterval = -2;  // 250 ms
+    masterConfig.logSyncInterval = -3;     // 125 ms
     masterConfig.priority1 = 1; // win BMCA outright: this is the only master here
 
     PTPSlaveConfig slaveConfig;
