@@ -147,9 +147,11 @@ if(BUILD_TESTS)
         AES67_TOOL_SENDER="$<TARGET_FILE:AES67TestSender>"
         AES67_TOOL_RECEIVER="$<TARGET_FILE:AES67TestReceiver>"
         AES67_TOOL_SAP_MONITOR="$<TARGET_FILE:AES67SAPMonitor>"
-        AES67_TOOL_PTP_STRESS="$<TARGET_FILE:AES67PTPStressRun>")
+        AES67_TOOL_PTP_STRESS="$<TARGET_FILE:AES67PTPStressRun>"
+        AES67_TOOL_LIVE_INTEROP="$<TARGET_FILE:AES67LiveDaemonInterop>")
     add_dependencies(TestToolArguments
-        AES67TestSender AES67TestReceiver AES67SAPMonitor AES67PTPStressRun)
+        AES67TestSender AES67TestReceiver AES67SAPMonitor AES67PTPStressRun
+        AES67LiveDaemonInterop)
     add_test(NAME ToolArguments COMMAND TestToolArguments)
     set_tests_properties(ToolArguments PROPERTIES LABELS "unit" TIMEOUT 60)
 endif()

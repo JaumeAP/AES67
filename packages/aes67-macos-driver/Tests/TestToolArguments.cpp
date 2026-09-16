@@ -71,11 +71,16 @@ bool mentions(const std::string& text, const std::string& needle) {
     return text.find(needle) != std::string::npos;
 }
 
-/// The four tools that take options and talk to the network. The two offline
+/// The five tools that take options and talk to the network. The two offline
 /// simulations take none and are CTests of their own.
+///
+/// AES67LiveDaemonInterop is here although only a Linux job ever runs it for
+/// real: its command line is read before it opens anything, so the refusals
+/// below are exactly as reachable on this machine as the others'.
 const std::vector<std::string>& tools() {
     static const std::vector<std::string> paths = {
-        AES67_TOOL_SENDER, AES67_TOOL_RECEIVER, AES67_TOOL_SAP_MONITOR, AES67_TOOL_PTP_STRESS};
+        AES67_TOOL_SENDER, AES67_TOOL_RECEIVER, AES67_TOOL_SAP_MONITOR, AES67_TOOL_PTP_STRESS,
+        AES67_TOOL_LIVE_INTEROP};
     return paths;
 }
 
@@ -116,6 +121,8 @@ TEST_CASE("A Flag Given As The Last Word Says A Value Is Missing") {
         {AES67_TOOL_SAP_MONITOR, "--group"},
         {AES67_TOOL_PTP_STRESS, "--seconds"},
         {AES67_TOOL_PTP_STRESS, "--csv"},
+        {AES67_TOOL_LIVE_INTEROP, "--host"},
+        {AES67_TOOL_LIVE_INTEROP, "--http-port"},
     };
 
     for (const auto& one : cases) {
@@ -139,6 +146,7 @@ TEST_CASE("A Value That Is Not A Number Is Refused Rather Than Read As Zero") {
         {AES67_TOOL_RECEIVER, "--duration abc"},
         {AES67_TOOL_SAP_MONITOR, "--port 5004x"},
         {AES67_TOOL_PTP_STRESS, "--seconds 30s"},
+        {AES67_TOOL_LIVE_INTEROP, "--http-port 8080x"},
     };
 
     for (const auto& one : cases) {
@@ -162,6 +170,8 @@ TEST_CASE("A Number Too Big For What Holds It Is Refused") {
         {AES67_TOOL_RECEIVER, "--port 0"},
         {AES67_TOOL_SAP_MONITOR, "--duration -5"},
         {AES67_TOOL_PTP_STRESS, "--event-port 99999"},
+        {AES67_TOOL_LIVE_INTEROP, "--rtsp-port 70000"},
+        {AES67_TOOL_LIVE_INTEROP, "--poll-interval-ms 0"},
     };
 
     for (const auto& one : cases) {
@@ -210,4 +220,16 @@ TEST_CASE("A Value In Range Is Still Taken") {
     const ToolRun stress = run(AES67_TOOL_PTP_STRESS, "--seconds 30 --event-port 20319 --help");
     CHECK(stress.status == 0);
     CHECK(mentions(stress.output, "Usage:"));
+
+    // The whole command line the CI job hands the live interop tool, which is
+    // the one that used to accept a typo in any of these without a word.
+    const ToolRun live = run(AES67_TOOL_LIVE_INTEROP,
+        "--host 127.0.0.1 --rtsp-port 8854 --http-port 8080 "
+        "--sap-group 239.255.255.255 "
+        "--daemon-source-id 0 --daemon-source-name 'CI Fake Source' "
+        "--audio-group 239.1.0.77 --audio-port 5104 "
+        "--sink-id 1 --audio-seconds 4 "
+        "--poll-timeout-ms 20000 --poll-interval-ms 500 --help");
+    CHECK(live.status == 0);
+    CHECK(mentions(live.output, "Usage:"));
 }

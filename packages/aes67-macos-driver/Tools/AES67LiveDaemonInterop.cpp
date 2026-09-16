@@ -36,8 +36,11 @@
 //      that puts audio in front of a receiver somebody else wrote.
 //
 // Exit code is the number of checks that failed, capped at 255, so a CI
-// step fails loudly rather than needing its output parsed.
+// step fails loudly rather than needing its output parsed. A command line it
+// cannot read exits 1 before any check has run, with the reason on stderr.
 //
+#include "ToolOptions.h"
+
 #include "Driver/SDPParser.h"
 #include "NetworkEngine/JsonEscape.h"
 #include "NetworkEngine/JsonFields.h"
@@ -84,18 +87,6 @@ void observe(const char* what, const std::string& detail) {
     std::printf("  [??] %s -- %s\n", what, detail.c_str());
 }
 
-/// std::strtol over atoi: a CLI argument this driver did not write and
-/// atoi has no way to report a conversion failure at all -- a malformed
-/// value would silently become 0 with no way to tell it apart from a
-/// deliberate one.
-int parseInt(const std::string& text, int fallback) {
-    errno = 0;
-    char* end = nullptr;
-    const long value = std::strtol(text.c_str(), &end, 10);
-    if (end == text.c_str() || errno == ERANGE) return fallback;
-    return static_cast<int>(value);
-}
-
 struct Options {
     std::string host{"127.0.0.1"};
     std::string audioGroup{"239.1.0.77"};
@@ -111,25 +102,119 @@ struct Options {
     int pollIntervalMs{500};
 };
 
-Options parseArgs(int argc, char** argv) {
-    Options opts;
-    for (int i = 1; i + 1 < argc; i += 2) {
+void printUsage(const char* argv0) {
+    const Options defaults;
+    std::printf("Usage: %s [options]\n\n", argv0);
+    std::printf("Options:\n");
+    std::printf("  --host <addr>              Daemon host (default: %s)\n", defaults.host.c_str());
+    std::printf("  --rtsp-port <port>         Daemon RTSP port (default: %u)\n", defaults.rtspPort);
+    std::printf("  --http-port <port>         Daemon REST port (default: %u)\n", defaults.httpPort);
+    std::printf("  --sap-group <addr>         SAP group (default: %s)\n", defaults.sapGroup.c_str());
+    std::printf("  --daemon-source-id <n>     Its pre-configured source (default: %d)\n",
+                defaults.daemonSourceId);
+    std::printf("  --daemon-source-name <s>   That source's name (default: %s)\n",
+                defaults.daemonSourceName.c_str());
+    std::printf("  --audio-group <addr>       Group to send direction C's audio to (default: %s)\n",
+                defaults.audioGroup.c_str());
+    std::printf("  --audio-port <port>        Port for that audio (default: %u)\n", defaults.audioPort);
+    std::printf("  --sink-id <n>              Sink to configure on the daemon (default: %d)\n",
+                defaults.sinkId);
+    std::printf("  --audio-seconds <n>        How long to send it (default: %d)\n",
+                defaults.audioSeconds);
+    std::printf("  --poll-timeout-ms <n>      Give up waiting after this (default: %d)\n",
+                defaults.pollTimeoutMs);
+    std::printf("  --poll-interval-ms <n>     How often to ask while waiting (default: %d)\n",
+                defaults.pollIntervalMs);
+}
+
+enum class ArgsResult {
+    Ok,            // opts is filled in; run the checks
+    UsagePrinted,  // --help; there is nothing to fail
+    Bad,           // the command line could not be read; the reason is printed
+};
+
+/// The command line, read the way the other tools in this directory read
+/// theirs.
+///
+/// What this replaced stepped `i += 2` on the assumption that every argument
+/// was half of a key/value pair, so a flag written without its value shifted
+/// everything after it -- keys landed where values were expected and were
+/// silently dropped. Unknown keys were dropped in the same silence, which
+/// means a typo in the CI job's command line ran the whole interop against a
+/// default the job had not asked for and reported nothing. The numbers went
+/// through a parseInt that returned the default when the text was not a
+/// number, so "8080x" and "eight thousand" configured port 8080 too.
+ArgsResult parseArgs(int argc, char** argv, Options& opts) {
+    for (int i = 1; i < argc; ++i) {
         const std::string key = argv[i];
-        const std::string value = argv[i + 1];
-        if (key == "--host") opts.host = value;
-        else if (key == "--rtsp-port") opts.rtspPort = static_cast<uint16_t>(parseInt(value, opts.rtspPort));
-        else if (key == "--http-port") opts.httpPort = static_cast<uint16_t>(parseInt(value, opts.httpPort));
-        else if (key == "--sap-group") opts.sapGroup = value;
-        else if (key == "--daemon-source-id") opts.daemonSourceId = parseInt(value, opts.daemonSourceId);
-        else if (key == "--daemon-source-name") opts.daemonSourceName = value;
-        else if (key == "--audio-group") opts.audioGroup = value;
-        else if (key == "--audio-port") opts.audioPort = static_cast<uint16_t>(parseInt(value, opts.audioPort));
-        else if (key == "--sink-id") opts.sinkId = parseInt(value, opts.sinkId);
-        else if (key == "--audio-seconds") opts.audioSeconds = parseInt(value, opts.audioSeconds);
-        else if (key == "--poll-timeout-ms") opts.pollTimeoutMs = parseInt(value, opts.pollTimeoutMs);
-        else if (key == "--poll-interval-ms") opts.pollIntervalMs = parseInt(value, opts.pollIntervalMs);
+        long long number = 0;
+
+        if (key == "--host") {
+            const char* text = ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return ArgsResult::Bad;
+            opts.host = text;
+        }
+        else if (key == "--rtsp-port") {
+            if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return ArgsResult::Bad;
+            opts.rtspPort = static_cast<uint16_t>(number);
+        }
+        else if (key == "--http-port") {
+            if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return ArgsResult::Bad;
+            opts.httpPort = static_cast<uint16_t>(number);
+        }
+        else if (key == "--sap-group") {
+            const char* text = ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return ArgsResult::Bad;
+            opts.sapGroup = text;
+        }
+        else if (key == "--daemon-source-id") {
+            if (!ToolOptions::integerOption(argc, argv, i, 0, 2147483647LL, number)) return ArgsResult::Bad;
+            opts.daemonSourceId = static_cast<int>(number);
+        }
+        else if (key == "--daemon-source-name") {
+            const char* text = ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return ArgsResult::Bad;
+            opts.daemonSourceName = text;
+        }
+        else if (key == "--audio-group") {
+            const char* text = ToolOptions::value(argc, argv, i);
+            if (text == nullptr) return ArgsResult::Bad;
+            opts.audioGroup = text;
+        }
+        else if (key == "--audio-port") {
+            if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return ArgsResult::Bad;
+            opts.audioPort = static_cast<uint16_t>(number);
+        }
+        else if (key == "--sink-id") {
+            if (!ToolOptions::integerOption(argc, argv, i, 0, 2147483647LL, number)) return ArgsResult::Bad;
+            opts.sinkId = static_cast<int>(number);
+        }
+        else if (key == "--audio-seconds") {
+            // At least one: direction C is "send audio and ask the daemon
+            // what it made of it", and zero seconds of audio asks nothing.
+            if (!ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) return ArgsResult::Bad;
+            opts.audioSeconds = static_cast<int>(number);
+        }
+        else if (key == "--poll-timeout-ms") {
+            if (!ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) return ArgsResult::Bad;
+            opts.pollTimeoutMs = static_cast<int>(number);
+        }
+        else if (key == "--poll-interval-ms") {
+            // Zero here is a busy loop against another process's REST API,
+            // which is not a thing to let a command line ask for by accident.
+            if (!ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) return ArgsResult::Bad;
+            opts.pollIntervalMs = static_cast<int>(number);
+        }
+        else if (key == "--help" || key == "-h") {
+            printUsage(argv[0]);
+            return ArgsResult::UsagePrinted;
+        }
+        else {
+            std::fprintf(stderr, "Unknown option: %s (use --help)\n", key.c_str());
+            return ArgsResult::Bad;
+        }
     }
-    return opts;
+    return ArgsResult::Ok;
 }
 
 /// Direction B: what the daemon already has configured, read through this
@@ -388,7 +473,12 @@ void checkTheDaemonReceivesOurAudio(const Options& opts) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const Options opts = parseArgs(argc, argv);
+    Options opts;
+    switch (parseArgs(argc, argv, opts)) {
+        case ArgsResult::UsagePrinted: return 0;
+        case ArgsResult::Bad: return 1;
+        case ArgsResult::Ok: break;
+    }
 
     std::printf("=== LIVE INTEROP: this driver <-> a running aes67-linux-daemon ===\n");
     std::printf("host=%s rtsp=%u http=%u sap-group=%s\n", opts.host.c_str(), opts.rtspPort,
