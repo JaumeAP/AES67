@@ -305,8 +305,18 @@ struct PTPMasterConfig {
     // unmarked. Same reasoning as PTPSlaveConfig::dscp.
     int dscp = -1;
 
-    int syncIntervalMs = 125;       // 8/s — matches what PTPSlave expects
-    int announceIntervalMs = 1000;  // 1/s, AES67 Media Profile default
+    // The rates this master sends at and announces, as IEEE 1588 carries
+    // them: log2 seconds. -3 is 125 ms, eight per second, which is what
+    // PTPSlave expects; 0 is the AES67 Media Profile's one Announce a second.
+    //
+    // The exponent rather than milliseconds because milliseconds cannot say
+    // every legal rate -- sixteen Sync per second is 62.5 ms -- and because
+    // this is the byte that goes on the wire. It used to be a pair of
+    // millisecond ints that PTPMaster converted on the way in, so the
+    // rounding happened after the value had been chosen, stored and read
+    // back. See Shared PTPIntervals.h for the conversions.
+    int8_t logSyncInterval = -3;
+    int8_t logAnnounceInterval = 0;
 
     // logMinDelayReqInterval advertised in Delay_Resp: the rate this master
     // asks its slaves to send Delay_Req at, in log2 seconds. 0 is one per

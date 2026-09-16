@@ -8,6 +8,8 @@
 //
 
 #include "PTPMaster.h"
+
+#include "NetworkEngine/PTP/PTPIntervals.h"
 #include "NetworkEngine/NetworkUtils.h"
 
 #include <algorithm>
@@ -56,65 +58,8 @@ namespace {
 
 namespace {
 
-// logMessageInterval is log2 seconds (IEEE 1588-2008 sec 7.7.2.1). Announcing
-// a rate other than the one actually sent is a lie a conforming slave acts
-// on: it times its master-lost window and its Delay_Req rate off these
-// fields, so they are derived from the configured intervals rather than
-// hard-coded.
-int8_t MsToLogInterval(int milliseconds) {
-    if (milliseconds <= 0) return 0;
-    const double seconds = static_cast<double>(milliseconds) / 1000.0;
-    const long rounded = std::lround(std::log2(seconds));
-    if (rounded < -128) return -128;
-    if (rounded > 127) return 127;
-    return static_cast<int8_t>(rounded);
-}
-
-// And back: the period the port actually waits, for the interval it
-// announces. Nanoseconds because milliseconds cannot hold the fast rates --
-// 16 Sync per second is 62.5 ms -- and because 2^n seconds is a whole number
-// of nanoseconds for every n down to -9, which is 512 per second and well
-// past anything a PTP port sends at. Below that it truncates, by under a
-// nanosecond.
-// AudioThreadPriority asks for a period in milliseconds as a double, which
-// is a hint rather than a rate, so a fractional one is fine there.
 double PeriodMs(std::chrono::nanoseconds period) {
     return std::chrono::duration<double, std::milli>(period).count();
-}
-
-std::chrono::nanoseconds LogIntervalToNs(int8_t logInterval) {
-    constexpr int64_t kNsPerSecond = 1000000000;
-
-    // The reachable range is much narrower than int8_t: MsToLogInterval's
-    // input is a positive int of milliseconds, so the largest interval that
-    // can be configured is about 24.9 days and what comes back is at most 21.
-    // But the parameter is an int8_t, MsToLogInterval clamps to -128 and 127
-    // rather than to what this can represent, and a shift of 127 on an int64
-    // is undefined behaviour -- not a large number, undefined. Saying so in a
-    // comment left it to be believed rather than enforced, which is what the
-    // analyser was pointing at.
-    //
-    // 1e9 is just under 2^30, so a left shift of 33 is the last one that fits
-    // in an int64; on the right, 63 shifts the value away to zero and there is
-    // nothing beyond it to say. Neither bound is reachable through
-    // MsToLogInterval, and clamping to them changes nothing that happens --
-    // it only puts the limit where the compiler can see it.
-    constexpr int kMaxLeftShift = 33;
-    // 62, not 63: kNsPerSecond is a signed 64-bit value, and shifting one by
-    // 63 is implementation-defined. Everything past ~30 is zero nanoseconds
-    // anyway -- this clamp is about staying defined, not about precision.
-    constexpr int kMaxRightShift = 62;
-
-    if (logInterval >= 0) {
-        const int shift = logInterval < kMaxLeftShift ? logInterval : kMaxLeftShift;
-        return std::chrono::nanoseconds(kNsPerSecond << shift);
-    }
-    // The shift count, capped at kMaxRightShift before it is used rather than
-    // inside the shift itself. It cannot be negative: this is the branch where
-    // logInterval is below zero, so negating it lands above zero.
-    int shift = -static_cast<int>(logInterval);
-    if (shift > kMaxRightShift) shift = kMaxRightShift;
-    return std::chrono::nanoseconds(kNsPerSecond >> shift);
 }
 
 }  // namespace
@@ -123,23 +68,22 @@ std::chrono::nanoseconds LogIntervalToNs(int8_t logInterval) {
 // Construction / destruction
 // ============================================================================
 
-// The two intervals are settled here, once. The wire byte and the period the
-// transmit loop waits are derived from the same exponent rather than each
-// from config_ separately: while they were two numbers, a configured interval
+// The wire byte and the period the transmit loop waits come from the same
+// exponent, which is now what the configuration holds. While they were two
+// numbers derived separately from a pair of millisecond ints, an interval
 // that is not a power of two seconds made this port announce one rate and
-// send another -- 100 ms announced as 125 -- which is exactly what
-// MsToLogInterval's comment above says the derivation exists to prevent.
+// send another -- 100 ms announced as 125.
 //
-// The price, and it is the honest one: a configured interval that is not a
-// power of two seconds is now rounded to one and sent at that rate, instead
-// of being sent at the configured rate and misdeclared.
+// There is no rounding left here: whoever chose the interval chose an
+// exponent, and Shared PTPIntervals.h is where a millisecond figure becomes
+// one, at the edge where a person typed it.
 PTPMaster::PTPMaster(const PTPMasterConfig& config, PTPClockSource& clockSource)
     : config_(config),
       clockSource_(clockSource),
-      logSyncInterval_(MsToLogInterval(config.syncIntervalMs)),
-      logAnnounceInterval_(MsToLogInterval(config.announceIntervalMs)),
-      syncPeriod_(LogIntervalToNs(logSyncInterval_)),
-      announcePeriod_(LogIntervalToNs(logAnnounceInterval_)) {}
+      logSyncInterval_(config.logSyncInterval),
+      logAnnounceInterval_(config.logAnnounceInterval),
+      syncPeriod_(logIntervalToNs(logSyncInterval_)),
+      announcePeriod_(logIntervalToNs(logAnnounceInterval_)) {}
 
 PTPMaster::~PTPMaster() { stop(); }
 

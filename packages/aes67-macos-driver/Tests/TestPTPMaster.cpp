@@ -309,8 +309,8 @@ TEST_CASE("The master sends Sync at the interval it announces" * doctest::timeou
     // send to 224.0.1.129 -- hence the network label beside the timing one.
     PTPMasterConfig config;
     config.interfaceName = "lo0";
-    config.syncIntervalMs = 125;
-    config.announceIntervalMs = 250;
+    config.logSyncInterval = -3;  // 125 ms
+    config.logAnnounceInterval = -2;  // 250 ms
     // High ports: below 1024 needs root, and this has to run unprivileged.
     config.eventPort = 20419;
     config.generalPort = 20420;

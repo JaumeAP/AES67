@@ -64,8 +64,8 @@ TEST_CASE("Master And Slave Complete The Full Exchange Over Loopback") {
     masterConfig.interfaceName = kInterface;
     masterConfig.eventPort = kTestEventPort;
     masterConfig.generalPort = kTestGeneralPort;
-    masterConfig.announceIntervalMs = 250; // shrink the listen window
-    masterConfig.syncIntervalMs = 125;
+    masterConfig.logAnnounceInterval = -2; // 250 ms, shrinking the listen window
+    masterConfig.logSyncInterval = -3;     // 125 ms
     masterConfig.priority1 = 1; // win BMCA outright
 
     PTPSlaveConfig slaveConfig;
@@ -147,8 +147,8 @@ TEST_CASE("Slave Follows The Intervals The Master Advertises") {
     masterConfig.interfaceName = kInterface;
     masterConfig.eventPort = kTestEventPort + 2;
     masterConfig.generalPort = kTestGeneralPort + 2;
-    masterConfig.announceIntervalMs = 250;      // 2^-2 s
-    masterConfig.syncIntervalMs = 125;          // 2^-3 s
+    masterConfig.logAnnounceInterval = -2;      // 2^-2 s
+    masterConfig.logSyncInterval = -3;          // 2^-3 s
     masterConfig.logMinDelayReqInterval = -2;   // ask for one every 250 ms
     masterConfig.priority1 = 1;
 
