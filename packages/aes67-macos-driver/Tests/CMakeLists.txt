@@ -152,8 +152,9 @@ if(ASPL_FOUND)
     endif()
 endif()
 
-# Test: PTP Arbitrator — offline, like TestPTPMaster: constructed and asked,
-# never started, because start() binds 319/320 and spawns a monitor thread.
+# Test: PTP Arbitrator — offline, like TestPTPMaster: mostly constructed and
+# asked, because start() binds 319/320 and spawns a monitor thread; what the
+# suite does call start() for is the unprivileged refusal path.
 add_executable(TestPTPArbitrator
     TestPTPArbitrator.cpp
     ../NetworkEngine/PTP/PTPArbitrator.cpp
