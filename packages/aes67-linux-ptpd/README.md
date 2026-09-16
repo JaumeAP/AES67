@@ -29,7 +29,8 @@ rather than negotiated with. What is not implemented is not half implemented.
 
 `Tests/TestRavennaSlaveInterop.cpp` holds what this daemon sends against the
 rules of the slave it will actually face: the RAVENNA ALSA kernel module,
-vendored in this repository under `external/ravenna-alsa-lkm`.
+which arrives inside this repository's `external/aes67-linux-daemon`
+submodule, at `3rdparty/ravenna-alsa-lkm`.
 `Tests/support/RavennaSlave` mirrors `process_PTP_packet` from that module's
 own `driver/PTP.c`, which cannot be called from here -- kernel C, reading whole
 frames out of a netfilter hook.
