@@ -374,7 +374,11 @@ void checkTheDaemonReceivesOurAudio(const Options& opts) {
     const auto step = PacketBudget::packetInterval(kFrames, kRate);
     uint32_t carry = 0;
 
-    std::vector<uint8_t> packet(sizeof(RTP::RTPHeader) + kFrames * kChannels * 3);
+    // size_t before the multiplication, not after it: the product is computed
+    // in uint32_t and only then widened, which is a narrower type than the
+    // size it is about to be used as.
+    std::vector<uint8_t> packet(sizeof(RTP::RTPHeader) +
+                                static_cast<size_t>(kFrames) * kChannels * 3);
     uint16_t sequence = 1;
     uint32_t timestamp = 0;
     double phase = 0.0;
