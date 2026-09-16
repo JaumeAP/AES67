@@ -200,6 +200,15 @@ int run(int argc, char* argv[]) {
         fprintf(stderr, "Note: --jitter-ms %.1f exceeds --delay-ms %.1f; "
                 "early packets are clamped to immediate send\n", jitterMs, delayMs);
     }
+    if (reorderPercent > 0.0 && delayMs < reorderHeadStartMs) {
+        // Same reason as the note above, from the other end: the head start is
+        // subtracted from the delay, so without a delay at least as large
+        // there is nothing to take it out of and every packet leaves in the
+        // order it arrived.
+        fprintf(stderr, "Note: --reorder needs --delay-ms of at least the %.1f ms head start "
+                "to have anything to borrow from; at %.1f ms nothing will be reordered\n",
+                reorderHeadStartMs, delayMs);
+    }
     if (burstMs > 0 && burstEveryMs <= burstMs) {
         fprintf(stderr, "Error: --burst-every must be greater than --burst-ms\n");
         return 1;

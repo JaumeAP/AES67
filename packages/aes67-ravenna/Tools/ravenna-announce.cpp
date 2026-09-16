@@ -33,6 +33,7 @@
 #include "Ravenna/RegistrationClient.h"
 #include "Ravenna/NodeApi.h"
 #include "Ravenna/ReceiverRouting.h"
+#include "Ravenna/RtspMessages.h"
 #include "Ravenna/RtspServer.h"
 #include "Ravenna/SessionCatalogue.h"
 
@@ -357,10 +358,13 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
-    std::printf("[ravenna] \"%s\" on %s, %u channels, RTSP %s:%u%s\n",
+    // Escaped: this line is what a person copies into a client, and a session
+    // name with a space in it was printed raw -- a URL nobody can use, for a
+    // path this server answers perfectly well in its escaped form.
+    std::printf("[ravenna] \"%s\" on %s, %u channels, RTSP rtsp://%s:%u%s\n",
                 sessionName.c_str(), group.c_str(), static_cast<unsigned>(channels),
                 hostName.c_str(), static_cast<unsigned>(rtsp.port()),
-                SessionCatalogue::pathFor(sessionName).c_str());
+                percentEncodePath(SessionCatalogue::pathFor(sessionName)).c_str());
     if (ptpGrandmaster.empty()) {
         std::fprintf(stderr,
                      "[ravenna] no --ptp-gmid: the SDP carries no a=ts-refclk, and a "

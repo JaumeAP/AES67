@@ -37,16 +37,22 @@ target_link_libraries(AES67TestReceiver PRIVATE aes67_net)
 target_compile_features(AES67TestReceiver PRIVATE cxx_std_17)
 target_link_libraries(AES67TestReceiver PRIVATE "-framework Accelerate")
 
-# AES67 Interop Simulation: dry-run against the RAVENNA aes67-linux-daemon
+# AES67 Interop Simulation: dry-run against the RAVENNA aes67-linux-daemon.
+# Tests/support/DaemonSap.cpp is the daemon's own send and receive path,
+# mirrored from its source; this tool reports on that oracle rather than
+# carrying a second copy of the daemon's rules, which is why it compiles a
+# Tests file and needs Tests/ on its include path for "support/DaemonSap.h".
 add_executable(AES67InteropSim
     AES67InteropSim.cpp
-    ../NetworkEngine/RTP/PCMCodec.cpp
+    ../Tests/support/DaemonSap.cpp
 )
-target_include_directories(AES67InteropSim PRIVATE ${PROJECT_SOURCE_DIR})
+target_include_directories(AES67InteropSim PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Tests
+)
 target_link_libraries(AES67InteropSim PRIVATE aes67_net)
 
 target_compile_features(AES67InteropSim PRIVATE cxx_std_17)
-target_link_libraries(AES67InteropSim PRIVATE "-framework Accelerate")
 
 # Dante Interop Simulation: dry-run against Dante Controller 4.18's own SAP
 # and SDP handling, in both directions, under every profile.
@@ -99,6 +105,20 @@ add_executable(AES67PTPStressRun
 target_include_directories(AES67PTPStressRun PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(AES67PTPStressRun PRIVATE aes67_net)
 target_compile_features(AES67PTPStressRun PRIVATE cxx_std_17)
+
+# Quick Capture: records from one Core Audio device and says whether any
+# non-zero sample arrived. Nothing built it until 2026-09-16 -- it was a source
+# file in this directory with no target, which is how it kept a variable-length
+# array on the render thread that no compiler here ever saw.
+if(APPLE)
+    add_executable(QuickCapture QuickCapture.cpp)
+    target_compile_features(QuickCapture PRIVATE cxx_std_17)
+    target_link_libraries(QuickCapture PRIVATE
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
+        "-framework CoreFoundation"   # CFStringGetCString, CFRelease
+    )
+endif()
 
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against

@@ -43,6 +43,7 @@
 // Use the project's RTP header for consistency
 #include "NetworkEngine/RTP/SimpleRTP.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
+#include "NetworkEngine/Discovery/SAPAnnouncer.h"
 
 // ── Globals ──────────────────────────────────────────────────────────
 static std::atomic<bool> g_running{true};
@@ -81,49 +82,27 @@ static std::string buildSDP(const std::string& multicastIP, uint16_t port,
     return sdp;
 }
 
-/// RFC 2974 SS 6 message identifier hash: 16 bits that, with the originating
-/// source, name "the precise version of this announcement". FNV-1a over the
-/// SDP folded to 16 bits, so a description that changes gets a new identity.
-/// Never 0: that value means the announcer supplied no hash, and a receiver
-/// then falls back to matching on the session name.
-static uint16_t sapMessageIdHash(const std::string& sdp) {
-    uint32_t hash = 2166136261u;
-    for (char c : sdp) {
-        hash ^= static_cast<uint8_t>(c);
-        hash *= 16777619u;
-    }
-    const uint16_t folded = static_cast<uint16_t>((hash >> 16) ^ (hash & 0xFFFFu));
-    return folded == 0 ? uint16_t{1} : folded;
-}
-
-static std::vector<uint8_t> buildSAPPacket(const std::string& sdp, uint32_t originatingSource) {
-    // SAP header (RFC 2974):
-    // Byte 0: V=1 (bits 5-7), A=0, R=0, T=0(announce), E=0, C=0 → 0x20
-    // Byte 1: Auth length = 0
-    // Bytes 2-3: Message ID hash, over this SDP
-    // Bytes 4-7: Originating source, this announcer's own address
-    // Then: optional "application/sdp\0" content-type, then SDP payload
-    //
-    // Both used to be constants (0x0001 and 127.0.0.1), which gave every
-    // announcer on the network the same SAP identity: two senders describing
-    // two different streams looked to a receiver like one session whose
-    // description kept changing, and it could hold only one of them.
-
-    const uint16_t msgIdHash = sapMessageIdHash(sdp);
-
-    std::vector<uint8_t> pkt;
-    pkt.push_back(0x20);  // V=1, all other bits 0
-    pkt.push_back(0x00);  // auth length = 0
-    pkt.push_back(static_cast<uint8_t>(msgIdHash >> 8));
-    pkt.push_back(static_cast<uint8_t>(msgIdHash & 0xFF));
-    pkt.push_back(static_cast<uint8_t>((originatingSource >> 24) & 0xFF));
-    pkt.push_back(static_cast<uint8_t>((originatingSource >> 16) & 0xFF));
-    pkt.push_back(static_cast<uint8_t>((originatingSource >> 8) & 0xFF));
-    pkt.push_back(static_cast<uint8_t>(originatingSource & 0xFF));
-    // SDP payload (no content-type header — matches what SAPListener expects)
-    std::transform(sdp.begin(), sdp.end(), std::back_inserter(pkt),
-                   [](char c) { return static_cast<uint8_t>(c); });
-    return pkt;
+/// The datagram for one announcement, or for the deletion that withdraws it.
+///
+/// SAPAnnouncer::buildPacket, the driver's own, rather than a third copy of
+/// the RFC 2974 header beside the driver's and the daemon mirror in
+/// Tests/support/DaemonSap. The copy that used to be here omitted the
+/// "application/sdp" payload type, on the same reasoning the driver's did
+/// until it was fixed: the type is optional to write and not optional to be
+/// heard, and the AES67 Linux daemon drops a packet whose sixteen bytes at
+/// offset 8 are not exactly "application/sdp\0". This tool announces to
+/// whatever is on the network, not only to our own SAPListener.
+///
+/// `originatingSource` is an IPv4 address in network byte order. It used to
+/// be a constant here, along with the message id hash, which gave every
+/// announcer on the network the same SAP identity: two senders describing two
+/// different streams looked to a receiver like one session whose description
+/// kept changing, and it could hold only one of them.
+static std::vector<uint8_t> buildSAPPacket(const std::string& sdp,
+                                           uint32_t originatingSourceNetworkOrder,
+                                           bool deletion) {
+    return AES67::SAPAnnouncer::buildPacket(sdp, AES67::SAPAnnouncer::messageIdHash(sdp),
+                                            originatingSourceNetworkOrder, deletion);
 }
 
 static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
@@ -169,6 +148,8 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
     // kernel which one it will use rather than assuming. connect() on a UDP
     // socket only fixes the destination, which is where every announcement
     // goes anyway.
+    // Network byte order throughout: it is what goes in the header and what
+    // buildPacket takes. The host-order copy below exists only to print it.
     uint32_t originatingSource = 0;
     const bool connected =
         connect(sockfd, reinterpret_cast<struct sockaddr*>(&sapAddr), sizeof(sapAddr)) == 0;
@@ -176,37 +157,50 @@ static void sapAnnounceLoop(const std::string& multicastIP, uint16_t port,
         struct sockaddr_in local;
         socklen_t localLen = sizeof(local);
         if (getsockname(sockfd, reinterpret_cast<struct sockaddr*>(&local), &localLen) == 0) {
-            originatingSource = ntohl(local.sin_addr.s_addr);
+            originatingSource = local.sin_addr.s_addr;
         }
     }
     if (originatingSource == 0 && !interfaceIP.empty()) {
-        originatingSource = ntohl(inet_addr(interfaceIP.c_str()));
+        originatingSource = inet_addr(interfaceIP.c_str());
     }
 
-    const std::vector<uint8_t> sapPacket = buildSAPPacket(sdp, originatingSource);
+    const std::vector<uint8_t> sapPacket = buildSAPPacket(sdp, originatingSource, false);
 
+    const uint32_t printable = ntohl(originatingSource);
     fprintf(stderr, "SAP: announcing on 224.2.127.254:9875 every 30s"
             " (origin %u.%u.%u.%u)\n",
-            (originatingSource >> 24) & 0xFF, (originatingSource >> 16) & 0xFF,
-            (originatingSource >> 8) & 0xFF, originatingSource & 0xFF);
+            (printable >> 24) & 0xFF, (printable >> 16) & 0xFF,
+            (printable >> 8) & 0xFF, printable & 0xFF);
 
-    while (g_running) {
-        // A connected UDP socket refuses sendto() with a destination
-        // (EISCONN on macOS), so the send has to match how the socket was set
-        // up above.
-        ssize_t sent = connected
-            ? send(sockfd, sapPacket.data(), sapPacket.size(), 0)
-            : sendto(sockfd, sapPacket.data(), sapPacket.size(), 0,
+    // A connected UDP socket refuses sendto() with a destination (EISCONN on
+    // macOS), so the send has to match how the socket was set up above.
+    const auto sendPacket = [&](const std::vector<uint8_t>& packet) {
+        const ssize_t sent = connected
+            ? send(sockfd, packet.data(), packet.size(), 0)
+            : sendto(sockfd, packet.data(), packet.size(), 0,
                      reinterpret_cast<struct sockaddr*>(&sapAddr), sizeof(sapAddr));
         if (sent < 0) {
             fprintf(stderr, "SAP: send failed (errno=%d)\n", errno);
         }
+    };
+
+    while (g_running) {
+        sendPacket(sapPacket);
 
         // Sleep 30 seconds in 1-second intervals so we can check g_running
         for (int i = 0; i < 30 && g_running; ++i) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
+
+    // The deletion this announcer owes whoever heard it. Without it the
+    // session sits in a receiver's list until the timeout runs out -- 300 s in
+    // this driver's own SAPListener, which is most of an afternoon's worth of
+    // stale entries after a few runs of a tool whose default duration is 60 s.
+    // Same message id hash: RFC 2974 SS 6 identifies the session by it, so the
+    // withdrawal has to carry the value the announcement went out with, which
+    // is what building it from the same SDP gives.
+    sendPacket(buildSAPPacket(sdp, originatingSource, true));
 
     close(sockfd);
 }
@@ -367,8 +361,14 @@ int run(int argc, char* argv[]) {
     std::vector<float> audioBuffer(totalSamples);
     std::vector<uint8_t> payloadBuffer(totalSamples * bytesPerSample);
 
-    // RTP state
-    uint16_t sequenceNumber = 0;
+    // RTP state. The sequence number starts somewhere random, RFC 3550 SS 5.1,
+    // for the reason the SSRC above does: two runs of this tool on one group
+    // are told apart by what is in the packets, and a receiver that keys on
+    // the sequence number saw every run start at 0 and read the second one as
+    // a catastrophic reordering of the first.
+    std::random_device seqEntropy;
+    uint16_t sequenceNumber =
+        static_cast<uint16_t>(std::uniform_int_distribution<uint32_t>(0, 0xFFFFu)(seqEntropy));
     uint32_t timestamp = 0;
 
     // Sine wave state

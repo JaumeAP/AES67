@@ -35,6 +35,7 @@
 #include "NetworkEngine/Discovery/RTSPClient.h"
 #include "NetworkEngine/Discovery/SAPAnnouncer.h"
 #include "NetworkEngine/Discovery/SAPListener.h"
+#include "NetworkEngine/TxSession.h"
 #include "Ravenna/HTTPClient.h"
 
 #include <cerrno>
@@ -162,9 +163,18 @@ void checkDaemonSourceIsDiscoverable(const Options& opts) {
 void checkThisDriverIsDiscoverable(const Options& opts) {
     std::printf("\n[A] This driver's own announcement, heard by the daemon\n");
 
+    // announcedTxSession(), the same call StreamManager::createTxStream()
+    // makes, and not SDPParser::createDefaultTxSession(), which this used
+    // until 2026-09-15: no production path calls that one -- only tests and
+    // this tool did -- and the two differ exactly where a receiver looks.
+    // createDefaultTxSession writes a=sendonly, a=framecount and
+    // a=source-filter; what the driver actually announces writes none of the
+    // three. The one live check of whether the daemon sees us was checking a
+    // description this driver never sends.
     const std::string sourceName = "CI Announce Test";
-    SDPSession session = SDPParser::createDefaultTxSession(
-        sourceName, opts.host, "239.1.0.99", 6004, 2, 48000, "L24");
+    SDPSession session = announcedTxSession(sourceName, "239.1.0.99", 6004, 2, 48000,
+                                            /*dscp=*/-1);
+    session.originAddress = opts.host;
     const std::string sdp = SDPParser::generate(session);
 
     SAPAnnouncer announcer;

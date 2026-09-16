@@ -56,6 +56,7 @@ void printUsage(const char* argv0) {
     std::printf("  --seconds <n>       Duration in seconds (default: 30)\n");
     std::printf("  --event-port <n>    PTP event port (default: 20319)\n");
     std::printf("  --general-port <n>  PTP general port (default: 20320)\n");
+    std::printf("  --csv <path>        Write the samples to this file instead of stdout\n");
 }
 
 } // namespace
@@ -65,6 +66,7 @@ int main(int argc, char** argv) {
     int durationSec = 30;
     uint16_t eventPort = 20319;
     uint16_t generalPort = 20320;
+    std::string csvPath;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -76,6 +78,7 @@ int main(int argc, char** argv) {
         else if (arg == "--seconds") durationSec = std::atoi(next().c_str());
         else if (arg == "--event-port") eventPort = static_cast<uint16_t>(std::atoi(next().c_str()));
         else if (arg == "--general-port") generalPort = static_cast<uint16_t>(std::atoi(next().c_str()));
+        else if (arg == "--csv") csvPath = next();
         else if (arg == "--help" || arg == "-h") { printUsage(argv[0]); return 0; }
         else { std::fprintf(stderr, "Unknown option: %s\n", arg.c_str()); printUsage(argv[0]); return 1; }
     }
@@ -109,8 +112,25 @@ int main(int argc, char** argv) {
     if (!master.start()) { std::fprintf(stderr, "master.start() failed\n"); return 1; }
     if (!slave.start()) { std::fprintf(stderr, "slave.start() failed\n"); return 1; }
 
-    std::printf("t,locked,offsetNs,pathDelayNs,syncSent,delayRespSent,announceSent\n");
-    std::fflush(stdout);
+    // PTPMaster and PTPSlave write their own progress to stdout, so a run
+    // captured with `> run.csv` produced a file with "[PTPSlave] LOCKED to
+    // master" in the middle of the samples -- not a CSV any reader takes. With
+    // --csv the samples go to their own file and stdout stays the log.
+    std::FILE* csv = stdout;
+    if (!csvPath.empty()) {
+        csv = std::fopen(csvPath.c_str(), "w");
+        if (csv == nullptr) {
+            std::fprintf(stderr, "could not open %s for writing\n", csvPath.c_str());
+            slave.stop();
+            master.stop();
+            return 1;
+        }
+        std::printf("[stress] samples to %s\n", csvPath.c_str());
+        std::fflush(stdout);
+    }
+
+    std::fprintf(csv, "t,locked,offsetNs,pathDelayNs,syncSent,delayRespSent,announceSent\n");
+    std::fflush(csv);
 
     int unlockedSamples = 0;
     long long maxAbsOffset = 0;
@@ -124,15 +144,17 @@ int main(int argc, char** argv) {
         if (!locked) unlockedSamples++;
         if (std::llabs(offset) > maxAbsOffset) maxAbsOffset = std::llabs(offset);
         if (std::llabs(delay) > maxAbsDelay) maxAbsDelay = std::llabs(delay);
-        std::printf("%d,%d,%lld,%lld,%d,%d,%d\n",
-                    t, locked ? 1 : 0, offset, delay,
-                    master.syncSentCount(), master.delayRespSentCount(), master.announceSentCount());
-        std::fflush(stdout);
+        std::fprintf(csv, "%d,%d,%lld,%lld,%d,%d,%d\n",
+                     t, locked ? 1 : 0, offset, delay,
+                     master.syncSentCount(), master.delayRespSentCount(), master.announceSentCount());
+        std::fflush(csv);
     }
 
     std::fprintf(stderr,
                  "\nSUMMARY: seconds=%d unlockedSamples=%d maxAbsOffsetNs=%lld maxAbsPathDelayNs=%lld finalLocked=%d\n",
                  durationSec, unlockedSamples, maxAbsOffset, maxAbsDelay, slave.isLocked() ? 1 : 0);
+
+    if (csv != stdout) std::fclose(csv);
 
     slave.stop();
     master.stop();

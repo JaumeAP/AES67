@@ -110,6 +110,24 @@ TEST_CASE("A path is compared with its escapes resolved") {
     CHECK(percentDecode("%2") == "%2");
 }
 
+TEST_CASE("A path is written back the way a client may ask for it") {
+    // The inverse of the case above, and what ravenna-announce prints to say
+    // where to point a client: it used to print the space raw, giving a URL
+    // that cannot be pasted for a path the server answers in escaped form.
+    CHECK(percentEncodePath("/by-name/Mix A") == "/by-name/Mix%20A");
+    CHECK(percentEncodePath("/by-name/Plain") == "/by-name/Plain");
+    CHECK(percentEncodePath("/by-name/a-b_c.d~e") == "/by-name/a-b_c.d~e");
+    CHECK(percentEncodePath("/by-name/50%") == "/by-name/50%25");
+
+    // Round trip, which is the only property that matters here.
+    for (const std::string& path : {std::string("/by-name/Mix A"),
+                                    std::string("/by-name/Studio \"B\""),
+                                    std::string("/by-name/caf\xc3\xa9"),
+                                    std::string("/by-name/Plain")}) {
+        CHECK(percentDecode(percentEncodePath(path)) == path);
+    }
+}
+
 TEST_CASE("The refusals say which refusal they are") {
     CHECK(buildNotImplementedResponse(2).find("RTSP/1.0 501 Not Implemented\r\n") == 0);
     CHECK(buildNotFoundResponse(2).find("RTSP/1.0 404 Not Found\r\n") == 0);

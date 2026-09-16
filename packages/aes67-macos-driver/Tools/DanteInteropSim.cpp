@@ -41,6 +41,7 @@
 #include "NetworkEngine/Discovery/SAPListener.h"
 #include "NetworkEngine/ProfileAdapter.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
+#include "NetworkEngine/TxSession.h"
 #include "Profiles/CompatibilityProfile.h"
 #include "Profiles/PtpProfiles.h"
 
@@ -120,21 +121,18 @@ std::string danteDeviceSdp(unsigned channels) {
         "a=mediaclk:direct=0\r\n";
 }
 
-/// The transmit session StreamManager::createTxStream() builds, field for
-/// field, with the origin address AES67Device's announcer fills in from the
-/// interface it announces on.
+/// The transmit session this driver announces: announcedTxSession(), the same
+/// call createTxStream() makes, plus the origin address AES67Device's
+/// announcer fills in from the interface it announces on and a fixed session
+/// id so two runs print the same thing.
+///
+/// Built by hand here until 2026-09-15, which made this simulation blind to
+/// the only thing it is for: a change to what the driver actually announces
+/// reached the driver and not the copy.
 SDPSession ourTxSession(const std::string& name, const std::string& multicast, uint16_t channels) {
-    SDPSession sdp;
-    sdp.sessionName = name;
+    SDPSession sdp = announcedTxSession(name, multicast, 5004, channels, 48000, /*dscp=*/-1);
     sdp.originAddress = "192.168.0.11";
-    sdp.connectionAddress = multicast;
-    sdp.port = 5004;
-    sdp.numChannels = channels;
-    sdp.sampleRate = 48000;
-    sdp.encoding = "L24";
-    sdp.payloadType = 97;
     sdp.sessionID = 1757200000;
-    sdp.sessionVersion = 1;
     return sdp;
 }
 
@@ -224,10 +222,23 @@ int run() {
     ok("SAP version", ((ourPkt[0] >> 5) & 7) == 1, "version 1, the one SapMessages accepts");
     ok("SAP address type", ((ourPkt[0] >> 4) & 1) == 0, "IPv4 origin");
     ok("SAP not compressed/encrypted", (ourPkt[0] & 3) == 0, "plain SDP payload");
-    unsettled("SAP MIME type",
-         "we omit the optional \"application/sdp\" payload type; Dante's own packets carry it, and "
-         "whether SapMessages.extractSdpContent() accepts a payload that starts at \"v=\" is in "
-         "bytecode this simulation cannot read -- only a live Controller settles it");
+    {
+        // This used to be an unsettled claim that we omit the payload type and
+        // that only a live Controller could say whether Dante minds. We do not
+        // omit it -- SAPAnnouncer::buildPacket writes it, because the AES67
+        // Linux daemon drops a packet without it -- so the claim was false and
+        // the check that is settled was not being made: our header has to carry
+        // the same sixteen bytes at the same offset Dante's own does.
+        const char* kType = "application/sdp";
+        const size_t typeLen = std::strlen(kType) + 1;
+        const bool ours = ourPkt.size() >= 8 + typeLen &&
+                          std::memcmp(ourPkt.data() + 8, kType, typeLen) == 0;
+        const bool theirs = pkt.size() >= 8 + typeLen &&
+                            std::memcmp(pkt.data() + 8, kType, typeLen) == 0;
+        ok("SAP MIME type", ours && theirs,
+           ours ? "\"application/sdp\" at offset 8, NUL included, as Dante's own packets carry it"
+                : "absent from our header, where Dante's own packets carry it");
+    }
 
     std::printf("\n[5] US -> DANTE: our SDP, against SdpDocument and DefaultRtpFlowAdvertisement\n");
     std::printf("%s\n", ourSdp.c_str());

@@ -40,6 +40,30 @@ std::string percentDecode(const std::string& text) {
     return decoded;
 }
 
+std::string percentEncodePath(const std::string& text) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(text.size());
+
+    for (const char c : text) {
+        const unsigned char byte = static_cast<unsigned char>(c);
+        const bool unreserved = (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
+                                (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' ||
+                                byte == '_' || byte == '~';
+        // '/' is what the path is made of, so it stays; a slash inside a
+        // session name would have to be escaped, but a name is not what this
+        // is given -- a path already built out of one is.
+        if (unreserved || byte == '/') {
+            encoded += c;
+            continue;
+        }
+        encoded += '%';
+        encoded += kHex[byte >> 4];
+        encoded += kHex[byte & 0x0F];
+    }
+    return encoded;
+}
+
 bool hasCompleteHeaders(const std::string& text) {
     return text.find("\r\n\r\n") != std::string::npos ||
            text.find("\n\n") != std::string::npos;

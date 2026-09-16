@@ -78,13 +78,23 @@ public:
 
         double offsetMs = settings_.delayMs;
         if (settings_.jitterMs > 0.0) offsetMs += jitter_(rng_);
-        if (settings_.reorderPercent > 0.0 && draw_(rng_) < settings_.reorderPercent) {
-            offsetMs -= settings_.reorderHeadStartMs;
-            decision.reordered = true;
-        }
+
         // The relay has no time machine: a packet cannot leave before it
         // arrived, however far back the jitter or the reordering reaches.
-        decision.offsetMs = offsetMs < 0.0 ? 0.0 : offsetMs;
+        const auto notBeforeArrival = [](double ms) { return ms < 0.0 ? 0.0 : ms; };
+        const double withoutHeadStart = notBeforeArrival(offsetMs);
+
+        if (settings_.reorderPercent > 0.0 && draw_(rng_) < settings_.reorderPercent) {
+            offsetMs -= settings_.reorderHeadStartMs;
+        }
+        decision.offsetMs = notBeforeArrival(offsetMs);
+
+        // Drawn is not the same as done. With no delay to borrow from, the
+        // head start clamps back to the packet's own arrival time and the
+        // packet leaves in the order it came; saying it was reordered is what
+        // made the relay's counter disagree with the receiver's. The flag is
+        // true only when the due time actually moved.
+        decision.reordered = decision.offsetMs < withoutHeadStart;
         return decision;
     }
 
