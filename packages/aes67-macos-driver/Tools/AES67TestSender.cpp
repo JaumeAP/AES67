@@ -375,8 +375,13 @@ int run(int argc, char* argv[]) {
     double phase = 0.0;
     const double phaseIncrement = 2.0 * M_PI * freq / sampleRate;
 
-    // Paced transmit loop (sleep_until pattern)
-    auto packetInterval = std::chrono::microseconds(ptimeUs);
+    // Paced on the frames actually in a packet, not on --ptime-us: at 44.1 kHz
+    // and 1 ms a packet holds 44 frames, which last 997.7 us, so pacing at
+    // 1000 us sends 0.23% slow -- a stream that claims one rate and runs at
+    // another. The remainder is carried, the way RTPTransmitter carries it.
+    const AES67::PacketBudget::PacketInterval exactInterval =
+        AES67::PacketBudget::packetInterval(samplesPerPacket, sampleRate);
+    uint32_t intervalRemainder = 0;
     auto nextTransmitTime = std::chrono::steady_clock::now();
     auto startTime = std::chrono::steady_clock::now();
 
@@ -392,7 +397,13 @@ int run(int argc, char* argv[]) {
         }
 
         std::this_thread::sleep_until(nextTransmitTime);
-        nextTransmitTime += packetInterval;
+        uint64_t stepNs = exactInterval.wholeNs;
+        intervalRemainder += exactInterval.remainder;
+        if (intervalRemainder >= sampleRate) {
+            stepNs += intervalRemainder / sampleRate;
+            intervalRemainder %= sampleRate;
+        }
+        nextTransmitTime += std::chrono::nanoseconds(stepNs);
 
         // Generate sine wave (same tone on all channels)
         for (uint32_t frame = 0; frame < samplesPerPacket; ++frame) {
