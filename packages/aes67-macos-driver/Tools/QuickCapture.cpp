@@ -13,6 +13,7 @@
 #include <thread>
 #include <chrono>
 #include <string>
+#include <vector>
 
 static std::atomic<uint64_t> g_totalSamples{0};
 static std::atomic<uint64_t> g_nonZeroSamples{0};
@@ -26,12 +27,20 @@ static OSStatus inputCallback(void* inRefCon,
                                AudioBufferList* ioData) {
     AudioUnit inputUnit = *static_cast<AudioUnit*>(inRefCon);
 
-    // Allocate buffer for capture
+    // A fixed buffer, not `Float32 buffer[inNumberFrames * 2]`: a
+    // variable-length array is a compiler extension rather than C++, and it
+    // sits on the render thread's stack, where the size is whatever the HAL
+    // asks for. 4096 frames is the largest buffer the devices here offer, and
+    // a request past it is refused rather than run off the end of the stack.
+    constexpr UInt32 kMaxFrames = 4096;
+    constexpr UInt32 kChannels = 2;
+    if (inNumberFrames > kMaxFrames) return kAudioUnitErr_TooManyFramesToProcess;
+
+    Float32 buffer[kMaxFrames * kChannels];
     AudioBufferList bufferList;
     bufferList.mNumberBuffers = 1;
-    bufferList.mBuffers[0].mNumberChannels = 2;
-    bufferList.mBuffers[0].mDataByteSize = inNumberFrames * 2 * sizeof(Float32);
-    Float32 buffer[inNumberFrames * 2];
+    bufferList.mBuffers[0].mNumberChannels = kChannels;
+    bufferList.mBuffers[0].mDataByteSize = inNumberFrames * kChannels * sizeof(Float32);
     bufferList.mBuffers[0].mData = buffer;
 
     OSStatus status = AudioUnitRender(inputUnit, ioActionFlags, inTimeStamp,
@@ -73,10 +82,13 @@ static AudioDeviceID findDeviceByName(const char* targetName) {
                                                       &prop, 0, nullptr, &dataSize);
     if (status != noErr) return kAudioObjectUnknown;
 
-    int deviceCount = dataSize / sizeof(AudioDeviceID);
-    AudioDeviceID devices[deviceCount];
+    // std::vector, not another variable-length array: this one is sized by
+    // whatever the HAL says is plugged in.
+    const int deviceCount = static_cast<int>(dataSize / sizeof(AudioDeviceID));
+    if (deviceCount <= 0) return kAudioObjectUnknown;
+    std::vector<AudioDeviceID> devices(static_cast<size_t>(deviceCount));
     status = AudioObjectGetPropertyData(kAudioObjectSystemObject,
-                                         &prop, 0, nullptr, &dataSize, devices);
+                                         &prop, 0, nullptr, &dataSize, devices.data());
     if (status != noErr) return kAudioObjectUnknown;
 
     for (int i = 0; i < deviceCount; ++i) {

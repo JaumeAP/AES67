@@ -106,6 +106,20 @@ target_include_directories(AES67PTPStressRun PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(AES67PTPStressRun PRIVATE aes67_net)
 target_compile_features(AES67PTPStressRun PRIVATE cxx_std_17)
 
+# Quick Capture: records from one Core Audio device and says whether any
+# non-zero sample arrived. Nothing built it until 2026-09-16 -- it was a source
+# file in this directory with no target, which is how it kept a variable-length
+# array on the render thread that no compiler here ever saw.
+if(APPLE)
+    add_executable(QuickCapture QuickCapture.cpp)
+    target_compile_features(QuickCapture PRIVATE cxx_std_17)
+    target_link_libraries(QuickCapture PRIVATE
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
+        "-framework CoreFoundation"   # CFStringGetCString, CFRelease
+    )
+endif()
+
 # HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
 # Talks to coreaudiod through Apple's HAL client API only -- it links against
 # no driver code, so it validates what is installed, not this build tree.
