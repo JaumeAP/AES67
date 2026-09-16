@@ -670,6 +670,29 @@ target_link_libraries(TestMultiStream PRIVATE aes67_net)
 target_link_libraries(TestMultiStream PRIVATE doctest_headers)
 target_compile_features(TestMultiStream PRIVATE cxx_std_17)
 
+# Test: the two real-time callbacks, driven directly. Needs libASPL for the
+# handler's base class, like the benchmark below, and compiles the handler
+# itself rather than linking a library that does not carry it.
+if(ASPL_FOUND)
+    add_executable(TestIOHandler
+        TestIOHandler.cpp
+        ../Driver/AES67IOHandler.cpp
+        ${ASPL_SOURCES}
+    )
+    target_include_directories(TestIOHandler PRIVATE ${PROJECT_SOURCE_DIR})
+    target_include_directories(TestIOHandler SYSTEM PRIVATE ${ASPL_INCLUDE_DIR})
+    target_link_libraries(TestIOHandler PRIVATE aes67_net doctest_headers)
+    target_compile_features(TestIOHandler PRIVATE cxx_std_17)
+    if(ASPL_LIBRARY)
+        target_link_libraries(TestIOHandler PRIVATE ${ASPL_LIBRARY})
+    endif()
+    target_link_libraries(TestIOHandler PRIVATE
+        "-framework CoreAudio"
+        "-framework CoreFoundation"
+        "-framework AudioToolbox"
+    )
+endif()
+
 # Benchmark: I/O Handler Performance (requires libASPL)
 if(ASPL_FOUND)
     add_executable(BenchmarkIOHandler
@@ -797,6 +820,10 @@ add_test(NAME RTSPServer COMMAND TestRTSPServer)
 add_test(NAME SDPFetcher COMMAND TestSDPFetcher)
 add_test(NAME NetworkQoS COMMAND TestNetworkQoS)
 add_test(NAME AudioThreadPriority COMMAND TestAudioThreadPriority)
+if(ASPL_FOUND)
+    add_test(NAME IOHandler COMMAND TestIOHandler)
+    set_tests_properties(IOHandler PROPERTIES LABELS "unit" TIMEOUT 60)
+endif()
 add_test(NAME DaemonSAPInterop COMMAND TestDaemonSAPInterop)
 add_test(NAME DaemonRTSPInterop COMMAND TestDaemonRTSPInterop)
 add_test(NAME PTPMasterBoxInterop COMMAND TestPTPMasterBoxInterop)
