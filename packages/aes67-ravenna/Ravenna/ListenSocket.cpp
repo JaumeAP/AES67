@@ -26,8 +26,12 @@ bool openListenSocket(uint16_t& port, int& fd, std::string& error, const char* b
     address.sin_port = htons(port);
 
     if (::bind(fd, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
-        error = "bind " + std::to_string(port) + ": " + std::strerror(errno);
-        if (errno == EACCES && bindHint != nullptr) error += bindHint;
+        // Kept before anything else runs: std::to_string and std::strerror
+        // are both allowed to set errno even when they succeed, and the hint
+        // below is the whole reason this function takes a parameter.
+        const int bindError = errno;
+        error = "bind " + std::to_string(port) + ": " + std::strerror(bindError);
+        if (bindError == EACCES && bindHint != nullptr) error += bindHint;
         ::close(fd);
         fd = -1;
         return false;

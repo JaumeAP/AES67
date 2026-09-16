@@ -33,8 +33,6 @@ using namespace AES67;
 using AES67::TestSupport::createTestMapping;
 using AES67::TestSupport::createTestSDP;
 
-// Create test channel mapping
-
 //
 // SDP Session Creation Tests
 //

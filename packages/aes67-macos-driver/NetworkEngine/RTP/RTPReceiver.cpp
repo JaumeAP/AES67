@@ -204,11 +204,17 @@ StatisticsSnapshot RTPReceiver::getStatistics() const {
 }
 
 void RTPReceiver::resetStatistics() {
-    // Statistics::reset() is these counters' own answer, and it also clears
-    // lastPacketTimeNs, which this had written out ten of the eleven lines of
-    // and left behind -- so after a reset, timeSinceLastPacketMs() still
-    // measured from a packet no counter admitted to any more.
+    // Statistics::reset() is these counters' own answer, rather than ten of
+    // its eleven stores written out here again.
     stats_.reset();
+
+    // lastPacketTimeNs_ is this class's own, and it is the one isConnected()
+    // and getTimeSinceLastPacket() read -- Statistics::lastPacketTimeNs is
+    // written by nothing in this repository. It was left behind by every
+    // reset until now, so a reset receiver went on reporting itself connected
+    // and measuring from a packet no counter admitted to any more.
+    lastPacketTimeNs_.store(0, std::memory_order_release);
+
     lastSequenceNumber_.store(0, std::memory_order_relaxed);
     lastTimestamp_.store(0, std::memory_order_relaxed);
     expectedSequenceNumber_.store(0, std::memory_order_relaxed);

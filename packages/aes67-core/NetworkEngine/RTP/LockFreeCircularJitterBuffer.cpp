@@ -36,8 +36,6 @@ LockFreeCircularJitterBuffer::LockFreeCircularJitterBuffer(size_t depth)
     for (size_t i = 0; i < bufferSize_; ++i) {
         buffer_[i].state.store(SlotState::EMPTY, std::memory_order_relaxed);
     }
-
-    // Initialize expected sequence number
 }
 
 LockFreeCircularJitterBuffer::~LockFreeCircularJitterBuffer() = default;
@@ -172,8 +170,6 @@ void LockFreeCircularJitterBuffer::reset() {
     totalPackets_.store(0, std::memory_order_relaxed);
     droppedPackets_.store(0, std::memory_order_relaxed);
     validPackets_.store(0, std::memory_order_relaxed);
-
-    // Reset expected sequence number
 }
 
 } // namespace AES67

@@ -36,12 +36,14 @@ CommandLineResult parseCommandLine(int argc, char** argv, CommandLine& out) {
             out.useReference = true;
         } else if (option == "--reference-channel") {
             if (!ToolOptions::integerOption(argc, argv, i, 0, 4294967295LL, number)) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.useReference = true;
             out.referenceChannel = static_cast<unsigned int>(number);
         } else if (option == "--interface") {
             if ((value = ToolOptions::value(argc, argv, i)) == nullptr) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.config.interfaceName = value;
@@ -50,6 +52,7 @@ CommandLineResult parseCommandLine(int argc, char** argv, CommandLine& out) {
             // given when the grandmaster starts and fails with the list in
             // hand; repeating it here would be a second copy to keep.
             if ((value = ToolOptions::value(argc, argv, i)) == nullptr) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.config.profileName = value;
@@ -58,22 +61,26 @@ CommandLineResult parseCommandLine(int argc, char** argv, CommandLine& out) {
             // comparison. Lower wins, so a value that wrapped into this range
             // is a box that quietly took over the segment.
             if (!ToolOptions::integerOption(argc, argv, i, 0, 255, number)) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.config.priority1 = static_cast<uint8_t>(number);
         } else if (option == "--priority2") {
             if (!ToolOptions::integerOption(argc, argv, i, 0, 255, number)) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.config.priority2 = static_cast<uint8_t>(number);
         } else if (option == "--utc-offset") {
             // currentUtcOffset is a signed 16-bit field on the wire.
             if (!ToolOptions::integerOption(argc, argv, i, -32768, 32767, number)) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.config.currentUtcOffset = static_cast<int16_t>(number);
         } else if (option == "--phc") {
             if ((value = ToolOptions::value(argc, argv, i)) == nullptr) {
+                usage();
                 return CommandLineResult::Bad;
             }
             out.phcDevice = value;

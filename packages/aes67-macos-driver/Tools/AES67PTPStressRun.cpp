@@ -80,15 +80,15 @@ int main(int argc, char** argv) {
             interfaceName = text;
         }
         else if (arg == "--seconds") {
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) return 1;
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 2147483647LL, number)) { printUsage(argv[0]); return 1; }
             durationSec = static_cast<int>(number);
         }
         else if (arg == "--event-port") {
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 1;
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) { printUsage(argv[0]); return 1; }
             eventPort = static_cast<uint16_t>(number);
         }
         else if (arg == "--general-port") {
-            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 1;
+            if (!AES67::ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) { printUsage(argv[0]); return 1; }
             generalPort = static_cast<uint16_t>(number);
         }
         else if (arg == "--csv") {

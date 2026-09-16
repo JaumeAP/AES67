@@ -178,9 +178,9 @@ TEST_CASE("A sequence number one on from the last loses nothing") {
 }
 
 TEST_CASE("A forward gap is the packets that did not arrive") {
-    // Expecting 42 and getting 45 means 43 and 44 never came: three ahead,
-    // two missing -- the count is the distance, which is what RFC 3550's
-    // expected-minus-received is.
+    // Expecting 42 and getting 45 means 42, 43 and 44 never came: the one
+    // that was due and the two behind it. The count is the distance, which
+    // is what RFC 3550's expected-minus-received is.
     CHECK(sequenceGap(42, 45).lost == 3);
     CHECK_FALSE(sequenceGap(42, 45).outOfOrder);
 

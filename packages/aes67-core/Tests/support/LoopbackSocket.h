@@ -31,7 +31,18 @@ namespace TestSupport {
 /// A listening socket on a port the kernel chose, on the loopback only.
 class LoopbackListener {
 public:
+    LoopbackListener() = default;
     ~LoopbackListener() { close(); }
+
+    // It owns a descriptor and closes it in the destructor, so a copy would
+    // be two objects closing the same one -- and the second close lands on
+    // whatever the process has since opened in its place. The five servers
+    // this was lifted out of held a std::thread as well, which made them
+    // uncopyable by accident; a plain value type has no such protection.
+    LoopbackListener(const LoopbackListener&) = delete;
+    LoopbackListener& operator=(const LoopbackListener&) = delete;
+    LoopbackListener(LoopbackListener&&) = delete;
+    LoopbackListener& operator=(LoopbackListener&&) = delete;
 
     /// Opens and listens. False leaves nothing open.
     bool open(int backlog = 4) {
@@ -65,12 +76,17 @@ public:
     }
 
     /// Wakes any thread blocked in accept() and closes the socket.
+    ///
+    /// The port goes with it: a listener that is closed has no port, and the
+    /// three servers that hold one hand port() straight through to a test
+    /// that is about to connect to it.
     void close() {
         if (fd_ >= 0) {
             ::shutdown(fd_, SHUT_RDWR);
             ::close(fd_);
             fd_ = -1;
         }
+        port_ = 0;
     }
 
     int fd() const { return fd_; }

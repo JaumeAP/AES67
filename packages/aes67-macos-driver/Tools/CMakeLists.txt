@@ -125,13 +125,13 @@ message(STATUS "  ./Tools/AES67TestReceiver --ip 239.1.1.2 --port 5004 --duratio
 # Tools/ is configured after Tests/. Moving them there would mean reordering
 # the two subdirectories for no other reason.
 #
-if(BUILD_TESTS AND TARGET aes67ptpd)
+if(BUILD_TESTS)
     # The two offline simulations check themselves and return non-zero when a
     # claim fails -- they have since they were written -- and nothing ran
     # them. The gate built both and threw the result away, so "run the two
     # simulations after touching SDP generation, SAP or the profiles" was a
-    # sentence in CLAUDE.md and nothing else. Neither opens a socket: the
-    # packets they parse are built in the process that parses them.
+    # sentence in Docs/continuity-notes.md and nothing else. Neither opens a
+    # socket: the packets they parse are built in the process that parses them.
     add_test(NAME InteropSim COMMAND AES67InteropSim)
     add_test(NAME DanteInteropSim COMMAND DanteInteropSim)
     set_tests_properties(InteropSim DanteInteropSim
@@ -140,6 +140,12 @@ if(BUILD_TESTS AND TARGET aes67ptpd)
     # The tools' command lines, run as a user runs them: the suite spawns
     # these binaries, so it is told where CMake put them rather than guessing
     # at a build layout.
+    #
+    # aes67ptpd is one of them, and BUILD_PTP_DAEMON can be off. Only this
+    # target needs it -- gating the whole block on it, as this once did, put
+    # the two simulations above back to being built and never run under
+    # -DBUILD_PTP_DAEMON=OFF, with nothing said.
+    if(TARGET aes67ptpd)
     add_executable(TestToolArguments ../Tests/TestToolArguments.cpp)
     target_link_libraries(TestToolArguments PRIVATE doctest_headers)
     # support/ToolProcess.h: starting a program and reading what it said is
@@ -160,4 +166,7 @@ if(BUILD_TESTS AND TARGET aes67ptpd)
         AES67LiveDaemonInterop aes67ptpd)
     add_test(NAME ToolArguments COMMAND TestToolArguments)
     set_tests_properties(ToolArguments PROPERTIES LABELS "unit" TIMEOUT 60)
+    else()
+        message(STATUS "BUILD_PTP_DAEMON is off: ToolArguments skipped")
+    endif()
 endif()

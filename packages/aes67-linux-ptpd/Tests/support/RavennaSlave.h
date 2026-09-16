@@ -4,7 +4,7 @@
 // What the RAVENNA ALSA kernel module accepts from a grandmaster.
 //
 // The interface to process_PTP_packet in the Merging module vendored in this
-// repository, external/ravenna-alsa-lkm/driver/PTP.c:229-508. That file is
+// repository, external/aes67-linux-daemon/3rdparty/ravenna-alsa-lkm/driver/PTP.c:229-508. That file is
 // kernel C: it reads whole UDP frames out of a netfilter hook and keeps its
 // state in a device structure. It is compiled as it stands and called through
 // the shim in RavennaSlave.cpp, so this daemon's Announce, Sync and Follow_Up
