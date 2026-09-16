@@ -59,8 +59,20 @@ StreamConfigManager::StreamConfigManager() {
         AES67_LOGF("StreamConfigManager: No existing config; AES67_CONFIG_PATH says: %s",
                    configPath_.c_str());
     } else {
-        // Default to system-wide location for new configs
-        configPath_ = "/Library/Application Support/AES67Driver/" + defaultConfigFile_;
+        // Nothing saved yet and nobody said where. The system-wide directory
+        // is where an installed driver keeps its streams, and the Manager app
+        // is what creates it, through an administrator prompt -- coreaudiod
+        // runs as _coreaudiod and cannot make it itself, and neither can a
+        // tool or a test. Picking it unconditionally meant the first save
+        // failed for every one of those, and said so only in this log.
+        //
+        // So: the first of the same search paths this process could actually
+        // write. The system one when it is already there, which keeps an
+        // installed driver exactly where it was, and the per-user one
+        // otherwise. The uninstaller already removes both
+        // (Uninstaller/UninstallPlan.swift:19 and :21).
+        configPath_ = firstWritableConfigPath(nullptr, defaultConfigFile_,
+                                              /*systemBeforeHome=*/true);
         AES67_LOGF("StreamConfigManager: No existing config found, will use: %s", configPath_.c_str());
     }
 

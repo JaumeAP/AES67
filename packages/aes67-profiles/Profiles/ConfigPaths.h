@@ -42,6 +42,23 @@ std::vector<std::string> configSearchPaths(const char* envVar, const std::string
 std::string findExistingConfig(const char* envVar, const std::string& fileName,
                                bool systemBeforeHome = false);
 
+/// The first path from `configSearchPaths` this process could actually write
+/// to, or the first path in that order when none of them is.
+///
+/// Writable means: the directory holding it exists and is writable, or does
+/// not exist and the nearest directory above it that does is writable, since
+/// that is the one everything below would be created under. Nothing is
+/// created here -- this only asks.
+///
+/// For choosing where to put a file that does not exist yet. An installed
+/// driver's system-wide directory is made by the Manager app through an
+/// administrator prompt, and coreaudiod runs as _coreaudiod: it cannot make
+/// that directory itself, and neither can a tool or a test. With
+/// `systemBeforeHome` the system path is preferred when it is already there,
+/// so an installed driver keeps its files where it always did.
+std::string firstWritableConfigPath(const char* envVar, const std::string& fileName,
+                                    bool systemBeforeHome = false);
+
 /// Makes the directory holding `filePath`, with 0755, if it is not there.
 ///
 /// True when the directory exists afterwards. False when `filePath` names no
