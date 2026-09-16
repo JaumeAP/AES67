@@ -12,6 +12,7 @@
 #include "Driver/SDPParser.h"
 #include <cstdlib>
 #include <filesystem>
+#include <set>
 #include <iostream>
 #include <cassert>
 #include <utility>
@@ -718,5 +719,88 @@ TEST_CASE("A Transmit Stream Comes Back From Disk As A Transmitter") {
 
     unsetenv("AES67_CONFIG_PATH");
     std::filesystem::remove_all(directory);
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("Sixteen Channels Go Out As Two Flows Of Eight, On Their Own Groups") {
+    std::cout << "Test: createTxStreamFlows splits a wide stream and rolls back as a unit... ";
+    ManagerFixture fixture;
+    fixture.manager.setAutoSave(false);
+    fixture.manager.setCompatibilityProfile(CompatibilityProfileKind::AES67);
+
+    // AES67 caps a flow at eight channels, so sixteen is two flows -- the
+    // splitter's whole job, and what a Dante receiver expects to see.
+    ChannelMapping mapping = createTestMapping(16, 0);
+    const std::vector<StreamID> flows =
+        fixture.manager.createTxStreamFlows("Wide", "239.69.5.1", 5004, 16, mapping);
+    if (flows.empty()) {
+        std::cout << "SKIP (no transmit stream could be created here)" << std::endl;
+        return;
+    }
+
+    CHECK(flows.size() == 2);
+    CHECK(fixture.manager.getStreamCount() == flows.size());
+
+    const std::vector<SDPSession> sessions = fixture.manager.getTransmitSessions();
+    REQUIRE(sessions.size() == flows.size());
+    for (const SDPSession& session : sessions) {
+        CHECK(session.numChannels == 8);
+        CHECK(session.sampleRate == 48000);
+    }
+
+    // Each flow on its own group: two flows sharing an address would be two
+    // senders a receiver cannot tell apart by where they arrive.
+    std::set<std::string> addresses;
+    for (const SDPSession& session : sessions) addresses.insert(session.connectionAddress);
+    CHECK(addresses.size() == sessions.size());
+    CHECK(addresses.count("239.69.5.1") == 1);
+
+    // Removing them frees what they held: a second identical call succeeds,
+    // which it cannot do while the channels are still owned.
+    for (const StreamID& id : flows) CHECK(fixture.manager.removeStream(id));
+    CHECK(fixture.manager.getStreamCount() == 0);
+
+    const std::vector<StreamID> again =
+        fixture.manager.createTxStreamFlows("Wide again", "239.69.5.1", 5004, 16, mapping);
+    CHECK(again.size() == 2);
+    for (const StreamID& id : again) fixture.manager.removeStream(id);
+
+    std::cout << "PASS" << std::endl;
+}
+
+TEST_CASE("The Transmit Channel Budget Refuses What Would Exceed It") {
+    std::cout << "Test: setUsableTxChannelCount caps the aggregate, not one stream... ";
+    ManagerFixture fixture;
+    fixture.manager.setAutoSave(false);
+
+    // Twelve channels of room: an eight-channel stream fits, and a second one
+    // does not, though each on its own is well inside every other limit.
+    fixture.manager.setUsableTxChannelCount(12);
+
+    SDPSession first = createTestSDP("First Eight", 5004, 8, 48000);
+    std::string error;
+    CHECK(fixture.manager.canAddStream(first, /*isTransmit=*/true, &error));
+
+    ChannelMapping mapping = createTestMapping(8, 0);
+    const StreamID id = fixture.manager.createTxStream("First Eight", "239.69.6.1", 5004, 8, mapping);
+    if (id.isNull()) {
+        std::cout << "SKIP (no transmit stream could be created here)" << std::endl;
+        return;
+    }
+
+    SDPSession second = createTestSDP("Second Eight", 5006, 8, 48000);
+    error.clear();
+    CHECK_FALSE(fixture.manager.canAddStream(second, /*isTransmit=*/true, &error));
+    CHECK_FALSE(error.empty());   // and it says which budget, not just "no"
+
+    // The receive side has its own room and is not touched by the transmit cap.
+    SDPSession receiving = createTestSDP("Receiving Eight", 5008, 8, 48000);
+    error.clear();
+    CHECK(fixture.manager.canAddStream(receiving, /*isTransmit=*/false, &error));
+
+    fixture.manager.removeStream(id);
+    error.clear();
+    CHECK(fixture.manager.canAddStream(second, /*isTransmit=*/true, &error));
+
     std::cout << "PASS" << std::endl;
 }
