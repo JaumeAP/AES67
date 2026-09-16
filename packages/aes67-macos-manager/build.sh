@@ -69,6 +69,11 @@ mv AES67Manager AES67Manager.app/Contents/MacOS/
 # Copy Info.plist
 cp Resources/Info.plist AES67Manager.app/Contents/
 
+# The icon the plist names. Drawn by scripts/make-app-icons.swift at the
+# root of the monorepo and committed beside the plist, so a build needs no
+# drawing step -- re-run that script after changing it.
+cp Resources/AES67Manager.icns AES67Manager.app/Contents/Resources/
+
 # Embed what the app installs: the driver bundle, the PTP daemon and the
 # daemon's LaunchDaemon plist. This app is how they reach the system — see
 # DriverManager.installDriver/uninstallDriver — so anything missing here is

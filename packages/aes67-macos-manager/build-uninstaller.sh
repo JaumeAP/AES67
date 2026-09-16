@@ -45,6 +45,7 @@ mkdir -p AES67Uninstall.app/Contents/MacOS
 mkdir -p AES67Uninstall.app/Contents/Resources
 mv AES67Uninstall AES67Uninstall.app/Contents/MacOS/
 cp Resources/UninstallInfo.plist AES67Uninstall.app/Contents/Info.plist
+cp Resources/AES67Uninstall.icns AES67Uninstall.app/Contents/Resources/
 
 
 # The languages, the way macOS reads them: one .lproj per language holding
