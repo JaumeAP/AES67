@@ -58,9 +58,10 @@ public:
      * uint32_t rather than left to an out-of-range double-to-integer cast
      * (undefined behavior, not a wrapped or saturated one). Exposed for
      * test: nothing validates a period this reaches before it does --
-     * PTPMasterConfig::syncIntervalMs/announceIntervalMs carry no
-     * min/max -- so this is the one place that has to hold regardless of
-     * how a caller arrived at an unreasonable value.
+     * PTPMasterConfig::logSyncInterval/logAnnounceInterval carry no
+     * min/max of their own beyond what int8_t holds -- so this is the one
+     * place that has to hold regardless of how a caller arrived at an
+     * unreasonable value.
      */
     static std::uint32_t millisToAbsoluteForTest(double ms);
 };

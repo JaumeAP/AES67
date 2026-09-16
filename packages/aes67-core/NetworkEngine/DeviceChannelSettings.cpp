@@ -54,8 +54,12 @@ bool DeviceChannelSettings::isValid() const {
 
 DeviceChannelSettingsManager::DeviceChannelSettingsManager() {
     std::string existing = findExistingConfig();
+    // Not the system-wide path unconditionally: coreaudiod runs as
+    // _coreaudiod and cannot create it, and neither can a tool or a test.
+    // The first of the same search paths this process could actually write,
+    // in the same order getConfigSearchPaths() already searches them.
     configPath_ = existing.empty()
-        ? "/Library/Application Support/AES67Driver/" + std::string(kDefaultConfigFile)
+        ? firstWritableConfigPath("AES67_DEVICE_CHANNELS_CONFIG_PATH", kDefaultConfigFile)
         : existing;
 }
 

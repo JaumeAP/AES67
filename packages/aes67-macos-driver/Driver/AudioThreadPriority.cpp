@@ -24,8 +24,9 @@ std::uint32_t millisToAbsolute(double ms) {
     }();
     const double ns = ms * 1.0e6;
     const double absolute = ns * tb.denom / tb.numer;
-    // Nothing between a hand-edited ptp_master.json's syncIntervalMs/
-    // announceIntervalMs and this clamps them, and a value at or above
+    // Nothing between a hand-edited ptp_master.json's logSyncInterval/
+    // logAnnounceInterval and this clamps the period they produce, and a
+    // value at or above
     // roughly 4.3 s (UINT32_MAX absolute-time ticks, denom/numer close to 1
     // on both Apple Silicon and Intel) makes a double-to-uint32_t cast of an
     // out-of-range value -- undefined behavior, not a wrapped or saturated

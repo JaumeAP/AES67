@@ -13,7 +13,6 @@
 #include "NetworkEngine/NetworkUtils.h"
 
 #include <algorithm>
-#include <cmath>
 #include "Driver/AudioThreadPriority.h"
 
 #include <sys/socket.h>
