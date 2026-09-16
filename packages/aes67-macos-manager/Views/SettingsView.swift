@@ -215,35 +215,11 @@ struct NetworkSettings: View {
         .formStyle(.grouped)
         .padding()
         .onAppear {
-            availableInterfaces = getNetworkInterfaces()
+            availableInterfaces = NetworkInterfaces.available()
             driverManager.loadDiscoverySettings()
         }
     }
 
-    private func getNetworkInterfaces() -> [String] {
-        var interfaces: [String] = []
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-
-        guard getifaddrs(&ifaddr) == 0 else { return interfaces }
-        defer { freeifaddrs(ifaddr) }
-
-        var ptr = ifaddr
-        while ptr != nil {
-            defer { ptr = ptr?.pointee.ifa_next }
-
-            let interface = ptr!.pointee
-            let family = interface.ifa_addr.pointee.sa_family
-
-            if family == UInt8(AF_INET) {
-                let name = String(cString: interface.ifa_name)
-                if !name.hasPrefix("lo") && !interfaces.contains(name) {
-                    interfaces.append(name)
-                }
-            }
-        }
-
-        return interfaces.sorted()
-    }
 }
 
 // MARK: - Driver Settings

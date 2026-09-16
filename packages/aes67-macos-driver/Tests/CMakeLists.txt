@@ -13,6 +13,12 @@ if(NOT TARGET doctest_headers)
     target_include_directories(doctest_headers INTERFACE ${AES67_DOCTEST_DIR})
 endif()
 
+# The core's test support -- support/LoopbackSocket.h, support/SdpFixture.h,
+# support/ToolProcess.h -- is reachable from every suite in this directory.
+# It is the half of a test helper that is not about any one package, and it
+# was three and four copies of itself before it moved there.
+include_directories(${PROJECT_SOURCE_DIR}/../aes67-core/Tests)
+
 
 
 # The parsers, fed what nobody wrote a test for: fuzz/FuzzDriverParsers.cpp.
@@ -916,7 +922,6 @@ message(STATUS "  - TestPTPClock")
 message(STATUS "  - TestPTPMaster")
 message(STATUS "  - TestCompatibilityProfile")
 message(STATUS "  - TestStreamManager")
-message(STATUS "  - TestResampling (NEW)")
 message(STATUS "  - TestStreamConfig (NEW)")
 message(STATUS "  - TestMultiStream (Integration)")
 message(STATUS "  - TestIntegrationAudioPath (Integration)")

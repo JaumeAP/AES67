@@ -55,6 +55,7 @@ add_library(aes67_ravenna
     Ravenna/DnsSd.cpp
     Ravenna/HTTPClient.cpp
     Ravenna/HttpServer.cpp
+    Ravenna/ListenSocket.cpp
     Ravenna/Json.cpp
     Ravenna/NodeApi.cpp
     Ravenna/ReceiverRouting.cpp
@@ -97,6 +98,10 @@ if(AES67_RAVENNA_TOOLS_AND_TESTS)
             endif()
 
             enable_testing()
+
+            # The core's shared test support: support/LoopbackSocket.h is the
+            # listener this package's HTTP client suite used to write out.
+            include_directories(${AES67_CORE_DIR}/Tests)
             # RavennaKitParity reads the checkout under external/ for its
             # vectors and links nothing from it: the comparison is against what
             # that project's own suite says the bytes mean, not against its

@@ -43,6 +43,7 @@ swiftc -o AES67Manager \
   Models/NmosResources.swift \
   Models/SessionList.swift \
   Models/NmosController.swift \
+  Models/NetworkInterfaces.swift \
   Views/ContentView.swift \
   Views/StreamListView.swift \
   Views/StreamDetailView.swift \

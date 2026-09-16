@@ -315,7 +315,7 @@ struct NetworkCheckStep: View {
         // Simulate network checks with slight delays for better UX
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             // Check for network interfaces
-            availableInterfaces = getNetworkInterfaces()
+            availableInterfaces = NetworkInterfaces.available()
             networkInterfaceOK = !availableInterfaces.isEmpty
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -337,31 +337,6 @@ struct NetworkCheckStep: View {
         }
     }
 
-    private func getNetworkInterfaces() -> [String] {
-        var interfaces: [String] = []
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-
-        guard getifaddrs(&ifaddr) == 0 else { return interfaces }
-        defer { freeifaddrs(ifaddr) }
-
-        var ptr = ifaddr
-        while ptr != nil {
-            defer { ptr = ptr?.pointee.ifa_next }
-
-            let interface = ptr!.pointee
-            let family = interface.ifa_addr.pointee.sa_family
-
-            // Only include IPv4 interfaces that are up and not loopback
-            if family == UInt8(AF_INET) {
-                let name = String(cString: interface.ifa_name)
-                if !name.hasPrefix("lo") && !interfaces.contains(name) {
-                    interfaces.append(name)
-                }
-            }
-        }
-
-        return interfaces.sorted()
-    }
 
     private func checkMulticastSupport() -> Bool {
         // Simplified check - in production, would test actual multicast routing

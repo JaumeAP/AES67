@@ -9,6 +9,7 @@
 
 #include "NetworkEngine/StreamConfig.h"
 #include "Driver/SDPParser.h"
+#include "support/SdpFixture.h"
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -23,36 +24,11 @@ using namespace AES67;
 // Helper Functions
 //
 
-SDPSession createTestSDP(const std::string& name = "Test Stream",
-                        uint16_t port = 5004,
-                        uint16_t channels = 2,
-                        uint32_t sampleRate = 48000) {
-    SDPSession sdp;
-    sdp.sessionName = name;
-    sdp.port = port;
-    sdp.connectionAddress = "239.1.1.1";
-    sdp.encoding = "L24";
-    sdp.sampleRate = sampleRate;
-    sdp.numChannels = channels;
-    sdp.payloadType = 97;
-    sdp.ptimeUs = 1000;
-    sdp.framecount = 48;
-    sdp.originAddress = "192.168.1.100";
-    sdp.ptpDomain = 0;
-    return sdp;
-}
-
-ChannelMapping createTestMapping(uint16_t streamChannels = 2,
-                                uint16_t deviceStart = 0) {
-    ChannelMapping mapping;
-    mapping.streamID = StreamID::generate();
-    mapping.streamName = "Test Mapping";
-    mapping.streamChannelCount = streamChannels;
-    mapping.streamChannelOffset = 0;
-    mapping.deviceChannelStart = deviceStart;
-    mapping.deviceChannelCount = streamChannels;
-    return mapping;
-}
+// The session and the mapping both suites start from are one fixture in the
+// core's test support: two copies of it drift, and when they do the suites
+// stop testing the same stream while still looking as though they do.
+using AES67::TestSupport::createTestMapping;
+using AES67::TestSupport::createTestSDP;
 
 //
 // PersistedStreamConfig Tests
