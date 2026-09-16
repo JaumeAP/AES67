@@ -30,6 +30,19 @@ struct PersistedStreamConfig {
 
     // Metadata
     bool enabled{true};              // Whether stream is active
+
+    // Which direction this stream runs in, recorded rather than inferred.
+    //
+    // It used to be read back out of `sdp.direction`, which describes the
+    // stream to whoever receives the DESCRIPTION -- a sender announces
+    // `a=recvonly`, because a reader of that announcement can only receive,
+    // and every device on the network writes it that way. Deriving the role
+    // from it restored every transmit stream as a receiver: silent, total TX
+    // loss with the channels counted as RX. Writing "sendonly" into the
+    // announcement to fix that put a line on the wire that no Dante device,
+    // no RAVENNA daemon and no other AES67 sender writes. The role belongs
+    // here, in this file, which nobody else reads.
+    bool isTransmit{false};
     std::string description;         // User-provided description
     uint64_t createdTimestamp{0};    // When stream was added
     uint64_t modifiedTimestamp{0};   // Last modification
