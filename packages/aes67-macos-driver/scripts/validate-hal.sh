@@ -3,8 +3,14 @@
 #
 # Everything here goes through Apple's own tooling and APIs -- the plugin
 # bundle as coreaudiod sees it, the unified log, and the HAL client API via
-# Tools/HALValidate -- so it reports on what is installed in
+# HALValidate -- so it reports on what is installed in
 # /Library/Audio/Plug-Ins/HAL, not on this build tree.
+#
+# HALValidate moved out of this repository on 2026-09-16: it links no driver
+# code and checks whatever coreaudiod has loaded, so it belongs with the other
+# device-neutral tools, in Eines/packages/macos-audio-development/tools. Point
+# HAL_VALIDATE at the built binary, or let the lookup below find the usual
+# checkout.
 #
 # Usage:
 #   scripts/validate-hal.sh                 full check
@@ -20,7 +26,22 @@ cd "$repo_root"
 install_dir="/Library/Audio/Plug-Ins/HAL"
 bundle="$install_dir/AES67Driver.driver"
 build_dir="${BUILD_DIR:-build}"
-validator="$build_dir/Tools/HALValidate"
+
+# HAL_VALIDATE wins; otherwise the sibling checkout, then the one in a home
+# directory, then whatever is on PATH.
+validator="${HAL_VALIDATE:-}"
+if [ -z "$validator" ]; then
+    for candidate in \
+        "$repo_root/../../../Eines/packages/macos-audio-development/tools/build/HALValidate" \
+        "$HOME/projects/Eines/packages/macos-audio-development/tools/build/HALValidate" \
+        "$(command -v HALValidate 2>/dev/null || true)"
+    do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            validator="$candidate"
+            break
+        fi
+    done
+fi
 
 echo "== Installed plugin =="
 if [ -d "$bundle" ]; then
@@ -58,11 +79,16 @@ echo "== coreaudiod log, last 10 minutes, plugin messages =="
 
 echo
 echo "== HAL client API checks =="
-if [ ! -x "$validator" ]; then
-    echo "  $validator not built."
-    echo "  Build with: cmake -S . -B $build_dir -DBUILD_TOOLS=ON && cmake --build $build_dir --target HALValidate"
+if [ -z "$validator" ] || [ ! -x "$validator" ]; then
+    echo "  HALValidate not found."
+    echo "  It lives in Eines/packages/macos-audio-development/tools; build it with"
+    echo "    cmake -S <eines>/packages/macos-audio-development/tools -B <same>/build"
+    echo "    cmake --build <same>/build --target HALValidate"
+    echo "  then re-run this, or set HAL_VALIDATE to the binary."
     exit 1
 fi
+
+echo "  using $validator"
 
 # A device with input streams goes through TCC: without microphone access for
 # the terminal, opening it blocks. HALValidate detects that and skips the IO

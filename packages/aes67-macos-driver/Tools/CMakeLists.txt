@@ -61,19 +61,11 @@ target_include_directories(DanteInteropSim PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(DanteInteropSim PRIVATE aes67_net)
 target_compile_features(DanteInteropSim PRIVATE cxx_std_17)
 
-# AES67 Impairment Relay: degrades a live stream (loss, bursts, delay, jitter,
-# reordering) between two multicast groups, so the receive path can be stressed
-# without root and without touching the machine's packet filter.
-add_executable(AES67ImpairmentRelay
-    AES67ImpairmentRelay.cpp
-    ../NetworkEngine/RTP/SimpleRTP.cpp
-    ../NetworkEngine/RTP/PCMCodec.cpp
-    ../NetworkEngine/NetworkUtils.cpp
-)
-target_include_directories(AES67ImpairmentRelay PRIVATE ${PROJECT_SOURCE_DIR})
-target_link_libraries(AES67ImpairmentRelay PRIVATE aes67_net)
-target_compile_features(AES67ImpairmentRelay PRIVATE cxx_std_17)
-target_link_libraries(AES67ImpairmentRelay PRIVATE "-framework Accelerate")
+# The impairment relay moved to Eines/packages/aoip-stress-lab on 2026-09-16,
+# as its `impair` subcommand: it forwards datagrams without reading them, so
+# nothing in it was ever about this driver, and the lab already owns the
+# vendor-neutral half of this work. Its policy went with it, and so did the
+# suite that pinned it.
 
 # AES67 SAP Monitor: hears SAP announcements and says what they describe, so
 # that what the announcers emit can be checked from outside them.
@@ -106,41 +98,18 @@ target_include_directories(AES67PTPStressRun PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(AES67PTPStressRun PRIVATE aes67_net)
 target_compile_features(AES67PTPStressRun PRIVATE cxx_std_17)
 
-# Quick Capture: records from one Core Audio device and says whether any
-# non-zero sample arrived. Nothing built it until 2026-09-16 -- it was a source
-# file in this directory with no target, which is how it kept a variable-length
-# array on the render thread that no compiler here ever saw.
-if(APPLE)
-    add_executable(QuickCapture QuickCapture.cpp)
-    target_compile_features(QuickCapture PRIVATE cxx_std_17)
-    target_link_libraries(QuickCapture PRIVATE
-        "-framework AudioToolbox"
-        "-framework CoreAudio"
-        "-framework CoreFoundation"   # CFStringGetCString, CFRelease
-    )
-endif()
-
-# HAL Validate: Core Audio conformance check of the installed AudioServerPlugIn.
-# Talks to coreaudiod through Apple's HAL client API only -- it links against
-# no driver code, so it validates what is installed, not this build tree.
-if(APPLE)
-    add_executable(HALValidate HALValidate.cpp HALValidateAudioAccess.mm)
-    target_compile_features(HALValidate PRIVATE cxx_std_17)
-    target_link_libraries(HALValidate PRIVATE
-        "-framework CoreAudio"
-        "-framework CoreFoundation"
-        "-framework AVFoundation"
-    )
-endif()
+# HALValidate and QuickCapture moved to
+# Eines/packages/macos-audio-development/tools on 2026-09-16. Neither links any
+# driver code -- they talk to whatever coreaudiod has loaded, through Apple's
+# own client API -- so they check an installed plug-in rather than this tree,
+# and that is not a thing this repository should own.
 
 message(STATUS "Tools configured:")
 message(STATUS "  - AES67TestSender")
 message(STATUS "  - AES67TestReceiver")
-message(STATUS "  - AES67ImpairmentRelay")
 message(STATUS "  - AES67SAPMonitor")
 message(STATUS "  - AES67LiveDaemonInterop")
 message(STATUS "  - AES67PTPStressRun")
-message(STATUS "  - HALValidate")
 message(STATUS "")
 message(STATUS "Run test sender:")
 message(STATUS "  ./Tools/AES67TestSender --ip 239.1.1.1 --port 5004 --channels 8 --freq 1000")

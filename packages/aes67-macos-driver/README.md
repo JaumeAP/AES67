@@ -364,13 +364,18 @@ Settings > Login Items; the Uninstall button unregisters it.
 never through this source tree: the installed bundle in
 `/Library/Audio/Plug-Ins/HAL` and its signature, whether `coreaudiod` is
 running, what `system_profiler` reports, the last ten minutes of `coreaudiod`
-log lines mentioning the plugin, and then `Tools/HALValidate`, which drives
-the device through Apple's HAL client API -- the same
+log lines mentioning the plugin, and then `HALValidate`, which drives the
+device through Apple's HAL client API -- the same
 `AudioObjectGetPropertyData` / `AudioDeviceStart` path HALLab uses.
 
+`HALValidate` lives in `Eines/packages/macos-audio-development/tools` since
+2026-09-16: it links no driver code and checks whatever `coreaudiod` has
+loaded, so it is not this repository's to own. The script finds it in the
+usual checkout, or takes `HAL_VALIDATE`.
+
 ```bash
-cmake -S . -B build -DBUILD_TOOLS=ON
-cmake --build build --target HALValidate
+cmake -S <eines>/packages/macos-audio-development/tools -B <same>/build
+cmake --build <same>/build --target HALValidate
 scripts/validate-hal.sh
 ```
 
