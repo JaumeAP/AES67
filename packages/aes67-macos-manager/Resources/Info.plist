@@ -22,6 +22,11 @@
         <string>ca</string>
         <string>es</string>
     </array>
+    <!-- The icon file in Contents/Resources, without its extension.
+         Drawn by scripts/make-app-icons.swift; see that file for what
+         the mark means. -->
+    <key>CFBundleIconFile</key>
+    <string>AES67Manager</string>
     <key>CFBundleName</key>
     <string>AES67 Manager</string>
     <key>CFBundlePackageType</key>

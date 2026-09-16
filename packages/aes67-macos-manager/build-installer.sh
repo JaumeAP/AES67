@@ -48,6 +48,7 @@ mkdir -p AES67Install.app/Contents/MacOS
 mkdir -p AES67Install.app/Contents/Resources
 mv AES67Install AES67Install.app/Contents/MacOS/
 cp Resources/InstallInfo.plist AES67Install.app/Contents/Info.plist
+cp Resources/AES67Install.icns AES67Install.app/Contents/Resources/
 
 # What it installs, carried inside it. Missing is a warning and not a failure:
 # the installer still builds, and says which tick will not be able to do

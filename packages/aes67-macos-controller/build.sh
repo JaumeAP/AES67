@@ -81,6 +81,8 @@ mkdir -p AES67Controller.app/Contents/MacOS
 mkdir -p AES67Controller.app/Contents/Resources
 mv AES67Controller AES67Controller.app/Contents/MacOS/
 cp Resources/Info.plist AES67Controller.app/Contents/
+# The icon the plist names; see scripts/make-app-icons.swift at the root.
+cp Resources/AES67Controller.icns AES67Controller.app/Contents/Resources/
 
 
 # The languages, the way macOS reads them: one .lproj per language holding
