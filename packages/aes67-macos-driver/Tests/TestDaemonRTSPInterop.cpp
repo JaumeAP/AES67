@@ -20,6 +20,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
+#include "support/LoopbackSocket.h"
+
 #include "NetworkEngine/Discovery/RTSPClient.h"
 #include "NetworkEngine/Discovery/RTSPServer.h"
 #include "support/DaemonRtsp.h"
@@ -50,39 +52,6 @@ const std::string kSDP =
     "a=rtpmap:96 L24/48000/2\r\n"
     "a=ptime:1\r\n";
 
-/// Sends one request to a server and returns the whole response, up to the
-/// peer closing the connection -- which is what RTSPServer does after every
-/// answer, so a plain read-to-EOF is enough.
-std::string ask(uint16_t port, const std::string& request) {
-    const int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) return {};
-    struct timeval tv{3, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-    struct sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        close(fd);
-        return {};
-    }
-    if (send(fd, request.data(), request.size(), 0) < 0) {
-        close(fd);
-        return {};
-    }
-    std::string response;
-    char buffer[1024];
-    while (true) {
-        const ssize_t got = recv(fd, buffer, sizeof(buffer), 0);
-        if (got <= 0) break;
-        response.append(buffer, static_cast<size_t>(got));
-        if (response.size() > static_cast<size_t>(64 * 1024)) break;
-    }
-    close(fd);
-    return response;
-}
 
 std::vector<RTSPPublishedStream> provider() {
     return {{"/by-name/node1 Studio Mic 1", kSDP}};
@@ -168,7 +137,7 @@ TEST_CASE("The daemon's client can DESCRIBE what this driver's RTSPServer serves
         daemonDescribeRequest("127.0.0.1", server.port(), "/by-name/node1 Studio Mic 1", 42);
     CHECK(request.find("node1%20Studio%20Mic%201") != std::string::npos);
 
-    const std::string response = ask(server.port(), request);
+    const std::string response = TestSupport::askOnce(server.port(), request);
     const auto result = daemonReadDescribeResponse(response, 42);
 
     INFO("refused because: ", result.refusal);
@@ -181,7 +150,7 @@ TEST_CASE("A path this driver's RTSPServer does not have is a DESCRIBE the daemo
     REQUIRE(server.started());
 
     const std::string request = daemonDescribeRequest("127.0.0.1", server.port(), "/by-name/nope", 7);
-    const std::string response = ask(server.port(), request);
+    const std::string response = TestSupport::askOnce(server.port(), request);
     const auto result = daemonReadDescribeResponse(response, 7);
 
     CHECK_FALSE(result.accepted);

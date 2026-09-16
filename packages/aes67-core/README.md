@@ -2,8 +2,7 @@
 
 The parts of an AES67 implementation that are not about any operating system:
 SDP parsing and generation, the RTP wire header, a lock-free jitter buffer and
-packet pool, the media-clock PLL, the resampling chain, channel mapping and
-stream configuration. Also the pieces that describe
+packet pool, the media-clock PLL, channel mapping and stream configuration. Also the pieces that describe
 rather than do: the single-producer ring buffer and the real-time view over it,
 the PTP time types and the clock-source interface a platform implements, the
 IEEE 1588 message and configuration types, and the PTP peer, RTCP receiver and

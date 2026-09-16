@@ -37,6 +37,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
+#include "support/PtpFixture.h"
+
 #include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "NetworkEngine/PTP/PTPSlave.h"
 
@@ -178,42 +180,13 @@ PTPSlaveConfig boxFacingConfig() {
 
 /// One line of the fixture t41-ptp's host build generates: the message it
 /// sent, and whether it went out on the event socket.
-struct EmittedMessage {
-    std::string name;
-    bool onEventSocket{false};
-    std::vector<uint8_t> bytes;
-};
+using AES67::Testing::EmittedMessage;
+using AES67::Testing::firstNamed;
 
+/// Missing is not fatal here: this suite checks a subset and says so when
+/// there is nothing to check against.
 std::vector<EmittedMessage> generatedFixture() {
-    std::vector<EmittedMessage> messages;
-    std::ifstream file(T41_FIXTURE_PATH);
-    if (!file.is_open()) return messages;
-
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::istringstream fields(line);
-        std::string name, socketName, hex;
-        fields >> name >> socketName >> hex;
-        if (hex.empty()) continue;
-
-        EmittedMessage message;
-        message.name = name;
-        message.onEventSocket = (socketName == "event");
-        for (size_t i = 0; i + 1 < hex.size(); i += 2) {
-            message.bytes.push_back(
-                static_cast<uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
-        }
-        messages.push_back(std::move(message));
-    }
-    return messages;
-}
-
-EmittedMessage firstNamed(const std::vector<EmittedMessage>& messages, const std::string& name) {
-    for (const EmittedMessage& message : messages) {
-        if (message.name == name) return message;
-    }
-    return EmittedMessage{};
+    return AES67::Testing::readEmittedFixture(T41_FIXTURE_PATH);
 }
 
 std::array<uint8_t, 8> clockIdentityOf(const std::vector<uint8_t>& message) {

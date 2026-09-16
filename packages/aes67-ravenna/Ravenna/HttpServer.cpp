@@ -1,3 +1,4 @@
+#include "Ravenna/ListenSocket.h"
 #include "Ravenna/HttpServer.h"
 #include "Ravenna/ApiReplies.h"
 
@@ -146,35 +147,9 @@ void HttpServer::stop() {
 }
 
 bool HttpServer::start(uint16_t port, std::string& error) {
-    listener_ = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (listener_ < 0) {
-        error = std::string("socket(): ") + std::strerror(errno);
+    if (!openListenSocket(port, listener_, error)) {
+        listener_ = -1;
         return false;
-    }
-
-    int on = 1;
-    ::setsockopt(listener_, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-
-    struct sockaddr_in address {};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
-    address.sin_port = htons(port);
-    if (::bind(listener_, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
-        error = "bind " + std::to_string(port) + ": " + std::strerror(errno);
-        stop();
-        return false;
-    }
-    if (::listen(listener_, 8) < 0) {
-        error = std::string("listen(): ") + std::strerror(errno);
-        stop();
-        return false;
-    }
-
-    if (port == 0) {
-        socklen_t length = sizeof(address);
-        if (::getsockname(listener_, reinterpret_cast<struct sockaddr*>(&address), &length) == 0) {
-            port = ntohs(address.sin_port);
-        }
     }
     port_ = port;
     return true;

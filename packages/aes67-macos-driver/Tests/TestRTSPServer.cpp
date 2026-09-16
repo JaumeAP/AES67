@@ -15,6 +15,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
+#include "support/LoopbackSocket.h"
+
 #include "NetworkEngine/Discovery/RTSPServer.h"
 
 #include <arpa/inet.h>
@@ -48,42 +50,6 @@ std::vector<RTSPPublishedStream> provider() {
     };
 }
 
-/// Sends one request to the server and returns the whole response.
-/// Returns empty on any socket failure, so a test can fail loudly
-/// instead of hanging.
-std::string ask(uint16_t port, const std::string& request) {
-    const int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) return {};
-
-    struct timeval tv{3, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-    struct sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        close(fd);
-        return {};
-    }
-
-    if (send(fd, request.data(), request.size(), 0) < 0) {
-        close(fd);
-        return {};
-    }
-
-    std::string response;
-    char buffer[1024];
-    while (true) {
-        const ssize_t got = recv(fd, buffer, sizeof(buffer), 0);
-        if (got <= 0) break;
-        response.append(buffer, static_cast<size_t>(got));
-        if (response.size() > 64 * 1024) break;
-    }
-    close(fd);
-    return response;
-}
 
 /// A started server on an ephemeral port, stopped on scope exit.
 class RunningServer {
@@ -110,7 +76,7 @@ TEST_CASE("DESCRIBE Returns The SDP For A Published Path") {
 
     // A URL carries no raw spaces (RFC 3986): a client percent-encodes
     // them and the server decodes before matching.
-    const std::string response = ask(
+    const std::string response = TestSupport::askOnce(
         server.port(),
         "DESCRIBE rtsp://127.0.0.1/by-name/Studio%20Mic%201 RTSP/1.0\r\n"
         "CSeq: 7\r\n\r\n");
@@ -125,7 +91,7 @@ TEST_CASE("DESCRIBE Returns The SDP For A Published Path") {
 
     // The unencoded form is a malformed request line, and saying so is
     // the correct answer -- not a silent match.
-    const std::string raw = ask(
+    const std::string raw = TestSupport::askOnce(
         server.port(),
         "DESCRIBE rtsp://127.0.0.1/by-name/Studio Mic 1 RTSP/1.0\r\n"
         "CSeq: 8\r\n\r\n");
@@ -138,9 +104,9 @@ TEST_CASE("An Absolute Or Bare Path Both Resolve") {
     RunningServer server;
     REQUIRE(server.started());
 
-    const std::string absolute = ask(
+    const std::string absolute = TestSupport::askOnce(
         server.port(), "DESCRIBE rtsp://127.0.0.1:8554/ RTSP/1.0\r\nCSeq: 1\r\n\r\n");
-    const std::string bare = ask(
+    const std::string bare = TestSupport::askOnce(
         server.port(), "DESCRIBE / RTSP/1.0\r\nCSeq: 2\r\n\r\n");
 
     CHECK(absolute.rfind("RTSP/1.0 200 OK", 0) == 0);
@@ -153,7 +119,7 @@ TEST_CASE("OPTIONS Advertises Only What Is Answered") {
     RunningServer server;
     REQUIRE(server.started());
 
-    const std::string response = ask(
+    const std::string response = TestSupport::askOnce(
         server.port(), "OPTIONS * RTSP/1.0\r\nCSeq: 3\r\n\r\n");
 
     CHECK(response.rfind("RTSP/1.0 200 OK", 0) == 0);
@@ -169,12 +135,12 @@ TEST_CASE("Unknown Path Is 404 And Unknown Method Is 501") {
     RunningServer server;
     REQUIRE(server.started());
 
-    const std::string missing = ask(
+    const std::string missing = TestSupport::askOnce(
         server.port(), "DESCRIBE /nope RTSP/1.0\r\nCSeq: 4\r\n\r\n");
     CHECK(missing.rfind("RTSP/1.0 404 Not Found", 0) == 0);
     CHECK(missing.find("CSeq: 4") != std::string::npos);
 
-    const std::string unsupported = ask(
+    const std::string unsupported = TestSupport::askOnce(
         server.port(), "PLAY / RTSP/1.0\r\nCSeq: 5\r\n\r\n");
     CHECK(unsupported.rfind("RTSP/1.0 501 Not Implemented", 0) == 0);
     std::cout << "PASS" << std::endl;
@@ -188,11 +154,11 @@ TEST_CASE("Malformed Requests Are Answered, Never Fatal") {
     // No version token, no CSeq, not even a method: every one of these
     // reaches the parser, and none of them may throw — this endpoint
     // runs inside coreaudiod.
-    CHECK(ask(server.port(), "garbage\r\n\r\n").rfind("RTSP/1.0 400", 0) == 0);
-    CHECK(ask(server.port(), "DESCRIBE / HTTP/1.1\r\n\r\n").rfind("RTSP/1.0 400", 0) == 0);
-    CHECK(!ask(server.port(), "DESCRIBE / RTSP/1.0\r\n\r\n").empty()); // no CSeq: CSeq 0
+    CHECK(TestSupport::askOnce(server.port(), "garbage\r\n\r\n").rfind("RTSP/1.0 400", 0) == 0);
+    CHECK(TestSupport::askOnce(server.port(), "DESCRIBE / HTTP/1.1\r\n\r\n").rfind("RTSP/1.0 400", 0) == 0);
+    CHECK(!TestSupport::askOnce(server.port(), "DESCRIBE / RTSP/1.0\r\n\r\n").empty()); // no CSeq: CSeq 0
     // An absurd CSeq must not overflow into nonsense or hang.
-    CHECK(!ask(server.port(),
+    CHECK(!TestSupport::askOnce(server.port(),
                "DESCRIBE / RTSP/1.0\r\nCSeq: 99999999999999999999\r\n\r\n").empty());
 
     // A client that connects and says nothing is dropped on the receive
@@ -206,7 +172,7 @@ TEST_CASE("Malformed Requests Are Answered, Never Fatal") {
         connect(silent, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
         close(silent);
     }
-    CHECK(ask(server.port(), "OPTIONS * RTSP/1.0\r\nCSeq: 6\r\n\r\n")
+    CHECK(TestSupport::askOnce(server.port(), "OPTIONS * RTSP/1.0\r\nCSeq: 6\r\n\r\n")
               .rfind("RTSP/1.0 200 OK", 0) == 0);
 
     CHECK(server.get().requestCount() > 0);

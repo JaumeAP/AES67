@@ -203,17 +203,11 @@ StatisticsSnapshot RTPReceiver::getStatistics() const {
 }
 
 void RTPReceiver::resetStatistics() {
-    // Reset all atomic counters
-    stats_.packetsReceived.store(0, std::memory_order_relaxed);
-    stats_.packetsLost.store(0, std::memory_order_relaxed);
-    stats_.malformedPackets.store(0, std::memory_order_relaxed);
-    stats_.outOfOrderPackets.store(0, std::memory_order_relaxed);
-    stats_.underruns.store(0, std::memory_order_relaxed);
-    stats_.overruns.store(0, std::memory_order_relaxed);
-    stats_.jitterNs.store(0, std::memory_order_relaxed);
-    stats_.latencyNs.store(0, std::memory_order_relaxed);
-    stats_.bytesReceived.store(0, std::memory_order_relaxed);
-    stats_.bytesSent.store(0, std::memory_order_relaxed);
+    // Statistics::reset() is these counters' own answer, and it also clears
+    // lastPacketTimeNs, which this had written out ten of the eleven lines of
+    // and left behind -- so after a reset, timeSinceLastPacketMs() still
+    // measured from a packet no counter admitted to any more.
+    stats_.reset();
     lastSequenceNumber_.store(0, std::memory_order_relaxed);
     lastTimestamp_.store(0, std::memory_order_relaxed);
     expectedSequenceNumber_.store(0, std::memory_order_relaxed);

@@ -13,7 +13,7 @@ A work-in-progress open-source virtual audio driver for macOS that aims to provi
 The platform-free core is no longer here. It is the sibling package
 `packages/aes67-core`, which this one pulls in with `add_subdirectory`: SDP
 parsing, the RTP wire header, the jitter buffer and packet pool, the
-media-clock PLL, the resampling chain, channel mapping, compatibility profiles
+media-clock PLL, channel mapping, compatibility profiles
 and stream configuration. It used to live in
 [`JaumeAP/aes67-core`](https://github.com/JaumeAP/aes67-core) and arrive as the
 `external/aes67-core` submodule; the monorepo made it a package instead.
@@ -137,7 +137,7 @@ There is a meaningful gap between "paths exercised with test tools" and "works w
 ### PTP — Code Written, Not Tested Against Real Hardware
 The PTP subsystem has two layers:
 
-- **Media clock recovery (implemented):** `PTPClock` correlates RTP timestamps with local time per AES67-2018 Section 8.2. A Phase-Locked Loop tracks clock drift between the remote source and local audio hardware. Reference point history enables drift ratio calculation for adaptive resampling. In local-clock fallback mode, this is sufficient for single-device operation — audio can flow through the driver using local timing.
+- **Media clock recovery (implemented):** `PTPClock` correlates RTP timestamps with local time per AES67-2018 Section 8.2. A Phase-Locked Loop tracks clock drift between the remote source and local audio hardware, and the reference-point history is what a drift ratio would be calculated from. Nothing consumes that ratio: there is no resampler in the receive path, and `StreamManager::validateSampleRate` refuses a stream whose rate differs from the device's, which is what AES67 assumes anyway — every node locks its media clock to the same grandmaster, so the nominal rate is shared. Compensating the drift that is left, on a Mac whose hardware clock no grandmaster disciplines, is the part that is not written. In local-clock fallback mode this is sufficient for single-device operation — audio can flow through the driver using local timing.
 
 - **Network PTP synchronisation (code written, untested):** `PTPSlave` implements IEEE 1588 slave-only mode — Sync/Follow_Up/Delay_Req/Delay_Resp message exchange, offset and path delay calculation, 8-sample moving average filtering, lock detection with hysteresis, and frequency drift estimation. It joins the 224.0.1.129 multicast group on ports 319/320 and feeds measurements into the existing PLL via `PTPDInterface`. However, this code has **never been tested against a real PTP grandmaster**. It auto-falls back to stub mode if the PTP ports cannot be opened. (An earlier note here said that needed root: it does not. On macOS 26.6.2 an unprivileged process binds UDP 319 and 320 without trouble — measured, along with 80 and 443.) Until verified with real hardware, multi-device synchronisation should not be relied upon.
 
@@ -177,7 +177,6 @@ AES67Driver/
 │   │   ├── PhaseLockedLoop  # Audio clock drift tracking
 │   │   ├── PTPDInterface    # PTP interface (stub fallback available)
 │   ├── StreamManager        # RX/TX stream lifecycle, IO-gated start/stop
-│   ├── Resampling/          # Sample rate conversion
 │   └── Discovery/           # Finding streams, and being found
 │       ├── SAPListener      # SAP announcements in (RFC 2974)
 │       ├── SAPAnnouncer     # our own transmit streams announced

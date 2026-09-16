@@ -1,3 +1,4 @@
+#include "Ravenna/ListenSocket.h"
 #include "Ravenna/RtspServer.h"
 
 #include "Ravenna/RtspMessages.h"
@@ -40,42 +41,11 @@ void RtspServer::stop() {
 }
 
 bool RtspServer::start(uint16_t port, std::string& error) {
-    listener_ = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (listener_ < 0) {
-        error = std::string("socket(): ") + std::strerror(errno);
+    if (!openListenSocket(port, listener_, error,
+                          " (554 needs privilege; any port above 1024 works,"
+                          " the SRV record carries it)")) {
+        listener_ = -1;
         return false;
-    }
-
-    int on = 1;
-    ::setsockopt(listener_, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-
-    struct sockaddr_in address {};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
-    address.sin_port = htons(port);
-    if (::bind(listener_, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
-        error = "bind " + std::to_string(port) + ": " + std::strerror(errno) +
-                (errno == EACCES ? " (554 needs privilege; any port above 1024 works,"
-                                   " the SRV record carries it)"
-                                 : "");
-        stop();
-        return false;
-    }
-
-    if (::listen(listener_, 8) < 0) {
-        error = std::string("listen(): ") + std::strerror(errno);
-        stop();
-        return false;
-    }
-
-    if (port == 0) {
-        // Port zero means "any", and the caller has to be told which, or the
-        // SRV record advertises a port nothing is listening on.
-        socklen_t length = sizeof(address);
-        if (::getsockname(listener_, reinterpret_cast<struct sockaddr*>(&address),
-                          &length) == 0) {
-            port = ntohs(address.sin_port);
-        }
     }
     port_ = port;
     return true;

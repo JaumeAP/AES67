@@ -56,11 +56,6 @@ add_library(aes67_core
     NetworkEngine/PTP/PTPSettingsMapping.cpp
     NetworkEngine/PTP/PhaseLockedLoop.cpp
     NetworkEngine/PTP/CustomSys.cpp
-    NetworkEngine/Resampling/Resampler.cpp
-    NetworkEngine/Resampling/PIController.cpp
-    NetworkEngine/Resampling/SmoothedPIController.cpp
-    NetworkEngine/Resampling/ClockAdjustmentController.cpp
-    NetworkEngine/Resampling/SampleRateAdapter.cpp
 )
 
 # Two packages this one reads rather than copies.
@@ -116,7 +111,10 @@ if(AES67_CORE_TESTS)
     # the README -- so it, and only it, links the test double that fills it.
     set(AES67_SEAM_STUB Tests/support/NetworkUtilsStub.cpp)
 
-    foreach(suite SDPParser NonBlockingLogger Types RTPHeader PacketBudget PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings DiscoverySettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping Resampling StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable JsonText)
+    # support/ headers shared with the packages that consume this one.
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Tests)
+
+    foreach(suite SDPParser NonBlockingLogger Types RTPHeader PacketBudget PhaseLockedLoop DoPDecoder AmplifierUnit ChannelMapper DeviceChannelSettings DiscoverySettings NetworkErrorHandler NMOSSettings PTPMasterSettings PTPSettingsMapping StreamConfig InteropSDP RingBuffer RingBufferTiming PTPPeerTable RTCPReceiverTable JsonText)
         set(extra_sources "")
         if(suite STREQUAL "StreamConfig")
             set(extra_sources ${AES67_SEAM_STUB})

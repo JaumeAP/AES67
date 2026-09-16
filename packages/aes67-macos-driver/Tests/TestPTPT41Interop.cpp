@@ -20,6 +20,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
+#include "support/PtpFixture.h"
+
 #include "NetworkEngine/PTP/PTPDiagnostics.h"
 #include "NetworkEngine/PTP/PTPSlave.h"
 
@@ -33,50 +35,19 @@ using namespace AES67;
 
 namespace {
 
-/// One line of the fixture: what the library sent, and on which socket.
-struct EmittedMessage {
-    std::string name;                 // Sync, Follow_Up, Announce, Delay_Resp
-    bool onEventSocket{false};        // event is 319, general is 320
-    std::vector<uint8_t> bytes;
-};
+using AES67::Testing::EmittedMessage;
 
-std::vector<EmittedMessage> readFixture(const std::string& path) {
-    std::vector<EmittedMessage> messages;
-    std::ifstream file(path);
-    REQUIRE_MESSAGE(file.is_open(), "fixture not found: " << path);
-
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::istringstream fields(line);
-        std::string name, socketName, hex;
-        fields >> name >> socketName >> hex;
-        if (hex.empty()) continue;
-
-        EmittedMessage message;
-        message.name = name;
-        message.onEventSocket = (socketName == "event");
-        message.bytes.reserve(hex.size() / 2);
-        for (size_t i = 0; i + 1 < hex.size(); i += 2) {
-            message.bytes.push_back(
-                static_cast<uint8_t>(std::stoul(hex.substr(i, 2), nullptr, 16)));
-        }
-        messages.push_back(std::move(message));
-    }
-    return messages;
-}
-
+/// Read once. This suite cannot check anything without the file, so an empty
+/// read is a failure here rather than a subset to work through.
 std::vector<EmittedMessage> fixture() {
-    static const std::vector<EmittedMessage> messages = readFixture(T41_FIXTURE_PATH);
+    static const std::vector<EmittedMessage> messages =
+        AES67::Testing::readEmittedFixture(T41_FIXTURE_PATH);
+    REQUIRE_MESSAGE(!messages.empty(), "fixture not found or empty: " << T41_FIXTURE_PATH);
     return messages;
 }
 
 std::vector<EmittedMessage> messagesNamed(const std::string& name) {
-    std::vector<EmittedMessage> matching;
-    for (const EmittedMessage& message : fixture()) {
-        if (message.name == name) matching.push_back(message);
-    }
-    return matching;
+    return AES67::Testing::messagesNamed(fixture(), name);
 }
 
 PTPSlaveConfig t41FacingConfig() {

@@ -16,9 +16,8 @@
 #include "doctest.h"
 
 #include "Ravenna/HTTPClient.h"
+#include "support/LoopbackSocket.h"
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -41,35 +40,17 @@ public:
     ~FakeServer() { stop(); }
 
     bool start() {
-        listen_ = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (listen_ < 0) return false;
-        int yes = 1;
-        ::setsockopt(listen_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = 0; // any free port
-        if (::bind(listen_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) return false;
-        socklen_t len = sizeof(addr);
-        if (::getsockname(listen_, reinterpret_cast<sockaddr*>(&addr), &len) != 0) return false;
-        port_ = ntohs(addr.sin_port);
-        if (::listen(listen_, 4) != 0) return false;
-
+        if (!listener_.open()) return false;
         thread_ = std::thread([this] { serve(); });
         return true;
     }
 
     void stop() {
-        if (listen_ >= 0) {
-            ::shutdown(listen_, SHUT_RDWR);
-            ::close(listen_);
-            listen_ = -1;
-        }
+        listener_.close();
         if (thread_.joinable()) thread_.join();
     }
 
-    uint16_t port() const { return port_; }
+    uint16_t port() const { return listener_.port(); }
 
     /// The request the client sent, once served.
     std::string request() {
@@ -79,7 +60,7 @@ public:
 
 private:
     void serve() {
-        const int client = ::accept(listen_, nullptr, nullptr);
+        const int client = ::accept(listener_.fd(), nullptr, nullptr);
         if (client < 0) return;
 
         // Read the head, and the body when the request declares one.
@@ -111,8 +92,7 @@ private:
 
     std::string answer_;
     bool reply_{true};
-    int listen_{-1};
-    uint16_t port_{0};
+    TestSupport::LoopbackListener listener_;
     std::string request_;
     std::thread thread_;
 };
