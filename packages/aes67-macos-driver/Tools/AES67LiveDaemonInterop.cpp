@@ -39,6 +39,7 @@
 // step fails loudly rather than needing its output parsed. A command line it
 // cannot read exits 1 before any check has run, with the reason on stderr.
 //
+#include "Shared/CheckReport.h"
 #include "Shared/ToolOptions.h"
 
 #include "Driver/SDPParser.h"
@@ -69,23 +70,9 @@
 #include <vector>
 
 using namespace AES67;
+using namespace AES67::CheckReport;
 
 namespace {
-
-int fails = 0;
-
-void check(const char* what, bool condition, const std::string& detail) {
-    std::printf("  [%s] %s -- %s\n", condition ? "OK" : "XX", what, detail.c_str());
-    if (!condition) ++fails;
-}
-
-/// Something this configuration cannot settle: printed, never failed. The two
-/// offline simulations carry the same category for the same reason -- a
-/// question left open is worth saying out loud, and worth not pretending to
-/// have answered.
-void observe(const char* what, const std::string& detail) {
-    std::printf("  [??] %s -- %s\n", what, detail.c_str());
-}
 
 struct Options {
     std::string host{"127.0.0.1"};
@@ -454,11 +441,11 @@ void checkTheDaemonReceivesOurAudio(const Options& opts) {
         // Printed so a run against a daemon with the real kernel module shows
         // the difference at a glance, and so that reading this output never
         // suggests the packets were checked off the wire when they were not.
-        observe("receiving_rtp_packet",
+        unsettled("receiving_rtp_packet",
                 std::string(flag("receiving_rtp_packet") ? "true" : "false") +
                     " -- with the fake driver manager this job builds, nothing is "
                     "listening; against the kernel module it is the answer");
-        observe("format errors",
+        unsettled("format errors",
                 std::string("seq ") + (flag("rtp_seq_id_error") ? "true" : "false") +
                     ", ssrc " + (flag("rtp_ssrc_error") ? "true" : "false") +
                     ", payload type " + (flag("rtp_payload_type_error") ? "true" : "false") +
@@ -488,6 +475,7 @@ int main(int argc, char** argv) {
     checkThisDriverIsDiscoverable(opts);
     checkTheDaemonReceivesOurAudio(opts);
 
-    std::printf("\n%d check(s) failed\n", fails);
-    return fails > 255 ? 255 : fails;
+    std::printf("\n%d check(s) failed, %d left open\n",
+                CheckReport::failedCount, CheckReport::unsettledCount);
+    return CheckReport::failedCount > 255 ? 255 : CheckReport::failedCount;
 }

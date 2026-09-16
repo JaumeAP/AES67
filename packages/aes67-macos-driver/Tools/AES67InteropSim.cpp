@@ -25,6 +25,7 @@
 // daemon did. What replaced them is the daemon's real header, through the
 // listener the driver actually runs, and back the other way.
 //
+#include "Shared/CheckReport.h"
 #include <exception>
 
 #include "Driver/SDPParser.h"
@@ -42,22 +43,9 @@
 #include <vector>
 
 using namespace AES67;
+using namespace AES67::CheckReport;
 
 namespace {
-
-int fails = 0;
-int unverified = 0;
-
-void ok(const char* layer, bool cond, const std::string& detail) {
-    std::printf("  [%s] %s -- %s\n", cond ? "OK" : "XX", layer, detail.c_str());
-    if (!cond) fails++;
-}
-
-/// A claim this simulation cannot settle: printed, counted, never failed.
-void unsettled(const char* layer, const std::string& detail) {
-    std::printf("  [??] %s -- %s\n", layer, detail.c_str());
-    unverified++;
-}
 
 bool has(const std::string& text, const char* needle) {
     return text.find(needle) != std::string::npos;
@@ -119,16 +107,16 @@ int run() {
     const SAPAnnouncement heard = SAPListener::parseAnnouncement(
         reinterpret_cast<const char*>(pkt.data()), pkt.size(), "192.168.1.50");
 
-    ok("SAP parse", !heard.sessionDescription.empty(),
+    check("SAP parse", !heard.sessionDescription.empty(),
        "our SAPListener reads the daemon's packet");
-    ok("SAP payload type",
+    check("SAP payload type",
        heard.sessionDescription.rfind("v=0", 0) == 0,
        heard.sessionDescription.rfind("v=0", 0) == 0
            ? "the daemon's 24-byte header, \"application/sdp\" included, is stripped and the "
              "SDP starts at v=0"
            : "the SDP we keep starts with \"" + heard.sessionDescription.substr(0, 15) +
                  "\": the daemon's payload type was not stripped");
-    ok("SAP body intact", heard.sessionDescription == announced,
+    check("SAP body intact", heard.sessionDescription == announced,
        "every byte the daemon sent, and no more");
     {
         // The identity, read off the wire rather than off the value handed to
@@ -141,17 +129,17 @@ int run() {
         const uint16_t onWire = static_cast<uint16_t>((pkt[2] << 8) | pkt[3]);
         char hex[16];
         std::snprintf(hex, sizeof(hex), "0x%04x", heard.msgIdHash);
-        ok("SAP identity", heard.msgIdHash == onWire && heard.originatingSource != 0,
+        check("SAP identity", heard.msgIdHash == onWire && heard.originatingSource != 0,
            std::string("hash ") + hex + " read big-endian off the header" +
                (onWire == daemonHash ? "" : ", which is the daemon's own memcpy byte-swapped"));
     }
-    ok("SAP announcement, not deletion", !heard.isDeletion, "type bit clear");
+    check("SAP announcement, not deletion", !heard.isDeletion, "type bit clear");
     {
         const std::vector<uint8_t> bye = Tests::daemonSapPacket(
             announced, daemonHash, ::inet_addr("192.168.1.50"), /*deletion=*/true);
         const SAPAnnouncement gone = SAPListener::parseAnnouncement(
             reinterpret_cast<const char*>(bye.data()), bye.size(), "192.168.1.50");
-        ok("SAP deletion", gone.isDeletion,
+        check("SAP deletion", gone.isDeletion,
            "the daemon's 0x24 first byte withdraws the session instead of timing it out");
     }
 
@@ -159,21 +147,21 @@ int run() {
     std::printf("\n[2] DAEMON -> US: the SDP itself, through our parser\n");
     const auto parsed = SDPParser::parseString(
         heard.sessionDescription.empty() ? announced : heard.sessionDescription);
-    ok("SDP parse", parsed.has_value(), "our SDPParser accepts the daemon's SDP");
+    check("SDP parse", parsed.has_value(), "our SDPParser accepts the daemon's SDP");
     if (parsed) {
         const auto& s = *parsed;
-        ok("session name", s.sessionName == "AES67 daemon : 8", "\"" + s.sessionName + "\"");
-        ok("sample rate", s.sampleRate == 48000, std::to_string(s.sampleRate) + " Hz");
-        ok("encoding", s.encoding == "L24", s.encoding);
-        ok("channels", s.numChannels == 8, std::to_string(s.numChannels) + " ch");
-        ok("ptime", s.ptimeUs == 1000, std::to_string(s.ptimeUs) + " us");
-        ok("framecount", s.framecount == 48, std::to_string(s.framecount) + " frames");
-        ok("multicast", s.connectionAddress == "239.69.83.10", s.connectionAddress);
-        ok("port", s.port == 5004, std::to_string(s.port));
-        ok("payload type", s.payloadType == 98, std::to_string(s.payloadType));
-        ok("direction", s.direction == "recvonly", s.direction);
-        ok("grandmaster", s.ptpMasterMAC == "00-11-22-33-44-55-66-77", s.ptpMasterMAC);
-        ok("PTP domain", s.ptpDomain == 0,
+        check("session name", s.sessionName == "AES67 daemon : 8", "\"" + s.sessionName + "\"");
+        check("sample rate", s.sampleRate == 48000, std::to_string(s.sampleRate) + " Hz");
+        check("encoding", s.encoding == "L24", s.encoding);
+        check("channels", s.numChannels == 8, std::to_string(s.numChannels) + " ch");
+        check("ptime", s.ptimeUs == 1000, std::to_string(s.ptimeUs) + " us");
+        check("framecount", s.framecount == 48, std::to_string(s.framecount) + " frames");
+        check("multicast", s.connectionAddress == "239.69.83.10", s.connectionAddress);
+        check("port", s.port == 5004, std::to_string(s.port));
+        check("payload type", s.payloadType == 98, std::to_string(s.payloadType));
+        check("direction", s.direction == "recvonly", s.direction);
+        check("grandmaster", s.ptpMasterMAC == "00-11-22-33-44-55-66-77", s.ptpMasterMAC);
+        check("PTP domain", s.ptpDomain == 0,
            "domain " + std::to_string(s.ptpDomain) +
                " from the bare \":0\" form the daemon writes -- the line this parser "
                "used to reject outright");
@@ -185,7 +173,7 @@ int run() {
     for (unsigned channels : {2u, 8u}) {
         const auto flow = SDPParser::parseString(daemonSdp(channels));
         if (!flow) {
-            ok("SDP parse", false, std::to_string(channels) + " channels");
+            check("SDP parse", false, std::to_string(channels) + " channels");
             continue;
         }
         std::printf("    -- %u channels\n", channels);
@@ -201,7 +189,7 @@ int run() {
                         profile.displayName.c_str(), accepted ? "accepts" : err.c_str());
             if (profile.kind == CompatibilityProfileKind::AES67 ||
                 profile.kind == CompatibilityProfileKind::RAVENNA) {
-                ok("must accept", accepted, profile.displayName);
+                check("must accept", accepted, profile.displayName);
             }
         }
     }
@@ -214,10 +202,10 @@ int run() {
         ourSdp, SAPAnnouncer::messageIdHash(ourSdp), ::inet_addr("192.168.1.60"), false);
     {
         const Tests::DaemonSapRead read = Tests::daemonSapRead(ourPkt.data(), ourPkt.size());
-        ok("daemon accepts our packet", read.accepted,
+        check("daemon accepts our packet", read.accepted,
            read.accepted ? "header, payload type and body all pass SAP::receive" : read.refusal);
-        ok("read as an announcement", read.isAnnouncement, "not a deletion");
-        ok("body arrives whole", read.sdp == ourSdp,
+        check("read as an announcement", read.isAnnouncement, "not a deletion");
+        check("body arrives whole", read.sdp == ourSdp,
            read.sdp == ourSdp ? "the SDP it takes off the wire is the one we wrote"
                               : "the daemon reads " + std::to_string(read.sdp.size()) +
                                     " bytes of the " + std::to_string(ourSdp.size()) + " we sent");
@@ -226,14 +214,14 @@ int run() {
         const std::vector<uint8_t> bye = SAPAnnouncer::buildPacket(
             ourSdp, SAPAnnouncer::messageIdHash(ourSdp), ::inet_addr("192.168.1.60"), true);
         const Tests::DaemonSapRead read = Tests::daemonSapRead(bye.data(), bye.size());
-        ok("our deletion is a deletion to it", read.accepted && !read.isAnnouncement,
+        check("our deletion is a deletion to it", read.accepted && !read.isAnnouncement,
            read.accepted ? "type bit set, everything else unchanged" : read.refusal);
     }
 
     // ------------------------------------------------------------------
     std::printf("\n[5] US -> DAEMON: our SDP, against the shape the daemon announces\n");
     std::printf("%s\n", ourSdp.c_str());
-    ok("v= line", has(ourSdp, "v=0"), "the version line every SDP reader demands first");
+    check("v= line", has(ourSdp, "v=0"), "the version line every SDP reader demands first");
     {
         const std::string origin = line(ourSdp, "o=");
         unsigned fields = 0;
@@ -243,22 +231,22 @@ int run() {
             if (sp > at) ++fields;
             at = sp + 1;
         }
-        ok("o= six fields", fields == 6,
+        check("o= six fields", fields == 6,
            "\"" + origin + "\"" + (fields == 6 ? "" : " has " + std::to_string(fields) +
                                                           " fields, not six"));
-        ok("o= field order", has(origin, " IN IP4 "), "nettype IN, then addrtype IP4");
+        check("o= field order", has(origin, " IN IP4 "), "nettype IN, then addrtype IP4");
     }
-    ok("s= line", has(ourSdp, "s=macOS AES67"), line(ourSdp, "s="));
-    ok("c= line", has(ourSdp, "c=IN IP4 239.69.83.20"), line(ourSdp, "c="));
-    ok("t= line", has(ourSdp, "t=0 0"), "an unbounded session, as the daemon announces its own");
-    ok("m= line", has(ourSdp, "m=audio 5004 RTP/AVP 97"), line(ourSdp, "m=audio"));
-    ok("a=rtpmap", has(ourSdp, "a=rtpmap:97 L24/48000/8"), line(ourSdp, "a=rtpmap"));
-    ok("a=ptime", has(ourSdp, "a=ptime:1\r") || has(ourSdp, "a=ptime:1\n"),
+    check("s= line", has(ourSdp, "s=macOS AES67"), line(ourSdp, "s="));
+    check("c= line", has(ourSdp, "c=IN IP4 239.69.83.20"), line(ourSdp, "c="));
+    check("t= line", has(ourSdp, "t=0 0"), "an unbounded session, as the daemon announces its own");
+    check("m= line", has(ourSdp, "m=audio 5004 RTP/AVP 97"), line(ourSdp, "m=audio"));
+    check("a=rtpmap", has(ourSdp, "a=rtpmap:97 L24/48000/8"), line(ourSdp, "a=rtpmap"));
+    check("a=ptime", has(ourSdp, "a=ptime:1\r") || has(ourSdp, "a=ptime:1\n"),
        "\"" + line(ourSdp, "a=ptime") + "\", the 1 ms the daemon runs at by default");
     {
         const std::string refclk = line(ourSdp, "a=ts-refclk");
-        ok("a=ts-refclk present", !refclk.empty(), refclk);
-        ok("a=ts-refclk domain form", !has(refclk, "domain-nmbr="),
+        check("a=ts-refclk present", !refclk.empty(), refclk);
+        check("a=ts-refclk domain form", !has(refclk, "domain-nmbr="),
            "\"" + refclk + "\"" +
                (has(refclk, "domain-nmbr=")
                     ? " -- RFC 7273's form; the daemon writes and reads the bare \":0\", which is "
@@ -275,8 +263,9 @@ int run() {
               "Tests/support/DaemonRtsp and the live tool, not this one");
 
     std::printf("\n=== RESULT: %s (%d checks failed, %d left to a live daemon) ===\n",
-                fails == 0 ? "THEY CONNECT" : "MISMATCH", fails, unverified);
-    return fails == 0 ? 0 : 1;
+                CheckReport::failedCount == 0 ? "THEY CONNECT" : "MISMATCH",
+                CheckReport::failedCount, CheckReport::unsettledCount);
+    return CheckReport::failedCount == 0 ? 0 : 1;
 }
 
 // main only guards run(): a tool that dies on an uncaught exception prints
