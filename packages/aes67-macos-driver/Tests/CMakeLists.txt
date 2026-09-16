@@ -844,7 +844,10 @@ endif()
 set_tests_properties(RTPReceiver PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(RTPTransmitter PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(PTPClock PROPERTIES LABELS "unit;timing" TIMEOUT 60)
-set_tests_properties(PTPMaster PROPERTIES LABELS "unit" TIMEOUT 60)
+# The cadence case in this suite sleeps five seconds by the wall clock and
+# sends to the PTP group, so the suite carries both labels now: the gate skips
+# `timing`, the sanitizer runs skip `network`, and a full local ctest runs it.
+set_tests_properties(PTPMaster PROPERTIES LABELS "unit;timing;network" TIMEOUT 90)
 set_tests_properties(PTPArbitrator PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(AES67DeviceOffline PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(DeviceActivation PROPERTIES LABELS "unit" TIMEOUT 60)

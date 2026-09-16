@@ -24,7 +24,9 @@
 #include "NetworkEngine/PTP/PTPClockSource.h"
 #include "NetworkEngine/PTP/PTPMaster.h"
 
+#include <chrono>
 #include <iostream>
+#include <thread>
 
 using namespace AES67;
 
@@ -291,4 +293,71 @@ TEST_CASE("The Announce Dataset Carries What The Profile And The Clock Say") {
     // The clock source's own answers, which the dataset copies verbatim.
     CHECK(clock.clockClass() == 6);
     CHECK(clock.clockAccuracy() == PTPClockAccuracy::Within1Microsecond);
+}
+
+TEST_CASE("The master sends Sync at the interval it announces" * doctest::timeout(30.0)) {
+    // The rate is not a detail of the transmit loop: every message carries
+    // logSyncInterval, and a slave sizes its receipt timeout from that number.
+    // This loop used to restamp "last sent" from the moment of the send and
+    // then sleep a fixed 10 ms tick, so every period rounded up and the slack
+    // was never given back: at 125 ms an outside observer measured 131.9 ms,
+    // 5.5% slow, for as long as the master ran.
+    //
+    // Counting sends rather than arrivals on purpose: what regressed was the
+    // decision to send, not the socket under it. The counter only advances on
+    // a sendto that succeeded, though, so this still wants a host that can
+    // send to 224.0.1.129 -- hence the network label beside the timing one.
+    PTPMasterConfig config;
+    config.interfaceName = "lo0";
+    config.syncIntervalMs = 125;
+    config.announceIntervalMs = 250;
+    // High ports: below 1024 needs root, and this has to run unprivileged.
+    config.eventPort = 20419;
+    config.generalPort = 20420;
+
+    InternalClockSource clock;
+    PTPMaster master(config, clock);
+    REQUIRE(master.start());
+
+    // Nothing is sent until BMCA decides this port is the master, which takes
+    // announceReceiptTimeoutMultiplier announce intervals of silence. Counting
+    // from the first Sync rather than from start() keeps that wait out of the
+    // arithmetic -- including it made a correct master look 14% slow.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (master.syncSentCount() == 0 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    REQUIRE(master.syncSentCount() > 0);
+
+    const int syncsAtStart = master.syncSentCount();
+    const int announcesAtStart = master.announceSentCount();
+    const auto began = std::chrono::steady_clock::now();
+
+    // Long enough for the old 5.5% error to be several whole messages, short
+    // enough to sit inside a test suite: five seconds is 40 Syncs at the
+    // configured rate and 38 at the broken one.
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    const int syncs = master.syncSentCount() - syncsAtStart;
+    const int announces = master.announceSentCount() - announcesAtStart;
+    const auto elapsed = std::chrono::steady_clock::now() - began;
+    master.stop();
+
+    const double seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(elapsed).count();
+    REQUIRE(syncs > 1);
+    const double measuredMs = seconds * 1000.0 / static_cast<double>(syncs);
+
+    INFO("sent ", syncs, " Sync in ", seconds, " s: one every ", measuredMs, " ms");
+    // Three per cent: the machine's scheduling noise is a fraction of a per
+    // cent at this interval, and the fault this pins was five and a half.
+    CHECK(measuredMs > 125.0 * 0.97);
+    CHECK(measuredMs < 125.0 * 1.03);
+
+    // And Announce keeps its own rate rather than borrowing the Sync tick.
+    REQUIRE(announces > 1);
+    const double announceMs = seconds * 1000.0 / static_cast<double>(announces);
+    INFO("announce every ", announceMs, " ms");
+    CHECK(announceMs > 250.0 * 0.94);
+    CHECK(announceMs < 250.0 * 1.06);
 }
