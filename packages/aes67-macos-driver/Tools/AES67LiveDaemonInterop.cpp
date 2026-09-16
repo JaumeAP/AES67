@@ -39,7 +39,7 @@
 // step fails loudly rather than needing its output parsed. A command line it
 // cannot read exits 1 before any check has run, with the reason on stderr.
 //
-#include "ToolOptions.h"
+#include "Shared/ToolOptions.h"
 
 #include "Driver/SDPParser.h"
 #include "NetworkEngine/JsonEscape.h"
@@ -210,7 +210,7 @@ ArgsResult parseArgs(int argc, char** argv, Options& opts) {
             return ArgsResult::UsagePrinted;
         }
         else {
-            std::fprintf(stderr, "Unknown option: %s (use --help)\n", key.c_str());
+            ToolOptions::unknownOption(key.c_str());
             return ArgsResult::Bad;
         }
     }

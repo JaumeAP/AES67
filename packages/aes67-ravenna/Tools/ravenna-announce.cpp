@@ -20,6 +20,8 @@
 // onto the receiver's staged endpoint, activate it, and the channels are
 // assigned through aes67-core's StreamChannelMapper.
 //
+#include "Shared/ToolOptions.h"
+
 #include "Driver/SDPParser.h"
 #include "Ravenna/NetworkInterfaces.h"
 #include "NetworkEngine/RTP/PacketBudget.h"
@@ -73,11 +75,6 @@ void usage() {
                  "                        [--nmos-port N]\n");
 }
 
-const char* valueFor(int argc, char** argv, int& index) {
-    if (index + 1 >= argc) return nullptr;
-    return argv[++index];
-}
-
 /// Host byte order, which is what the advertisement holds: the encoder writes
 /// it big-endian itself, and holding it already swapped is how a field ends up
 /// reversed on the wire.
@@ -92,17 +89,6 @@ bool addressFrom(const std::string& text, uint32_t& out) {
 }
 
 }  // namespace
-
-// strtol rather than atoi: atoi answers 0 to "abc" and to "0" alike, and a
-// port of 0 from a typo is a bug that only shows on the wire.
-static std::optional<long> parseNumber(const char* text) {
-    if (text == nullptr || *text == '\0') return std::nullopt;
-    char* endptr = nullptr;
-    errno = 0;
-    const long parsed = std::strtol(text, &endptr, 10);
-    if (errno != 0 || *endptr != '\0') return std::nullopt;
-    return parsed;
-}
 
 int main(int argc, char** argv) {
     using namespace AES67;
@@ -125,28 +111,38 @@ int main(int argc, char** argv) {
     int ptpDomain = 0;
     uint16_t nmosPort = 8080;
 
+    // The number parsing was already careful -- strtol, the whole string,
+    // errno -- and then cast the result without looking at it, so --port
+    // 70000 announced port 4464 and --channels 70000 announced 4464 channels.
+    // Shared/ToolOptions.h is the same reading with the range the value is
+    // about to be stored in, and it is what the rest of this tree's programs
+    // read their command lines with.
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
         const char* value = nullptr;
-        auto need = [&]() { value = valueFor(argc, argv, i); return value != nullptr; };
+        long long number = 0;
+        auto need = [&]() { value = ToolOptions::value(argc, argv, i); return value != nullptr; };
 
         if (option == "--help" || option == "-h") { usage(); return 0; }
-        else if (option == "--interface") { if (!need()) { usage(); return 2; } interfaceName = value; }
-        else if (option == "--address") { if (!need()) { usage(); return 2; } addressText = value; }
-        else if (option == "--host") { if (!need()) { usage(); return 2; } hostName = value; }
-        else if (option == "--name") { if (!need()) { usage(); return 2; } sessionName = value; nameGiven = true; }
-        else if (option == "--group") { if (!need()) { usage(); return 2; } group = value; }
-        else if (option == "--port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } streamPort = static_cast<uint16_t>(*n); }
-        else if (option == "--rtsp-port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } rtspPort = static_cast<uint16_t>(*n); }
-        else if (option == "--channels") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } channels = static_cast<uint16_t>(*n); }
-        else if (option == "--device-channel") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } deviceChannel = static_cast<uint16_t>(*n); }
-        else if (option == "--rate") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } sampleRate = static_cast<uint32_t>(*n); }
-        else if (option == "--encoding") { if (!need()) { usage(); return 2; } encoding = value; }
-        else if (option == "--ptime-us") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } ptimeUs = static_cast<uint32_t>(*n); }
-        else if (option == "--ptp-gmid") { if (!need()) { usage(); return 2; } ptpGrandmaster = value; }
-        else if (option == "--ptp-domain") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } ptpDomain = static_cast<int>(*n); }
-        else if (option == "--nmos-port") { if (!need()) { usage(); return 2; } const auto n = parseNumber(value); if (!n) { usage(); return 2; } nmosPort = static_cast<uint16_t>(*n); }
-        else { (void)std::fprintf(stderr, "unknown option: %s\n", option.c_str()); usage(); return 2; }
+        else if (option == "--interface") { if (!need()) return 2; interfaceName = value; }
+        else if (option == "--address") { if (!need()) return 2; addressText = value; }
+        else if (option == "--host") { if (!need()) return 2; hostName = value; }
+        else if (option == "--name") { if (!need()) return 2; sessionName = value; nameGiven = true; }
+        else if (option == "--group") { if (!need()) return 2; group = value; }
+        else if (option == "--port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; streamPort = static_cast<uint16_t>(number); }
+        else if (option == "--rtsp-port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; rtspPort = static_cast<uint16_t>(number); }
+        else if (option == "--channels") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; channels = static_cast<uint16_t>(number); }
+        else if (option == "--device-channel") { if (!ToolOptions::integerOption(argc, argv, i, 0, 65535, number)) return 2; deviceChannel = static_cast<uint16_t>(number); }
+        else if (option == "--rate") { if (!ToolOptions::integerOption(argc, argv, i, 1, 4294967295LL, number)) return 2; sampleRate = static_cast<uint32_t>(number); }
+        else if (option == "--encoding") { if (!need()) return 2; encoding = value; }
+        // Zero is left to the packet-size check below, which refuses a packet
+        // time that carries no samples and says so with the rate in hand.
+        else if (option == "--ptime-us") { if (!ToolOptions::integerOption(argc, argv, i, 0, 4294967295LL, number)) return 2; ptimeUs = static_cast<uint32_t>(number); }
+        else if (option == "--ptp-gmid") { if (!need()) return 2; ptpGrandmaster = value; }
+        // IEEE 1588 carries domainNumber in one octet.
+        else if (option == "--ptp-domain") { if (!ToolOptions::integerOption(argc, argv, i, 0, 255, number)) return 2; ptpDomain = static_cast<int>(number); }
+        else if (option == "--nmos-port") { if (!ToolOptions::integerOption(argc, argv, i, 1, 65535, number)) return 2; nmosPort = static_cast<uint16_t>(number); }
+        else { ToolOptions::unknownOption(option.c_str()); usage(); return 2; }
     }
 
     if (interfaceName.empty() || addressText.empty()) { usage(); return 2; }

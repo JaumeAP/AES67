@@ -29,7 +29,7 @@
 //   --interface <ip>  Local interface IP to join the group on (default: system)
 //
 
-#include "ToolOptions.h"
+#include "Shared/ToolOptions.h"
 
 #include <exception>
 #include <cstdio>
@@ -244,7 +244,7 @@ int run(int argc, char* argv[]) {
                 argv[0]);
             return 0;
         } else {
-            fprintf(stderr, "Unknown option: %s (use --help)\n", arg.c_str());
+            AES67::ToolOptions::unknownOption(arg.c_str());
             return 1;
         }
     }

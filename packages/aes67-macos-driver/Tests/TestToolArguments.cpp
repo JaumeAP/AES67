@@ -24,72 +24,49 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include <sys/wait.h>
+#include "support/ToolProcess.h"
 
-#include <cstdio>
 #include <string>
-#include <utility>
 #include <vector>
+
+using namespace AES67::TestSupport;
 
 namespace {
 
-struct ToolRun {
-    int status{-1};
-    std::string output;
+/// One program, and what it exits with when it cannot read its command line.
+/// The six tools under Tools/ answer 1; aes67ptpd answers 2, as it did before
+/// any of this, and that is its contract with the LaunchDaemon that starts it.
+struct Tool {
+    std::string path;
+    int badStatus{1};
 };
 
-/// Runs one tool and collects its exit status and everything it wrote, both
-/// streams together -- these tools print their usage on stdout and their
-/// refusals on stderr, and a test that read only one of them would miss half
-/// the answer.
-ToolRun run(const std::string& tool, const std::string& arguments) {
-    const std::string command = "'" + tool + "' " + arguments + " 2>&1";
-
-    ToolRun result;
-    std::FILE* pipe = popen(command.c_str(), "r");
-    REQUIRE(pipe != nullptr);
-
-    char buffer[512];
-    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        result.output += buffer;
-    }
-
-    const int closed = pclose(pipe);
-    result.status = WIFEXITED(closed) ? WEXITSTATUS(closed) : -1;
-    return result;
-}
-
-/// One tool and the command line to hand it. A struct rather than a pair
-/// because doctest's INFO builds a lambda around what it is given, and a
-/// structured binding cannot be captured by one before C++20.
-struct ToolCase {
-    std::string tool;
-    std::string arguments;
-};
-
-bool mentions(const std::string& text, const std::string& needle) {
-    return text.find(needle) != std::string::npos;
-}
-
-/// The five tools that take options and talk to the network. The two offline
+/// Every program in this package that takes options. The two offline
 /// simulations take none and are CTests of their own.
 ///
 /// AES67LiveDaemonInterop is here although only a Linux job ever runs it for
-/// real: its command line is read before it opens anything, so the refusals
-/// below are exactly as reachable on this machine as the others'.
-const std::vector<std::string>& tools() {
-    static const std::vector<std::string> paths = {
-        AES67_TOOL_SENDER, AES67_TOOL_RECEIVER, AES67_TOOL_SAP_MONITOR, AES67_TOOL_PTP_STRESS,
-        AES67_TOOL_LIVE_INTEROP};
-    return paths;
+/// real, and aes67ptpd although it needs root to do anything: both read their
+/// command line before they open anything, so the refusals below are exactly
+/// as reachable on this machine as the others'.
+const std::vector<Tool>& tools() {
+    static const std::vector<Tool> all = {
+        {AES67_TOOL_SENDER, 1},
+        {AES67_TOOL_RECEIVER, 1},
+        {AES67_TOOL_SAP_MONITOR, 1},
+        {AES67_TOOL_PTP_STRESS, 1},
+        {AES67_TOOL_LIVE_INTEROP, 1},
+        {AES67_TOOL_PTP_DAEMON, 2},
+    };
+    return all;
 }
 
 } // namespace
 
 TEST_CASE("Every Tool Answers For Itself And Leaves") {
-    for (const auto& tool : tools()) {
+    for (const auto& one : tools()) {
+        const std::string tool = one.path;
         INFO("tool: " << tool);
-        const ToolRun result = run(tool, "--help");
+        const ToolRun result = runTool(tool, "--help");
 
         // Asking for the usage is not an error, and a tool that printed it
         // and then went on to open a socket would hang this suite.
@@ -99,11 +76,13 @@ TEST_CASE("Every Tool Answers For Itself And Leaves") {
 }
 
 TEST_CASE("An Option Nobody Has Heard Of Is Refused By Name") {
-    for (const auto& tool : tools()) {
+    for (const auto& one : tools()) {
+        const std::string tool = one.path;
+        const int badStatus = one.badStatus;
         INFO("tool: " << tool);
-        const ToolRun result = run(tool, "--there-is-no-such-option");
+        const ToolRun result = runTool(tool, "--there-is-no-such-option");
 
-        CHECK(result.status == 1);
+        CHECK(result.status == badStatus);
         CHECK(mentions(result.output, "Unknown option"));
         CHECK(mentions(result.output, "--there-is-no-such-option"));
     }
@@ -123,15 +102,17 @@ TEST_CASE("A Flag Given As The Last Word Says A Value Is Missing") {
         {AES67_TOOL_PTP_STRESS, "--csv"},
         {AES67_TOOL_LIVE_INTEROP, "--host"},
         {AES67_TOOL_LIVE_INTEROP, "--http-port"},
+        {AES67_TOOL_PTP_DAEMON, "--domain", 2},
+        {AES67_TOOL_PTP_DAEMON, "--interface", 2},
     };
 
     for (const auto& one : cases) {
         const std::string tool = one.tool;
         const std::string flag = one.arguments;
         INFO("tool: " << tool << " flag: " << flag);
-        const ToolRun result = run(tool, flag);
+        const ToolRun result = runTool(tool, flag);
 
-        CHECK(result.status == 1);
+        CHECK(result.status == one.status);
         CHECK(mentions(result.output, "needs a value"));
         CHECK(mentions(result.output, flag));
         CHECK_FALSE(mentions(result.output, "Unknown option"));
@@ -147,15 +128,19 @@ TEST_CASE("A Value That Is Not A Number Is Refused Rather Than Read As Zero") {
         {AES67_TOOL_SAP_MONITOR, "--port 5004x"},
         {AES67_TOOL_PTP_STRESS, "--seconds 30s"},
         {AES67_TOOL_LIVE_INTEROP, "--http-port 8080x"},
+        // stoi stopped at the first character that was not a digit and said
+        // nothing, so this used to configure domain 0.
+        {AES67_TOOL_PTP_DAEMON, "--domain 0x10", 2},
+        {AES67_TOOL_PTP_DAEMON, "--delay-req-ms 1s", 2},
     };
 
     for (const auto& one : cases) {
         const std::string tool = one.tool;
         const std::string arguments = one.arguments;
         INFO("tool: " << tool << " arguments: " << arguments);
-        const ToolRun result = run(tool, arguments);
+        const ToolRun result = runTool(tool, arguments);
 
-        CHECK(result.status == 1);
+        CHECK(result.status == one.status);
         CHECK(mentions(result.output, "whole number"));
     }
 }
@@ -172,15 +157,19 @@ TEST_CASE("A Number Too Big For What Holds It Is Refused") {
         {AES67_TOOL_PTP_STRESS, "--event-port 99999"},
         {AES67_TOOL_LIVE_INTEROP, "--rtsp-port 70000"},
         {AES67_TOOL_LIVE_INTEROP, "--poll-interval-ms 0"},
+        // domainNumber is one octet on the wire and DSCP is six bits.
+        {AES67_TOOL_PTP_DAEMON, "--domain 300", 2},
+        {AES67_TOOL_PTP_DAEMON, "--dscp 999", 2},
+        {AES67_TOOL_PTP_DAEMON, "--delay-req-ms 0", 2},
     };
 
     for (const auto& one : cases) {
         const std::string tool = one.tool;
         const std::string arguments = one.arguments;
         INFO("tool: " << tool << " arguments: " << arguments);
-        const ToolRun result = run(tool, arguments);
+        const ToolRun result = runTool(tool, arguments);
 
-        CHECK(result.status == 1);
+        CHECK(result.status == one.status);
         CHECK(mentions(result.output, "must be between"));
     }
 }
@@ -189,11 +178,11 @@ TEST_CASE("A Frequency That Is Not A Number Is Refused") {
     // --freq is the one value read as a real number, so it has a refusal of
     // its own to check: atof() answered 0.0 for a word, and a sine generator
     // asked for 0 Hz emits a DC offset rather than a tone.
-    const ToolRun word = run(AES67_TOOL_SENDER, "--freq kilohertz");
+    const ToolRun word = runTool(AES67_TOOL_SENDER, "--freq kilohertz");
     CHECK(word.status == 1);
     CHECK(mentions(word.output, "wants a number"));
 
-    const ToolRun negative = run(AES67_TOOL_SENDER, "--freq -1000");
+    const ToolRun negative = runTool(AES67_TOOL_SENDER, "--freq -1000");
     CHECK(negative.status == 1);
     CHECK(mentions(negative.output, "must be between"));
 }
@@ -202,7 +191,7 @@ TEST_CASE("A Negative SSRC Does Not Wrap Around Into A Valid One") {
     // strtoul accepts a leading minus and wraps it, so `--ssrc -1` used to
     // become 0xFFFFFFFF -- a perfectly usable SSRC that nobody had asked
     // for, sent on the wire under that identity.
-    const ToolRun result = run(AES67_TOOL_SENDER, "--ssrc -1");
+    const ToolRun result = runTool(AES67_TOOL_SENDER, "--ssrc -1");
 
     CHECK(result.status == 1);
     CHECK(mentions(result.output, "unsigned number"));
@@ -213,17 +202,17 @@ TEST_CASE("A Value In Range Is Still Taken") {
     // have made it refuse what it is for. Nothing here reaches a socket --
     // the flags are parsed in the order they are written and --help is last,
     // so everything before it was accepted before the usage was printed.
-    const ToolRun sender = run(AES67_TOOL_SENDER, "--port 5004 --channels 8 --ssrc 0xDEADBEEF --freq 997.5 --help");
+    const ToolRun sender = runTool(AES67_TOOL_SENDER, "--port 5004 --channels 8 --ssrc 0xDEADBEEF --freq 997.5 --help");
     CHECK(sender.status == 0);
     CHECK(mentions(sender.output, "Usage:"));
 
-    const ToolRun stress = run(AES67_TOOL_PTP_STRESS, "--seconds 30 --event-port 20319 --help");
+    const ToolRun stress = runTool(AES67_TOOL_PTP_STRESS, "--seconds 30 --event-port 20319 --help");
     CHECK(stress.status == 0);
     CHECK(mentions(stress.output, "Usage:"));
 
     // The whole command line the CI job hands the live interop tool, which is
     // the one that used to accept a typo in any of these without a word.
-    const ToolRun live = run(AES67_TOOL_LIVE_INTEROP,
+    const ToolRun live = runTool(AES67_TOOL_LIVE_INTEROP,
         "--host 127.0.0.1 --rtsp-port 8854 --http-port 8080 "
         "--sap-group 239.255.255.255 "
         "--daemon-source-id 0 --daemon-source-name 'CI Fake Source' "

@@ -12,6 +12,7 @@
 #pragma once
 
 #include "ExternalReference.h"
+#include "GrandmasterConfig.h"
 #include "PhcClock.h"
 #include "PtpSockets.h"
 #include "PtpWire.h"
@@ -23,18 +24,6 @@
 #include <string>
 
 namespace AES67::LinuxPtpd {
-
-struct GrandmasterConfig {
-    std::string interfaceName = "eth0";
-    /// The name of a profile in packages/aes67-profiles: "aes67",
-    /// "aes67-tight", "default1588" or "gptp". The five numbers it fixes are
-    /// not repeated here.
-    std::string profileName = "aes67";
-    uint8_t priority1 = 128;
-    uint8_t priority2 = 128;
-    int16_t currentUtcOffset = 37;
-    bool verbose = false;
-};
 
 class Grandmaster {
 public:

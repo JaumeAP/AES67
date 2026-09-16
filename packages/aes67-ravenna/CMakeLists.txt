@@ -109,6 +109,21 @@ if(AES67_RAVENNA_TOOLS_AND_TESTS)
                 set_tests_properties(${suite} PROPERTIES LABELS "unit" TIMEOUT 60)
             endforeach()
 
+            # ravenna-announce's command line, which lives inside its main():
+            # the suite starts the binary, so CMake tells it where the binary
+            # is rather than letting it guess at a build layout.
+            # support/ToolProcess.h is the core's, shared with the driver's
+            # own tools suite -- starting a program and reading what it said
+            # is the same job in both.
+            add_executable(TestAnnounceArguments Tests/TestAnnounceArguments.cpp)
+            target_link_libraries(TestAnnounceArguments PRIVATE doctest_headers)
+            target_include_directories(TestAnnounceArguments PRIVATE ${AES67_CORE_DIR}/Tests)
+            target_compile_definitions(TestAnnounceArguments PRIVATE
+                AES67_TOOL_ANNOUNCE="$<TARGET_FILE:ravenna-announce>")
+            add_dependencies(TestAnnounceArguments ravenna-announce)
+            add_test(NAME AnnounceArguments COMMAND TestAnnounceArguments)
+            set_tests_properties(AnnounceArguments PROPERTIES LABELS "unit" TIMEOUT 60)
+
     # The parsers, fed what nobody wrote a test for: Tests/fuzz/FuzzParsers.cpp.
     # Not a CTest test -- the gate runs it under AES67_ANALYSE=1, in the
     # sanitizer build, with an iteration count. -DAES67_LIBFUZZER=ON builds the

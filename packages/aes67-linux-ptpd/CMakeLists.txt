@@ -61,6 +61,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # a one-per-second reference is a second thing to get wrong.
     add_executable(aes67-ptpd
         src/main.cpp
+        src/Options.cpp
         src/ExternalReference.cpp
         src/Grandmaster.cpp
         src/PhcClock.cpp
@@ -109,12 +110,17 @@ if(BUILD_TESTS)
         endif()
 
         enable_testing()
-        foreach(suite PtpWire ReferenceMath)
+        # Options is in the list although the daemon it configures is
+        # Linux-only: src/Options.cpp was split out of main.cpp precisely so
+        # that the half which is only numbers builds and runs anywhere, the
+        # same reason PtpWire.cpp is its own library.
+        foreach(suite PtpWire ReferenceMath Options)
             add_executable(Test${suite} Tests/Test${suite}.cpp)
             target_link_libraries(Test${suite} PRIVATE aes67_ptp_wire doctest_headers)
             add_test(NAME ${suite} COMMAND Test${suite})
             set_tests_properties(${suite} PROPERTIES LABELS "unit" TIMEOUT 60)
         endforeach()
+        target_sources(TestOptions PRIVATE src/Options.cpp)
 
         # What this daemon sends, against the rules of a real slave: the
         # RAVENNA ALSA kernel module, vendored under external/ravenna-alsa-lkm.
