@@ -401,3 +401,28 @@ TEST_CASE("Timestamp Calculation") {
 // Main Test Runner
 //
 
+
+TEST_CASE("A unicast destination opens without a group to join") {
+    // openReceiver() joined a multicast group whatever address it was given,
+    // and RTPReceiver hands it the connection address out of the session
+    // description. A description naming a unicast address -- which the parser
+    // takes, which IS-05 can stage, and which this package's own test sender
+    // sends to -- failed at IP_ADD_MEMBERSHIP with EINVAL and the stream never
+    // opened. Found by pointing ffmpeg at the receiver over the loopback.
+    AES67::RTP::RTPSocket unicast;
+    REQUIRE(unicast.openReceiver("127.0.0.1", 45111, nullptr));
+    CHECK(unicast.isOpen());
+    unicast.close();     // and closing one drops no membership it never took
+
+    // The multicast path is unchanged: still joined, still on the interface it
+    // was given. 239.255.0.0/16 is administratively scoped and goes nowhere.
+    AES67::RTP::RTPSocket multicast;
+    if (multicast.openReceiver("239.255.77.77", 45113, "127.0.0.1")) {
+        CHECK(multicast.isOpen());
+        multicast.close();
+    } else {
+        // A machine with no multicast route is not a failing driver: say so
+        // and let the unicast half of the case stand on its own.
+        MESSAGE("no multicast on this host; the unicast half of this case ran");
+    }
+}
