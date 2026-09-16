@@ -481,7 +481,18 @@ int run(int argc, char* argv[]) {
         // receiver told to expect 2 reported success.
         const size_t sourceBytesPerSample =
             source.payloadType == AES67::RTP::PT_AES67_L16 ? 2 : 3;
-        if (source.timestampStep > 0) {
+        // Only when the packet is the same size every time and the timestamp
+        // steps by the same amount: the division below is frames x channels x
+        // bytes, and a sender that packs by MTU rather than by a packet time
+        // -- ffmpeg's RTP muxer does -- has neither number to divide. It used
+        // to report "Channels: 0" for such a stream, which says nothing about
+        // the stream and looks like a fault in it.
+        const bool steadyPackets =
+            source.payloadSizeChanges == 0 && source.timestampStepsSeen.size() <= 1;
+        if (!steadyPackets) {
+            fprintf(stderr, "    Channels:     not readable: this sender varies its packet "
+                            "size or its timestamp step\n");
+        } else if (source.timestampStep > 0) {
             const size_t divisor = sourceBytesPerSample * source.timestampStep;
             const size_t carried = divisor > 0 ? source.payloadSize / divisor : 0;
             const bool exact = divisor > 0 && source.payloadSize % divisor == 0;
