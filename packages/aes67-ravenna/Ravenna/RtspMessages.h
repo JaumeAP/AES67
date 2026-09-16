@@ -65,6 +65,16 @@ bool parseRtspRequest(const std::string& text, RtspRequest& out);
 /// resource. Two rules, two functions, on purpose.
 std::string percentDecode(const std::string& text);
 
+/// The other direction: a path made writable as a URL. Everything RFC 3986
+/// calls unreserved, plus the separators a path is made of, goes through as
+/// itself; anything else becomes %XX.
+///
+/// It exists because a session called "Mix A" has a space in its path, and the
+/// one line ravenna-announce prints to say where to point a client printed
+/// that space raw -- a URL nobody can paste, for a server that answers the
+/// escaped form perfectly well.
+std::string percentEncodePath(const std::string& text);
+
 /// True once the text holds a complete header block, which is what tells a
 /// reader to stop reading. RTSP has no length to read ahead of.
 bool hasCompleteHeaders(const std::string& text);
