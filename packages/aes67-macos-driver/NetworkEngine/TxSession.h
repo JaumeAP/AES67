@@ -46,15 +46,19 @@ inline SDPSession announcedTxSession(const std::string& name,
     sdp.sessionID = static_cast<uint64_t>(std::time(nullptr));
     sdp.sessionVersion = 1;
     sdp.dscp = dscp; // -1 = inherit the active profile's DSCP (createTransmitter)
-    // SDPSession defaults this to "recvonly", and building the session field
-    // by field left every transmit stream carrying that default. Two
-    // consumers read it: saveAllStreamsInternal() persists it, and
-    // loadSavedStreams() decides isTransmit from it -- so after one restart
-    // the driver built an RTPReceiver on its own transmit group instead of the
-    // transmitter, which is silent, total TX loss with the channels counted as
-    // RX. The other is SDPParser's writer, which put `a=recvonly` into the SAP
-    // announcement, the RTSP DESCRIBE body and the IS-05 sender transport file.
-    sdp.direction = "sendonly";
+    // The direction is left at SDPSession's default, "recvonly", and that is
+    // deliberate: a=recvonly describes the stream to whoever reads the
+    // DESCRIPTION, who can only receive it. Every announcement this driver has
+    // been held against writes it that way -- a Dante device's, the RAVENNA
+    // daemon's, the Riedel Artist sample in Docs/Examples.
+    //
+    // It was briefly set to "sendonly" here, to fix a real bug: the persisted
+    // role was being read back out of this field, so every transmit stream
+    // came back from disk as a receiver -- silent, total TX loss with the
+    // channels counted as RX. That put a line on the wire no other sender
+    // writes to fix something no other device can see. The role is persisted
+    // as its own field now (PersistedStreamConfig::isTransmit), and this line
+    // says what it is supposed to say.
     return sdp;
 }
 

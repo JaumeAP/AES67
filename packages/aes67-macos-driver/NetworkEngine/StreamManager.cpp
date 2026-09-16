@@ -1285,7 +1285,10 @@ bool StreamManager::loadSavedStreams() {
         ManagedStream managed;
         managed.sdp = config.sdp;
         managed.mapping = config.mapping;
-        managed.isTransmit = (config.sdp.direction == "sendonly" || config.sdp.direction == "sendrecv");
+        // What the file says the stream is, not what its announcement says it
+        // looks like from the outside: a sender announces a=recvonly, so the
+        // direction read every transmit stream back as a receiver.
+        managed.isTransmit = config.isTransmit;
 
         // Create RTP receiver or transmitter (only start if IO is active)
         if (managed.isTransmit) {
@@ -1386,6 +1389,9 @@ bool StreamManager::saveAllStreamsInternal() {
             managed.mapping,
             managed.info.description
         );
+        // The role, written down rather than left to be guessed from the
+        // announced direction on the way back in.
+        config.isTransmit = managed.isTransmit;
 
         configs.push_back(config);
     }

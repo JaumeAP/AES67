@@ -360,6 +360,46 @@ TEST_CASE("Routes Survive A Round Trip, And The Older Shape Is Still Read") {
     std::cout << "PASS" << std::endl;
 }
 
+TEST_CASE("The Role Is Written Down, And An Older File Falls Back To The Direction") {
+    std::cout << "Test: isTransmit through JSON, and the file written before it... ";
+
+    PersistedStreamConfig config = StreamConfigManager::createConfig(
+        createTestSDP("Sender", 5004, 2, 48000), createTestMapping(2, 0), "Sender");
+    config.isTransmit = true;
+
+    const std::string json = StreamConfigManager::configToJSON(config);
+    const auto read = StreamConfigManager::configFromJSON(json);
+    REQUIRE(read.has_value());
+    CHECK(read->isTransmit);
+    // And the announcement still says what a reader of it can do, which is
+    // receive: the role is not carried by that line any more.
+    CHECK(read->sdp.direction == "recvonly");
+
+    // A file written before the field existed. All such a file carries about
+    // the role is the direction it was announced with, which is what used to
+    // be read -- so that reading is what it falls back to, both ways round.
+    std::string older = json;
+    const size_t at = older.find("\"isTransmit\"");
+    REQUIRE(at != std::string::npos);
+    older.erase(at, older.find('\n', at) + 1 - at);
+
+    const auto asReceiver = StreamConfigManager::configFromJSON(older);
+    REQUIRE(asReceiver.has_value());
+    CHECK_FALSE(asReceiver->isTransmit);
+
+    std::string olderSendonly = older;
+    const size_t direction = olderSendonly.find("\"direction\": \"recvonly\"");
+    REQUIRE(direction != std::string::npos);
+    olderSendonly.replace(direction, std::strlen("\"direction\": \"recvonly\""),
+                          "\"direction\": \"sendonly\"");
+
+    const auto asSender = StreamConfigManager::configFromJSON(olderSendonly);
+    REQUIRE(asSender.has_value());
+    CHECK(asSender->isTransmit);
+
+    std::cout << "PASS" << std::endl;
+}
+
 //
 // Main Test Runner
 //

@@ -186,6 +186,7 @@ std::string StreamConfigManager::configToJSON(const PersistedStreamConfig& confi
     std::ostringstream json;
     json << "{\n";
     json << "      \"enabled\": " << (config.enabled ? "true" : "false") << ",\n";
+    json << "      \"isTransmit\": " << (config.isTransmit ? "true" : "false") << ",\n";
     json << "      \"description\": \"" << jsonEscape(config.description) << "\",\n";
     json << "      \"createdTimestamp\": " << config.createdTimestamp << ",\n";
     json << "      \"modifiedTimestamp\": " << config.modifiedTimestamp << ",\n";
@@ -405,6 +406,17 @@ std::optional<PersistedStreamConfig> StreamConfigManager::configFromJSON(const s
             AES67_LOG("StreamConfigManager: Failed to parse SDP from JSON");
             return std::nullopt;
         }
+    }
+
+    // After the SDP, because of what it falls back on. A file written before
+    // this field existed has to keep working, and the only thing such a file
+    // carries about the role is the direction the stream was announced with --
+    // which is exactly what used to be read, and is why this field exists.
+    if (auto isTransmit = extractBoolField(json, "isTransmit")) {
+        config.isTransmit = *isTransmit;
+    } else {
+        config.isTransmit = config.sdp.direction == "sendonly" ||
+                            config.sdp.direction == "sendrecv";
     }
 
     // Extract mapping object
