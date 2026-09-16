@@ -32,10 +32,8 @@ jobs:
         with:
           submodules: recursive
 
-      # aes67-core includes <uuid/uuid.h>, which comes with the SDK on macOS
-      # and is a package here.
       - name: Dependencies
-        run: sudo apt-get update && sudo apt-get install -y uuid-dev clang-tidy cppcheck clang
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy cppcheck clang
 
       - name: Configure
         run: cmake -S packages/aes67-linux-ptpd -B build -DCMAKE_BUILD_TYPE=Release
@@ -96,7 +94,7 @@ jobs:
       - name: Dependencies
         run: |
           apt-get update
-          apt-get install -y build-essential cmake git uuid-dev
+          apt-get install -y build-essential cmake git
 
       - uses: actions/checkout@v4
         with:

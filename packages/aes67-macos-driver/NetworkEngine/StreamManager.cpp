@@ -70,6 +70,19 @@ void StreamManager::ensurePTPClockForDomain(int domain) {
 }
 
 StreamManager::~StreamManager() {
+    // The callbacks go first, before removeAllStreams() below raises one per
+    // open stream. They are owned by whoever registered them -- AES67Device,
+    // whose lambda reaches nodeRouter_ and nmosSyncMutex_, both declared after
+    // streamManager_ and therefore already destroyed by the time this runs:
+    // `if (nodeRouter_)` still passes, because ~unique_ptr does not null its
+    // pointer, so touch() took a mutex in freed memory and requestNMOSSync()
+    // locked a destroyed std::mutex. Every teardown with a stream still open.
+    // An object being destroyed has nothing useful to tell an observer, and
+    // the try/catch below catches exceptions, not a use-after-free.
+    streamAddedCallback_ = nullptr;
+    streamRemovedCallback_ = nullptr;
+    streamStatusCallback_ = nullptr;
+
     // removeAllStreams() joins threads, closes sockets and touches containers,
     // any of which can throw. Letting that out of a destructor during unwinding
     // is std::terminate, and this one runs at driver teardown, where an

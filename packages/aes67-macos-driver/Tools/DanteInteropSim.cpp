@@ -272,7 +272,16 @@ int run() {
        "\"" + line(ourSdp, "a=ptime") + "\", the 1 ms Dante's AES67 mode is fixed at");
     ok("a=mediaclk", has(ourSdp, "a=mediaclk:direct=0"),
        "the dylib's \"a=mediaclk:direct=%u\" -> clockOffset 0");
-    ok("a=recvonly", has(ourSdp, "a=recvonly"), "the direction a sender advertises");
+    ok("a=sendonly", has(ourSdp, "a=sendonly"),
+       "what createTxStream() announces since the direction fix: loadSavedStreams() reads this "
+       "field back to decide whether a saved stream is a transmitter, and the \"recvonly\" "
+       "default rebuilt every transmit stream as a receiver after a restart");
+    unsettled("a=sendonly against Dante",
+              "a Dante device announces its own flows as a=recvonly, and so does the RAVENNA "
+              "daemon -- the convention in an announcement is the receiver's point of view. "
+              "DefaultRtpFlowAdvertisement's field list carries no direction at all, so nothing "
+              "in the Controller bundle says whether it reads this line; only a live Controller "
+              "settles whether announcing sendonly costs us the listing");
     {
         const std::string refclk = line(ourSdp, "a=ts-refclk");
         if (refclk.empty()) {

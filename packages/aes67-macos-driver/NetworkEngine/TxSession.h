@@ -46,6 +46,15 @@ inline SDPSession announcedTxSession(const std::string& name,
     sdp.sessionID = static_cast<uint64_t>(std::time(nullptr));
     sdp.sessionVersion = 1;
     sdp.dscp = dscp; // -1 = inherit the active profile's DSCP (createTransmitter)
+    // SDPSession defaults this to "recvonly", and building the session field
+    // by field left every transmit stream carrying that default. Two
+    // consumers read it: saveAllStreamsInternal() persists it, and
+    // loadSavedStreams() decides isTransmit from it -- so after one restart
+    // the driver built an RTPReceiver on its own transmit group instead of the
+    // transmitter, which is silent, total TX loss with the channels counted as
+    // RX. The other is SDPParser's writer, which put `a=recvonly` into the SAP
+    // announcement, the RTSP DESCRIBE body and the IS-05 sender transport file.
+    sdp.direction = "sendonly";
     return sdp;
 }
 

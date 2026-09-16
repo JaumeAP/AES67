@@ -7,6 +7,7 @@
 #include "NetworkEngine/Discovery/PathPieces.h"
 
 #include "NetworkEngine/JsonEscape.h"
+#include "NetworkEngine/SelectWait.h"
 #include "Ravenna/ConnectionApi.h"
 
 #include <arpa/inet.h>
@@ -17,6 +18,7 @@
 
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -37,6 +39,13 @@ constexpr int kSelectTimeoutMs = 250;   ///< how fast the accept loop notices st
 /// holds the whole API shut for as long as the peer cares to keep it
 /// (2026-09-04 audit); RTSPServer has had the same bound since it was written.
 constexpr int kClientTimeoutMs = 2000;
+/// And a ceiling on the whole connection, not just on one silent recv().
+/// SO_RCVTIMEO bounds how long a peer may say NOTHING; a peer that sends one
+/// byte every 1.9 s never trips it, so 64 KiB of request at 4 KiB a read was
+/// still some 36 hours inside serve() -- during which this thread answers no
+/// other IS-04 or IS-05 request, and stop() joins it before closing the
+/// listener, so driver teardown waits with it.
+constexpr int kRequestDeadlineMs = 10000;
 
 /// Offset of the value that follows a header name, matched without regard to
 /// case, or npos. `name` is lowercase; the head is searched line by line so a
@@ -356,15 +365,18 @@ private:
             // loop at full speed.
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(listen_, &readfds);
-            struct timeval tv{0, kSelectTimeoutMs * 1000};
-            const int ready = ::select(listen_ + 1, &readfds, nullptr, nullptr, &tv);
-            if (ready < 0) {
-                if (errno == EINTR) continue; // a signal, not a failure
+            int maxFd = -1;
+            if (!addReadable(listen_, &readfds, maxFd)) {
                 running_.store(false);
                 return;
             }
-            if (ready == 0) continue; // timeout — re-check running_
+            const SelectOutcome outcome = waitReadable(maxFd, &readfds, kSelectTimeoutMs);
+            if (outcome == SelectOutcome::Interrupted) continue; // a signal, not a failure
+            if (outcome == SelectOutcome::Failed) {
+                running_.store(false);
+                return;
+            }
+            if (outcome == SelectOutcome::Timeout) continue; // re-check running_
 
             const int client = ::accept(listen_, nullptr, nullptr);
             if (client < 0) continue;
@@ -615,12 +627,16 @@ void ConnectionAPIServer::Impl::serve(int client) {
     struct timeval tv{kClientTimeoutMs / 1000, (kClientTimeoutMs % 1000) * 1000};
     ::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(kRequestDeadlineMs);
+
     std::string request;
     char chunk[4096];
     size_t headEnd = std::string::npos;
 
     // Head first, then as much body as Content-Length says.
     while (request.size() < kMaxRequestBytes) {
+        if (std::chrono::steady_clock::now() >= deadline) return;
         const ssize_t n = ::recv(client, chunk, sizeof(chunk), 0);
         if (n <= 0) break;
         request.append(chunk, static_cast<size_t>(n));

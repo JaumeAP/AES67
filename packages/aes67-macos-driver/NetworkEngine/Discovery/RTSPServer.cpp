@@ -177,8 +177,12 @@ private:
         while (running_.load(std::memory_order_acquire)) {
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(listenFd_, &readfds);
-            const SelectOutcome outcome = waitReadable(listenFd_, &readfds, kSelectTimeoutMs);
+            int maxFd = -1;
+            if (!addReadable(listenFd_, &readfds, maxFd)) {
+                running_.store(false, std::memory_order_release);
+                return;
+            }
+            const SelectOutcome outcome = waitReadable(maxFd, &readfds, kSelectTimeoutMs);
             if (outcome == SelectOutcome::Interrupted) continue; // a signal
             if (outcome == SelectOutcome::Timeout) continue;     // re-check running_
             if (outcome == SelectOutcome::Failed) {

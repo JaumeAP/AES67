@@ -51,6 +51,21 @@ RTPReceiver::RTPReceiver(
     if (playoutDelaySamples > 0) {
         const size_t packets = (playoutDelaySamples + samplesPerPacket - 1) / samplesPerPacket;
         prefillPacketCount_ = std::max<size_t>(packets, 1); // a zero cushion starves immediately
+
+        // The cushion is counted in packets of jitter buffer, so it cannot be
+        // deeper than the buffer has slots: the pre-fill gate below waits for
+        // getBufferedPacketCount() to reach this number, and a number the
+        // buffer can never hold is a gate that never opens -- permanent
+        // silence, with nothing logged. Two independently valid settings got
+        // there: 4800 samples of playout delay on a 125 us stream needs 800
+        // packets, against a 256-slot default buffer.
+        const size_t capacity = jitterBuffer_.getMaxBufferSize();
+        if (prefillPacketCount_ > capacity) {
+            AES67_LOGF("RTPReceiver: playout delay of %u samples needs %zu packets of cushion "
+                       "but the jitter buffer holds %zu; using %zu\n",
+                       playoutDelaySamples, prefillPacketCount_, capacity, capacity);
+            prefillPacketCount_ = capacity;
+        }
     }
 
     // stats_.reset(), not memset: Statistics is eleven std::atomic members, so
@@ -293,10 +308,14 @@ void RTPReceiver::receiveLoop() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
-        FD_SET(sockfd, &readfds);
+        int maxFd = -1;
+        if (!addReadable(sockfd, &readfds, maxFd)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
 
         // 1 ms: responsive without spinning.
-        const SelectOutcome outcome = waitReadable(sockfd, &readfds, 1);
+        const SelectOutcome outcome = waitReadable(maxFd, &readfds, 1);
         if (outcome == SelectOutcome::Failed) {
             // A descriptor that select() rejects will reject every following
             // call too, and continuing on it burned a core doing nothing

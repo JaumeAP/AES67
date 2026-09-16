@@ -141,8 +141,7 @@ private:
             FD_ZERO(&rd);
             int maxFd = -1;
             for (auto& kv : sockets_) {
-                FD_SET(kv.second, &rd);
-                if (kv.second > maxFd) maxFd = kv.second;
+                addReadable(kv.second, &rd, maxFd);
             }
             if (maxFd < 0) { // nothing to listen on yet
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));

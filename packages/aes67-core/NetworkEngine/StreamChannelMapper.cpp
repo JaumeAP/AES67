@@ -463,8 +463,16 @@ bool StreamChannelMapper::isRangeValid(uint16_t start, uint16_t count) const {
 bool StreamChannelMapper::isOverlapWithStream(const ChannelMapping& mapping, const StreamID& excludeStream) const {
     // Note: Caller must hold lock
 
-    for (uint16_t i = 0; i < mapping.deviceChannelCount; i++) {
-        int deviceCh = mapping.deviceChannelStart + i;
+    // deviceChannels(), not the sequential block: ownership is recorded
+    // against exactly this set by updateDeviceChannelOwners(), and for a
+    // routed mapping the two are different. Walking the block let a mapping
+    // whose routes point at channels another stream owns pass the check -- the
+    // block it was auto-assigned was free -- and then claim those channels
+    // anyway, which put two RTPReceiver threads on one SPSCRingBuffer whose
+    // contract is a single producer, and left the channels the first stream
+    // still writes reported as unassigned.
+    for (int deviceCh : mapping.deviceChannels()) {
+        if (deviceCh < 0 || deviceCh >= static_cast<int>(kMaxDeviceChannels)) continue;
         const StreamID& owner = deviceChannelOwners_[deviceCh];
 
         if (!owner.isNull() && owner != excludeStream) {

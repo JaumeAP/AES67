@@ -7,6 +7,7 @@
 #include "StreamConfig.h"
 #include "Profiles/ConfigPaths.h"
 #include "NetworkUtils.h"
+#include "NetworkEngine/JsonEscape.h"
 #include "../Driver/DebugLog.h"
 #include <fstream>
 #include <sstream>
@@ -185,11 +186,11 @@ std::string StreamConfigManager::configToJSON(const PersistedStreamConfig& confi
     std::ostringstream json;
     json << "{\n";
     json << "      \"enabled\": " << (config.enabled ? "true" : "false") << ",\n";
-    json << "      \"description\": \"" << escapeJSON(config.description) << "\",\n";
+    json << "      \"description\": \"" << jsonEscape(config.description) << "\",\n";
     json << "      \"createdTimestamp\": " << config.createdTimestamp << ",\n";
     json << "      \"modifiedTimestamp\": " << config.modifiedTimestamp << ",\n";
     json << "      \"jitterBufferDepth\": " << config.jitterBufferDepth << ",\n";
-    json << "      \"networkInterface\": \"" << escapeJSON(config.networkInterface) << "\",\n";
+    json << "      \"networkInterface\": \"" << jsonEscape(config.networkInterface) << "\",\n";
     json << "      \"sdp\": " << sdpToJSON(config.sdp) << ",\n";
     json << "      \"mapping\": " << mappingToJSON(config.mapping) << "\n";
     json << "    }";
@@ -200,26 +201,26 @@ std::string StreamConfigManager::configToJSON(const PersistedStreamConfig& confi
 std::string StreamConfigManager::sdpToJSON(const SDPSession& sdp) {
     std::ostringstream json;
     json << "{\n";
-    json << "        \"sessionName\": \"" << escapeJSON(sdp.sessionName) << "\",\n";
-    json << "        \"sessionInfo\": \"" << escapeJSON(sdp.sessionInfo) << "\",\n";
+    json << "        \"sessionName\": \"" << jsonEscape(sdp.sessionName) << "\",\n";
+    json << "        \"sessionInfo\": \"" << jsonEscape(sdp.sessionInfo) << "\",\n";
     json << "        \"sessionID\": " << sdp.sessionID << ",\n";
     json << "        \"sessionVersion\": " << sdp.sessionVersion << ",\n";
-    json << "        \"originUsername\": \"" << escapeJSON(sdp.originUsername) << "\",\n";
-    json << "        \"originAddress\": \"" << escapeJSON(sdp.originAddress) << "\",\n";
-    json << "        \"connectionAddress\": \"" << escapeJSON(sdp.connectionAddress) << "\",\n";
+    json << "        \"originUsername\": \"" << jsonEscape(sdp.originUsername) << "\",\n";
+    json << "        \"originAddress\": \"" << jsonEscape(sdp.originAddress) << "\",\n";
+    json << "        \"connectionAddress\": \"" << jsonEscape(sdp.connectionAddress) << "\",\n";
     json << "        \"ttl\": " << static_cast<int>(sdp.ttl) << ",\n";
     json << "        \"port\": " << sdp.port << ",\n";
     json << "        \"payloadType\": " << static_cast<int>(sdp.payloadType) << ",\n";
-    json << "        \"encoding\": \"" << escapeJSON(sdp.encoding) << "\",\n";
+    json << "        \"encoding\": \"" << jsonEscape(sdp.encoding) << "\",\n";
     json << "        \"sampleRate\": " << sdp.sampleRate << ",\n";
     json << "        \"numChannels\": " << sdp.numChannels << ",\n";
     json << "        \"ptimeUs\": " << sdp.ptimeUs << ",\n";
     json << "        \"framecount\": " << sdp.framecount << ",\n";
-    json << "        \"sourceAddress\": \"" << escapeJSON(sdp.sourceAddress) << "\",\n";
+    json << "        \"sourceAddress\": \"" << jsonEscape(sdp.sourceAddress) << "\",\n";
     json << "        \"ptpDomain\": " << sdp.ptpDomain << ",\n";
-    json << "        \"ptpMasterMAC\": \"" << escapeJSON(sdp.ptpMasterMAC) << "\",\n";
-    json << "        \"mediaClockType\": \"" << escapeJSON(sdp.mediaClockType) << "\",\n";
-    json << "        \"direction\": \"" << escapeJSON(sdp.direction) << "\"\n";
+    json << "        \"ptpMasterMAC\": \"" << jsonEscape(sdp.ptpMasterMAC) << "\",\n";
+    json << "        \"mediaClockType\": \"" << jsonEscape(sdp.mediaClockType) << "\",\n";
+    json << "        \"direction\": \"" << jsonEscape(sdp.direction) << "\"\n";
     json << "      }";
 
     return json.str();
@@ -229,7 +230,7 @@ std::string StreamConfigManager::mappingToJSON(const ChannelMapping& mapping) {
     std::ostringstream json;
     json << "{\n";
     json << "        \"streamID\": \"" << mapping.streamID.toString() << "\",\n";
-    json << "        \"streamName\": \"" << escapeJSON(mapping.streamName) << "\",\n";
+    json << "        \"streamName\": \"" << jsonEscape(mapping.streamName) << "\",\n";
     json << "        \"streamChannelCount\": " << mapping.streamChannelCount << ",\n";
     json << "        \"streamChannelOffset\": " << mapping.streamChannelOffset << ",\n";
     json << "        \"deviceChannelStart\": " << mapping.deviceChannelStart << ",\n";
@@ -549,21 +550,6 @@ PersistedStreamConfig StreamConfigManager::createConfig(
 
 uint64_t StreamConfigManager::getCurrentTimestamp() {
     return static_cast<uint64_t>(std::time(nullptr));
-}
-
-std::string StreamConfigManager::escapeJSON(const std::string& str) {
-    std::ostringstream oss;
-    for (char c : str) {
-        switch (c) {
-            case '"':  oss << "\\\""; break;
-            case '\\': oss << "\\\\"; break;
-            case '\n': oss << "\\n"; break;
-            case '\r': oss << "\\r"; break;
-            case '\t': oss << "\\t"; break;
-            default:   oss << c; break;
-        }
-    }
-    return oss.str();
 }
 
 // ============================================================================

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 #if defined(__APPLE__)
 // Use the modern (non-deprecated as of macOS 13.3) CBLAS interface.
@@ -25,6 +26,24 @@ constexpr float kL16Scale = 32767.0f;    // 2^15 - 1, encode
 constexpr float kL16Full  = 32768.0f;    // 2^15,     decode
 constexpr float kL24Scale = 8388607.0f;  // 2^23 - 1, encode
 constexpr float kL24Full  = 8388608.0f;  // 2^23,     decode
+
+#if AES67_HAVE_ACCELERATE
+/// Scratch space for the vDSP paths, per thread, reused across calls.
+///
+/// These used to be a std::vector built and destroyed inside each function,
+/// which is one or two malloc/free pairs per RTP packet on a thread that must
+/// not allocate at all: at 125 us that is up to 24k of each per second per
+/// stream, on the receive and transmit threads, defeating the pre-allocation
+/// the callers do precisely to avoid it. Per thread rather than per stream
+/// because these are free functions with no object to hang a buffer off; the
+/// buffer only ever grows, to the largest packet that thread has handled.
+template <typename T>
+T* scratch(size_t samples) {
+    thread_local std::vector<T> buffer;
+    if (buffer.size() < samples) buffer.resize(samples);
+    return buffer.data();
+}
+#endif
 } // namespace
 
 // ============================================================================
@@ -37,14 +56,14 @@ void encodeL16BE(const float* audio, size_t totalSamples, uint8_t* payload) {
 #if AES67_HAVE_ACCELERATE
     // Clip to [-1,1], scale, convert to int16 (truncating, matching the
     // scalar static_cast), all vectorised; then pack big-endian.
-    std::vector<float> scaled(totalSamples);
+    float* scaled = scratch<float>(totalSamples);
     float lo = -1.0f, hi = 1.0f;
-    vDSP_vclip(audio, 1, &lo, &hi, scaled.data(), 1, totalSamples);
+    vDSP_vclip(audio, 1, &lo, &hi, scaled, 1, totalSamples);
     float scale = kL16Scale;
-    vDSP_vsmul(scaled.data(), 1, &scale, scaled.data(), 1, totalSamples);
+    vDSP_vsmul(scaled, 1, &scale, scaled, 1, totalSamples);
 
-    std::vector<int16_t> host(totalSamples);
-    vDSP_vfix16(scaled.data(), 1, host.data(), 1, totalSamples); // truncates toward zero
+    int16_t* host = scratch<int16_t>(totalSamples);
+    vDSP_vfix16(scaled, 1, host, 1, totalSamples); // truncates toward zero
 
     for (size_t i = 0; i < totalSamples; ++i) {
         uint16_t be = OSSwapHostToBigInt16(static_cast<uint16_t>(host[i]));
@@ -64,13 +83,13 @@ void decodeL16BE(const uint8_t* payload, size_t totalSamples, float* audio) {
     if (totalSamples == 0) return;
 
 #if AES67_HAVE_ACCELERATE
-    std::vector<int16_t> host(totalSamples);
+    int16_t* host = scratch<int16_t>(totalSamples);
     for (size_t i = 0; i < totalSamples; ++i) {
         uint16_t be;
         std::memcpy(&be, payload + i * 2, 2);
         host[i] = static_cast<int16_t>(OSSwapBigToHostInt16(be));
     }
-    vDSP_vflt16(host.data(), 1, audio, 1, totalSamples); // int16 -> float
+    vDSP_vflt16(host, 1, audio, 1, totalSamples); // int16 -> float
     float inv = 1.0f / kL16Full;
     vDSP_vsmul(audio, 1, &inv, audio, 1, totalSamples);
 #else
@@ -91,14 +110,14 @@ void encodeL24BE(const float* audio, size_t totalSamples, uint8_t* payload) {
     if (totalSamples == 0) return;
 
 #if AES67_HAVE_ACCELERATE
-    std::vector<float> scaled(totalSamples);
+    float* scaled = scratch<float>(totalSamples);
     float lo = -1.0f, hi = 1.0f;
-    vDSP_vclip(audio, 1, &lo, &hi, scaled.data(), 1, totalSamples);
+    vDSP_vclip(audio, 1, &lo, &hi, scaled, 1, totalSamples);
     float scale = kL24Scale;
-    vDSP_vsmul(scaled.data(), 1, &scale, scaled.data(), 1, totalSamples);
+    vDSP_vsmul(scaled, 1, &scale, scaled, 1, totalSamples);
 
-    std::vector<int32_t> host(totalSamples);
-    vDSP_vfix32(scaled.data(), 1, host.data(), 1, totalSamples); // truncates toward zero
+    int32_t* host = scratch<int32_t>(totalSamples);
+    vDSP_vfix32(scaled, 1, host, 1, totalSamples); // truncates toward zero
 
     for (size_t i = 0; i < totalSamples; ++i) {
         int32_t s = host[i];
@@ -121,14 +140,14 @@ void decodeL24BE(const uint8_t* payload, size_t totalSamples, float* audio) {
     if (totalSamples == 0) return;
 
 #if AES67_HAVE_ACCELERATE
-    std::vector<int32_t> host(totalSamples);
+    int32_t* host = scratch<int32_t>(totalSamples);
     for (size_t i = 0; i < totalSamples; ++i) {
         uint32_t raw = (static_cast<uint32_t>(payload[i * 3]) << 24) |
                        (static_cast<uint32_t>(payload[i * 3 + 1]) << 16) |
                        (static_cast<uint32_t>(payload[i * 3 + 2]) << 8);
         host[i] = static_cast<int32_t>(raw) >> 8; // arithmetic shift, sign-extends
     }
-    vDSP_vflt32(host.data(), 1, audio, 1, totalSamples);
+    vDSP_vflt32(host, 1, audio, 1, totalSamples);
     float inv = 1.0f / kL24Full;
     vDSP_vsmul(audio, 1, &inv, audio, 1, totalSamples);
 #else

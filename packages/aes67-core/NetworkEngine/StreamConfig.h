@@ -132,8 +132,10 @@ private:
     std::string configPath_;
     std::string defaultConfigFile_{"streams.json"};
 
-    // Helper methods for JSON serialization
-    static std::string escapeJSON(const std::string& str);
+    // Helper methods for JSON serialization. The escaper is AES67::jsonEscape
+    // in JsonEscape.h: this class used to carry a second copy that omitted
+    // \b, \f and the \u00XX form for control characters, which is the loss
+    // that header says it was consolidated to end.
     static std::string sdpToJSON(const SDPSession& sdp);
     static std::string mappingToJSON(const ChannelMapping& mapping);
 
