@@ -33,6 +33,7 @@ struct InstallerView: View {
     }
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("AES67 for macOS").font(.title2).fontWeight(.semibold)
@@ -86,7 +87,9 @@ struct InstallerView: View {
             }
         }
         .padding(20)
+        }
         .frame(width: 560)
+        .frame(maxHeight: 560)
         .onAppear { readInstalled() }
     }
 
