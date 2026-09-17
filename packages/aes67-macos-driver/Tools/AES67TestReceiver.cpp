@@ -21,7 +21,7 @@
 //   ./AES67TestReceiver [options]
 //
 // Options:
-//   --ip <addr>       Multicast IP (default: 239.1.1.2)
+//   --ip <addr>       Multicast IP (default: 239.1.1.1)
 //   --port <port>     RTP port (default: 5004)
 //   --channels <n>    Expected channels (default: 8)
 //   --encoding <enc>  L16 or L24 (default: L24)
@@ -189,7 +189,7 @@ void updateSeq(SourceStats& source, uint16_t seq) {
 
 int run(int argc, char* argv[]) {
     // Defaults
-    std::string multicastIP = "239.1.1.2";
+    std::string multicastIP = "239.1.1.1";
     uint16_t    port        = 5004;
     uint16_t    channels    = 8;
     std::string encoding    = "L24";
@@ -235,7 +235,7 @@ int run(int argc, char* argv[]) {
                 "AES67 Test Receiver - receives RTP multicast and reports statistics\n\n"
                 "Usage: %s [options]\n\n"
                 "Options:\n"
-                "  --ip <addr>       Multicast IP (default: 239.1.1.2)\n"
+                "  --ip <addr>       Multicast IP (default: 239.1.1.1)\n"
                 "  --port <port>     RTP port (default: 5004)\n"
                 "  --channels <n>    Expected channels (default: 8)\n"
                 "  --encoding <enc>  L16 or L24 (default: L24)\n"

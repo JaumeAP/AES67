@@ -114,7 +114,7 @@ message(STATUS "")
 message(STATUS "Run test sender:")
 message(STATUS "  ./Tools/AES67TestSender --ip 239.1.1.1 --port 5004 --channels 8 --freq 1000")
 message(STATUS "Run test receiver:")
-message(STATUS "  ./Tools/AES67TestReceiver --ip 239.1.1.2 --port 5004 --duration 10")
+message(STATUS "  ./Tools/AES67TestReceiver --ip 239.1.1.1 --port 5004 --duration 10")
 
 # ============================================================================
 # What the gate runs
