@@ -105,7 +105,7 @@ TEST_CASE("Registration Posts The Node And Reads The Answer") {
         const auto requests = registry.requests();
         REQUIRE(requests.size() == 3);
         CHECK(requests[0].find("POST /x-nmos/registration/v1.3/resource") == 0);
-        CHECK(requests[1].find("DELETE /x-nmos/registration/v1.3/resource/") == 0);
+        CHECK(requests[1].find("DELETE /x-nmos/registration/v1.3/resource/nodes/") == 0);
         CHECK(requests[2].find("POST /x-nmos/registration/v1.3/resource") == 0);
     }
 

@@ -486,7 +486,7 @@ bool NMOSRegistrationClient::postNode() {
     // Taking the 200 as success left the registry serving whatever it had.
     if (response.status == 200) {
         HTTPClient remover(registry.host, registry.port);
-        (void)remover.del(registrationPath(registry.apiVersion) + "/" + node.id);
+        (void)remover.del(registrationPath(registry.apiVersion) + "/nodes/" + node.id);
         const HTTPResponse again = client.post(registrationPath(registry.apiVersion),
                                                buildRegistrationBody(node, seconds, nanos),
                                                "application/json");
