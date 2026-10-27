@@ -189,7 +189,17 @@ public:
     /// registering; the registration and heartbeat threads only read it.
     void useVersionFrom(VersionSource source) { versionSource_ = std::move(source); }
 
-    /// Registers with the first of these that takes it, skipping the one in
+    /// Called when a heartbeat was answered 404 and the node has been
+    /// registered again: a registry that forgot the node, or one a failover
+    /// reached that never knew it. Only the node goes back by itself; this is
+    /// where its owner posts the device and everything under it again. Runs
+    /// on the heartbeat thread, so it must not block. Set before
+    /// startHeartbeats(); the heartbeat thread only reads it.
+    using RegisteredAgain = std::function<void()>;
+    void onRegisteredAgain(RegisteredAgain callback) { registeredAgain_ = std::move(callback); }
+
+    /// Moves to the first of these that answers a heartbeat (registering with
+    /// it only if it says it does not know the node), skipping the one in
     /// use. The heartbeat thread calls it with what the link is advertising
     /// when the registry it is on has stopped answering; it is public because
     /// the choice it makes -- lowest priority first, never the one that just
@@ -332,6 +342,7 @@ private:
     mutable std::mutex mutex_;
     std::atomic<bool> registered_{false};
     VersionSource versionSource_;
+    RegisteredAgain registeredAgain_;
     std::atomic<bool> running_{false};
     std::thread heartbeatThread_;
 };

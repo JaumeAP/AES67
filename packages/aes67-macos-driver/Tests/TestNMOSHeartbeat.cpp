@@ -93,8 +93,6 @@ TEST_CASE("A registry that stops answering is left for another") {
     // The one in use, which will go away.
     auto failing = std::make_unique<FakeRegistry>(answer("201 Created"));
     REQUIRE(failing->start());
-    FakeRegistry standby(answer("201 Created"));
-    REQUIRE(standby.start());
 
     NMOSRegistrationClient client(testNode());
     REQUIRE(client.registerWith({"127.0.0.1", failing->port(), "v1.3"}));
@@ -104,16 +102,21 @@ TEST_CASE("A registry that stops answering is left for another") {
     advertisedFailing.port = failing->port();
     advertisedFailing.priority = 0;
 
-    Ravenna::NmosRegistry advertisedStandby;
-    advertisedStandby.host = "127.0.0.1";
-    advertisedStandby.port = standby.port();
-    advertisedStandby.priority = 10;
+    auto advertised = [](const FakeRegistry& registry) {
+        Ravenna::NmosRegistry standby;
+        standby.host = "127.0.0.1";
+        standby.port = registry.port();
+        standby.priority = 10;
+        return standby;
+    };
 
     SUBCASE("the one that failed is not chosen again") {
         // Both advertised, the first still answering: a node that takes the
         // one it is already on has not failed over at all, and the next lost
         // beat finds it in the same place.
-        CHECK(client.failOverTo({advertisedFailing, advertisedStandby}));
+        FakeRegistry standby(answer("200 OK"));
+        REQUIRE(standby.start());
+        CHECK(client.failOverTo({advertisedFailing, advertised(standby)}));
         CHECK(standby.requests().size() == 1);
     }
 
@@ -122,14 +125,35 @@ TEST_CASE("A registry that stops answering is left for another") {
         CHECK_FALSE(client.failOverTo({advertisedFailing}));
     }
 
-    SUBCASE("the registry it moves to is the one told about the node") {
+    SUBCASE("a registry that already holds the node is only sent a heartbeat") {
+        // IS-04 sec 4.1: registries in one cluster share their data, so the
+        // node is known there already. Registering again would be taken for a
+        // stale copy and deleted first; the AMWA IS-04-01 suite checks that
+        // only a heartbeat goes (test_16).
         failing.reset();
-        REQUIRE(client.failOverTo({advertisedFailing, advertisedStandby}));
+        FakeRegistry standby(answer("200 OK"));
+        REQUIRE(standby.start());
+        REQUIRE(client.failOverTo({advertisedFailing, advertised(standby)}));
 
         const std::vector<std::string> requests = standby.requests();
         REQUIRE(requests.size() == 1);
-        CHECK(requests[0].find("POST /x-nmos/registration/v1.3/resource") == 0);
-        CHECK(requests[0].find("\"type\": \"node\"") != std::string::npos);
-        CHECK(requests[0].find("8c4a5f2e-0000-4000-8000-000000000001") != std::string::npos);
+        CHECK(requests[0].find("POST /x-nmos/registration/v1.3/health/nodes/"
+                               "8c4a5f2e-0000-4000-8000-000000000001") == 0);
+    }
+
+    SUBCASE("a registry that does not know the node is told about it") {
+        // The heartbeat is answered 404, which is how a registry says it has
+        // never heard of the node: registering from nothing is the way in.
+        failing.reset();
+        FakeRegistry standby({answer("404 Not Found"), answer("201 Created")}, answer("200 OK"));
+        REQUIRE(standby.start());
+        REQUIRE(client.failOverTo({advertisedFailing, advertised(standby)}));
+
+        const std::vector<std::string> requests = standby.requests();
+        REQUIRE(requests.size() == 2);
+        CHECK(requests[0].find("POST /x-nmos/registration/v1.3/health/nodes/") == 0);
+        CHECK(requests[1].find("POST /x-nmos/registration/v1.3/resource") == 0);
+        CHECK(requests[1].find("\"type\": \"node\"") != std::string::npos);
+        CHECK(requests[1].find("8c4a5f2e-0000-4000-8000-000000000001") != std::string::npos);
     }
 }
