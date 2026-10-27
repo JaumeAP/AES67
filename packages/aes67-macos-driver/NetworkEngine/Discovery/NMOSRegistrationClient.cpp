@@ -634,11 +634,20 @@ bool NMOSRegistrationClient::failOverTo(const std::vector<Ravenna::NmosRegistry>
         // that failed, and a node that keeps choosing it never moves.
         if (candidate.endpoint() == current) continue;
 
-        NMOSRegistry moved;
-        moved.host = candidate.host;
-        moved.port = candidate.port;
-        moved.apiVersion = candidate.apiVersion;
-        if (registerWith(moved)) {
+        // A heartbeat first, not a registration: registries in one cluster
+        // share what they hold (IS-04 sec 4.1), so the new one usually knows
+        // the node already, and posting it again would be answered 200 and
+        // taken for a stale copy. A 404 to the heartbeat makes heartbeat()
+        // register from nothing, which is the way in for a registry that has
+        // never heard of it.
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            registry_.host = candidate.host;
+            registry_.port = candidate.port;
+            registry_.apiVersion = candidate.apiVersion;
+            if (registry_.apiVersion.empty()) registry_.apiVersion = "v1.3";
+        }
+        if (heartbeat()) {
             AES67_LOGF("NMOS: the registry at %s stopped answering; moved to %s", current.c_str(),
                        candidate.endpoint().c_str());
             return true;

@@ -189,7 +189,8 @@ public:
     /// registering; the registration and heartbeat threads only read it.
     void useVersionFrom(VersionSource source) { versionSource_ = std::move(source); }
 
-    /// Registers with the first of these that takes it, skipping the one in
+    /// Moves to the first of these that answers a heartbeat (registering with
+    /// it only if it says it does not know the node), skipping the one in
     /// use. The heartbeat thread calls it with what the link is advertising
     /// when the registry it is on has stopped answering; it is public because
     /// the choice it makes -- lowest priority first, never the one that just
