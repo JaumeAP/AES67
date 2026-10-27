@@ -632,6 +632,10 @@ void AES67Device::Initialize() {
                         router->version(seconds, nanos);
                     });
                 }
+                // A registry that forgot the node, or one a failover reached
+                // that never knew it, gets the node back from the client and
+                // nothing else; the sync thread posts the rest.
+                nmosClient_->onRegisteredAgain([this] { requestNMOSSync(); });
 
                 std::optional<NMOSRegistry> registry;
                 if (!nmosSettings.registryOverride.empty()) {

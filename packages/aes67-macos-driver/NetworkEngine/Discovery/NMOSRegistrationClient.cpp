@@ -532,7 +532,9 @@ bool NMOSRegistrationClient::heartbeat() {
     // quiet. Registering again is the documented way back in.
     if (response.status == 404) {
         registered_.store(false, std::memory_order_relaxed);
-        return postNode();
+        if (!postNode()) return false;
+        if (registeredAgain_) registeredAgain_();
+        return true;
     }
 
     registered_.store(false, std::memory_order_relaxed);

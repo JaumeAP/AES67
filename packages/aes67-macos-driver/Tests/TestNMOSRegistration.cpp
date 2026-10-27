@@ -176,6 +176,42 @@ TEST_CASE("A 404 On The Heartbeat Registers Again") {
     CHECK(requests[2].find("POST /x-nmos/registration/v1.3/resource") == 0);
 }
 
+TEST_CASE("Registering again after a 404 says so, so the resources can follow") {
+    // A registry that forgot the node forgot its device, senders and
+    // receivers too, and so does one a failover reaches that never knew it.
+    // Only the node goes back by itself; the owner of the resources has to
+    // be told to post the rest, or they stay missing until a stream changes.
+    NMOSRegistrationClient client(testNode());
+    int calls = 0;
+    client.onRegisteredAgain([&calls] { ++calls; });
+
+    SUBCASE("a 404 that ends in a new registration calls it once") {
+        FakeRegistry registry({answer("201 Created"), answer("404 Not Found"), answer("201 Created")},
+                              answer("200 OK"));
+        REQUIRE(registry.start());
+        REQUIRE(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+        CHECK(client.heartbeat());
+        CHECK(calls == 1);
+    }
+
+    SUBCASE("an ordinary heartbeat does not") {
+        FakeRegistry registry({answer("201 Created")}, answer("200 OK"));
+        REQUIRE(registry.start());
+        REQUIRE(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+        CHECK(client.heartbeat());
+        CHECK(calls == 0);
+    }
+
+    SUBCASE("a 404 whose registration fails does not") {
+        FakeRegistry registry({answer("201 Created"), answer("404 Not Found")},
+                              answer("500 Internal Server Error"));
+        REQUIRE(registry.start());
+        REQUIRE(client.registerWith({"127.0.0.1", registry.port(), "v1.3"}));
+        CHECK_FALSE(client.heartbeat());
+        CHECK(calls == 0);
+    }
+}
+
 TEST_CASE("Unregistering Deletes The Node") {
     FakeRegistry registry(answer("204 No Content"));
     REQUIRE(registry.start());
